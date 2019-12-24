@@ -53,7 +53,7 @@ bind g "impulse 5 ; +attack ; wait ; -attack ; impulse 2"
 */
 void Cmd_Wait_f (void)
 {
-	cmd_wait = true;
+	cmd_wait = qTrue;
 }
 
 
@@ -240,7 +240,7 @@ void Cbuf_Execute (void)
 		{
 			// skip out while text still remains in buffer, leaving it
 			// for next frame
-			cmd_wait = false;
+			cmd_wait = qFalse;
 			break;
 		}
 	}
@@ -309,7 +309,7 @@ qboolean Cbuf_AddLateCommands (void)
 		s += strlen (COM_Argv(i)) + 1;
 	}
 	if (!s)
-		return false;
+		return qFalse;
 		
 	text = Z_Malloc (s+1);
 	text[0] = 0;
@@ -548,7 +548,7 @@ char *Cmd_MacroExpandString (char *text)
 	char	temporary[MAX_STRING_CHARS];
 	char	*token, *start;
 
-	inquote = false;
+	inquote = qFalse;
 	scan = text;
 
 	len = strlen (scan);
@@ -756,10 +756,10 @@ qboolean	Cmd_Exists (char *cmd_name)
 	for (cmd=cmd_functions ; cmd ; cmd=cmd->next)
 	{
 		if (!strcmp (cmd_name,cmd->name))
-			return true;
+			return qTrue;
 	}
 
-	return false;
+	return qFalse;
 }
 
 
@@ -813,7 +813,7 @@ void	Cmd_ExecuteString (char *text)
 	cmd_function_t	*cmd;
 	cmdalias_t		*a;
 
-	Cmd_TokenizeString (text, true);
+	Cmd_TokenizeString (text, qTrue);
 			
 	// execute the command line
 	if (!Cmd_Argc())

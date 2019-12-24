@@ -428,12 +428,12 @@ image_t *GL_LoadPic (char *name, byte *pic, int width, int height, imagetype_t t
 
 	c = width*height;
 	image->pixels[0] = malloc (c);
-	image->transparent = false;
+	image->transparent = qFalse;
 	for (i=0 ; i<c ; i++)
 	{
 		b = pic[i];
 		if (b == 255)
-			image->transparent = true;
+			image->transparent = qTrue;
 		image->pixels[0][i] = b;
 	}
 

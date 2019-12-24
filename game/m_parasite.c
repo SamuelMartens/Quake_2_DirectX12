@@ -301,16 +301,16 @@ static qboolean parasite_drain_attack_ok (vec3_t start, vec3_t end)
 	// check for max distance
 	VectorSubtract (start, end, dir);
 	if (VectorLength(dir) > 256)
-		return false;
+		return qFalse;
 
 	// check for min/max pitch
 	vectoangles (dir, angles);
 	if (angles[0] < -180)
 		angles[0] += 360;
 	if (fabs(angles[0]) > 30)
-		return false;
+		return qFalse;
 
-	return true;
+	return qTrue;
 }
 
 void parasite_drain_attack (edict_t *self)

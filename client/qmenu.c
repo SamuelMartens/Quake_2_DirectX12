@@ -78,9 +78,9 @@ qboolean Field_DoEnter( menufield_s *f )
 	if ( f->generic.callback )
 	{
 		f->generic.callback( f );
-		return true;
+		return qTrue;
 	}
-	return false;
+	return qFalse;
 }
 
 void Field_Draw( menufield_s *f )
@@ -187,7 +187,7 @@ qboolean Field_Key( menufield_s *f, int key )
 		{
 		case K_DEL:
 		default:
-			return false;
+			return qFalse;
 		}
 	}
 
@@ -211,7 +211,7 @@ qboolean Field_Key( menufield_s *f, int key )
 
 			free( cbd );
 		}
-		return true;
+		return qTrue;
 	}
 
 	switch ( key )
@@ -240,12 +240,12 @@ qboolean Field_Key( menufield_s *f, int key )
 	case K_ENTER:
 	case K_ESCAPE:
 	case K_TAB:
-		return false;
+		return qFalse;
 
 	case K_SPACE:
 	default:
 		if ( !isdigit( key ) && ( f->generic.flags & QMF_NUMBERSONLY ) )
-			return false;
+			return qFalse;
 
 		if ( f->cursor < f->length )
 		{
@@ -259,7 +259,7 @@ qboolean Field_Key( menufield_s *f, int key )
 		}
 	}
 
-	return true;
+	return qTrue;
 }
 
 void Menu_AddItem( menuframework_s *menu, void *item )
@@ -491,16 +491,16 @@ qboolean Menu_SelectItem( menuframework_s *s )
 			return Field_DoEnter( ( menufield_s * ) item ) ;
 		case MTYPE_ACTION:
 			Action_DoEnter( ( menuaction_s * ) item );
-			return true;
+			return qTrue;
 		case MTYPE_LIST:
 //			Menulist_DoEnter( ( menulist_s * ) item );
-			return false;
+			return qFalse;
 		case MTYPE_SPINCONTROL:
 //			SpinControl_DoEnter( ( menulist_s * ) item );
-			return false;
+			return qFalse;
 		}
 	}
-	return false;
+	return qFalse;
 }
 
 void Menu_SetStatusBar( menuframework_s *m, const char *string )

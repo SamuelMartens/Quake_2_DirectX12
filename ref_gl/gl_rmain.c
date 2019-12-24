@@ -147,12 +147,12 @@ qboolean R_CullBox (vec3_t mins, vec3_t maxs)
 	int		i;
 
 	if (r_nocull->value)
-		return false;
+		return qFalse;
 
 	for (i=0 ; i<4 ; i++)
 		if ( BOX_ON_PLANE_SIDE(mins, maxs, &frustum[i]) == 2)
-			return true;
-	return false;
+			return qTrue;
+	return qFalse;
 }
 
 
@@ -1058,13 +1058,13 @@ qboolean R_SetMode (void)
 	{
 		ri.Con_Printf( PRINT_ALL, "R_SetMode() - CDS not allowed with this driver\n" );
 		ri.Cvar_SetValue( "vid_fullscreen", !vid_fullscreen->value );
-		vid_fullscreen->modified = false;
+		vid_fullscreen->modified = qFalse;
 	}
 
 	fullscreen = vid_fullscreen->value;
 
-	vid_fullscreen->modified = false;
-	gl_mode->modified = false;
+	vid_fullscreen->modified = qFalse;
+	gl_mode->modified = qFalse;
 
 	if ( ( err = GLimp_SetMode( &vid.width, &vid.height, gl_mode->value, fullscreen ) ) == rserr_ok )
 	{
@@ -1075,26 +1075,26 @@ qboolean R_SetMode (void)
 		if ( err == rserr_invalid_fullscreen )
 		{
 			ri.Cvar_SetValue( "vid_fullscreen", 0);
-			vid_fullscreen->modified = false;
+			vid_fullscreen->modified = qFalse;
 			ri.Con_Printf( PRINT_ALL, "ref_gl::R_SetMode() - fullscreen unavailable in this mode\n" );
-			if ( ( err = GLimp_SetMode( &vid.width, &vid.height, gl_mode->value, false ) ) == rserr_ok )
-				return true;
+			if ( ( err = GLimp_SetMode( &vid.width, &vid.height, gl_mode->value, qFalse ) ) == rserr_ok )
+				return qTrue;
 		}
 		else if ( err == rserr_invalid_mode )
 		{
 			ri.Cvar_SetValue( "gl_mode", gl_state.prev_mode );
-			gl_mode->modified = false;
+			gl_mode->modified = qFalse;
 			ri.Con_Printf( PRINT_ALL, "ref_gl::R_SetMode() - invalid mode\n" );
 		}
 
 		// try setting it back to something safe
-		if ( ( err = GLimp_SetMode( &vid.width, &vid.height, gl_state.prev_mode, false ) ) != rserr_ok )
+		if ( ( err = GLimp_SetMode( &vid.width, &vid.height, gl_state.prev_mode, qFalse ) ) != rserr_ok )
 		{
 			ri.Con_Printf( PRINT_ALL, "ref_gl::R_SetMode() - could not revert to safe mode\n" );
-			return false;
+			return qFalse;
 		}
 	}
-	return true;
+	return qTrue;
 }
 
 /*
@@ -1232,13 +1232,13 @@ int R_Init( void *hinstance, void *hWnd )
 	if ( gl_config.renderer & GL_RENDERER_3DLABS )
 	{
 		if ( gl_3dlabs_broken->value )
-			gl_config.allow_cds = false;
+			gl_config.allow_cds = qFalse;
 		else
-			gl_config.allow_cds = true;
+			gl_config.allow_cds = qTrue;
 	}
 	else
 	{
-		gl_config.allow_cds = true;
+		gl_config.allow_cds = qTrue;
 	}
 
 	if ( gl_config.allow_cds )
@@ -1441,13 +1441,13 @@ void R_BeginFrame( float camera_separation )
 		cvar_t	*ref;
 
 		ref = ri.Cvar_Get ("vid_ref", "gl", 0);
-		ref->modified = true;
+		ref->modified = qTrue;
 	}
 
 	if ( gl_log->modified )
 	{
 		GLimp_EnableLogging( gl_log->value );
-		gl_log->modified = false;
+		gl_log->modified = qFalse;
 	}
 
 	if ( gl_log->value )
@@ -1461,7 +1461,7 @@ void R_BeginFrame( float camera_separation )
 	*/
 	if ( vid_gamma->modified )
 	{
-		vid_gamma->modified = false;
+		vid_gamma->modified = qFalse;
 
 		if ( gl_config.renderer & ( GL_RENDERER_VOODOO ) )
 		{
@@ -1498,7 +1498,7 @@ void R_BeginFrame( float camera_separation )
 	*/
 	if ( gl_drawbuffer->modified )
 	{
-		gl_drawbuffer->modified = false;
+		gl_drawbuffer->modified = qFalse;
 
 		if ( gl_state.camera_separation == 0 || !gl_state.stereo_enabled )
 		{
@@ -1515,19 +1515,19 @@ void R_BeginFrame( float camera_separation )
 	if ( gl_texturemode->modified )
 	{
 		GL_TextureMode( gl_texturemode->string );
-		gl_texturemode->modified = false;
+		gl_texturemode->modified = qFalse;
 	}
 
 	if ( gl_texturealphamode->modified )
 	{
 		GL_TextureAlphaMode( gl_texturealphamode->string );
-		gl_texturealphamode->modified = false;
+		gl_texturealphamode->modified = qFalse;
 	}
 
 	if ( gl_texturesolidmode->modified )
 	{
 		GL_TextureSolidMode( gl_texturesolidmode->string );
-		gl_texturesolidmode->modified = false;
+		gl_texturesolidmode->modified = qFalse;
 	}
 
 	/*

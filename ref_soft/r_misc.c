@@ -51,7 +51,7 @@ void D_Patch (void)
 {
 #if id386
 	extern void D_Aff8Patch( void );
-	static qboolean protectset8 = false;
+	static qboolean protectset8 = qFalse;
 	extern void D_PolysetAff8Start( void );
 
 	if (!protectset8)
@@ -60,7 +60,7 @@ void D_Patch (void)
 						     (int)D_Aff8Patch - (int)D_PolysetAff8Start);
 		Sys_MakeCodeWriteable ((long)R_Surf8Start,
 						 (long)R_Surf8End - (long)R_Surf8Start);
-		protectset8 = true;
+		protectset8 = qTrue;
 	}
 	colormap = vid.colormap;
 
@@ -431,7 +431,7 @@ void R_SetupFrame (void)
 
 	if (r_fullbright->modified)
 	{
-		r_fullbright->modified = false;
+		r_fullbright->modified = qFalse;
 		D_FlushCaches ();	// so all lighting changes
 	}
 	
@@ -452,9 +452,9 @@ void R_SetupFrame (void)
 	}
 
 	if (sw_waterwarp->value && (r_newrefdef.rdflags & RDF_UNDERWATER) )
-		r_dowarp = true;
+		r_dowarp = qTrue;
 	else
-		r_dowarp = false;
+		r_dowarp = qFalse;
 
 	if (r_dowarp)
 	{	// warp into off screen buffer
@@ -499,7 +499,7 @@ void R_SetupFrame (void)
 	r_outofedges = 0;
 
 // d_setup
-	d_roverwrapped = false;
+	d_roverwrapped = qFalse;
 	d_initial_rover = sc_rover;
 
 	d_minmip = sw_mipcap->value;

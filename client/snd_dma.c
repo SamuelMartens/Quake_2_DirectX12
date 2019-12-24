@@ -41,7 +41,7 @@ int			s_registration_sequence;
 
 channel_t   channels[MAX_CHANNELS];
 
-qboolean	snd_initialized = false;
+qboolean	snd_initialized = qFalse;
 int			sound_started=0;
 
 dma_t		dma;
@@ -293,7 +293,7 @@ S_BeginRegistration
 void S_BeginRegistration (void)
 {
 	s_registration_sequence++;
-	s_registering = true;
+	s_registering = qTrue;
 }
 
 /*
@@ -309,7 +309,7 @@ sfx_t *S_RegisterSound (char *name)
 	if (!sound_started)
 		return NULL;
 
-	sfx = S_FindName (name, true);
+	sfx = S_FindName (name, qTrue);
 	sfx->registration_sequence = s_registration_sequence;
 
 	if (!s_registering)
@@ -361,7 +361,7 @@ void S_EndRegistration (void)
 		S_LoadSound (sfx);
 	}
 
-	s_registering = false;
+	s_registering = qFalse;
 }
 
 
@@ -615,7 +615,7 @@ struct sfx_s *S_RegisterSexedSound (entity_state_t *ent, char *base)
 
 	// see if we already know of the model specific sound
 	Com_sprintf (sexedFilename, sizeof(sexedFilename), "#players/%s/%s", model, base+1);
-	sfx = S_FindName (sexedFilename, false);
+	sfx = S_FindName (sexedFilename, qFalse);
 
 	if (!sfx)
 	{
@@ -683,10 +683,10 @@ void S_StartSound(vec3_t origin, int entnum, int entchannel, sfx_t *sfx, float f
 	if (origin)
 	{
 		VectorCopy (origin, ps->origin);
-		ps->fixed_origin = true;
+		ps->fixed_origin = qTrue;
 	}
 	else
-		ps->fixed_origin = false;
+		ps->fixed_origin = qFalse;
 
 	ps->entnum = entnum;
 	ps->entchannel = entchannel;
@@ -891,7 +891,7 @@ void S_AddLoopSounds (void)
 			right_total = 255;
 		ch->leftvol = left_total;
 		ch->rightvol = right_total;
-		ch->autosound = true;	// remove next frame
+		ch->autosound = qTrue;	// remove next frame
 		ch->sfx = sfx;
 		ch->pos = paintedtime % sc->length;
 		ch->end = paintedtime + sc->length - ch->pos;

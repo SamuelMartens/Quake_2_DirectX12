@@ -166,7 +166,7 @@ void SCR_StopCinematic (void)
 	if (cl.cinematicpalette_active)
 	{
 		re.CinematicSetPalette(NULL);
-		cl.cinematicpalette_active = false;
+		cl.cinematicpalette_active = qFalse;
 	}
 	if (cl.cinematic_file)
 	{
@@ -182,7 +182,7 @@ void SCR_StopCinematic (void)
 	// switch back down to 11 khz sound if necessary
 	if (cin.restart_sound)
 	{
-		cin.restart_sound = false;
+		cin.restart_sound = qFalse;
 		CL_Snd_Restart_f ();
 	}
 
@@ -232,7 +232,7 @@ int	SmallestNode1 (int numhnodes)
 	if (bestnode == -1)
 		return -1;
 
-	cin.h_used[bestnode] = true;
+	cin.h_used[bestnode] = qTrue;
 	return bestnode;
 }
 
@@ -542,29 +542,29 @@ qboolean SCR_DrawCinematic (void)
 {
 	if (cl.cinematictime <= 0)
 	{
-		return false;
+		return qFalse;
 	}
 
 	if (cls.key_dest == key_menu)
 	{	// blank screen and pause if menu is up
 		re.CinematicSetPalette(NULL);
-		cl.cinematicpalette_active = false;
-		return true;
+		cl.cinematicpalette_active = qFalse;
+		return qTrue;
 	}
 
 	if (!cl.cinematicpalette_active)
 	{
 		re.CinematicSetPalette(cl.cinematicpalette);
-		cl.cinematicpalette_active = true;
+		cl.cinematicpalette_active = qTrue;
 	}
 
 	if (!cin.pic)
-		return true;
+		return qTrue;
 
 	re.DrawStretchRaw (0, 0, viddef.width, viddef.height,
 		cin.width, cin.height, cin.pic);
 
-	return true;
+	return qTrue;
 }
 
 /*
@@ -638,7 +638,7 @@ void SCR_PlayCinematic (char *arg)
 	old_khz = Cvar_VariableValue ("s_khz");
 	if (old_khz != cin.s_rate/1000)
 	{
-		cin.restart_sound = true;
+		cin.restart_sound = qTrue;
 		Cvar_SetValue ("s_khz", cin.s_rate/1000);
 		CL_Snd_Restart_f ();
 		Cvar_SetValue ("s_khz", old_khz);

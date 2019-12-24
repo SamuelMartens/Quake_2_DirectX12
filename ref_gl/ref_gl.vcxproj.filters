@@ -83,13 +83,7 @@
     <ClInclude Include="qgl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="qmenu.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\client\ref.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ref_gl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="warpsin.h">

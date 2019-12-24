@@ -233,7 +233,7 @@ void GL_UpdateSwapInterval( void )
 {
 	if ( gl_swapinterval->modified )
 	{
-		gl_swapinterval->modified = false;
+		gl_swapinterval->modified = qFalse;
 
 		if ( !gl_state.stereo_enabled ) 
 		{

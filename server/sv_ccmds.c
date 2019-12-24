@@ -96,7 +96,7 @@ qboolean SV_SetPlayer (void)
 	char		*s;
 
 	if (Cmd_Argc() < 2)
-		return false;
+		return qFalse;
 
 	s = Cmd_Argv(1);
 
@@ -107,7 +107,7 @@ qboolean SV_SetPlayer (void)
 		if (idnum < 0 || idnum >= maxclients->value)
 		{
 			Com_Printf ("Bad client slot: %i\n", idnum);
-			return false;
+			return qFalse;
 		}
 
 		sv_client = &svs.clients[idnum];
@@ -115,9 +115,9 @@ qboolean SV_SetPlayer (void)
 		if (!sv_client->state)
 		{
 			Com_Printf ("Client %i is not active\n", idnum);
-			return false;
+			return qFalse;
 		}
-		return true;
+		return qTrue;
 	}
 
 	// check for a name match
@@ -129,12 +129,12 @@ qboolean SV_SetPlayer (void)
 		{
 			sv_client = cl;
 			sv_player = sv_client->edict;
-			return true;
+			return qTrue;
 		}
 	}
 
 	Com_Printf ("Userid %s is not on the server\n", s);
-	return false;
+	return qFalse;
 }
 
 
@@ -464,7 +464,7 @@ Puts the server in demo mode on a specific map/cinematic
 */
 void SV_DemoMap_f (void)
 {
-	SV_Map (true, Cmd_Argv(1), false );
+	SV_Map (qTrue, Cmd_Argv(1), qFalse );
 }
 
 /*
@@ -520,7 +520,7 @@ void SV_GameMap_f (void)
 			for (i=0,cl=svs.clients ; i<maxclients->value; i++,cl++)
 			{
 				savedInuse[i] = cl->edict->inuse;
-				cl->edict->inuse = false;
+				cl->edict->inuse = qFalse;
 			}
 
 			SV_WriteLevelFile ();
@@ -533,7 +533,7 @@ void SV_GameMap_f (void)
 	}
 
 	// start up the next map
-	SV_Map (false, Cmd_Argv(1), false );
+	SV_Map (qFalse, Cmd_Argv(1), qFalse );
 
 	// archive server state
 	strncpy (svs.mapcmd, Cmd_Argv(1), sizeof(svs.mapcmd)-1);
@@ -541,7 +541,7 @@ void SV_GameMap_f (void)
 	// copy off the level to the autosave slot
 	if (!dedicated->value)
 	{
-		SV_WriteServerFile (true);
+		SV_WriteServerFile (qTrue);
 		SV_CopySaveGame ("current", "save0");
 	}
 }
@@ -627,7 +627,7 @@ void SV_Loadgame_f (void)
 
 	// go to the map
 	sv.state = ss_dead;		// don't save current level when changing
-	SV_Map (false, svs.mapcmd, true);
+	SV_Map (qFalse, svs.mapcmd, qTrue);
 }
 
 
@@ -686,7 +686,7 @@ void SV_Savegame_f (void)
 	SV_WriteLevelFile ();
 
 	// save server state
-	SV_WriteServerFile (false);
+	SV_WriteServerFile (qFalse);
 
 	// copy it off
 	SV_CopySaveGame ("current", dir);
@@ -992,8 +992,8 @@ void SV_KillServer_f (void)
 {
 	if (!svs.initialized)
 		return;
-	SV_Shutdown ("Server was killed.\n", false);
-	NET_Config ( false );	// close network sockets
+	SV_Shutdown ("Server was killed.\n", qFalse);
+	NET_Config ( qFalse );	// close network sockets
 }
 
 /*

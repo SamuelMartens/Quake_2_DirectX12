@@ -154,7 +154,7 @@ char *Sys_ScanForCD (void)
 	drive[2] = '\\';
 	drive[3] = 0;
 
-	done = true;
+	done = qTrue;
 
 	// scan the drives
 	for (drive[0] = 'c' ; drive[0] <= 'z' ; drive[0]++)
@@ -239,7 +239,7 @@ void Sys_Init (void)
 	if (vinfo.dwPlatformId == VER_PLATFORM_WIN32s)
 		Sys_Error ("Quake2 doesn't run on Win32s");
 	else if ( vinfo.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS )
-		s_win95 = true;
+		s_win95 = qTrue;
 
 	if (dedicated->value)
 	{

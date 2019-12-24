@@ -348,11 +348,11 @@ void CL_PrepRefresh (void)
 	Con_ClearNotify ();
 
 	SCR_UpdateScreen ();
-	cl.refresh_prepped = true;
-	cl.force_refdef = true;	// make sure we have a valid refdef
+	cl.refresh_prepped = qTrue;
+	cl.force_refdef = qTrue;	// make sure we have a valid refdef
 
 	// start the cd track
-	CDAudio_Play (atoi(cl.configstrings[CS_CDTRACK]), true);
+	CDAudio_Play (atoi(cl.configstrings[CS_CDTRACK]), qTrue);
 }
 
 /*
@@ -422,7 +422,7 @@ void SCR_DrawCrosshair (void)
 
 	if (crosshair->modified)
 	{
-		crosshair->modified = false;
+		crosshair->modified = qFalse;
 		SCR_TouchPics ();
 	}
 
@@ -460,7 +460,7 @@ void V_RenderView( float stereo_separation )
 	// we can't use the old frame if the video mode has changed, though...
 	if ( cl.frame.valid && (cl.force_refdef || !cl_paused->value) )
 	{
-		cl.force_refdef = false;
+		cl.force_refdef = qFalse;
 
 		V_ClearScene ();
 

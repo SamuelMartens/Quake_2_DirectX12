@@ -52,14 +52,14 @@ qboolean OnSameTeam (edict_t *ent1, edict_t *ent2)
 	char	ent2Team [512];
 
 	if (!((int)(dmflags->value) & (DF_MODELTEAMS | DF_SKINTEAMS)))
-		return false;
+		return qFalse;
 
 	strcpy (ent1Team, ClientTeam (ent1));
 	strcpy (ent2Team, ClientTeam (ent2));
 
 	if (strcmp(ent1Team, ent2Team) == 0)
-		return true;
-	return false;
+		return qTrue;
+	return qFalse;
 }
 
 
@@ -167,9 +167,9 @@ void Cmd_Give_f (edict_t *ent)
 	name = gi.args();
 
 	if (Q_stricmp(name, "all") == 0)
-		give_all = true;
+		give_all = qTrue;
 	else
-		give_all = false;
+		give_all = qFalse;
 
 	if (give_all || Q_stricmp(gi.argv(1), "health") == 0)
 	{
@@ -470,23 +470,23 @@ void Cmd_Inven_f (edict_t *ent)
 
 	cl = ent->client;
 
-	cl->showscores = false;
-	cl->showhelp = false;
+	cl->showscores = qFalse;
+	cl->showhelp = qFalse;
 
 	if (cl->showinventory)
 	{
-		cl->showinventory = false;
+		cl->showinventory = qFalse;
 		return;
 	}
 
-	cl->showinventory = true;
+	cl->showinventory = qTrue;
 
 	gi.WriteByte (svc_inventory);
 	for (i=0 ; i<MAX_ITEMS ; i++)
 	{
 		gi.WriteShort (cl->pers.inventory[i]);
 	}
-	gi.unicast (ent, true);
+	gi.unicast (ent, qTrue);
 }
 
 /*
@@ -662,9 +662,9 @@ Cmd_PutAway_f
 */
 void Cmd_PutAway_f (edict_t *ent)
 {
-	ent->client->showscores = false;
-	ent->client->showhelp = false;
-	ent->client->showinventory = false;
+	ent->client->showscores = qFalse;
+	ent->client->showhelp = qFalse;
+	ent->client->showinventory = qFalse;
 }
 
 
@@ -796,7 +796,7 @@ void Cmd_Say_f (edict_t *ent, qboolean team, qboolean arg0)
 		return;
 
 	if (!((int)(dmflags->value) & (DF_MODELTEAMS | DF_SKINTEAMS)))
-		team = false;
+		team = qFalse;
 
 	if (team)
 		Com_sprintf (text, sizeof(text), "(%s): ", ent->client->pers.netname);
@@ -921,12 +921,12 @@ void ClientCommand (edict_t *ent)
 	}
 	if (Q_stricmp (cmd, "say") == 0)
 	{
-		Cmd_Say_f (ent, false, false);
+		Cmd_Say_f (ent, qFalse, qFalse);
 		return;
 	}
 	if (Q_stricmp (cmd, "say_team") == 0)
 	{
-		Cmd_Say_f (ent, true, false);
+		Cmd_Say_f (ent, qTrue, qFalse);
 		return;
 	}
 	if (Q_stricmp (cmd, "score") == 0)
@@ -988,5 +988,5 @@ void ClientCommand (edict_t *ent)
 	else if (Q_stricmp(cmd, "playerlist") == 0)
 		Cmd_PlayerList_f(ent);
 	else	// anything that doesn't match a command will be a chat
-		Cmd_Say_f (ent, false, true);
+		Cmd_Say_f (ent, qFalse, qTrue);
 }

@@ -168,7 +168,7 @@ void SV_EmitPacketEntities (client_frame_t *from, client_frame_t *to, sizebuf_t 
 			// in any bytes being emited if the entity has not changed at all
 			// note that players are always 'newentities', this updates their oldorigin always
 			// and prevents warping
-			MSG_WriteDeltaEntity (oldent, newent, msg, false, newent->number <= maxclients->value);
+			MSG_WriteDeltaEntity (oldent, newent, msg, qFalse, newent->number <= maxclients->value);
 			oldindex++;
 			newindex++;
 			continue;
@@ -176,7 +176,7 @@ void SV_EmitPacketEntities (client_frame_t *from, client_frame_t *to, sizebuf_t 
 
 		if (newnum < oldnum)
 		{	// this is a new entity, send it from the baseline
-			MSG_WriteDeltaEntity (&sv.baselines[newnum], newent, msg, true, true);
+			MSG_WriteDeltaEntity (&sv.baselines[newnum], newent, msg, qTrue, qTrue);
 			newindex++;
 			continue;
 		}
@@ -707,7 +707,7 @@ void SV_RecordDemoMessage (void)
 			ent->s.number && 
 			(ent->s.modelindex || ent->s.effects || ent->s.sound || ent->s.event) && 
 			!(ent->svflags & SVF_NOCLIENT))
-			MSG_WriteDeltaEntity (&nostate, &ent->s, &buf, false, true);
+			MSG_WriteDeltaEntity (&nostate, &ent->s, &buf, qFalse, qTrue);
 
 		e++;
 		ent = EDICT_NUM(e);

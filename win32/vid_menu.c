@@ -171,13 +171,13 @@ static void ApplyChanges( void *unused )
 	{
 		if ( vid_gamma->modified )
 		{
-			vid_ref->modified = true;
+			vid_ref->modified = qTrue;
 			if ( stricmp( gl_driver->string, "3dfxgl" ) == 0 )
 			{
 				char envbuffer[1024];
 				float g;
 
-				vid_ref->modified = true;
+				vid_ref->modified = qTrue;
 
 				g = 2.00 * ( 0.8 - ( vid_gamma->value - 0.5 ) ) + 1.0F;
 				Com_sprintf( envbuffer, sizeof(envbuffer), "SSTV2_GAMMA=%f", g );
@@ -185,12 +185,12 @@ static void ApplyChanges( void *unused )
 				Com_sprintf( envbuffer, sizeof(envbuffer), "SST_GAMMA=%f", g );
 				putenv( envbuffer );
 
-				vid_gamma->modified = false;
+				vid_gamma->modified = qFalse;
 			}
 		}
 
 		if ( gl_driver->modified )
-			vid_ref->modified = true;
+			vid_ref->modified = qTrue;
 	}
 
 	M_ForceMenuOff();

@@ -3049,10 +3049,10 @@ qboolean QGL_Init( const char *dllname )
 
 		FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR) &buf, 0, NULL);
 		ri.Con_Printf( PRINT_ALL, "%s\n", buf );
-		return false;
+		return qFalse;
 	}
 
-	gl_config.allow_cds = true;
+	gl_config.allow_cds = qTrue;
 
 	qglAccum                     = dllAccum = GPA( "glAccum" );
 	qglAlphaFunc                 = dllAlphaFunc = GPA( "glAlphaFunc" );
@@ -3421,7 +3421,7 @@ qboolean QGL_Init( const char *dllname )
 	qglSelectTextureSGIS = 0;
 	qglMTexCoord2fSGIS = 0;
 
-	return true;
+	return qTrue;
 }
 
 void GLimp_EnableLogging( qboolean enable )

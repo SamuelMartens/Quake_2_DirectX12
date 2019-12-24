@@ -490,7 +490,7 @@ void CL_SendCmd (void)
 	if (userinfo_modified)
 	{
 		CL_FixUpGender();
-		userinfo_modified = false;
+		userinfo_modified = qFalse;
 		MSG_WriteByte (&cls.netchan.message, clc_userinfo);
 		MSG_WriteString (&cls.netchan.message, Cvar_Userinfo() );
 	}

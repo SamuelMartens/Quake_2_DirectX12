@@ -1008,8 +1008,8 @@ void CM_ClipBoxToBrush (vec3_t mins, vec3_t maxs, vec3_t p1, vec3_t p2,
 
 	c_brush_traces++;
 
-	getout = false;
-	startout = false;
+	getout = qFalse;
+	startout = qFalse;
 	leadside = NULL;
 
 	for (i=0 ; i<brush->numsides ; i++)
@@ -1044,9 +1044,9 @@ void CM_ClipBoxToBrush (vec3_t mins, vec3_t maxs, vec3_t p1, vec3_t p2,
 		d2 = DotProduct (p2, plane->normal) - dist;
 
 		if (d2 > 0)
-			getout = true;	// endpoint is not in solid
+			getout = qTrue;	// endpoint is not in solid
 		if (d1 > 0)
-			startout = true;
+			startout = qTrue;
 
 		// if completely in front of face, no intersection
 		if (d1 > 0 && d2 >= d1)
@@ -1076,9 +1076,9 @@ void CM_ClipBoxToBrush (vec3_t mins, vec3_t maxs, vec3_t p1, vec3_t p2,
 
 	if (!startout)
 	{	// original point was inside brush
-		trace->startsolid = true;
+		trace->startsolid = qTrue;
 		if (!getout)
-			trace->allsolid = true;
+			trace->allsolid = qTrue;
 		return;
 	}
 	if (enterfrac < leavefrac)
@@ -1144,7 +1144,7 @@ void CM_TestBoxInBrush (vec3_t mins, vec3_t maxs, vec3_t p1,
 	}
 
 	// inside this brush
-	trace->startsolid = trace->allsolid = true;
+	trace->startsolid = trace->allsolid = qTrue;
 	trace->fraction = 0;
 	trace->contents = brush->contents;
 }
@@ -1406,12 +1406,12 @@ trace_t		CM_BoxTrace (vec3_t start, vec3_t end,
 	if (mins[0] == 0 && mins[1] == 0 && mins[2] == 0
 		&& maxs[0] == 0 && maxs[1] == 0 && maxs[2] == 0)
 	{
-		trace_ispoint = true;
+		trace_ispoint = qTrue;
 		VectorClear (trace_extents);
 	}
 	else
 	{
-		trace_ispoint = false;
+		trace_ispoint = qFalse;
 		trace_extents[0] = -mins[0] > maxs[0] ? -mins[0] : maxs[0];
 		trace_extents[1] = -mins[1] > maxs[1] ? -mins[1] : maxs[1];
 		trace_extents[2] = -mins[2] > maxs[2] ? -mins[2] : maxs[2];
@@ -1467,9 +1467,9 @@ trace_t		CM_TransformedBoxTrace (vec3_t start, vec3_t end,
 	// rotate start and end into the models frame of reference
 	if (headnode != box_headnode && 
 	(angles[0] || angles[1] || angles[2]) )
-		rotated = true;
+		rotated = qTrue;
 	else
-		rotated = false;
+		rotated = qFalse;
 
 	if (rotated)
 	{
@@ -1662,14 +1662,14 @@ void	CM_SetAreaPortalState (int portalnum, qboolean open)
 qboolean	CM_AreasConnected (int area1, int area2)
 {
 	if (map_noareas->value)
-		return true;
+		return qTrue;
 
 	if (area1 > numareas || area2 > numareas)
 		Com_Error (ERR_DROP, "area > numareas");
 
 	if (map_areas[area1].floodnum == map_areas[area2].floodnum)
-		return true;
-	return false;
+		return qTrue;
+	return qFalse;
 }
 
 
@@ -1756,15 +1756,15 @@ qboolean CM_HeadnodeVisible (int nodenum, byte *visbits)
 		leafnum = -1-nodenum;
 		cluster = map_leafs[leafnum].cluster;
 		if (cluster == -1)
-			return false;
+			return qFalse;
 		if (visbits[cluster>>3] & (1<<(cluster&7)))
-			return true;
-		return false;
+			return qTrue;
+		return qFalse;
 	}
 
 	node = &map_nodes[nodenum];
 	if (CM_HeadnodeVisible(node->children[0], visbits))
-		return true;
+		return qTrue;
 	return CM_HeadnodeVisible(node->children[1], visbits);
 }
 

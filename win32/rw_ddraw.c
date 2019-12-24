@@ -94,7 +94,7 @@ ri.Con_Printf( PRINT_ALL, "Initializing DirectDraw\n");
 	/*
 	** see if linear modes exist first
 	*/
-	sww_state.modex = false;
+	sww_state.modex = qFalse;
 
 	ri.Con_Printf( PRINT_ALL, "...setting exclusive mode: ");
 	if ( ( ddrval = sww_state.lpDirectDraw->lpVtbl->SetCooperativeLevel( sww_state.lpDirectDraw, 
@@ -151,7 +151,7 @@ ri.Con_Printf( PRINT_ALL, "Initializing DirectDraw\n");
 		}
 		ri.Con_Printf( PRINT_ALL, "ok\n" );
 
-		sww_state.modex = true;
+		sww_state.modex = qTrue;
 	}
 	else
 	{
@@ -262,14 +262,14 @@ ri.Con_Printf( PRINT_ALL, "ok\n" );
 		memset( *ppbuffer + i * *ppitch, 0, *ppitch );
 	}
 
-	sww_state.palettized = true;
+	sww_state.palettized = qTrue;
 
-	return true;
+	return qTrue;
 fail:
 	ri.Con_Printf( PRINT_ALL, "*** DDraw init failure ***\n" );
 
 	DDRAW_Shutdown();
-	return false;
+	return qFalse;
 }
 
 /*

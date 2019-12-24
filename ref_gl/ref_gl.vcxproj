@@ -332,8 +332,6 @@
     <ClInclude Include="gl_local.h" />
     <ClInclude Include="gl_model.h" />
     <ClInclude Include="qgl.h" />
-    <ClInclude Include="qmenu.h" />
-    <ClInclude Include="ref_gl.h" />
     <ClInclude Include="warpsin.h" />
   </ItemGroup>
   <ItemGroup>

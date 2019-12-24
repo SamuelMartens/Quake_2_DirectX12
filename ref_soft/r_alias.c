@@ -104,7 +104,7 @@ unsigned long R_AliasCheckFrameBBox( daliasframe_t *frame, float worldxf[3][4] )
 	int           i;
 	vec3_t        mins, maxs;
 	vec3_t        transformed_min, transformed_max;
-	qboolean      zclipped = false, zfullyclipped = true;
+	qboolean      zclipped = qFalse, zfullyclipped = qTrue;
 	float         minz = 9999.0F;
 
 	/*
@@ -123,9 +123,9 @@ unsigned long R_AliasCheckFrameBBox( daliasframe_t *frame, float worldxf[3][4] )
 	R_AliasTransformVector( maxs, transformed_max, aliastransform );
 
 	if ( transformed_min[2] >= ALIAS_Z_CLIP_PLANE )
-		zfullyclipped = false;
+		zfullyclipped = qFalse;
 	if ( transformed_max[2] >= ALIAS_Z_CLIP_PLANE )
-		zfullyclipped = false;
+		zfullyclipped = qFalse;
 
 	if ( zfullyclipped )
 	{
@@ -863,7 +863,7 @@ static qboolean R_AliasSetupSkin (void)
 	}
 
 	if ( !pskindesc )
-		return false;
+		return qFalse;
 
 	r_affinetridesc.pskin = pskindesc->pixels[0];
 	r_affinetridesc.skinwidth = pskindesc->width;
@@ -871,7 +871,7 @@ static qboolean R_AliasSetupSkin (void)
 
 	R_PolysetUpdateTables ();		// FIXME: precalc edge lookups
 
-	return true;
+	return qTrue;
 }
 
 

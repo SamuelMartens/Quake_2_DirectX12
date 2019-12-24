@@ -1151,7 +1151,7 @@ struct model_s *R_RegisterModel (char *name)
 	dsprite_t	*sprout;
 	dmdl_t		*pheader;
 
-	mod = Mod_ForName (name, false);
+	mod = Mod_ForName (name, qFalse);
 	if (mod)
 	{
 		mod->registration_sequence = registration_sequence;

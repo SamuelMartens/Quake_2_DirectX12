@@ -109,7 +109,7 @@ void M_PushMenu ( void (*draw) (void), const char *(*key) (int k) )
 	m_drawfunc = draw;
 	m_keyfunc = key;
 
-	m_entersound = true;
+	m_entersound = qTrue;
 
 	cls.key_dest = key_menu;
 }
@@ -321,7 +321,7 @@ void M_DrawCursor( int x, int y, int f )
 
 			re.RegisterPic( cursorname );
 		}
-		cached = true;
+		cached = qTrue;
 	}
 
 	Com_sprintf( cursorname, sizeof(cursorname), "m_cursor%d", f );
@@ -455,7 +455,7 @@ const char *M_Main_Key (int key)
 
 	case K_KP_ENTER:
 	case K_ENTER:
-		m_entersound = true;
+		m_entersound = qTrue;
 
 		switch (m_main_cursor)
 		{
@@ -729,7 +729,7 @@ static void KeyBindingFunc( void *self )
 	if (keys[1] != -1)
 		M_UnbindCommand( bindnames[a->generic.localdata[0]][0]);
 
-	bind_grab = true;
+	bind_grab = qTrue;
 
 	Menu_SetStatusBar( &s_keys_menu, "press a key or button for this action" );
 }
@@ -978,7 +978,7 @@ static const char *Keys_MenuKey( int key )
 		}
 		
 		Menu_SetStatusBar( &s_keys_menu, "enter to change, backspace to clear" );
-		bind_grab = false;
+		bind_grab = qFalse;
 		return menu_out_sound;
 	}
 
@@ -1163,12 +1163,12 @@ static void UpdateSoundQualityFunc( void *unused )
 	if ( s_options_quality_list.curvalue )
 	{
 		Cvar_SetValue( "s_khz", 22 );
-		Cvar_SetValue( "s_loadas8bit", false );
+		Cvar_SetValue( "s_loadas8bit", qFalse );
 	}
 	else
 	{
 		Cvar_SetValue( "s_khz", 11 );
-		Cvar_SetValue( "s_loadas8bit", true );
+		Cvar_SetValue( "s_loadas8bit", qTrue );
 	}
 	
 	Cvar_SetValue( "s_primary", s_options_compatibility_list.curvalue );
@@ -1761,19 +1761,19 @@ void M_Credits_MenuDraw( void )
 	for ( i = 0, y = viddef.height - ( ( cls.realtime - credits_start_time ) / 40.0F ); credits[i] && y < viddef.height; y += 10, i++ )
 	{
 		int j, stringoffset = 0;
-		int bold = false;
+		int bold = qFalse;
 
 		if ( y <= -8 )
 			continue;
 
 		if ( credits[i][0] == '+' )
 		{
-			bold = true;
+			bold = qTrue;
 			stringoffset = 1;
 		}
 		else
 		{
-			bold = false;
+			bold = qFalse;
 			stringoffset = 0;
 		}
 
@@ -2049,13 +2049,13 @@ void Create_Savestrings (void)
 		if (!f)
 		{
 			strcpy (m_savestrings[i], "<EMPTY>");
-			m_savevalid[i] = false;
+			m_savevalid[i] = qFalse;
 		}
 		else
 		{
 			FS_Read (m_savestrings[i], sizeof(m_savestrings[i]), f);
 			fclose (f);
-			m_savevalid[i] = true;
+			m_savevalid[i] = qTrue;
 		}
 	}
 }
@@ -3426,10 +3426,10 @@ static qboolean IconOfSkinExists( char *skin, char **pcxfiles, int npcxfiles )
 	for ( i = 0; i < npcxfiles; i++ )
 	{
 		if ( strcmp( pcxfiles[i], scratch ) == 0 )
-			return true;
+			return qTrue;
 	}
 
-	return false;
+	return qFalse;
 }
 
 static qboolean PlayerConfig_ScanDirectories( void )
@@ -3458,7 +3458,7 @@ static qboolean PlayerConfig_ScanDirectories( void )
 	} while ( path );
 
 	if ( !dirnames )
-		return false;
+		return qFalse;
 
 	/*
 	** go through the subdirectories
@@ -3613,7 +3613,7 @@ qboolean PlayerConfig_MenuInit( void )
 	PlayerConfig_ScanDirectories();
 
 	if (s_numplayermodels == 0)
-		return false;
+		return qFalse;
 
 	if ( hand->value < 0 || hand->value > 2 )
 		Cvar_SetValue( "hand", 0 );
@@ -3754,7 +3754,7 @@ qboolean PlayerConfig_MenuInit( void )
 	Menu_AddItem( &s_player_config_menu, &s_player_rate_box );
 	Menu_AddItem( &s_player_config_menu, &s_player_download_action );
 
-	return true;
+	return qTrue;
 }
 
 void PlayerConfig_MenuDraw( void )
@@ -3987,7 +3987,7 @@ void M_Draw (void)
 	if (m_entersound)
 	{
 		S_StartLocalSound( menu_in_sound );
-		m_entersound = false;
+		m_entersound = qFalse;
 	}
 }
 

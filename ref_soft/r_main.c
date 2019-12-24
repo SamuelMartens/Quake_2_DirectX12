@@ -277,8 +277,8 @@ void R_Register (void)
 	ri.Cmd_AddCommand( "screenshot", R_ScreenShot_f );
 	ri.Cmd_AddCommand( "imagelist", R_ImageList_f );
 
-	sw_mode->modified = true; // force us to do mode specific stuff later
-	vid_gamma->modified = true; // force us to rebuild the gamma table later
+	sw_mode->modified = qTrue; // force us to do mode specific stuff later
+	vid_gamma->modified = qTrue; // force us to rebuild the gamma table later
 
 //PGM
 	sw_lockpvs = ri.Cvar_Get ("sw_lockpvs", "0", 0);
@@ -306,12 +306,12 @@ qboolean R_Init( void *hInstance, void *wndProc )
 
 	R_InitTurb ();
 
-	view_clipplanes[0].leftedge = true;
-	view_clipplanes[1].rightedge = true;
+	view_clipplanes[0].leftedge = qTrue;
+	view_clipplanes[1].rightedge = qTrue;
 	view_clipplanes[1].leftedge = view_clipplanes[2].leftedge =
-			view_clipplanes[3].leftedge = false;
+			view_clipplanes[3].leftedge = qFalse;
 	view_clipplanes[0].rightedge = view_clipplanes[2].rightedge =
-			view_clipplanes[3].rightedge = false;
+			view_clipplanes[3].rightedge = qFalse;
 
 	r_refdef.xOrigin = XCENTERING;
 	r_refdef.yOrigin = YCENTERING;
@@ -334,7 +334,7 @@ qboolean R_Init( void *hInstance, void *wndProc )
 
 	ri.Con_Printf (PRINT_ALL, "ref_soft version: "REF_VERSION"\n");
 
-	return true;
+	return qTrue;
 }
 
 /*
@@ -390,7 +390,7 @@ void R_NewMap (void)
 		surfaces = malloc (r_cnumsurfs * sizeof(surf_t));
 		surface_p = surfaces;
 		surf_max = &surfaces[r_cnumsurfs];
-		r_surfsonstack = false;
+		r_surfsonstack = qFalse;
 	// surface 0 doesn't really exist; it's just a dummy because index 0
 	// is used to indicate no edge attached to surface
 		surfaces--;
@@ -398,7 +398,7 @@ void R_NewMap (void)
 	}
 	else
 	{
-		r_surfsonstack = true;
+		r_surfsonstack = qTrue;
 	}
 
 	r_maxedgesseen = 0;
@@ -512,7 +512,7 @@ R_DrawEntitiesOnList
 void R_DrawEntitiesOnList (void)
 {
 	int			i;
-	qboolean	translucent_entities = false;
+	qboolean	translucent_entities = qFalse;
 
 	if (!r_drawentities->value)
 		return;
@@ -524,7 +524,7 @@ void R_DrawEntitiesOnList (void)
 
 		if ( currententity->flags & RF_TRANSLUCENT )
 		{
-			translucent_entities = true;
+			translucent_entities = qTrue;
 			continue;
 		}
 
@@ -776,7 +776,7 @@ void R_DrawBEntitiesOnList (void)
 		return;
 
 	VectorCopy (modelorg, oldorigin);
-	insubmodel = true;
+	insubmodel = qTrue;
 	r_dlightframecount = r_framecount;
 
 	for (i=0 ; i<r_newrefdef.num_entities ; i++)
@@ -840,7 +840,7 @@ void R_DrawBEntitiesOnList (void)
 		R_TransformFrustum ();
 	}
 
-	insubmodel = false;
+	insubmodel = qFalse;
 }
 
 
@@ -929,14 +929,14 @@ void R_CalcPalette (void)
 	{
 		if (modified)
 		{	// set back to default
-			modified = false;
+			modified = qFalse;
 			R_GammaCorrectAndSetPalette( ( const unsigned char * ) d_8to24table );
 			return;
 		}
 		return;
 	}
 
-	modified = true;
+	modified = qTrue;
 	if (alpha > 1)
 		alpha = 1;
 
@@ -1104,7 +1104,7 @@ void R_BeginFrame( float camera_separation )
 		Draw_BuildGammaTable();
 		R_GammaCorrectAndSetPalette( ( const unsigned char * ) d_8to24table );
 
-		vid_gamma->modified = false;
+		vid_gamma->modified = qFalse;
 	}
 
 	while ( sw_mode->modified || vid_fullscreen->modified )
@@ -1120,8 +1120,8 @@ void R_BeginFrame( float camera_separation )
 			R_InitGraphics( vid.width, vid.height );
 
 			sw_state.prev_mode = sw_mode->value;
-			vid_fullscreen->modified = false;
-			sw_mode->modified = false;
+			vid_fullscreen->modified = qFalse;
+			sw_mode->modified = qFalse;
 		}
 		else
 		{

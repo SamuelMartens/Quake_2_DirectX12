@@ -183,7 +183,7 @@ void Com_Error (int code, char *fmt, ...)
 
 	if (recursive)
 		Sys_Error ("recursive error after: %s", msg);
-	recursive = true;
+	recursive = qTrue;
 
 	va_start (argptr,fmt);
 	vsprintf (msg,fmt,argptr);
@@ -192,20 +192,20 @@ void Com_Error (int code, char *fmt, ...)
 	if (code == ERR_DISCONNECT)
 	{
 		CL_Drop ();
-		recursive = false;
+		recursive = qFalse;
 		longjmp (abortframe, -1);
 	}
 	else if (code == ERR_DROP)
 	{
 		Com_Printf ("********************\nERROR: %s\n********************\n", msg);
-		SV_Shutdown (va("Server crashed: %s\n", msg), false);
+		SV_Shutdown (va("Server crashed: %s\n", msg), qFalse);
 		CL_Drop ();
-		recursive = false;
+		recursive = qFalse;
 		longjmp (abortframe, -1);
 	}
 	else
 	{
-		SV_Shutdown (va("Server fatal crashed: %s\n", msg), false);
+		SV_Shutdown (va("Server fatal crashed: %s\n", msg), qFalse);
 		CL_Shutdown ();
 	}
 
@@ -229,7 +229,7 @@ do the apropriate things.
 */
 void Com_Quit (void)
 {
-	SV_Shutdown ("Server quit\n", false);
+	SV_Shutdown ("Server quit\n", qFalse);
 	CL_Shutdown ();
 
 	if (logfile)
@@ -886,7 +886,7 @@ void SZ_Init (sizebuf_t *buf, byte *data, int length)
 void SZ_Clear (sizebuf_t *buf)
 {
 	buf->cursize = 0;
-	buf->overflowed = false;
+	buf->overflowed = qFalse;
 }
 
 void *SZ_GetSpace (sizebuf_t *buf, int length)
@@ -903,7 +903,7 @@ void *SZ_GetSpace (sizebuf_t *buf, int length)
 			
 		Com_Printf ("SZ_GetSpace: overflow\n");
 		SZ_Clear (buf); 
-		buf->overflowed = true;
+		buf->overflowed = qTrue;
 	}
 
 	data = buf->data + buf->cursize;
@@ -1423,7 +1423,7 @@ void Qcommon_Init (int argc, char **argv)
 	// a basedir or cddir needs to be set before execing
 	// config files, but we want other parms to override
 	// the settings of the config files
-	Cbuf_AddEarlyCommands (false);
+	Cbuf_AddEarlyCommands (qFalse);
 	Cbuf_Execute ();
 
 	FS_InitFilesystem ();
@@ -1431,7 +1431,7 @@ void Qcommon_Init (int argc, char **argv)
 	Cbuf_AddText ("exec default.cfg\n");
 	Cbuf_AddText ("exec config.cfg\n");
 
-	Cbuf_AddEarlyCommands (true);
+	Cbuf_AddEarlyCommands (qTrue);
 	Cbuf_Execute ();
 
 	//
@@ -1501,7 +1501,7 @@ void Qcommon_Frame (int msec)
 
 	if ( log_stats->modified )
 	{
-		log_stats->modified = false;
+		log_stats->modified = qFalse;
 		if ( log_stats->value )
 		{
 			if ( log_stats_file )

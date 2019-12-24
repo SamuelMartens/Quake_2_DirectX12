@@ -838,7 +838,7 @@ void PM_CheckSpecialMovement (void)
 	if (pm->s.pm_time)
 		return;
 
-	pml.ladder = false;
+	pml.ladder = qFalse;
 
 	// check for ladder
 	flatforward[0] = pml.forward[0];
@@ -849,7 +849,7 @@ void PM_CheckSpecialMovement (void)
 	VectorMA (pml.origin, 1, flatforward, spot);
 	trace = pm->trace (pml.origin, pm->mins, pm->maxs, spot);
 	if ((trace.fraction < 1) && (trace.contents & CONTENTS_LADDER))
-		pml.ladder = true;
+		pml.ladder = qTrue;
 
 	// check for water jump
 	if (pm->waterlevel != 2)
@@ -1061,7 +1061,7 @@ qboolean	PM_GoodPosition (void)
 	int		i;
 
 	if (pm->s.pm_type == PM_SPECTATOR)
-		return true;
+		return qTrue;
 
 	for (i=0 ; i<3 ; i++)
 		origin[i] = end[i] = pm->s.origin[i]*0.125;
@@ -1270,7 +1270,7 @@ void Pmove (pmove_t *pmove)
 
 	if (pm->s.pm_type == PM_SPECTATOR)
 	{
-		PM_FlyMove (false);
+		PM_FlyMove (qFalse);
 		PM_SnapPosition ();
 		return;
 	}

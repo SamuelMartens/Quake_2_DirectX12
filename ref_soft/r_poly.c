@@ -1212,9 +1212,9 @@ void R_DrawAlphaSurfaces( void )
 
 		// PGM - pass down all the texinfo flags, not just SURF_WARP.
 		if (s->texinfo->flags & SURF_TRANS66)
-			R_ClipAndDrawPoly( 0.60f, (s->texinfo->flags & SURF_WARP|SURF_FLOWING), true );
+			R_ClipAndDrawPoly( 0.60f, (s->texinfo->flags & SURF_WARP|SURF_FLOWING), qTrue );
 		else
-			R_ClipAndDrawPoly( 0.30f, (s->texinfo->flags & SURF_WARP|SURF_FLOWING), true );
+			R_ClipAndDrawPoly( 0.30f, (s->texinfo->flags & SURF_WARP|SURF_FLOWING), qTrue );
 //PGM
 //=======
 
@@ -1258,6 +1258,6 @@ void R_IMFlatShadedQuad( vec3_t a, vec3_t b, vec3_t c, vec3_t d, int color, floa
 
 	r_polyblendcolor = color;
 
-	R_ClipAndDrawPoly( alpha, false, false );
+	R_ClipAndDrawPoly( alpha, qFalse, qFalse );
 }
 

@@ -405,7 +405,7 @@ gotnewcl:
 	newcl->state = cs_connected;
 	
 	SZ_Init (&newcl->datagram, newcl->datagram_buf, sizeof(newcl->datagram_buf) );
-	newcl->datagram.allowoverflow = true;
+	newcl->datagram.allowoverflow = qTrue;
 	newcl->lastmessage = svs.realtime;	// don't timeout
 	newcl->lastconnect = svs.realtime;
 }
@@ -484,7 +484,7 @@ void SV_ConnectionlessPacket (void)
 
 	s = MSG_ReadStringLine (&net_message);
 
-	Cmd_TokenizeString (s, false);
+	Cmd_TokenizeString (s, qFalse);
 
 	c = Cmd_Argv(0);
 	Com_DPrintf ("Packet %s : %s\n", NET_AdrToString(net_from), c);
