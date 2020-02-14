@@ -743,7 +743,7 @@ void VID_Init (void)
 	putenv("FX_GLIDE_NO_SPLASH=0");
 		
 	//#DEBUG
-	//Cvar_Set("vid_ref", "dx12");
+	Cvar_Set("vid_ref", "dx12");
 	//END
 
 	/* Start the graphics mode and load refresh DLL */

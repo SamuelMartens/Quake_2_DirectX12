@@ -2,9 +2,11 @@
 
 #include <cassert>
 #include <string>
+#include <fstream>
+#include <d3dcompiler.h>
+#include <DirectXColors.h>
 
 #include "d3dx12.h"
-
 #include "../win32/winquake.h"
 #include "dx_utils.h"
 
@@ -26,6 +28,66 @@ void DXApp::Init(WNDPROC WindowProc, HINSTANCE hInstance)
 	InitDX();
 }
 
+void DXApp::BeginFrame(float CameraSeparation)
+{
+	ThrowIfFailed(m_pCommandListAlloc->Reset());
+	ThrowIfFailed(m_pCommandList->Reset(m_pCommandListAlloc.Get(), m_pPipelineState.Get()));
+
+	// Resetting viewport is mandatory
+	m_pCommandList->RSSetViewports(1, &m_viewport);
+	// Resetting scissor is mandatory 
+	m_pCommandList->RSSetScissorRects(1, &m_scissorRect);
+
+	// Indicate buffer transition to write state
+	m_pCommandList->ResourceBarrier(
+		1,
+		&CD3DX12_RESOURCE_BARRIER::Transition(
+			GetCurrentBackBuffer(),
+			D3D12_RESOURCE_STATE_PRESENT,
+			D3D12_RESOURCE_STATE_RENDER_TARGET
+		)
+	);
+
+	// Clear back buffer and depth buffer
+	//#DEBUG change clear color to black as soon as you will verify that this works
+	m_pCommandList->ClearRenderTargetView(GetCurrentBackBufferView(), DirectX::Colors::DarkGreen, 0, nullptr);
+	m_pCommandList->ClearDepthStencilView(
+		GetDepthStencilView(),
+		D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
+		1.0f,
+		0,
+		0,
+		nullptr);
+
+
+	// Specify buffer we are going to render to
+	m_pCommandList->OMSetRenderTargets(1, &GetCurrentBackBufferView(), true, &GetDepthStencilView());
+}
+
+void DXApp::EndFrame()
+{
+	// Indicate current buffer state transition
+	m_pCommandList->ResourceBarrier(
+		1,
+		&CD3DX12_RESOURCE_BARRIER::Transition(
+			GetCurrentBackBuffer(),
+			D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_PRESENT
+		)
+	);
+
+	// Done with this command list
+	ThrowIfFailed(m_pCommandList->Close());
+
+	// Add command list to execution queue
+	ID3D12CommandList* cmdLists[] = { m_pCommandList.Get() };
+	m_pCommandQueue->ExecuteCommandLists(_countof(cmdLists), cmdLists);
+
+	PresentAndSwapBuffers();
+
+	FlushCommandQueue();
+}
+
 void DXApp::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 {
 	if (m_hWindows)
@@ -33,42 +95,41 @@ void DXApp::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 		ShutdownWin32();
 	}
 
-	//#DEBUG for some reason windows name is "Q", not "Quake 2"
-	const std::wstring WindowsClassName = DXUtils::StringToWString("Quake 2");
+	const std::string windowsClassName = "Quake 2";
 
-	int Width = 0;
-	int Height = 0;
-	GetDrawAreaSize(&Width, &Height);
+	int width = 0;
+	int height = 0;
+	GetDrawAreaSize(&width, &height);
 
-	WNDCLASS WindowClass;
-	RECT	 ScreenRect;
+	WNDCLASS windowClass;
+	RECT	 screenRect;
 
-	WindowClass.style			= 0;
-	WindowClass.lpfnWndProc	= WindowProc;
-	WindowClass.cbClsExtra		= 0;
-	WindowClass.cbWndExtra		= 0;
-	WindowClass.hInstance		= hInstance;
-	WindowClass.hIcon			= 0;
-	WindowClass.hCursor		= LoadCursor(NULL, IDC_ARROW);
-	WindowClass.hbrBackground  = reinterpret_cast<HBRUSH>(COLOR_GRAYTEXT);
-	WindowClass.lpszMenuName	= 0;
-	WindowClass.lpszClassName  = static_cast<LPCWSTR>(WindowsClassName.c_str());
+	windowClass.style			= 0;
+	windowClass.lpfnWndProc	= WindowProc;
+	windowClass.cbClsExtra		= 0;
+	windowClass.cbWndExtra		= 0;
+	windowClass.hInstance		= hInstance;
+	windowClass.hIcon			= 0;
+	windowClass.hCursor		= LoadCursor(NULL, IDC_ARROW);
+	windowClass.hbrBackground  = reinterpret_cast<HBRUSH>(COLOR_GRAYTEXT);
+	windowClass.lpszMenuName	= 0;
+	windowClass.lpszClassName  = static_cast<LPCSTR>(windowsClassName.c_str());
 
-	assert(RegisterClass(&WindowClass) && "Failed to register win class.");
+	assert(RegisterClass(&windowClass) && "Failed to register win class.");
 
-	ScreenRect.left = 0;
-	ScreenRect.top = 0;
-	ScreenRect.right = Width;
-	ScreenRect.bottom = Height;
+	screenRect.left = 0;
+	screenRect.top = 0;
+	screenRect.right = width;
+	screenRect.bottom = height;
 
 	// For now always run in windows mode (not fullscreen)
-	const int ExStyleBist = 0;
-	const int StyleBits = WINDOW_STYLE;
+	const int exStyleBist = 0;
+	const int styleBits = WINDOW_STYLE;
 
-	AdjustWindowRect(&ScreenRect, StyleBits, FALSE);
+	AdjustWindowRect(&screenRect, styleBits, FALSE);
 
-	const int AdjustedWidth = ScreenRect.right - ScreenRect.left;
-	const int AdjustedHeight = ScreenRect.bottom - ScreenRect.top;
+	const int adjustedWidth = screenRect.right - screenRect.left;
+	const int adjustedHeight = screenRect.bottom - screenRect.top;
 
 	char xPosVarName[] = "vid_xpos";
 	char xPosVarVal[] = "0";
@@ -80,11 +141,11 @@ void DXApp::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 	const int y = vid_ypos->value;
 
 	 m_hWindows = CreateWindowEx(
-		ExStyleBist,
-		WindowsClassName.c_str(),
-		WindowsClassName.c_str(),
-		StyleBits,
-		x, y, AdjustedWidth, AdjustedHeight,
+		exStyleBist,
+		windowsClassName.c_str(),
+		windowsClassName.c_str(),
+		styleBits,
+		x, y, adjustedWidth, adjustedHeight,
 		NULL,
 		NULL,
 		hInstance,
@@ -99,16 +160,20 @@ void DXApp::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 	SetForegroundWindow(m_hWindows);
 	SetFocus(m_hWindows);
 
-	GetRefImport().Vid_NewWindow(Width, Height);
+	GetRefImport().Vid_NewWindow(width, height);
 }
 
 void DXApp::InitDX()
 {
+	//#TODO all this stuff should be reworked to avoid redundant
+	// members of the class
+
+
 #if defined(DEBUG) || defined(_DEBUG)
 	// Enable D3D12 debug layer
 	Microsoft::WRL::ComPtr<ID3D12Debug> DebugController;
 
-	DXUtils::ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&DebugController)));
+	ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&DebugController)));
 	DebugController->EnableDebugLayer();
 #endif
 
@@ -131,38 +196,44 @@ void DXApp::InitDX()
 	CreateRenderTargetViews();
 	CreateDepthStencilBufferAndView();
 
-	SetViewport();
-	SetScissor();
+	CreateRootSignature();
+	CreateInputLayout();
+	LoadShaders();
+
+	CreatePipelineState();
+
+	InitViewport();
+	m_pCommandList->RSSetViewports(1, &m_viewport);
+
+	InitScissorRect();
+	m_pCommandList->RSSetScissorRects(1, &m_scissorRect);
 }
 
-void DXApp::SetScissor()
+void DXApp::InitScissorRect()
 {
-	int DrawAreaWidth = 0;
-	int DrawAreaHeight = 0;
+	int drawAreaWidth = 0;
+	int drawAreaHeight = 0;
 
-	GetDrawAreaSize(&DrawAreaWidth, &DrawAreaHeight);
+	GetDrawAreaSize(&drawAreaWidth, &drawAreaHeight);
 	//#INFO scissor rectangle needs to be reset, every time command list is reset
 	// Set scissor
-	tagRECT ScissorRect = { 0, 0, DrawAreaWidth, DrawAreaHeight };
-	m_pCommandList->RSSetScissorRects(1, &ScissorRect);
+	m_scissorRect = { 0, 0, drawAreaWidth, drawAreaHeight };
 }
 
-void DXApp::SetViewport()
+void DXApp::InitViewport()
 {
 	int DrawAreaWidth = 0;
 	int DrawAreaHeight = 0;
 
 	GetDrawAreaSize(&DrawAreaWidth, &DrawAreaHeight);
-	// Set viewport
-	D3D12_VIEWPORT Viewport;
-	Viewport.TopLeftX = 0.0f;
-	Viewport.TopLeftY = 0.0f;
-	Viewport.Width = static_cast<float>(DrawAreaWidth);
-	Viewport.Height = static_cast<float>(DrawAreaHeight);
-	Viewport.MinDepth = 0.0f;
-	Viewport.MaxDepth = 1.0f;
-
-	m_pCommandList->RSSetViewports(1, &Viewport);
+	// Init viewport
+	m_viewport;
+	m_viewport.TopLeftX = 0.0f;
+	m_viewport.TopLeftY = 0.0f;
+	m_viewport.Width = static_cast<float>(DrawAreaWidth);
+	m_viewport.Height = static_cast<float>(DrawAreaHeight);
+	m_viewport.MinDepth = 0.0f;
+	m_viewport.MaxDepth = 1.0f;
 }
 
 void DXApp::CreateDepthStencilBufferAndView()
@@ -173,29 +244,29 @@ void DXApp::CreateDepthStencilBufferAndView()
 	GetDrawAreaSize(&DrawAreaWidth, &DrawAreaHeight);
 
 	// Create the depth/stencil buffer and view
-	D3D12_RESOURCE_DESC DepthStencilDesc;
-	DepthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-	DepthStencilDesc.Alignment = 0;
-	DepthStencilDesc.Width = DrawAreaWidth;
-	DepthStencilDesc.Height = DrawAreaHeight;
-	DepthStencilDesc.DepthOrArraySize = 1;
-	DepthStencilDesc.MipLevels = 1;
-	DepthStencilDesc.Format = QDEPTH_STENCIL_FORMAT;
-	DepthStencilDesc.SampleDesc.Count = 4;
-	DepthStencilDesc.SampleDesc.Quality = m_MSQualityLevels - 1;
-	DepthStencilDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-	DepthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+	D3D12_RESOURCE_DESC depthStencilDesc;
+	depthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	depthStencilDesc.Alignment = 0;
+	depthStencilDesc.Width = DrawAreaWidth;
+	depthStencilDesc.Height = DrawAreaHeight;
+	depthStencilDesc.DepthOrArraySize = 1;
+	depthStencilDesc.MipLevels = 1;
+	depthStencilDesc.Format = QDEPTH_STENCIL_FORMAT;
+	depthStencilDesc.SampleDesc.Count = 4;
+	depthStencilDesc.SampleDesc.Quality = m_MSQualityLevels - 1;
+	depthStencilDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
-	D3D12_CLEAR_VALUE OptimizedClearVal;
-	OptimizedClearVal.Format = QDEPTH_STENCIL_FORMAT;
-	OptimizedClearVal.DepthStencil.Depth = 1.0f;
-	OptimizedClearVal.DepthStencil.Stencil = 0;
-	DXUtils::ThrowIfFailed(m_pDevice->CreateCommittedResource(
+	D3D12_CLEAR_VALUE optimizedClearVal;
+	optimizedClearVal.Format = QDEPTH_STENCIL_FORMAT;
+	optimizedClearVal.DepthStencil.Depth = 1.0f;
+	optimizedClearVal.DepthStencil.Stencil = 0;
+	ThrowIfFailed(m_pDevice->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
-		&DepthStencilDesc,
+		&depthStencilDesc,
 		D3D12_RESOURCE_STATE_COMMON,
-		&OptimizedClearVal,
+		&optimizedClearVal,
 		IID_PPV_ARGS(m_pDepthStencilBuffer.GetAddressOf())));
 }
 
@@ -207,7 +278,7 @@ void DXApp::CreateRenderTargetViews()
 	for (int i = 0; i < QSWAP_CHAIN_BUFFER_COUNT; ++i)
 	{
 		// Get i-th buffer in a swap chain
-		DXUtils::ThrowIfFailed(m_pSwapChain->GetBuffer(i, IID_PPV_ARGS(&m_pSwapChainBuffer[i])));
+		ThrowIfFailed(m_pSwapChain->GetBuffer(i, IID_PPV_ARGS(&m_pSwapChainBuffer[i])));
 
 		// Create an RTV to it
 		m_pDevice->CreateRenderTargetView(m_pSwapChainBuffer[i].Get(), nullptr, RtvHeapHandle);
@@ -220,24 +291,24 @@ void DXApp::CreateRenderTargetViews()
 void DXApp::CreateDescriptorsHeaps()
 {
 	// Create a descriptor heap
-	D3D12_DESCRIPTOR_HEAP_DESC RtvHeapDesc;
-	RtvHeapDesc.NumDescriptors = QSWAP_CHAIN_BUFFER_COUNT;
-	RtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-	RtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	RtvHeapDesc.NodeMask = 0;
+	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc;
+	rtvHeapDesc.NumDescriptors = QSWAP_CHAIN_BUFFER_COUNT;
+	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	rtvHeapDesc.NodeMask = 0;
 
-	DXUtils::ThrowIfFailed(m_pDevice->CreateDescriptorHeap(
-		&RtvHeapDesc,
+	ThrowIfFailed(m_pDevice->CreateDescriptorHeap(
+		&rtvHeapDesc,
 		IID_PPV_ARGS(m_pRtvHeap.GetAddressOf())));
 
-	D3D12_DESCRIPTOR_HEAP_DESC DsvHeapDesc;
-	DsvHeapDesc.NumDescriptors = 1;
-	DsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-	DsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	DsvHeapDesc.NodeMask = 0;
+	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc;
+	dsvHeapDesc.NumDescriptors = 1;
+	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	dsvHeapDesc.NodeMask = 0;
 
-	DXUtils::ThrowIfFailed(m_pDevice->CreateDescriptorHeap(
-		&DsvHeapDesc,
+	ThrowIfFailed(m_pDevice->CreateDescriptorHeap(
+		&dsvHeapDesc,
 		IID_PPV_ARGS(m_pDsvHeap.GetAddressOf())));
 }
 
@@ -246,31 +317,31 @@ void DXApp::CreateSwapChain()
 	// Create swap chain
 	m_pSwapChain.Reset();
 
-	int DrawAreaWidth = 0;
-	int DrawAreaHeight = 0;
+	int drawAreaWidth = 0;
+	int drawAreaHeight = 0;
 
-	GetDrawAreaSize(&DrawAreaWidth, &DrawAreaHeight);
+	GetDrawAreaSize(&drawAreaWidth, &drawAreaHeight);
 
-	DXGI_SWAP_CHAIN_DESC SwapChainDesc = {};
-	SwapChainDesc.BufferDesc.Width = DrawAreaWidth;
-	SwapChainDesc.BufferDesc.Height = DrawAreaHeight;
-	SwapChainDesc.BufferDesc.RefreshRate.Numerator = 60;
-	SwapChainDesc.BufferDesc.RefreshRate.Denominator = 1;
-	SwapChainDesc.BufferDesc.Format = QBACK_BUFFER_FORMAT;
-	SwapChainDesc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-	SwapChainDesc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-	SwapChainDesc.SampleDesc.Count = 4;
-	SwapChainDesc.SampleDesc.Quality = m_MSQualityLevels - 1;
-	SwapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	SwapChainDesc.BufferCount = QSWAP_CHAIN_BUFFER_COUNT;
-	SwapChainDesc.OutputWindow = m_hWindows;
-	SwapChainDesc.Windowed = true;
-	SwapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-	SwapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+	DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
+	swapChainDesc.BufferDesc.Width = drawAreaWidth;
+	swapChainDesc.BufferDesc.Height = drawAreaHeight;
+	swapChainDesc.BufferDesc.RefreshRate.Numerator = 60;
+	swapChainDesc.BufferDesc.RefreshRate.Denominator = 1;
+	swapChainDesc.BufferDesc.Format = QBACK_BUFFER_FORMAT;
+	swapChainDesc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+	swapChainDesc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+	swapChainDesc.SampleDesc.Count = 4;
+	swapChainDesc.SampleDesc.Quality = m_MSQualityLevels - 1;
+	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	swapChainDesc.BufferCount = QSWAP_CHAIN_BUFFER_COUNT;
+	swapChainDesc.OutputWindow = m_hWindows;
+	swapChainDesc.Windowed = true;
+	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 
 	// Node: Swap chain uses queue to perform flush.
-	DXUtils::ThrowIfFailed(m_pDxgiFactory->CreateSwapChain(m_pCommandQueue.Get(),
-		&SwapChainDesc,
+	ThrowIfFailed(m_pDxgiFactory->CreateSwapChain(m_pCommandQueue.Get(),
+		&swapChainDesc,
 		m_pSwapChain.GetAddressOf()));
 }
 
@@ -282,7 +353,7 @@ void DXApp::CheckMSAAQualitySupport()
 	MSQualityLevels.SampleCount = 4;
 	MSQualityLevels.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
 	MSQualityLevels.NumQualityLevels = 0;
-	DXUtils::ThrowIfFailed(m_pDevice->CheckFeatureSupport(
+	ThrowIfFailed(m_pDevice->CheckFeatureSupport(
 		D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS,
 		&MSQualityLevels,
 		sizeof(MSQualityLevels)
@@ -295,12 +366,12 @@ void DXApp::CheckMSAAQualitySupport()
 void DXApp::CreateCmdAllocatorAndCmdList()
 {
 	// Create command allocator
-	DXUtils::ThrowIfFailed(m_pDevice->CreateCommandAllocator(
+	ThrowIfFailed(m_pDevice->CreateCommandAllocator(
 		D3D12_COMMAND_LIST_TYPE_DIRECT,
 		IID_PPV_ARGS(&m_pCommandListAlloc)));
 
 	// Create command list 
-	DXUtils::ThrowIfFailed(m_pDevice->CreateCommandList(
+	ThrowIfFailed(m_pDevice->CreateCommandList(
 		0,
 		D3D12_COMMAND_LIST_TYPE_DIRECT,
 		m_pCommandListAlloc.Get(),
@@ -313,17 +384,17 @@ void DXApp::CreateCmdAllocatorAndCmdList()
 void DXApp::CreateCommandQueue()
 {
 	// Create command queue
-	D3D12_COMMAND_QUEUE_DESC QueueDesc = {};
+	D3D12_COMMAND_QUEUE_DESC queueDesc = {};
 
-	QueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-	QueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-	DXUtils::ThrowIfFailed(m_pDevice->CreateCommandQueue(&QueueDesc, IID_PPV_ARGS(&m_pCommandQueue)));
+	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+	ThrowIfFailed(m_pDevice->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_pCommandQueue)));
 }
 
 void DXApp::CreateFences()
 {
 	// Create fence
-	DXUtils::ThrowIfFailed(m_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_pFence)));
+	ThrowIfFailed(m_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_pFence)));
 }
 
 void DXApp::InitDescriptorSizes()
@@ -336,7 +407,7 @@ void DXApp::InitDescriptorSizes()
 
 void DXApp::CreateDevice()
 {
-	DXUtils::ThrowIfFailed(D3D12CreateDevice(
+	ThrowIfFailed(D3D12CreateDevice(
 		nullptr,
 		D3D_FEATURE_LEVEL_11_0,
 		IID_PPV_ARGS(&m_pDevice)
@@ -345,7 +416,197 @@ void DXApp::CreateDevice()
 
 void DXApp::CreateDxgiFactory()
 {
-	DXUtils::ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&m_pDxgiFactory)));
+	ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&m_pDxgiFactory)));
+}
+
+ComPtr<ID3D12RootSignature> DXApp::SerializeAndCreateRootSigFromRootDesc(const CD3DX12_ROOT_SIGNATURE_DESC& rootSigDesc) const
+{
+	ComPtr<ID3DBlob> serializedRootSig = nullptr;
+	ComPtr<ID3DBlob> errorBlob = nullptr;
+	
+	ThrowIfFailed(D3D12SerializeRootSignature(
+		&rootSigDesc,
+		D3D_ROOT_SIGNATURE_VERSION_1,
+		serializedRootSig.GetAddressOf(),
+		errorBlob.GetAddressOf()));
+
+	ComPtr<ID3D12RootSignature> resultRootSig;
+
+	ThrowIfFailed(m_pDevice->CreateRootSignature(
+		0,
+		serializedRootSig->GetBufferPointer(),
+		serializedRootSig->GetBufferSize(),
+		IID_PPV_ARGS(&resultRootSig)
+	));
+
+	return resultRootSig;
+}
+
+void DXApp::CreateRootSignature()
+{
+	// Root signature is an array of root parameters
+	CD3DX12_ROOT_PARAMETER slotRootParameters[2];
+
+	// First parameter texture/CBV descriptor table
+	CD3DX12_DESCRIPTOR_RANGE textureCbvRanges[2];
+	textureCbvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+	textureCbvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+
+	slotRootParameters[0].InitAsDescriptorTable(2, textureCbvRanges);
+
+	// Second parameter is samplers descriptor table
+	CD3DX12_DESCRIPTOR_RANGE samplersRanges[1];
+	samplersRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0);
+
+	slotRootParameters[1].InitAsDescriptorTable(1, samplersRanges);
+
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(
+		_countof(slotRootParameters),
+		slotRootParameters,
+		0,
+		nullptr,
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+	m_pRootSingature = SerializeAndCreateRootSigFromRootDesc(rootSigDesc);
+}
+
+void DXApp::CreatePipelineState()
+{
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
+
+	ZeroMemory(&psoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+
+	psoDesc.InputLayout = { m_inputLayout.data(), static_cast<UINT>(m_inputLayout.size())};
+	psoDesc.pRootSignature = m_pRootSingature.Get();
+	psoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(m_pVsShader->GetBufferPointer()),
+		m_pVsShader->GetBufferSize()
+	};
+	psoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(m_pPsShader->GetBufferPointer()),
+		m_pPsShader->GetBufferSize()
+	};
+	//#DEBUG here counter clockwise might hit me in a face. Cause 
+	// GL uses counter clockwise. Let's what I will get first, and 
+	// then fix this problem
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.RTVFormats[0] = QBACK_BUFFER_FORMAT;
+	psoDesc.SampleDesc.Count = 4;
+	psoDesc.SampleDesc.Quality = m_MSQualityLevels - 1;
+	psoDesc.DSVFormat = QDEPTH_STENCIL_FORMAT;
+
+	ThrowIfFailed(m_pDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pPipelineState)));
+}
+
+void DXApp::CreateInputLayout()
+{
+	m_inputLayout = {
+		{"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+	};
+}
+
+void DXApp::LoadShaders()
+{
+	const std::string psShader = "ps_PosTex.cso";
+	const std::string vsShader = "vs_PosTex.cso";
+
+	m_pPsShader = LoadCompiledShader(psShader);
+	m_pVsShader = LoadCompiledShader(vsShader);
+}
+
+//************************************
+// Method:    FlushCommandQueue
+// FullName:  DXApp::FlushCommandQueue
+// Access:    private 
+// Returns:   void
+// Qualifier: Wait until we are done with previous frame
+//			  before starting next one. This is very inefficient, and 
+//			  should be never used.
+//************************************
+void DXApp::FlushCommandQueue()
+{
+	// Advance the fence value to mark a new point
+	++m_currentFenceValue;
+
+	// Add the instruction to command queue to set up a new value for fence. GPU will
+	// only set this value when it will reach this point
+	ThrowIfFailed(m_pCommandQueue->Signal(m_pFence.Get(), m_currentFenceValue));
+
+	if (m_pFence->GetCompletedValue() >= m_currentFenceValue)
+	{
+		// GPU has reached the required value
+		return;
+	}
+
+	// Wait unti GPU will reach our fence. Create dummy even which we will wait for
+	HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+
+	ThrowIfFailed(m_pFence->SetEventOnCompletion(m_currentFenceValue, eventHandle));
+
+	//Waaait
+	WaitForSingleObject(eventHandle, INFINITE);
+	CloseHandle(eventHandle);
+}
+
+ID3D12Resource* DXApp::GetCurrentBackBuffer()
+{
+	return m_pSwapChainBuffer[m_currentBackBuffer].Get();
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE DXApp::GetCurrentBackBufferView()
+{
+	return CD3DX12_CPU_DESCRIPTOR_HANDLE
+	(
+		m_pRtvHeap->GetCPUDescriptorHandleForHeapStart(),
+		m_currentBackBuffer,
+		m_RtvDescriptorSize
+	);
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE DXApp::GetDepthStencilView()
+{
+	return m_pDsvHeap->GetCPUDescriptorHandleForHeapStart();
+}
+
+//************************************
+// Method:    PresentAndSwapBuffers
+// FullName:  DXApp::SwapBuffers
+// Access:    private 
+// Returns:   void
+// Qualifier: Presents and swap current back buffer, and does some bookkeeping.
+// All preparations should be done at this point including buffers transitions.
+// This function will not do any oh these, so all on you. It do
+//************************************
+void DXApp::PresentAndSwapBuffers()
+{
+	ThrowIfFailed(m_pSwapChain->Present(0, 0));
+	m_currentBackBuffer = (m_currentBackBuffer + 1) % QSWAP_CHAIN_BUFFER_COUNT;
+}
+
+ComPtr<ID3DBlob> DXApp::LoadCompiledShader(const std::string& filename) const
+{
+	std::ifstream fin(filename, std::ios::binary);
+
+	fin.seekg(0, std::ios_base::end);
+	const std::ifstream::pos_type size = fin.tellg();
+	fin.seekg(0, std::ios::beg);
+
+	ComPtr<ID3DBlob> blob = nullptr;
+
+	ThrowIfFailed(D3DCreateBlob(size, blob.GetAddressOf()));
+
+	fin.read(static_cast<char*>(blob->GetBufferPointer()), size);
+	fin.close();
+
+	return blob;
 }
 
 void DXApp::ShutdownWin32()

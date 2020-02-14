@@ -5,7 +5,12 @@
 #include <d3d12.h>
 #include <dxgi.h>
 #include <dxgi1_4.h>
+#include <string>
+#include <vector>
 
+#include "d3dx12.h"
+
+using namespace Microsoft::WRL;
 
 extern "C"
 {
@@ -34,6 +39,9 @@ public:
 
  	void Init(WNDPROC WindowProc, HINSTANCE hInstance);
 
+	void BeginFrame(float CameraSeparation);
+	void EndFrame();
+
 	const refimport_t& GetRefImport() const { return m_RefImport; };
 	void SetRefImport(refimport_t RefImport) { m_RefImport = RefImport; };
 
@@ -44,8 +52,44 @@ private:
 	/* Initialize DirectX stuff */
 	void InitDX();
 
+	void InitScissorRect();
+
+	void InitViewport();
+
+	void CreateDepthStencilBufferAndView();
+
+	void CreateRenderTargetViews();
+
+	void CreateDescriptorsHeaps();
+
+	void CreateSwapChain();
+
+	void CheckMSAAQualitySupport();
+
+	void CreateCmdAllocatorAndCmdList();
+
+	void CreateCommandQueue();
+
+	void CreateFences();
+	void InitDescriptorSizes();
 	void CreateDevice();
 	void CreateDxgiFactory();
+
+	void CreateRootSignature();
+	void CreatePipelineState();
+	void CreateInputLayout();
+	void LoadShaders();
+
+	ComPtr<ID3DBlob> LoadCompiledShader(const std::string& filename) const;
+	ComPtr<ID3D12RootSignature> SerializeAndCreateRootSigFromRootDesc(const CD3DX12_ROOT_SIGNATURE_DESC& rootSigDesc) const;
+
+	void FlushCommandQueue();
+	
+	ID3D12Resource* GetCurrentBackBuffer();
+	D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentBackBufferView();
+	D3D12_CPU_DESCRIPTOR_HANDLE GetDepthStencilView();
+	
+	void PresentAndSwapBuffers();
 
 	/* Shutdown and clean up Win32 specific stuff */
 	void ShutdownWin32();
@@ -57,20 +101,32 @@ private:
 
 	refimport_t m_RefImport;
 
-	Microsoft::WRL::ComPtr<ID3D12Device>   m_pDevice;
-	Microsoft::WRL::ComPtr<IDXGIFactory4>  m_pDxgiFactory;
+	ComPtr<ID3D12Device>   m_pDevice;
+	ComPtr<IDXGIFactory4>  m_pDxgiFactory;
 
-	Microsoft::WRL::ComPtr<IDXGISwapChain> m_pSwapChain;
-	Microsoft::WRL::ComPtr<ID3D12Fence>	   m_pFence;
-	Microsoft::WRL::ComPtr<ID3D12Resource> m_pSwapChainBuffer[QSWAP_CHAIN_BUFFER_COUNT];
-	Microsoft::WRL::ComPtr<ID3D12Resource> m_pDepthStencilBuffer;
+	ComPtr<IDXGISwapChain> m_pSwapChain;
+	ComPtr<ID3D12Fence>	   m_pFence;
+	ComPtr<ID3D12Resource> m_pSwapChainBuffer[QSWAP_CHAIN_BUFFER_COUNT];
+	ComPtr<ID3D12Resource> m_pDepthStencilBuffer;
 
-	Microsoft::WRL::ComPtr<ID3D12CommandQueue>		  m_pCommandQueue;
-	Microsoft::WRL::ComPtr<ID3D12CommandAllocator>	  m_pCommandListAlloc;
-	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> m_pCommandList;
+	ComPtr<ID3D12CommandQueue>		  m_pCommandQueue;
+	ComPtr<ID3D12CommandAllocator>	  m_pCommandListAlloc;
+	ComPtr<ID3D12GraphicsCommandList> m_pCommandList;
 
-	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>	  m_pRtvHeap;
-	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>	  m_pDsvHeap;
+	ComPtr<ID3D12DescriptorHeap>	  m_pRtvHeap;
+	ComPtr<ID3D12DescriptorHeap>	  m_pDsvHeap;
+
+	std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputLayout;
+	ComPtr<ID3D12PipelineState>		  m_pPipelineState;
+	ComPtr<ID3D12RootSignature>		  m_pRootSingature;
+
+	ComPtr<ID3DBlob> m_pPsShader;
+	ComPtr<ID3DBlob> m_pVsShader;
+
+	D3D12_VIEWPORT m_viewport;
+	tagRECT		   m_scissorRect;
+
+	INT	m_currentBackBuffer = 0;
 
 	/* Render target descriptor size */
 	UINT								   m_RtvDescriptorSize = 0;
@@ -80,4 +136,6 @@ private:
 	UINT								   m_CbvSrbDescriptorSize = 0;
 
 	UINT m_MSQualityLevels = 0;
+
+	UINT64 m_currentFenceValue = 0;
 };

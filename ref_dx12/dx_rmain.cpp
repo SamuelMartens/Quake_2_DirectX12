@@ -9,7 +9,7 @@ extern "C"
 
 
 /** Wrap C++ functionality in C interface **/
-
+// Register map as the world
 void DX12_BeginReg(char* map)
 {}
 

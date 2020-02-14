@@ -1,36 +1,68 @@
 #pragma once
 
+#include <windows.h>
 #include <string>
 #include <exception>
+#include <sstream>
+#include <comdef.h>
 
 namespace DXUtils
 {
 	std::wstring StringToWString(const std::string& s);
 	
-	// Taken from https://github.com/Microsoft/DirectXTK/wiki/ThrowIfFailed
-	class com_exception : public std::exception
+#ifdef WIN32
+	void VSCon_Printf(const char *msg, ...);
+#endif
+
+	class Exception : public std::exception
 	{
 	public:
-		com_exception(HRESULT hr) : result(hr) {}
 
-		virtual const char* what() const override
+		Exception() = default;
+		Exception(HRESULT hr, const std::string& errorFuncName, const std::string& errorFileName,
+			int errorLineNumber):
+			functionName(errorFuncName),
+			fileName(errorFileName),
+			lineNumber(errorLineNumber)
+		{};
+
+		std::string ToString() const
 		{
-			static char s_str[64] = {};
-			sprintf_s(s_str, "Failure with HRESULT of %08X",
-				static_cast<unsigned int>(result));
-			return s_str;
+			_com_error err(errorCode);
+			std::string msg = err.ErrorMessage();
+
+			std::ostringstream stringStream;
+			stringStream << "DX FAILURE: File " << fileName << " in function"
+				<< functionName << " line " << lineNumber << " with Error: " << msg << std::endl;
+
+			return stringStream.str();
 		}
 
-	private:
-		HRESULT result;
+		const char* what() const override
+		{
+			static char buff[1024];
+			strcpy(buff, ToString().c_str());
+
+			return buff;
+		}
+
+		HRESULT errorCode = S_OK;
+		std::string functionName;
+		std::string fileName;
+		int lineNumber;
 	};
-
-	// Helper utility converts D3D API failures into exceptions.
-	inline void ThrowIfFailed(HRESULT hr)
-	{
-		if (FAILED(hr))
-		{
-			throw com_exception(hr);
-		}
-	}
 }
+
+// Helper utility converts D3D API failures into exceptions.
+#ifndef ThrowIfFailed
+#define ThrowIfFailed(func) \
+{ \
+	HRESULT hr__ = (func); \
+	if (FAILED(hr__)) \
+	{ \
+		DXUtils::Exception except(hr__, #func, __FILE__, __LINE__); \
+		DXUtils::VSCon_Printf("%s", except.what()); \
+		throw except;\
+	} \
+}
+#endif
