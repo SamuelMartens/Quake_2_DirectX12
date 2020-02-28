@@ -19,11 +19,12 @@ namespace DXUtils
 	public:
 
 		Exception() = default;
-		Exception(HRESULT hr, const std::string& errorFuncName, const std::string& errorFileName,
+		Exception(HRESULT hResult, const std::string& errorFuncName, const std::string& errorFileName,
 			int errorLineNumber):
 			functionName(errorFuncName),
 			fileName(errorFileName),
-			lineNumber(errorLineNumber)
+			lineNumber(errorLineNumber),
+			errorCode(hResult)
 		{};
 
 		std::string ToString() const

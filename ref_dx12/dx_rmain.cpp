@@ -78,10 +78,14 @@ void DX12_CinematicSetPalette()
 {}
 
 void DX12_BeginFrame( float camera_separation )
-{}
+{
+	DXApp::Inst().BeginFrame(camera_separation);
+}
 
 void DX12_EndFrame(void)
-{}
+{
+	DXApp::Inst().EndFrame();
+}
 
 void DX12_SetPalette(const unsigned char *palette)
 {}

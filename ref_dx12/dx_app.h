@@ -25,6 +25,8 @@ private:
 	constexpr static DXGI_FORMAT QBACK_BUFFER_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
 	constexpr static DXGI_FORMAT QDEPTH_STENCIL_FORMAT = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	constexpr static int		 QSWAP_CHAIN_BUFFER_COUNT = 2;
+	constexpr static bool		 QMSAA_ENABLED = false;
+	constexpr static int		 QMSAA_SAMPLE_COUNT = 4;
 
 public:
 
@@ -80,9 +82,13 @@ private:
 	void CreateInputLayout();
 	void LoadShaders();
 
+	int GetMSAASampleCount() const;
+	int GetMSAAQuality() const;
+
 	ComPtr<ID3DBlob> LoadCompiledShader(const std::string& filename) const;
 	ComPtr<ID3D12RootSignature> SerializeAndCreateRootSigFromRootDesc(const CD3DX12_ROOT_SIGNATURE_DESC& rootSigDesc) const;
 
+	void ExecuteCommandLists();
 	void FlushCommandQueue();
 	
 	ID3D12Resource* GetCurrentBackBuffer();

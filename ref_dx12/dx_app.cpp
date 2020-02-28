@@ -50,7 +50,7 @@ void DXApp::BeginFrame(float CameraSeparation)
 
 	// Clear back buffer and depth buffer
 	//#DEBUG change clear color to black as soon as you will verify that this works
-	m_pCommandList->ClearRenderTargetView(GetCurrentBackBufferView(), DirectX::Colors::DarkGreen, 0, nullptr);
+	m_pCommandList->ClearRenderTargetView(GetCurrentBackBufferView(), DirectX::Colors::Black, 0, nullptr);
 	m_pCommandList->ClearDepthStencilView(
 		GetDepthStencilView(),
 		D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
@@ -76,12 +76,7 @@ void DXApp::EndFrame()
 		)
 	);
 
-	// Done with this command list
-	ThrowIfFailed(m_pCommandList->Close());
-
-	// Add command list to execution queue
-	ID3D12CommandList* cmdLists[] = { m_pCommandList.Get() };
-	m_pCommandQueue->ExecuteCommandLists(_countof(cmdLists), cmdLists);
+	ExecuteCommandLists();
 
 	PresentAndSwapBuffers();
 
@@ -167,8 +162,6 @@ void DXApp::InitDX()
 {
 	//#TODO all this stuff should be reworked to avoid redundant
 	// members of the class
-
-
 #if defined(DEBUG) || defined(_DEBUG)
 	// Enable D3D12 debug layer
 	Microsoft::WRL::ComPtr<ID3D12Debug> DebugController;
@@ -203,10 +196,11 @@ void DXApp::InitDX()
 	CreatePipelineState();
 
 	InitViewport();
-	m_pCommandList->RSSetViewports(1, &m_viewport);
-
 	InitScissorRect();
-	m_pCommandList->RSSetScissorRects(1, &m_scissorRect);
+
+	// If we recorded some commands during initialization, execute them here
+	ExecuteCommandLists();
+	FlushCommandQueue();
 }
 
 void DXApp::InitScissorRect()
@@ -243,7 +237,7 @@ void DXApp::CreateDepthStencilBufferAndView()
 
 	GetDrawAreaSize(&DrawAreaWidth, &DrawAreaHeight);
 
-	// Create the depth/stencil buffer and view
+	// Create the depth/stencil buffer
 	D3D12_RESOURCE_DESC depthStencilDesc;
 	depthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	depthStencilDesc.Alignment = 0;
@@ -252,8 +246,8 @@ void DXApp::CreateDepthStencilBufferAndView()
 	depthStencilDesc.DepthOrArraySize = 1;
 	depthStencilDesc.MipLevels = 1;
 	depthStencilDesc.Format = QDEPTH_STENCIL_FORMAT;
-	depthStencilDesc.SampleDesc.Count = 4;
-	depthStencilDesc.SampleDesc.Quality = m_MSQualityLevels - 1;
+	depthStencilDesc.SampleDesc.Count = GetMSAASampleCount();
+	depthStencilDesc.SampleDesc.Quality = GetMSAAQuality();
 	depthStencilDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 	depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
@@ -268,6 +262,20 @@ void DXApp::CreateDepthStencilBufferAndView()
 		D3D12_RESOURCE_STATE_COMMON,
 		&optimizedClearVal,
 		IID_PPV_ARGS(m_pDepthStencilBuffer.GetAddressOf())));
+
+	// Create depth stencil view
+	m_pDevice->CreateDepthStencilView(
+		m_pDepthStencilBuffer.Get(),
+		nullptr,
+		GetDepthStencilView());
+
+	m_pCommandList->ResourceBarrier(
+		1,
+		&CD3DX12_RESOURCE_BARRIER::Transition(
+			m_pDepthStencilBuffer.Get(),
+			D3D12_RESOURCE_STATE_COMMON,
+			D3D12_RESOURCE_STATE_DEPTH_WRITE
+		));
 }
 
 void DXApp::CreateRenderTargetViews()
@@ -330,8 +338,8 @@ void DXApp::CreateSwapChain()
 	swapChainDesc.BufferDesc.Format = QBACK_BUFFER_FORMAT;
 	swapChainDesc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
 	swapChainDesc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-	swapChainDesc.SampleDesc.Count = 4;
-	swapChainDesc.SampleDesc.Quality = m_MSQualityLevels - 1;
+	swapChainDesc.SampleDesc.Count = GetMSAASampleCount();
+	swapChainDesc.SampleDesc.Quality = GetMSAAQuality();
 	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swapChainDesc.BufferCount = QSWAP_CHAIN_BUFFER_COUNT;
 	swapChainDesc.OutputWindow = m_hWindows;
@@ -347,10 +355,13 @@ void DXApp::CreateSwapChain()
 
 void DXApp::CheckMSAAQualitySupport()
 {
+	if (QMSAA_ENABLED == false)
+		return;
+
 	// Check 4X MSAA Quality Support
 	D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS MSQualityLevels;
 	MSQualityLevels.Format = QBACK_BUFFER_FORMAT;
-	MSQualityLevels.SampleCount = 4;
+	MSQualityLevels.SampleCount = QMSAA_SAMPLE_COUNT;
 	MSQualityLevels.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
 	MSQualityLevels.NumQualityLevels = 0;
 	ThrowIfFailed(m_pDevice->CheckFeatureSupport(
@@ -377,8 +388,6 @@ void DXApp::CreateCmdAllocatorAndCmdList()
 		m_pCommandListAlloc.Get(),
 		nullptr,
 		IID_PPV_ARGS(m_pCommandList.GetAddressOf())));
-
-	m_pCommandList->Close();
 }
 
 void DXApp::CreateCommandQueue()
@@ -407,6 +416,8 @@ void DXApp::InitDescriptorSizes()
 
 void DXApp::CreateDevice()
 {
+	// This is super weird. This function internally will throw com exception,
+	// but result will be still fine.
 	ThrowIfFailed(D3D12CreateDevice(
 		nullptr,
 		D3D_FEATURE_LEVEL_11_0,
@@ -440,6 +451,16 @@ ComPtr<ID3D12RootSignature> DXApp::SerializeAndCreateRootSigFromRootDesc(const C
 	));
 
 	return resultRootSig;
+}
+
+void DXApp::ExecuteCommandLists()
+{
+	// Done with this command list
+	ThrowIfFailed(m_pCommandList->Close());
+
+	// Add command list to execution queue
+	ID3D12CommandList* cmdLists[] = { m_pCommandList.Get() };
+	m_pCommandQueue->ExecuteCommandLists(_countof(cmdLists), cmdLists);
 }
 
 void DXApp::CreateRootSignature()
@@ -489,7 +510,7 @@ void DXApp::CreatePipelineState()
 		m_pPsShader->GetBufferSize()
 	};
 	//#DEBUG here counter clockwise might hit me in a face. Cause 
-	// GL uses counter clockwise. Let's what I will get first, and 
+	// GL uses counter clockwise. Let's see what I will get first, and 
 	// then fix this problem
 	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -498,8 +519,8 @@ void DXApp::CreatePipelineState()
 	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDesc.NumRenderTargets = 1;
 	psoDesc.RTVFormats[0] = QBACK_BUFFER_FORMAT;
-	psoDesc.SampleDesc.Count = 4;
-	psoDesc.SampleDesc.Quality = m_MSQualityLevels - 1;
+	psoDesc.SampleDesc.Count = GetMSAASampleCount();
+	psoDesc.SampleDesc.Quality = GetMSAAQuality();
 	psoDesc.DSVFormat = QDEPTH_STENCIL_FORMAT;
 
 	ThrowIfFailed(m_pDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pPipelineState)));
@@ -513,13 +534,33 @@ void DXApp::CreateInputLayout()
 	};
 }
 
+
 void DXApp::LoadShaders()
 {
+	//#DEBUG
+	char result[MAX_PATH];
+	std::string path1(result, GetModuleFileName(nullptr, result, MAX_PATH));
+	//END
+
+	//#DEBUG stupid problem. I can't find where is my app runs from. When I will find it
+	// I should fix output for shader compiler to where it is needed
+	//const std::string psShader = "D:\\Projects\\quake2-vs2015\\debug\\ps_PosTex.cso";
+	//const std::string vsShader = "D:\\Projects\\quake2-vs2015\\debug\\vs_PosTex.cso";
 	const std::string psShader = "ps_PosTex.cso";
 	const std::string vsShader = "vs_PosTex.cso";
 
 	m_pPsShader = LoadCompiledShader(psShader);
 	m_pVsShader = LoadCompiledShader(vsShader);
+}
+
+int DXApp::GetMSAASampleCount() const
+{
+	return QMSAA_ENABLED ? QMSAA_SAMPLE_COUNT : 1;
+}
+
+int DXApp::GetMSAAQuality() const
+{
+	return QMSAA_ENABLED ? (m_MSQualityLevels - 1) : 0;
 }
 
 //************************************
@@ -529,7 +570,8 @@ void DXApp::LoadShaders()
 // Returns:   void
 // Qualifier: Wait until we are done with previous frame
 //			  before starting next one. This is very inefficient, and 
-//			  should be never used.
+//			  should be never used. Still it is here for now, while
+//			  I am prototyping
 //************************************
 void DXApp::FlushCommandQueue()
 {
@@ -596,7 +638,7 @@ ComPtr<ID3DBlob> DXApp::LoadCompiledShader(const std::string& filename) const
 	std::ifstream fin(filename, std::ios::binary);
 
 	fin.seekg(0, std::ios_base::end);
-	const std::ifstream::pos_type size = fin.tellg();
+	const std::ifstream::pos_type size = static_cast<int>(fin.tellg());
 	fin.seekg(0, std::ios::beg);
 
 	ComPtr<ID3DBlob> blob = nullptr;
