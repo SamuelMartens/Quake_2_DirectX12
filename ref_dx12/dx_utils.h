@@ -5,11 +5,10 @@
 #include <exception>
 #include <sstream>
 #include <comdef.h>
+#include <cstddef>
 
 namespace DXUtils
 {
-	std::wstring StringToWString(const std::string& s);
-	
 #ifdef WIN32
 	void VSCon_Printf(const char *msg, ...);
 #endif
@@ -52,6 +51,12 @@ namespace DXUtils
 		std::string fileName;
 		int lineNumber;
 	};
+
+	// All those Load functions are just wrappers around Quake 2 GL implementation of loads
+	// It's ok, cause they don't have any GL specific code.
+	void LoadPCX(char* filename, std::byte** image, std::byte** palette,int* width, int* height);
+	void LoadWal(char* filename, std::byte** image, int* width, int* height);
+	void LoadTGA(char* filename, std::byte** image, int* width, int* height);
 }
 
 // Helper utility converts D3D API failures into exceptions.

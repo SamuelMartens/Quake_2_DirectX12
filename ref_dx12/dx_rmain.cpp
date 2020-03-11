@@ -4,8 +4,10 @@
 extern "C"
 {
 	#include "../client/ref.h"
-	#include "../ref_gl/gl_local.h"
 }
+
+#include "dx_local.h"
+
 
 
 /** Wrap C++ functionality in C interface **/

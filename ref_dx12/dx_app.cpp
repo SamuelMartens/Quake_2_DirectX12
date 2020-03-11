@@ -3,12 +3,14 @@
 #include <cassert>
 #include <string>
 #include <fstream>
+#include <algorithm>
 #include <d3dcompiler.h>
 #include <DirectXColors.h>
 
 #include "d3dx12.h"
 #include "../win32/winquake.h"
 #include "dx_utils.h"
+
 
 DXApp& DXApp::Inst()
 {
@@ -26,6 +28,8 @@ void DXApp::Init(WNDPROC WindowProc, HINSTANCE hInstance)
 {
 	InitWin32(WindowProc, hInstance);
 	InitDX();
+
+	LoadPalette();
 }
 
 void DXApp::BeginFrame(float CameraSeparation)
@@ -49,7 +53,6 @@ void DXApp::BeginFrame(float CameraSeparation)
 	);
 
 	// Clear back buffer and depth buffer
-	//#DEBUG change clear color to black as soon as you will verify that this works
 	m_pCommandList->ClearRenderTargetView(GetCurrentBackBufferView(), DirectX::Colors::Black, 0, nullptr);
 	m_pCommandList->ClearDepthStencilView(
 		GetDepthStencilView(),
@@ -81,6 +84,8 @@ void DXApp::EndFrame()
 	PresentAndSwapBuffers();
 
 	FlushCommandQueue();
+	// We flushed command queue, we know for sure that it is safe to release those resources
+	m_uploadResources.clear();
 }
 
 void DXApp::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
@@ -460,7 +465,7 @@ void DXApp::ExecuteCommandLists()
 
 	// Add command list to execution queue
 	ID3D12CommandList* cmdLists[] = { m_pCommandList.Get() };
-	m_pCommandQueue->ExecuteCommandLists(_countof(cmdLists), cmdLists);
+	m_pCommandQueue->ExecuteCommandLists(_countof(cmdLists), cmdLists);	
 }
 
 void DXApp::CreateRootSignature()
@@ -537,15 +542,6 @@ void DXApp::CreateInputLayout()
 
 void DXApp::LoadShaders()
 {
-	//#DEBUG
-	char result[MAX_PATH];
-	std::string path1(result, GetModuleFileName(nullptr, result, MAX_PATH));
-	//END
-
-	//#DEBUG stupid problem. I can't find where is my app runs from. When I will find it
-	// I should fix output for shader compiler to where it is needed
-	//const std::string psShader = "D:\\Projects\\quake2-vs2015\\debug\\ps_PosTex.cso";
-	//const std::string vsShader = "D:\\Projects\\quake2-vs2015\\debug\\vs_PosTex.cso";
 	const std::string psShader = "ps_PosTex.cso";
 	const std::string vsShader = "vs_PosTex.cso";
 
@@ -568,7 +564,7 @@ int DXApp::GetMSAAQuality() const
 // FullName:  DXApp::FlushCommandQueue
 // Access:    private 
 // Returns:   void
-// Qualifier: Wait until we are done with previous frame
+// Details: Wait until we are done with previous frame
 //			  before starting next one. This is very inefficient, and 
 //			  should be never used. Still it is here for now, while
 //			  I am prototyping
@@ -623,7 +619,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE DXApp::GetDepthStencilView()
 // FullName:  DXApp::SwapBuffers
 // Access:    private 
 // Returns:   void
-// Qualifier: Presents and swap current back buffer, and does some bookkeeping.
+// Details: Presents and swap current back buffer, and does some bookkeeping.
 // All preparations should be done at this point including buffers transitions.
 // This function will not do any oh these, so all on you. It do
 //************************************
@@ -631,6 +627,151 @@ void DXApp::PresentAndSwapBuffers()
 {
 	ThrowIfFailed(m_pSwapChain->Present(0, 0));
 	m_currentBackBuffer = (m_currentBackBuffer + 1) % QSWAP_CHAIN_BUFFER_COUNT;
+}
+
+void DXApp::CreateTexture(char* name)
+{
+	if (name == nullptr)
+		return;
+
+	constexpr int fileExtensionLength = 4;
+	const char* texFileExtension = name + strlen(name) - fileExtensionLength;
+
+	std::byte* image = nullptr;
+	std::byte* palette = nullptr;
+	int width = 0;
+	int height = 0;
+	int bpp = 0;
+
+	if (strcmp(texFileExtension, ".pcx") == 0)
+	{
+		bpp = 8;
+		DXUtils::LoadPCX(name, &image, &palette, &width, &height);
+	}
+	else if (strcmp(texFileExtension, ".wal") == 0)
+	{
+		bpp = 8;
+		DXUtils::LoadWal(name, &image, &width, &height);
+	}
+	else if (strcmp(texFileExtension, ".tga") == 0)
+	{
+		bpp = 32;
+		DXUtils::LoadTGA(name, &image, &width, &height);
+	}
+	else
+	{
+		assert(false);
+		return;
+	}
+
+	if (image == nullptr)
+	{
+		return;
+	}
+
+	unsigned int* image32 = nullptr;
+
+	constexpr int maxImageSize = 512 * 256;
+	std::array<unsigned int, maxImageSize> fixedImage;
+	std::fill(fixedImage.begin(), fixedImage.end(), 0);
+	
+	//#TODO I ignore texture type (which is basically represents is this texture sky or
+	// or something else. It's kind of important here, as we need to handle pictures
+	// differently sometimes depending on type. I will need to take care of it later.
+	if (bpp == 8)
+	{
+		ImageBpp8To32(image, width, height, fixedImage.data());
+		bpp = 32;
+
+		image32 = fixedImage.data();
+	}
+	else
+	{
+		image32 = reinterpret_cast<unsigned int*>(image);
+	}
+
+
+	int scaledWidth = 0;
+	int scaledHeight = 0;
+
+	FindImageScaledSizes(width, height, scaledWidth, scaledHeight);
+
+	std::array<unsigned int, maxImageSize> resampledImage;
+	std::fill(resampledImage.begin(), resampledImage.end(), 0);
+
+	if (scaledWidth != width || scaledHeight != height)
+	{
+		ResampleTexture(image32, width, height, resampledImage.data(), scaledHeight, scaledWidth);
+		image32 = resampledImage.data();
+	}
+
+	Texture tex;
+	CreateGpuTexture(image32, scaledWidth, scaledHeight, bpp, tex);
+
+	m_textures.insert(std::make_pair(std::string(name), tex));
+
+	if (image != nullptr)
+	{
+		free(image);
+	}
+
+	if (palette != nullptr)
+	{
+		free(palette);
+	}
+}
+
+void DXApp::CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Texture& outTex)
+{
+	D3D12_RESOURCE_DESC textureDesc = {};
+	textureDesc.MipLevels = 1;
+	textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	textureDesc.Width = width;
+	textureDesc.Height = height;
+	textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+	textureDesc.DepthOrArraySize = 1;
+	textureDesc.SampleDesc.Count = 1;
+	textureDesc.SampleDesc.Quality = 0;
+	textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
+	// Create destination texture
+	ThrowIfFailed(m_pDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&textureDesc,
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(&outTex.buffer)));
+	
+	// Count alignment and go for what we need
+	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(outTex.buffer.Get(), 0, 1);
+
+	ComPtr<ID3D12Resource> textureUploadBuffer;
+
+	// Create upload buffer
+	ThrowIfFailed(m_pDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&textureUploadBuffer)));
+
+	m_uploadResources.push_back(textureUploadBuffer);
+
+	D3D12_SUBRESOURCE_DATA textureData = {};
+	textureData.pData = &raw[0];
+	textureData.RowPitch = width * bpp / 8;
+	// Not SlicePitch but texture size in our case
+	textureData.SlicePitch = textureData.RowPitch * height;
+
+	UpdateSubresources(m_pCommandList.Get(), outTex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
+	m_pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		outTex.buffer.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+
+	//#DEBUG Create SRV here. However, I need Srv Heap first.
 }
 
 ComPtr<ID3DBlob> DXApp::LoadCompiledShader(const std::string& filename) const
@@ -666,4 +807,141 @@ void DXApp::GetDrawAreaSize(int* Width, int* Height)
 
 	assert(mode);
 	GetRefImport().Vid_GetModeInfo(Width, Height, static_cast<int>(mode->value));
+}
+
+void DXApp::LoadPalette()
+{
+	char colorMapFilename[] = "pics/colormap.pcx";
+
+	int width = 0;
+	int height = 0;
+
+	std::byte* image = nullptr;
+	std::byte* palette = nullptr;
+
+	DXUtils::LoadPCX(colorMapFilename, &image, &palette, &width, &height);
+
+	if (palette == nullptr)
+	{
+		char errorMsg[] = "Couldn't load pics/colormap.pcx";
+		GetRefImport().Sys_Error(ERR_FATAL, errorMsg);
+	}
+
+	for (int i = 0; i < m_8To24Table.size(); ++i)
+	{
+		int r = static_cast<int>(palette[i * 3 + 0]);
+		int g = static_cast<int>(palette[i * 3 + 1]);
+		int b = static_cast<int>(palette[i * 3 + 2]);
+
+		int v = (255 << 24) + (r << 0) + (g << 8) + (b << 16);
+		m_8To24Table[i] = static_cast<unsigned int>(LittleLong(v));
+	}
+
+	m_8To24Table[m_8To24Table.size() - 1] &= LittleLong(0xffffff);	// 255 is transparent
+
+	free(image);
+	free(palette);
+}
+
+void DXApp::ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const
+{
+	const int size = width * height;
+
+	for (int i = 0; i < size; ++i)
+	{
+		// Cause m_8To24Table is in bytes we keep all channels in one number
+		int p = static_cast<int>(data[i]);
+
+		out[i] = m_8To24Table[p];
+
+		if (p != QTRANSPARENT_TABLE_VAL)
+		{
+			continue;
+		}
+
+		// Transparent pixel stays transparent, but with proper color to blend
+		// no bleeding!		
+		if (i > width && static_cast<int>(data[i - width]) != QTRANSPARENT_TABLE_VAL)
+		{
+			// if this is not first row and pixel above has value, pick it
+			p = static_cast<int>(data[i - width]);
+		}
+		else if (i < size - width && static_cast<int>(data[i + width]) != QTRANSPARENT_TABLE_VAL)
+		{
+			// if this is not last row and pixel below has value, pick it
+			p = static_cast<int>(data[i + width]);
+		}
+		else if (i > 0 && static_cast<int>(data[i - 1]) != QTRANSPARENT_TABLE_VAL)
+		{
+			// if pixel on left has value pick it
+			p = static_cast<int>(data[i - 1]);
+		}
+		else if (i < size - 1 && static_cast<int>(data[i + 1]) != QTRANSPARENT_TABLE_VAL)
+		{
+			// if pixel on right has value pick it
+			p = static_cast<int>(data[i + 1]);
+		}
+		else
+			p = 0;
+
+		reinterpret_cast<std::byte*>(&out[i])[0] = reinterpret_cast<const std::byte*>(&m_8To24Table[p])[0];
+		reinterpret_cast<std::byte*>(&out[i])[1] = reinterpret_cast<const std::byte*>(&m_8To24Table[p])[1];
+		reinterpret_cast<std::byte*>(&out[i])[2] = reinterpret_cast<const std::byte*>(&m_8To24Table[p])[2];
+	}
+}
+
+void DXApp::FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const
+{
+	constexpr int maxSize = 256;
+
+	for (scaledWidth = 1; scaledWidth < width; scaledWidth <<= 1);	
+	min(scaledWidth, maxSize);
+
+	for (scaledHeight = 1; scaledHeight < height; scaledHeight <<= 1);
+	min(scaledHeight, maxSize);
+}
+
+void DXApp::ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight)
+{
+	// Copied from GL_ResampleTexture
+	// Honestly, I don't know exactly what it does, I mean I understand that
+	// it most likely upscales image, but how?
+	int		i, j;
+	const unsigned	*inrow, *inrow2;
+	unsigned	frac, fracstep;
+	unsigned	p1[1024], p2[1024];
+	byte		*pix1, *pix2, *pix3, *pix4;
+
+	fracstep = inwidth * 0x10000 / outwidth;
+
+	frac = fracstep >> 2;
+	for (i = 0; i < outwidth; i++)
+	{
+		p1[i] = 4 * (frac >> 16);
+		frac += fracstep;
+	}
+	frac = 3 * (fracstep >> 2);
+	for (i = 0; i < outwidth; i++)
+	{
+		p2[i] = 4 * (frac >> 16);
+		frac += fracstep;
+	}
+
+	for (i = 0; i < outheight; i++, out += outwidth)
+	{
+		inrow = in + inwidth * (int)((i + 0.25)*inheight / outheight);
+		inrow2 = in + inwidth * (int)((i + 0.75)*inheight / outheight);
+		frac = fracstep >> 1;
+		for (j = 0; j < outwidth; j++)
+		{
+			pix1 = (byte *)inrow + p1[j];
+			pix2 = (byte *)inrow + p2[j];
+			pix3 = (byte *)inrow2 + p1[j];
+			pix4 = (byte *)inrow2 + p2[j];
+			((byte *)(out + j))[0] = (pix1[0] + pix2[0] + pix3[0] + pix4[0]) >> 2;
+			((byte *)(out + j))[1] = (pix1[1] + pix2[1] + pix3[1] + pix4[1]) >> 2;
+			((byte *)(out + j))[2] = (pix1[2] + pix2[2] + pix3[2] + pix4[2]) >> 2;
+			((byte *)(out + j))[3] = (pix1[3] + pix2[3] + pix3[3] + pix4[3]) >> 2;
+		}
+	}
 }

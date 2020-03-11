@@ -22,19 +22,23 @@
     <ClInclude Include="..\game\q_shared.h" />
     <ClInclude Include="..\qcommon\qcommon.h" />
     <ClInclude Include="d3dx12.h" />
+    <ClInclude Include="dx_local.h" />
     <ClInclude Include="dx_app.h" />
+    <ClInclude Include="dx_texture.h" />
     <ClInclude Include="dx_utils.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="ref_dx12.def" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\game\q_shared.c" />
     <ClCompile Include="dx_app.cpp" />
     <ClCompile Include="dx_rmain.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
       </PrecompiledHeaderFile>
     </ClCompile>
+    <ClCompile Include="dx_texture.cpp" />
     <ClCompile Include="dx_utils.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -126,6 +130,7 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;REFDX12_EXPORTS;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <TreatWarningAsError>true</TreatWarningAsError>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

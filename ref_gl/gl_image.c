@@ -973,13 +973,17 @@ qboolean GL_Upload32 (unsigned *data, int width, int height,  qboolean mipmap)
 	int			i, c;
 	byte		*scan;
 	int comp;
-
+	//#DEBUG this is also generic. So I don't need to implement in DXCreate texture
+	// A lot of this stuff can be copied and I don't need reimplement
+	//#DEBUG step 2
 	uploaded_paletted = qFalse;
-
+	// Find scaled_width which is power of 2 and closest to width 
 	for (scaled_width = 1 ; scaled_width < width ; scaled_width<<=1)
 		;
+	// Weird bizz with rounding down for some reason
 	if (gl_round_down->value && scaled_width > width && mipmap)
 		scaled_width >>= 1;
+	// Do the same for height
 	for (scaled_height = 1 ; scaled_height < height ; scaled_height<<=1)
 		;
 	if (gl_round_down->value && scaled_height > height && mipmap)
@@ -1002,7 +1006,7 @@ qboolean GL_Upload32 (unsigned *data, int width, int height,  qboolean mipmap)
 		scaled_width = 1;
 	if (scaled_height < 1)
 		scaled_height = 1;
-
+	// I can just copy all this scale logic, but omit gl variables
 	upload_width = scaled_width;
 	upload_height = scaled_height;
 
@@ -1010,6 +1014,7 @@ qboolean GL_Upload32 (unsigned *data, int width, int height,  qboolean mipmap)
 		ri.Sys_Error (ERR_DROP, "GL_Upload32: too big");
 
 	// scan the texture for any non-255 alpha
+	// Do we have transparent pixels in texture?
 	c = width*height;
 	scan = ((byte *)data) + 3;
 	samples = gl_solid_format;
@@ -1021,7 +1026,7 @@ qboolean GL_Upload32 (unsigned *data, int width, int height,  qboolean mipmap)
 			break;
 		}
 	}
-
+	// Define if we have RGB or RGBA textures
 	if (samples == gl_solid_format)
 	    comp = gl_tex_solid_format;
 	else if (samples == gl_alpha_format)
@@ -1050,6 +1055,7 @@ qboolean GL_Upload32 (unsigned *data, int width, int height,  qboolean mipmap)
 	{
 		if (!mipmap)
 		{
+			// Skip this
 			if ( qglColorTableEXT && gl_ext_palettedtexture->value && samples == gl_solid_format )
 			{
 				uploaded_paletted = qTrue;
@@ -1073,10 +1079,11 @@ qboolean GL_Upload32 (unsigned *data, int width, int height,  qboolean mipmap)
 		memcpy (scaled, data, width*height*4);
 	}
 	else
+		//Resmaple to fit scaled val
 		GL_ResampleTexture (data, width, height, scaled, scaled_width, scaled_height);
-
+	// Gamma correction, Skip it for now
 	GL_LightScaleTexture (scaled, scaled_width, scaled_height, !mipmap );
-
+	// The same as upper
 	if ( qglColorTableEXT && gl_ext_palettedtexture->value && ( samples == gl_solid_format ) )
 	{
 		uploaded_paletted = qTrue;
@@ -1095,7 +1102,7 @@ qboolean GL_Upload32 (unsigned *data, int width, int height,  qboolean mipmap)
 	{
 		qglTexImage2D( GL_TEXTURE_2D, 0, comp, scaled_width, scaled_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, scaled );
 	}
-
+	// Mip map generation. Skip this as well for now
 	if (mipmap)
 	{
 		int		miplevel;
@@ -1206,19 +1213,28 @@ qboolean GL_Upload8 (byte *data, int width, int height,  qboolean mipmap, qboole
 		for (i=0 ; i<s ; i++)
 		{
 			p = data[i];
+			// Cause d_8to24table is in bytes we keep all channels in one number
+			//#DEBUG I have to intialize this in my code somehow
+			//#DEBUG step 1 avoid transparency bleeding
 			trans[i] = d_8to24table[p];
 
 			if (p == 255)
 			{	// transparent, so scan around for another color
 				// to avoid alpha fringes
 				// FIXME: do a full flood fill so mips work...
+				// Transparent pixel stays transparent, but with proper color to blend
+				// no bleeding!		
 				if (i > width && data[i-width] != 255)
+					// if this is not first row and pixel above has value, pick it
 					p = data[i-width];
 				else if (i < s-width && data[i+width] != 255)
+					// if this is not last row and pixel below has value, pick it
 					p = data[i+width];
 				else if (i > 0 && data[i-1] != 255)
+					// if pixel on left has value pick it
 					p = data[i-1];
 				else if (i < s-1 && data[i+1] != 255)
+					// if pixel on right has value pick it
 					p = data[i+1];
 				else
 					p = 0;

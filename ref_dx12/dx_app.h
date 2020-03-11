@@ -7,8 +7,11 @@
 #include <dxgi1_4.h>
 #include <string>
 #include <vector>
+#include <unordered_map>
+#include <array>
 
 #include "d3dx12.h"
+#include "dx_texture.h"
 
 using namespace Microsoft::WRL;
 
@@ -27,6 +30,7 @@ private:
 	constexpr static int		 QSWAP_CHAIN_BUFFER_COUNT = 2;
 	constexpr static bool		 QMSAA_ENABLED = false;
 	constexpr static int		 QMSAA_SAMPLE_COUNT = 4;
+	constexpr static int		 QTRANSPARENT_TABLE_VAL = 255;
 
 public:
 
@@ -97,11 +101,19 @@ private:
 	
 	void PresentAndSwapBuffers();
 
+	/* Texture */
+	void CreateTexture(char* name);
+	void CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Texture& outTex);
+
 	/* Shutdown and clean up Win32 specific stuff */
 	void ShutdownWin32();
 
 	/* Utils */
 	void GetDrawAreaSize(int* Width, int* Height);
+	void LoadPalette();
+	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
+	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
+	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 
 	HWND		m_hWindows = nullptr;
 
@@ -144,4 +156,14 @@ private:
 	UINT m_MSQualityLevels = 0;
 
 	UINT64 m_currentFenceValue = 0;
+
+	std::unordered_map<std::string, Texture> m_textures;
+	// When we upload something on GPU we need to make sure that its ComPtr is alive until 
+	// we finish execution of command list that references this. So I will just put this stuff here
+	// and clear this vector at the end of every frame.
+	std::vector<ComPtr<ID3D12Resource>> m_uploadResources;
+
+	std::array<unsigned int, 256> m_8To24Table;
+
+
 };
