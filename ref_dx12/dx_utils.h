@@ -7,7 +7,7 @@
 #include <comdef.h>
 #include <cstddef>
 
-namespace DXUtils
+namespace Utils
 {
 #ifdef WIN32
 	void VSCon_Printf(const char *msg, ...);
@@ -66,8 +66,8 @@ namespace DXUtils
 	HRESULT hr__ = (func); \
 	if (FAILED(hr__)) \
 	{ \
-		DXUtils::Exception except(hr__, #func, __FILE__, __LINE__); \
-		DXUtils::VSCon_Printf("%s", except.what()); \
+		Utils::Exception except(hr__, #func, __FILE__, __LINE__); \
+		Utils::VSCon_Printf("%s", except.what()); \
 		throw except;\
 	} \
 }

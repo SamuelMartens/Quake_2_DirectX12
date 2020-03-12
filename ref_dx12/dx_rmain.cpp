@@ -65,7 +65,7 @@ void DX12_Draw_StretchRaw(int x, int y, int w, int h, int cols, int rows, byte *
 
 qboolean DX12_Init( void *hinstance, void *hWnd )
 {
-	DXApp::Inst().Init(
+	Renderer::Inst().Init(
 		reinterpret_cast<WNDPROC>(hWnd),
 		reinterpret_cast<HINSTANCE>(hinstance)
 	);
@@ -81,12 +81,12 @@ void DX12_CinematicSetPalette()
 
 void DX12_BeginFrame( float camera_separation )
 {
-	DXApp::Inst().BeginFrame(camera_separation);
+	Renderer::Inst().BeginFrame(camera_separation);
 }
 
 void DX12_EndFrame(void)
 {
-	DXApp::Inst().EndFrame();
+	Renderer::Inst().EndFrame();
 }
 
 void DX12_SetPalette(const unsigned char *palette)
@@ -97,7 +97,7 @@ void DX12_AppActivate( qboolean active )
 
 refexport_t GetRefAPI (refimport_t rimp)
 {
-	DXApp::Inst().SetRefImport(rimp);
+	Renderer::Inst().SetRefImport(rimp);
 	refexport_t re;
 
 	re.api_version = API_VERSION;

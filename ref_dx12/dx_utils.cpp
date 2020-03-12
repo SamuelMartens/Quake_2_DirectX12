@@ -15,7 +15,7 @@ Print to Visual Studio developers console
 =================
 */
 
-void DXUtils::VSCon_Printf(const char *msg, ...)
+void Utils::VSCon_Printf(const char *msg, ...)
 {
 	va_list		argptr;
 	char		text[1024];
@@ -41,7 +41,7 @@ void Sys_Error(char *error, ...)
 	vsprintf(text, error, argptr);
 	va_end(argptr);
 
-	DXApp::Inst().GetRefImport().Sys_Error(ERR_FATAL, msg, text);
+	Renderer::Inst().GetRefImport().Sys_Error(ERR_FATAL, msg, text);
 }
 
 void Com_Printf(char *fmt, ...)
@@ -54,7 +54,7 @@ void Com_Printf(char *fmt, ...)
 	vsprintf(text, fmt, argptr);
 	va_end(argptr);
 
-	DXApp::Inst().GetRefImport().Con_Printf(PRINT_ALL, msg, text);
+	Renderer::Inst().GetRefImport().Con_Printf(PRINT_ALL, msg, text);
 }
 
 typedef struct _TargaHeader {
@@ -68,7 +68,7 @@ typedef struct _TargaHeader {
 #endif
 
 
-void DXUtils::LoadPCX(char* filename, std::byte** image, std::byte** palette, int* width, int* height)
+void Utils::LoadPCX(char* filename, std::byte** image, std::byte** palette, int* width, int* height)
 {
 	byte** internalPalette = nullptr;
 	byte** pic = nullptr;
@@ -83,7 +83,7 @@ void DXUtils::LoadPCX(char* filename, std::byte** image, std::byte** palette, in
 	*pic = NULL;
 
 
-	const refimport_t& ri = DXApp::Inst().GetRefImport();
+	const refimport_t& ri = Renderer::Inst().GetRefImport();
 
 	//
 	// load the file
@@ -177,11 +177,11 @@ void DXUtils::LoadPCX(char* filename, std::byte** image, std::byte** palette, in
 	*palette = (std::byte*)*internalPalette;
 }
 
-void DXUtils::LoadWal(char* filename, std::byte** image, int* width, int* height)
+void Utils::LoadWal(char* filename, std::byte** image, int* width, int* height)
 {
 	miptex_t *mt = NULL;
 
-	const refimport_t& ri = DXApp::Inst().GetRefImport();
+	const refimport_t& ri = Renderer::Inst().GetRefImport();
 
 	ri.FS_LoadFile(filename, (void **)&mt);
 	if (!mt)
@@ -205,7 +205,7 @@ void DXUtils::LoadWal(char* filename, std::byte** image, int* width, int* height
 	ri.FS_FreeFile((void *)mt);
 }
 
-void DXUtils::LoadTGA(char* filename, std::byte** image, int* width, int* height)
+void Utils::LoadTGA(char* filename, std::byte** image, int* width, int* height)
 {
 	int		columns, rows, numPixels;
 	byte	*pixbuf;
@@ -218,7 +218,7 @@ void DXUtils::LoadTGA(char* filename, std::byte** image, int* width, int* height
 	byte tmp[2];
 
 	byte **pic = NULL;
-	const refimport_t& ri = DXApp::Inst().GetRefImport();
+	const refimport_t& ri = Renderer::Inst().GetRefImport();
 
 	//
 	// load the file

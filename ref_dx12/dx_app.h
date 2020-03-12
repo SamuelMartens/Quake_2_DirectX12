@@ -20,10 +20,10 @@ extern "C"
 	#include "../client/ref.h"
 };
 
-class DXApp
+class Renderer
 {
 private:
-	DXApp() = default;
+	Renderer() = default;
 
 	constexpr static DXGI_FORMAT QBACK_BUFFER_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
 	constexpr static DXGI_FORMAT QDEPTH_STENCIL_FORMAT = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -34,14 +34,14 @@ private:
 
 public:
 
-	DXApp(const DXApp&) = delete;
-	DXApp& operator=(const DXApp&) = delete;
-	DXApp(DXApp&&) = delete;
-	DXApp& operator=(DXApp&&) = delete;
+	Renderer(const Renderer&) = delete;
+	Renderer& operator=(const Renderer&) = delete;
+	Renderer(Renderer&&) = delete;
+	Renderer& operator=(Renderer&&) = delete;
 
-	~DXApp() = default;
+	~Renderer() = default;
 
-	static DXApp& Inst();
+	static Renderer& Inst();
 
  	void Init(WNDPROC WindowProc, HINSTANCE hInstance);
 

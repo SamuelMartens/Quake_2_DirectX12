@@ -7,24 +7,24 @@
 #include <d3dcompiler.h>
 #include <DirectXColors.h>
 
-#include "d3dx12.h"
+
 #include "../win32/winquake.h"
 #include "dx_utils.h"
 
 
-DXApp& DXApp::Inst()
+Renderer& Renderer::Inst()
 {
-	static DXApp* app = nullptr;
+	static Renderer* app = nullptr;
 
 	if (app == nullptr)
 	{
-		app = new DXApp();
+		app = new Renderer();
 	}
 
 	return *app;
 }
 
-void DXApp::Init(WNDPROC WindowProc, HINSTANCE hInstance)
+void Renderer::Init(WNDPROC WindowProc, HINSTANCE hInstance)
 {
 	InitWin32(WindowProc, hInstance);
 	InitDX();
@@ -32,7 +32,7 @@ void DXApp::Init(WNDPROC WindowProc, HINSTANCE hInstance)
 	LoadPalette();
 }
 
-void DXApp::BeginFrame(float CameraSeparation)
+void Renderer::BeginFrame(float CameraSeparation)
 {
 	ThrowIfFailed(m_pCommandListAlloc->Reset());
 	ThrowIfFailed(m_pCommandList->Reset(m_pCommandListAlloc.Get(), m_pPipelineState.Get()));
@@ -67,7 +67,7 @@ void DXApp::BeginFrame(float CameraSeparation)
 	m_pCommandList->OMSetRenderTargets(1, &GetCurrentBackBufferView(), true, &GetDepthStencilView());
 }
 
-void DXApp::EndFrame()
+void Renderer::EndFrame()
 {
 	// Indicate current buffer state transition
 	m_pCommandList->ResourceBarrier(
@@ -88,7 +88,7 @@ void DXApp::EndFrame()
 	m_uploadResources.clear();
 }
 
-void DXApp::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
+void Renderer::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 {
 	if (m_hWindows)
 	{
@@ -163,7 +163,7 @@ void DXApp::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 	GetRefImport().Vid_NewWindow(width, height);
 }
 
-void DXApp::InitDX()
+void Renderer::InitDX()
 {
 	//#TODO all this stuff should be reworked to avoid redundant
 	// members of the class
@@ -208,7 +208,7 @@ void DXApp::InitDX()
 	FlushCommandQueue();
 }
 
-void DXApp::InitScissorRect()
+void Renderer::InitScissorRect()
 {
 	int drawAreaWidth = 0;
 	int drawAreaHeight = 0;
@@ -219,7 +219,7 @@ void DXApp::InitScissorRect()
 	m_scissorRect = { 0, 0, drawAreaWidth, drawAreaHeight };
 }
 
-void DXApp::InitViewport()
+void Renderer::InitViewport()
 {
 	int DrawAreaWidth = 0;
 	int DrawAreaHeight = 0;
@@ -235,7 +235,7 @@ void DXApp::InitViewport()
 	m_viewport.MaxDepth = 1.0f;
 }
 
-void DXApp::CreateDepthStencilBufferAndView()
+void Renderer::CreateDepthStencilBufferAndView()
 {
 	int DrawAreaWidth = 0;
 	int DrawAreaHeight = 0;
@@ -283,7 +283,7 @@ void DXApp::CreateDepthStencilBufferAndView()
 		));
 }
 
-void DXApp::CreateRenderTargetViews()
+void Renderer::CreateRenderTargetViews()
 {
 	// Create render target view
 	CD3DX12_CPU_DESCRIPTOR_HANDLE RtvHeapHandle(m_pRtvHeap->GetCPUDescriptorHandleForHeapStart());
@@ -301,7 +301,7 @@ void DXApp::CreateRenderTargetViews()
 	}
 }
 
-void DXApp::CreateDescriptorsHeaps()
+void Renderer::CreateDescriptorsHeaps()
 {
 	// Create a descriptor heap
 	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc;
@@ -325,7 +325,7 @@ void DXApp::CreateDescriptorsHeaps()
 		IID_PPV_ARGS(m_pDsvHeap.GetAddressOf())));
 }
 
-void DXApp::CreateSwapChain()
+void Renderer::CreateSwapChain()
 {
 	// Create swap chain
 	m_pSwapChain.Reset();
@@ -358,7 +358,7 @@ void DXApp::CreateSwapChain()
 		m_pSwapChain.GetAddressOf()));
 }
 
-void DXApp::CheckMSAAQualitySupport()
+void Renderer::CheckMSAAQualitySupport()
 {
 	if (QMSAA_ENABLED == false)
 		return;
@@ -379,7 +379,7 @@ void DXApp::CheckMSAAQualitySupport()
 	assert(m_MSQualityLevels > 0 && "Unexpected MSAA quality levels");
 }
 
-void DXApp::CreateCmdAllocatorAndCmdList()
+void Renderer::CreateCmdAllocatorAndCmdList()
 {
 	// Create command allocator
 	ThrowIfFailed(m_pDevice->CreateCommandAllocator(
@@ -395,7 +395,7 @@ void DXApp::CreateCmdAllocatorAndCmdList()
 		IID_PPV_ARGS(m_pCommandList.GetAddressOf())));
 }
 
-void DXApp::CreateCommandQueue()
+void Renderer::CreateCommandQueue()
 {
 	// Create command queue
 	D3D12_COMMAND_QUEUE_DESC queueDesc = {};
@@ -405,13 +405,13 @@ void DXApp::CreateCommandQueue()
 	ThrowIfFailed(m_pDevice->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_pCommandQueue)));
 }
 
-void DXApp::CreateFences()
+void Renderer::CreateFences()
 {
 	// Create fence
 	ThrowIfFailed(m_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_pFence)));
 }
 
-void DXApp::InitDescriptorSizes()
+void Renderer::InitDescriptorSizes()
 {
 	// Get descriptor sizes
 	m_RtvDescriptorSize = m_pDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -419,7 +419,7 @@ void DXApp::InitDescriptorSizes()
 	m_CbvSrbDescriptorSize = m_pDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
-void DXApp::CreateDevice()
+void Renderer::CreateDevice()
 {
 	// This is super weird. This function internally will throw com exception,
 	// but result will be still fine.
@@ -430,12 +430,12 @@ void DXApp::CreateDevice()
 	));
 }
 
-void DXApp::CreateDxgiFactory()
+void Renderer::CreateDxgiFactory()
 {
 	ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&m_pDxgiFactory)));
 }
 
-ComPtr<ID3D12RootSignature> DXApp::SerializeAndCreateRootSigFromRootDesc(const CD3DX12_ROOT_SIGNATURE_DESC& rootSigDesc) const
+ComPtr<ID3D12RootSignature> Renderer::SerializeAndCreateRootSigFromRootDesc(const CD3DX12_ROOT_SIGNATURE_DESC& rootSigDesc) const
 {
 	ComPtr<ID3DBlob> serializedRootSig = nullptr;
 	ComPtr<ID3DBlob> errorBlob = nullptr;
@@ -458,7 +458,7 @@ ComPtr<ID3D12RootSignature> DXApp::SerializeAndCreateRootSigFromRootDesc(const C
 	return resultRootSig;
 }
 
-void DXApp::ExecuteCommandLists()
+void Renderer::ExecuteCommandLists()
 {
 	// Done with this command list
 	ThrowIfFailed(m_pCommandList->Close());
@@ -468,7 +468,7 @@ void DXApp::ExecuteCommandLists()
 	m_pCommandQueue->ExecuteCommandLists(_countof(cmdLists), cmdLists);	
 }
 
-void DXApp::CreateRootSignature()
+void Renderer::CreateRootSignature()
 {
 	// Root signature is an array of root parameters
 	CD3DX12_ROOT_PARAMETER slotRootParameters[2];
@@ -496,7 +496,7 @@ void DXApp::CreateRootSignature()
 	m_pRootSingature = SerializeAndCreateRootSigFromRootDesc(rootSigDesc);
 }
 
-void DXApp::CreatePipelineState()
+void Renderer::CreatePipelineState()
 {
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
 
@@ -531,7 +531,7 @@ void DXApp::CreatePipelineState()
 	ThrowIfFailed(m_pDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pPipelineState)));
 }
 
-void DXApp::CreateInputLayout()
+void Renderer::CreateInputLayout()
 {
 	m_inputLayout = {
 		{"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
@@ -540,7 +540,7 @@ void DXApp::CreateInputLayout()
 }
 
 
-void DXApp::LoadShaders()
+void Renderer::LoadShaders()
 {
 	const std::string psShader = "ps_PosTex.cso";
 	const std::string vsShader = "vs_PosTex.cso";
@@ -549,12 +549,12 @@ void DXApp::LoadShaders()
 	m_pVsShader = LoadCompiledShader(vsShader);
 }
 
-int DXApp::GetMSAASampleCount() const
+int Renderer::GetMSAASampleCount() const
 {
 	return QMSAA_ENABLED ? QMSAA_SAMPLE_COUNT : 1;
 }
 
-int DXApp::GetMSAAQuality() const
+int Renderer::GetMSAAQuality() const
 {
 	return QMSAA_ENABLED ? (m_MSQualityLevels - 1) : 0;
 }
@@ -569,7 +569,7 @@ int DXApp::GetMSAAQuality() const
 //			  should be never used. Still it is here for now, while
 //			  I am prototyping
 //************************************
-void DXApp::FlushCommandQueue()
+void Renderer::FlushCommandQueue()
 {
 	// Advance the fence value to mark a new point
 	++m_currentFenceValue;
@@ -594,12 +594,12 @@ void DXApp::FlushCommandQueue()
 	CloseHandle(eventHandle);
 }
 
-ID3D12Resource* DXApp::GetCurrentBackBuffer()
+ID3D12Resource* Renderer::GetCurrentBackBuffer()
 {
 	return m_pSwapChainBuffer[m_currentBackBuffer].Get();
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE DXApp::GetCurrentBackBufferView()
+D3D12_CPU_DESCRIPTOR_HANDLE Renderer::GetCurrentBackBufferView()
 {
 	return CD3DX12_CPU_DESCRIPTOR_HANDLE
 	(
@@ -609,7 +609,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE DXApp::GetCurrentBackBufferView()
 	);
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE DXApp::GetDepthStencilView()
+D3D12_CPU_DESCRIPTOR_HANDLE Renderer::GetDepthStencilView()
 {
 	return m_pDsvHeap->GetCPUDescriptorHandleForHeapStart();
 }
@@ -623,13 +623,13 @@ D3D12_CPU_DESCRIPTOR_HANDLE DXApp::GetDepthStencilView()
 // All preparations should be done at this point including buffers transitions.
 // This function will not do any oh these, so all on you. It do
 //************************************
-void DXApp::PresentAndSwapBuffers()
+void Renderer::PresentAndSwapBuffers()
 {
 	ThrowIfFailed(m_pSwapChain->Present(0, 0));
 	m_currentBackBuffer = (m_currentBackBuffer + 1) % QSWAP_CHAIN_BUFFER_COUNT;
 }
 
-void DXApp::CreateTexture(char* name)
+void Renderer::CreateTexture(char* name)
 {
 	if (name == nullptr)
 		return;
@@ -646,17 +646,17 @@ void DXApp::CreateTexture(char* name)
 	if (strcmp(texFileExtension, ".pcx") == 0)
 	{
 		bpp = 8;
-		DXUtils::LoadPCX(name, &image, &palette, &width, &height);
+		Utils::LoadPCX(name, &image, &palette, &width, &height);
 	}
 	else if (strcmp(texFileExtension, ".wal") == 0)
 	{
 		bpp = 8;
-		DXUtils::LoadWal(name, &image, &width, &height);
+		Utils::LoadWal(name, &image, &width, &height);
 	}
 	else if (strcmp(texFileExtension, ".tga") == 0)
 	{
 		bpp = 32;
-		DXUtils::LoadTGA(name, &image, &width, &height);
+		Utils::LoadTGA(name, &image, &width, &height);
 	}
 	else
 	{
@@ -721,7 +721,7 @@ void DXApp::CreateTexture(char* name)
 	}
 }
 
-void DXApp::CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Texture& outTex)
+void Renderer::CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Texture& outTex)
 {
 	D3D12_RESOURCE_DESC textureDesc = {};
 	textureDesc.MipLevels = 1;
@@ -774,7 +774,7 @@ void DXApp::CreateGpuTexture(const unsigned int* raw, int width, int height, int
 	//#DEBUG Create SRV here. However, I need Srv Heap first.
 }
 
-ComPtr<ID3DBlob> DXApp::LoadCompiledShader(const std::string& filename) const
+ComPtr<ID3DBlob> Renderer::LoadCompiledShader(const std::string& filename) const
 {
 	std::ifstream fin(filename, std::ios::binary);
 
@@ -792,13 +792,13 @@ ComPtr<ID3DBlob> DXApp::LoadCompiledShader(const std::string& filename) const
 	return blob;
 }
 
-void DXApp::ShutdownWin32()
+void Renderer::ShutdownWin32()
 {
 	DestroyWindow(m_hWindows);
 	m_hWindows = NULL;
 }
 
-void DXApp::GetDrawAreaSize(int* Width, int* Height)
+void Renderer::GetDrawAreaSize(int* Width, int* Height)
 {
 
 	char modeVarName[] = "gl_mode";
@@ -809,7 +809,7 @@ void DXApp::GetDrawAreaSize(int* Width, int* Height)
 	GetRefImport().Vid_GetModeInfo(Width, Height, static_cast<int>(mode->value));
 }
 
-void DXApp::LoadPalette()
+void Renderer::LoadPalette()
 {
 	char colorMapFilename[] = "pics/colormap.pcx";
 
@@ -819,7 +819,7 @@ void DXApp::LoadPalette()
 	std::byte* image = nullptr;
 	std::byte* palette = nullptr;
 
-	DXUtils::LoadPCX(colorMapFilename, &image, &palette, &width, &height);
+	Utils::LoadPCX(colorMapFilename, &image, &palette, &width, &height);
 
 	if (palette == nullptr)
 	{
@@ -843,7 +843,7 @@ void DXApp::LoadPalette()
 	free(palette);
 }
 
-void DXApp::ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const
+void Renderer::ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const
 {
 	const int size = width * height;
 
@@ -890,7 +890,7 @@ void DXApp::ImageBpp8To32(const std::byte* data, int width, int height, unsigned
 	}
 }
 
-void DXApp::FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const
+void Renderer::FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const
 {
 	constexpr int maxSize = 256;
 
@@ -901,7 +901,7 @@ void DXApp::FindImageScaledSizes(int width, int height, int& scaledWidth, int& s
 	min(scaledHeight, maxSize);
 }
 
-void DXApp::ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight)
+void Renderer::ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight)
 {
 	// Copied from GL_ResampleTexture
 	// Honestly, I don't know exactly what it does, I mean I understand that
