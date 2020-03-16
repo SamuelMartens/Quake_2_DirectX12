@@ -303,7 +303,7 @@ void Renderer::CreateRenderTargetViews()
 
 void Renderer::CreateDescriptorsHeaps()
 {
-	// Create a descriptor heap
+	// Create a render target descriptor heap
 	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc;
 	rtvHeapDesc.NumDescriptors = QSWAP_CHAIN_BUFFER_COUNT;
 	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
@@ -314,6 +314,7 @@ void Renderer::CreateDescriptorsHeaps()
 		&rtvHeapDesc,
 		IID_PPV_ARGS(m_pRtvHeap.GetAddressOf())));
 
+	// Create depth target descriptor heap
 	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc;
 	dsvHeapDesc.NumDescriptors = 1;
 	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
@@ -323,6 +324,22 @@ void Renderer::CreateDescriptorsHeaps()
 	ThrowIfFailed(m_pDevice->CreateDescriptorHeap(
 		&dsvHeapDesc,
 		IID_PPV_ARGS(m_pDsvHeap.GetAddressOf())));
+
+	// Create ShaderResourceView and Constant Resource View heap
+	D3D12_DESCRIPTOR_HEAP_DESC srvCbvHeapDesc;
+	srvCbvHeapDesc.NumDescriptors = QCBV_SRV_DESCRIPTORS_NUM;
+	srvCbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	srvCbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	srvCbvHeapDesc.NodeMask = 0;
+
+	ThrowIfFailed(m_pDevice->CreateDescriptorHeap(
+		&srvCbvHeapDesc,
+		IID_PPV_ARGS(m_pCbvSrvHeap.GetAddressOf())));
+
+	std::fill(m_cbvSrvRegistry.begin(), m_cbvSrvRegistry.end(), false);
+
+
+
 }
 
 void Renderer::CreateSwapChain()
@@ -670,10 +687,9 @@ void Renderer::CreateTexture(char* name)
 	}
 
 	unsigned int* image32 = nullptr;
-
 	constexpr int maxImageSize = 512 * 256;
-	std::array<unsigned int, maxImageSize> fixedImage;
-	std::fill(fixedImage.begin(), fixedImage.end(), 0);
+	//#DEBUG this should probably be static pointer, and exist on heap
+	std::vector<unsigned int> fixedImage(maxImageSize, 0);
 	
 	//#TODO I ignore texture type (which is basically represents is this texture sky or
 	// or something else. It's kind of important here, as we need to handle pictures
@@ -690,14 +706,12 @@ void Renderer::CreateTexture(char* name)
 		image32 = reinterpret_cast<unsigned int*>(image);
 	}
 
-
 	int scaledWidth = 0;
 	int scaledHeight = 0;
 
 	FindImageScaledSizes(width, height, scaledWidth, scaledHeight);
 
-	std::array<unsigned int, maxImageSize> resampledImage;
-	std::fill(resampledImage.begin(), resampledImage.end(), 0);
+	std::vector<unsigned int> resampledImage(maxImageSize, 0);
 
 	if (scaledWidth != width || scaledHeight != height)
 	{
@@ -771,7 +785,41 @@ void Renderer::CreateGpuTexture(const unsigned int* raw, int width, int height, 
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 
-	//#DEBUG Create SRV here. However, I need Srv Heap first.
+	
+	const int descInd = AllocSrvSlot();
+	outTex.texView = std::make_shared<TextureView>(descInd);
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDescription = {};
+	srvDescription.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDescription.Format = textureDesc.Format;
+	srvDescription.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDescription.Texture2D.MostDetailedMip = 0;
+	srvDescription.Texture2D.MipLevels = 1;
+	srvDescription.Texture2D.ResourceMinLODClamp = 0.0f;
+	
+	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptor(m_pCbvSrvHeap->GetCPUDescriptorHandleForHeapStart());
+	descriptor.Offset(descInd, m_CbvSrbDescriptorSize);
+
+	m_pDevice->CreateShaderResourceView(outTex.buffer.Get(), &srvDescription, descriptor);
+}
+
+void Renderer::FreeSrvSlot(int slotIndex)
+{
+	assert(m_cbvSrvRegistry[slotIndex] == true);
+
+	m_cbvSrvRegistry[slotIndex] = false;
+}
+
+// Looks for free slot and marks slot as taken 
+int Renderer::AllocSrvSlot()
+{
+	auto res = std::find(m_cbvSrvRegistry.begin(), m_cbvSrvRegistry.end(), false);
+
+	assert(res != m_cbvSrvRegistry.end());
+
+	*res = true;
+
+	return std::distance(m_cbvSrvRegistry.begin(), res);
 }
 
 ComPtr<ID3DBlob> Renderer::LoadCompiledShader(const std::string& filename) const
@@ -943,5 +991,30 @@ void Renderer::ResampleTexture(const unsigned *in, int inwidth, int inheight, un
 			((byte *)(out + j))[2] = (pix1[2] + pix2[2] + pix3[2] + pix4[2]) >> 2;
 			((byte *)(out + j))[3] = (pix1[3] + pix2[3] + pix3[3] + pix4[3]) >> 2;
 		}
+	}
+}
+
+void Renderer::GetTextureFullname(const char* name, char* dest, int destSize) const
+{
+	if (name[0] != '/' && name[0] != '\\')
+	{
+		Utils::Sprintf(dest, destSize, "pics/%s.pcx", name);
+	}
+	else
+	{
+		assert(destSize >= strlen(name) + 1);
+		strcpy(dest, name + 1);
+	}
+}
+
+void Renderer::DrawTextured(char* name)
+{
+	std::array<char, MAX_QPATH> fullName;
+
+	GetTextureFullname(name, fullName.data(), fullName.size());
+
+	if (m_textures.find(fullName.data()) == m_textures.end())
+	{
+		CreateTexture(fullName.data());
 	}
 }

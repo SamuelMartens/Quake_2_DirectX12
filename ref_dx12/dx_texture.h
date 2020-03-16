@@ -2,18 +2,39 @@
 
 #include <wrl.h>
 #include <d3d12.h>
+#include <memory>
 
 #include "d3dx12.h"
 
 using namespace Microsoft::WRL;
+
+// Implements exclusive ownership of SRV descriptor
+class TextureView
+{
+public:
+
+	constexpr static int EMPTY_SRV_IND = -1;
+
+	TextureView() = default;
+	TextureView(int newSrvInd);
+
+	TextureView(const TextureView&) = delete;
+	TextureView& operator=(const TextureView&) = delete;
+
+	TextureView(TextureView&& t);
+	TextureView& operator=(TextureView&& t);
+
+	~TextureView();
+
+	int srvIndex = EMPTY_SRV_IND;
+
+};
+
 
 class Texture
 {
 public:
 
 	ComPtr<ID3D12Resource> buffer;
-	// Daamn, all the examples I saw so far use index in descriptor heap
-	// and I don't understand why, cause we have to get this descriptor handle 
-	// every time, why can't I descriptor handle directly?
-	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptor;
+	std::shared_ptr<TextureView> texView;
 };

@@ -43,7 +43,9 @@ void DX12_Draw_GetPicSize(int *w, int *h, char *name)
 {}
 
 void DX12_Draw_Pic(int x, int y, char *name)
-{}
+{
+	Renderer::Inst().DrawTextured(name);
+}
 
 void DX12_Draw_StretchPic(int x, int y, int w, int h, char *name)
 {}
@@ -130,6 +132,7 @@ refexport_t GetRefAPI (refimport_t rimp)
 
 	re.AppActivate = DX12_AppActivate;
 
+	Swap_Init();
 
 	return re;
 }

@@ -31,6 +31,7 @@ private:
 	constexpr static bool		 QMSAA_ENABLED = false;
 	constexpr static int		 QMSAA_SAMPLE_COUNT = 4;
 	constexpr static int		 QTRANSPARENT_TABLE_VAL = 255;
+	constexpr static int		 QCBV_SRV_DESCRIPTORS_NUM = 256;
 
 public:
 
@@ -50,6 +51,12 @@ public:
 
 	const refimport_t& GetRefImport() const { return m_RefImport; };
 	void SetRefImport(refimport_t RefImport) { m_RefImport = RefImport; };
+
+	void FreeSrvSlot(int slotIndex);
+	int AllocSrvSlot();
+
+	//#DEBUG remove later
+	void DrawTextured(char* name);
 
 private:
 
@@ -114,6 +121,7 @@ private:
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
+	void GetTextureFullname(const char* name, char* dest, int destSize) const;
 
 	HWND		m_hWindows = nullptr;
 
@@ -133,6 +141,7 @@ private:
 
 	ComPtr<ID3D12DescriptorHeap>	  m_pRtvHeap;
 	ComPtr<ID3D12DescriptorHeap>	  m_pDsvHeap;
+	ComPtr<ID3D12DescriptorHeap>	  m_pCbvSrvHeap;
 
 	std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputLayout;
 	ComPtr<ID3D12PipelineState>		  m_pPipelineState;
@@ -164,6 +173,7 @@ private:
 	std::vector<ComPtr<ID3D12Resource>> m_uploadResources;
 
 	std::array<unsigned int, 256> m_8To24Table;
-
-
+	// Bookkeeping for which descriptors are taken and which aren't. This is very simple
+	// true means slot is taken.
+	std::array<bool, QCBV_SRV_DESCRIPTORS_NUM> m_cbvSrvRegistry;
 };

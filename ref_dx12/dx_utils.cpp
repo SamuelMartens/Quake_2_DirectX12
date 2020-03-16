@@ -44,6 +44,8 @@ void Sys_Error(char *error, ...)
 	Renderer::Inst().GetRefImport().Sys_Error(ERR_FATAL, msg, text);
 }
 
+// This function is used in q_shared.c and I don't want to change anything in there,
+// so it's ok, use Utils::Sprintf for everything else
 void Com_Printf(char *fmt, ...)
 {
 	va_list		argptr;
@@ -67,11 +69,26 @@ typedef struct _TargaHeader {
 
 #endif
 
+void Utils::Sprintf(char* dest, int size, const char* fmt, ...)
+{
+	int		len;
+	va_list		argptr;
+	char	bigbuffer[0x10000];
+
+	va_start(argptr, fmt);
+	len = vsprintf(bigbuffer, fmt, argptr);
+	va_end(argptr);
+
+	assert(len < size);
+
+	strncpy(dest, bigbuffer, size - 1);
+}
+
 
 void Utils::LoadPCX(char* filename, std::byte** image, std::byte** palette, int* width, int* height)
 {
-	byte** internalPalette = nullptr;
-	byte** pic = nullptr;
+	byte** internalPalette = reinterpret_cast<byte**>(palette);
+	byte** pic = reinterpret_cast<byte**>(image);
 
 	byte	*raw;
 	pcx_t	*pcx;
@@ -168,13 +185,9 @@ void Utils::LoadPCX(char* filename, std::byte** image, std::byte** palette, int*
 		ri.Con_Printf(PRINT_DEVELOPER, errorMsg, filename);
 		free(*pic);
 		*pic = NULL;
-		*image = NULL;
 	}
 
 	ri.FS_FreeFile(pcx);
-
-	*image = (std::byte*)*pic;
-	*palette = (std::byte*)*internalPalette;
 }
 
 void Utils::LoadWal(char* filename, std::byte** image, int* width, int* height)
@@ -217,7 +230,7 @@ void Utils::LoadTGA(char* filename, std::byte** image, int* width, int* height)
 	byte			*targa_rgba;
 	byte tmp[2];
 
-	byte **pic = NULL;
+	byte **pic = reinterpret_cast<byte**>(image);
 	const refimport_t& ri = Renderer::Inst().GetRefImport();
 
 	//
@@ -393,8 +406,6 @@ void Utils::LoadTGA(char* filename, std::byte** image, int* width, int* height)
 		breakOut:;
 		}
 	}
-
-	*image = (std::byte*)(*pic);
 
 	ri.FS_FreeFile(buffer);
 }

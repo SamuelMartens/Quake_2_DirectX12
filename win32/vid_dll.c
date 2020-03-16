@@ -715,6 +715,9 @@ void VID_Init (void)
 	vid_xpos = Cvar_Get ("vid_xpos", "3", CVAR_ARCHIVE);
 	vid_ypos = Cvar_Get ("vid_ypos", "22", CVAR_ARCHIVE);
 	vid_fullscreen = Cvar_Get ("vid_fullscreen", "0", CVAR_ARCHIVE);
+	//#DEBUG full screen
+	vid_fullscreen->value = 0.0;
+	//END
 	vid_gamma = Cvar_Get( "vid_gamma", "1", CVAR_ARCHIVE );
 	win_noalttab = Cvar_Get( "win_noalttab", "0", CVAR_ARCHIVE );
 
@@ -742,7 +745,7 @@ void VID_Init (void)
 	/* Disable the 3Dfx splash screen */
 	putenv("FX_GLIDE_NO_SPLASH=0");
 		
-	//#DEBUG
+	//#DEBUG render set
 	Cvar_Set("vid_ref", "dx12");
 	//END
 
