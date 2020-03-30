@@ -40,11 +40,13 @@ void DX12_RenderFrame(refdef_t *fd)
 {}
 
 void DX12_Draw_GetPicSize(int *w, int *h, char *name)
-{}
+{
+	Renderer::Inst().GetPicSize(w, h, name);
+}
 
 void DX12_Draw_Pic(int x, int y, char *name)
 {
-	Renderer::Inst().DrawTextured(name);
+	Renderer::Inst().Draw_Pic(x, y, name);
 }
 
 void DX12_Draw_StretchPic(int x, int y, int w, int h, char *name)

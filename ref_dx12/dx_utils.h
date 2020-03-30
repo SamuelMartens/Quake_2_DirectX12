@@ -10,10 +10,7 @@
 namespace Utils
 {
 	void Sprintf(char* dest, int size, const char* fmt, ...);
-
-#ifdef WIN32
 	void VSCon_Printf(const char *msg, ...);
-#endif
 
 	class Exception : public std::exception
 	{
@@ -53,6 +50,8 @@ namespace Utils
 		std::string fileName;
 		int lineNumber;
 	};
+
+	unsigned int Align(unsigned int size, unsigned int alignment);
 
 	// All those Load functions are just wrappers around Quake 2 GL implementation of loads
 	// It's ok, cause they don't have any GL specific code.

@@ -39,6 +39,12 @@
     <ClInclude Include="dx_texture.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="dx_graphicalobject.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dx_common.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ref_dx12.def">
@@ -59,6 +65,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\game\q_shared.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dx_graphicalobject.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

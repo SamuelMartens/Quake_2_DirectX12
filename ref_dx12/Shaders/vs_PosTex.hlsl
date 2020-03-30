@@ -21,9 +21,8 @@ struct VertexOut
 VertexOut main(VertexIn vIn)
 {
 	VertexOut vOut;
-
-	vOut.pPos = mul(vIn.vPos, gWorldViewProj);
-	
+    vOut.pPos = mul(gWorldViewProj, vIn.vPos);
+    
 	vOut.pTex = vIn.vTex;
 
 	return vOut;

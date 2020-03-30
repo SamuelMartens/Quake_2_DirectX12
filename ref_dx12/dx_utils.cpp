@@ -6,7 +6,6 @@
 
 #include "dx_app.h"
 
-#ifdef WIN32
 /*
 =================
 VSCon_Printf
@@ -27,7 +26,6 @@ void Utils::VSCon_Printf(const char *msg, ...)
 	OutputDebugStringA(text);
 }
 
-#endif
 
 #ifndef GAME_HARD_LINKED
 // this is only here so the functions in q_shared.c and q_shwin.c can link
@@ -69,6 +67,12 @@ typedef struct _TargaHeader {
 
 #endif
 
+
+unsigned int Utils::Align(unsigned int size, unsigned int alignment)
+{
+	--alignment;
+	return (size + alignment) & ~alignment;
+}
 void Utils::Sprintf(char* dest, int size, const char* fmt, ...)
 {
 	int		len;

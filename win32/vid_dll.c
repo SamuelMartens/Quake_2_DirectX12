@@ -747,6 +747,7 @@ void VID_Init (void)
 		
 	//#DEBUG render set
 	Cvar_Set("vid_ref", "dx12");
+	//Cvar_Set("vid_ref", "gl");
 	//END
 
 	/* Start the graphics mode and load refresh DLL */

@@ -1,12 +1,10 @@
 #pragma once
 
-#include <wrl.h>
 #include <d3d12.h>
 #include <memory>
 
 #include "d3dx12.h"
-
-using namespace Microsoft::WRL;
+#include "dx_common.h"
 
 // Implements exclusive ownership of SRV descriptor
 class TextureView
@@ -37,4 +35,9 @@ public:
 
 	ComPtr<ID3D12Resource> buffer;
 	std::shared_ptr<TextureView> texView;
+
+	int samplerInd = 0;
+
+	int width = 0;
+	int height = 0;
 };
