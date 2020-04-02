@@ -973,9 +973,7 @@ qboolean GL_Upload32 (unsigned *data, int width, int height,  qboolean mipmap)
 	int			i, c;
 	byte		*scan;
 	int comp;
-	//#DEBUG this is also generic. So I don't need to implement in DXCreate texture
-	// A lot of this stuff can be copied and I don't need reimplement
-	//#DEBUG step 2
+
 	uploaded_paletted = qFalse;
 	// Find scaled_width which is power of 2 and closest to width 
 	for (scaled_width = 1 ; scaled_width < width ; scaled_width<<=1)
@@ -1214,8 +1212,6 @@ qboolean GL_Upload8 (byte *data, int width, int height,  qboolean mipmap, qboole
 		{
 			p = data[i];
 			// Cause d_8to24table is in bytes we keep all channels in one number
-			//#DEBUG I have to intialize this in my code somehow
-			//#DEBUG step 1 avoid transparency bleeding
 			trans[i] = d_8to24table[p];
 
 			if (p == 255)

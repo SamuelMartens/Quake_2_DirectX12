@@ -74,10 +74,7 @@ void Renderer::BeginFrame(float CameraSeparation)
 
 	// Specify buffer we are going to render to
 	m_commandList->OMSetRenderTargets(1, &GetCurrentBackBufferView(), true, &GetDepthStencilView());
-	//#DEBUG
-	// Set render pragram state. I should do some kind of reflection for programs and states
-	// and make separate abstraction. And that's probably needs to happened ASAP. I need at least
-	// draft.
+
 	ID3D12DescriptorHeap* descriptorHeaps[] = { m_cbvSrvHeap.Get(), m_samplerHeap.Get() };
 	m_commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
@@ -110,8 +107,7 @@ void Renderer::EndFrame()
 
 	FlushCommandQueue();
 	// We flushed command queue, we know for sure that it is safe to release those resources
-	//#DEBUG uncomment
-	//m_uploadResources.clear();
+	m_uploadResources.clear();
 }
 
 void Renderer::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
@@ -231,6 +227,8 @@ void Renderer::InitDX()
 
 	CreateTextureSampler();
 	CreateConstantBuffer();
+
+	GenerateYInverseAndCenterMatrix();
 
 	// If we recorded some commands during initialization, execute them here
 	ExecuteCommandLists();
@@ -571,19 +569,10 @@ void Renderer::CreatePipelineState()
 		reinterpret_cast<BYTE*>(m_psShader->GetBufferPointer()),
 		m_psShader->GetBufferSize()
 	};
-	//#DEBUG here clockwise might hit me in a face. Cause 
-	// GL uses counter clockwise. Let's see what I will get first, and 
-	// then fix this problem
+
 	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	//#DEBUG
-	psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
-	psoDesc.RasterizerState.FrontCounterClockwise = TRUE;
-	//END
 	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	//#DEBUG
-	psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-	//END
 	psoDesc.SampleMask = UINT_MAX;
 	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDesc.NumRenderTargets = 1;
@@ -766,7 +755,7 @@ void Renderer::CreateTexture(char* name)
 
 	unsigned int* image32 = nullptr;
 	constexpr int maxImageSize = 512 * 256;
-	//#DEBUG this should probably be static pointer, and exist on heap
+	//#TODO this should probably be static pointer, and exist on heap
 	std::vector<unsigned int> fixedImage(maxImageSize, 0);
 	
 	//#TODO I ignore texture type (which is basically represents is this texture sky or
@@ -842,16 +831,7 @@ void Renderer::CreateGpuTexture(const unsigned int* raw, int width, int height, 
 	// Count alignment and go for what we need
 	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(outTex.buffer.Get(), 0, 1);
 
-	ComPtr<ID3D12Resource> textureUploadBuffer;
-
-	// Create upload buffer
-	ThrowIfFailed(m_device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&textureUploadBuffer)));
+	ComPtr<ID3D12Resource> textureUploadBuffer = CreateUploadHeapBuffer(uploadBufferSize);
 
 	m_uploadResources.push_back(textureUploadBuffer);
 
@@ -885,7 +865,7 @@ void Renderer::CreateGpuTexture(const unsigned int* raw, int width, int height, 
 	m_device->CreateShaderResourceView(outTex.buffer.Get(), &srvDescription, descriptor);
 }
 
-ComPtr<ID3D12Resource> Renderer::CreateGpuBuffer(const void* data, UINT64 byteSize)
+ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer(const void* data, UINT64 byteSize)
 {
 	// Create actual buffer 
 	D3D12_RESOURCE_DESC bufferDesc = {};
@@ -913,17 +893,7 @@ ComPtr<ID3D12Resource> Renderer::CreateGpuBuffer(const void* data, UINT64 byteSi
 	));
 
 	// Create upload buffer
-	ComPtr<ID3D12Resource> uploadBuffer;
-
-	ThrowIfFailed(m_device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&bufferDesc,
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&uploadBuffer)
-	));
-
+	ComPtr<ID3D12Resource> uploadBuffer = CreateUploadHeapBuffer(byteSize);
 	m_uploadResources.push_back(uploadBuffer);
 
 	// Describe upload resource data 
@@ -943,20 +913,50 @@ ComPtr<ID3D12Resource> Renderer::CreateGpuBuffer(const void* data, UINT64 byteSi
 	return buffer;
 }
 
-void Renderer::UpdateConstantBuffer(ComPtr<ID3D12Resource> buffer, int offset, const void* data, int byteSize) const
+ComPtr<ID3D12Resource> Renderer::CreateUploadHeapBuffer(UINT64 byteSize) const
 {
-	const unsigned int dataSize = Utils::Align(byteSize, QCONST_BUFFER_ALIGNMENT);
+	ComPtr<ID3D12Resource> uploadHeapBuffer;
+
+	// Create actual buffer 
+	D3D12_RESOURCE_DESC bufferDesc = {};
+	bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	bufferDesc.Alignment = 0;
+	bufferDesc.Width = byteSize;
+	bufferDesc.Height = 1;
+	bufferDesc.DepthOrArraySize = 1;
+	bufferDesc.MipLevels = 1;
+	bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
+	bufferDesc.SampleDesc.Count = 1;
+	bufferDesc.SampleDesc.Quality = 0;
+	bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	bufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+	ThrowIfFailed(m_device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&bufferDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&uploadHeapBuffer)
+	));
+
+	return uploadHeapBuffer;
+}
+
+void Renderer::UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const
+{
+	const unsigned int dataSize = Utils::Align(args.byteSize, args.alignment);
 
 	BYTE* mappedMemory = nullptr;
 	// This parameter indicates the range that CPU might read. If begin and end are equal, we promise
 	// that CPU will never try to read from this memory
 	D3D12_RANGE mappedRange = { 0, 0 };
 
-	buffer->Map(0, &mappedRange, reinterpret_cast<void**>(&mappedMemory));
+	args.buffer->Map(0, &mappedRange, reinterpret_cast<void**>(&mappedMemory));
 
-	memcpy(mappedMemory + offset, data, dataSize);
+	memcpy(mappedMemory + args.offset, args.data, dataSize);
 
-	buffer->Unmap(0, &mappedRange);
+	args.buffer->Unmap(0, &mappedRange);
 }
 
 void Renderer::FreeSrvSlot(int slotIndex)
@@ -1007,22 +1007,9 @@ void Renderer::ShutdownWin32()
 	m_hWindows = NULL;
 }
 
-void Renderer::CreatePictureObject(int x, int y, const char* pictureName)
+void Renderer::CreatePictureObject(const char* pictureName)
 {
-	//#DEBUG do I really need x y here? This is a position
-
 	GraphicalObject& newObject = m_graphicalObjects.emplace_back(GraphicalObject());
-
-	int drawingAreaWidth = 0;
-	int drawingAreaHeight = 0;
-
-	GetDrawAreaSize(&drawingAreaWidth, &drawingAreaHeight);
-
-	newObject.position.x = x;
-	//#DEBUG switch
-
-	newObject.position.y = drawingAreaHeight - y;
-//	newObject.position.y = y;
 
 	newObject.textureKey = pictureName;
 
@@ -1035,13 +1022,13 @@ void Renderer::CreatePictureObject(int x, int y, const char* pictureName)
 	//   0 +------------+ 3
 	//
 
-	float w = texture.width;
-	float h =  -texture.height;
+	const float w = texture.width;
+	const float h = texture.height;
 
-	ShDef::Vert::PosTexCoord vert0 = { XMFLOAT4(0.0f,  h, 0.0f, 1.0f),		  XMFLOAT2(0.0f, 1.0f) };
-	ShDef::Vert::PosTexCoord vert1 = { XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f),					  XMFLOAT2(0.0f, 0.0f) };
-	ShDef::Vert::PosTexCoord vert2 = { XMFLOAT4(w, 0.0f, 0.0f, 1.0f),			  XMFLOAT2(1.0f, 0.0f) };
-	ShDef::Vert::PosTexCoord vert3 = { XMFLOAT4(w, h, 0.0f, 1.0f), XMFLOAT2(1.0f, 1.0f) };
+	ShDef::Vert::PosTexCoord vert0 = { XMFLOAT4(0.0f,  h, 0.0f, 1.0f),   XMFLOAT2(0.0f, 1.0f) };
+	ShDef::Vert::PosTexCoord vert1 = { XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f) };
+	ShDef::Vert::PosTexCoord vert2 = { XMFLOAT4(w, 0.0f, 0.0f, 1.0f),	 XMFLOAT2(1.0f, 0.0f) };
+	ShDef::Vert::PosTexCoord vert3 = { XMFLOAT4(w, h, 0.0f, 1.0f),		 XMFLOAT2(1.0f, 1.0f) };
 
 
 
@@ -1058,7 +1045,7 @@ void Renderer::CreatePictureObject(int x, int y, const char* pictureName)
 	};
 
 
-	newObject.vertexBuffer = CreateGpuBuffer(&vertices, sizeof(vertices));
+	newObject.vertexBuffer = CreateDefaultHeapBuffer(&vertices, sizeof(vertices));
 
 	static const unsigned int PictureObjectConstSize = Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT);
 
@@ -1067,39 +1054,31 @@ void Renderer::CreatePictureObject(int x, int y, const char* pictureName)
 
 void Renderer::Draw(const GraphicalObject& object)
 {
-
-
-	float halfWidth = m_viewport.Width / 2;
-	float halfHeight = m_viewport.Height / 2;
-
-	float posX = object.position.x - halfWidth;
-	float posY = object.position.y - halfHeight;
-
 	// Update transformation mat
 	ShDef::ConstBuff::TransMat transMat;
 	XMMATRIX modelMat = XMMatrixTranslation(
-		posX,
-		posY,
+		object.position.x,
+		object.position.y,
 		object.position.z
 	);
 
-
-	//XMMATRIX modelMat = XMMatrixTranslation(
-	//	200.0,
-	//	200.0,
-	//	0.0
-	//);
-
 	XMMATRIX sseViewMat = XMLoadFloat4x4(&m_viewMat);
 	XMMATRIX sseProjMat = XMLoadFloat4x4(&m_projectionMat);
-	//#DEBUG switch
-	//XMMATRIX mvpMat = modelMat * sseViewMat * sseProjMat;
-	XMMATRIX mvpMat =  modelMat * sseViewMat * sseProjMat;
+	XMMATRIX sseYInverseAndCenterMat = XMLoadFloat4x4(&m_yInverseAndCenterMatrix);
+
+	XMMATRIX mvpMat =  modelMat * sseYInverseAndCenterMat * sseViewMat * sseProjMat;
 	
 
 	XMStoreFloat4x4(&transMat.transformationMat, mvpMat);
 
-	UpdateConstantBuffer(m_constantBuffer.gpuBuffer, object.constantBufferOffset, &transMat, sizeof(transMat));
+	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
+	updateConstBufferArgs.buffer = m_constantBuffer.gpuBuffer;
+	updateConstBufferArgs.offset = object.constantBufferOffset;
+	updateConstBufferArgs.data = &transMat;
+	updateConstBufferArgs.byteSize = sizeof(transMat);
+	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
+	// Update our constant buffer
+	UpdateUploadHeapBuff(updateConstBufferArgs);
 
 	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	
@@ -1109,10 +1088,6 @@ void Renderer::Draw(const GraphicalObject& object)
 	vertBuffView.StrideInBytes = sizeof( ShDef::Vert::PosTexCoord);
 	vertBuffView.SizeInBytes = object.vertexBuffer->GetDesc().Width;
 
-	//#DEBUG
-	//assert(vertBuffView.SizeInBytes == sizeof(ShDef::Vert::PosTexCoord) * 6);
-	//END
-	//#DEBUG uncomment
 	m_commandList->IASetVertexBuffers(0, 1, &vertBuffView);
 	
 	// Binding root signature params
@@ -1245,6 +1220,22 @@ void Renderer::FindImageScaledSizes(int width, int height, int& scaledWidth, int
 	min(scaledHeight, maxSize);
 }
 
+void Renderer::GenerateYInverseAndCenterMatrix()
+{
+	int drawAreaWidth = 0;
+	int drawAreaHeight = 0;
+
+	GetDrawAreaSize(&drawAreaWidth, &drawAreaHeight);
+
+	XMMATRIX sseResultMatrix = XMMatrixIdentity();
+
+	sseResultMatrix.r[1] = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
+
+	sseResultMatrix = XMMatrixTranslation(-drawAreaWidth / 2, -drawAreaHeight / 2, 0.0f) * sseResultMatrix;
+
+	XMStoreFloat4x4(&m_yInverseAndCenterMatrix, sseResultMatrix);
+}
+
 void Renderer::ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight)
 {
 	// Copied from GL_ResampleTexture
@@ -1324,39 +1315,20 @@ void Renderer::Draw_Pic(int x, int y, char* name)
 
 	if (targetObject == m_graphicalObjects.end())
 	{
-		//#DEBUG nothing controls lifetime of these objects. External API will never 
-		// make a request delete it, I should figure out lifetime issues
-		CreatePictureObject(x, y, fullName.data());
+		//#TODO nothing controls lifetime of these objects. External API will never 
+		// make a request delete it. Proper solution would be to implement DrawStreaming
+		// so temporary geometry will be created avery draw call for this, and the deleted in the end of the
+		// frame.
+		CreatePictureObject(fullName.data());
 
 		targetObject = m_graphicalObjects.end() - 1;
 	}
 
-
-	int drawingAreaWidth = 0;
-	int drawingAreaHeight = 0;
-
-	GetDrawAreaSize(&drawingAreaWidth, &drawingAreaHeight);
-
 	targetObject->position.x = x;
-	targetObject->position.y = drawingAreaHeight - y;
-	//targetObject->position.y = y;
-	
-	//#DEBUG
-	/*if (strcmp(name, "m_main_plaque") == 0)
-	{
-		targetObject->position.y = drawingAreaHeight - 490 - 166;
-	}
+	targetObject->position.y = y;
 
-	if (strcmp(name, "m_main_logo") == 0)
-	{
-		targetObject->position.y -= 32;
-	}*/
-	//END
-
-
-	// We have everything we need now draw
-	Draw(*targetObject);
-	
+	// We have everything we need, now draw
+	Draw(*targetObject);	
 }
 
 void Renderer::GetPicSize(int* x, int* y, const char* name) const

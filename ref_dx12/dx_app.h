@@ -19,11 +19,27 @@
 #include "dx_common.h"
 #include "dx_graphicalobject.h"
 #include "dx_constantbuffer.h"
+#include "dx_shaderdefinitions.h"
 
 extern "C"
 {
 	#include "../client/ref.h"
 };
+
+namespace FArg 
+{
+	struct UpdateUploadHeapBuff
+	{
+		ComPtr<ID3D12Resource> buffer;
+		int offset = 0;
+		const void* data = 0;
+		int byteSize = 0;
+		int alignment = 0;
+	};
+};
+
+
+//#TODO currently I do : Update - Draw, Update - Draw. It should be Update Update , Draw Draw
 
 class Renderer
 {
@@ -39,6 +55,7 @@ private:
 	constexpr static int		 QCBV_SRV_DESCRIPTORS_NUM = 256;
 	constexpr static int		 QCONST_BUFFER_ALIGNMENT = 256;
 	constexpr static int		 QCONST_BUFFER_SIZE = 256 * 2048;
+
 
 public:
 
@@ -64,7 +81,6 @@ public:
 
 	/* API functions */
 	void Init(WNDPROC WindowProc, HINSTANCE hInstance);
-	//#DEBUG remove later
 	void Draw_Pic(int x, int y, char* name);
 	void GetPicSize(int* x, int* y, const char* name) const;
 
@@ -129,14 +145,16 @@ private:
 	void GetTextureFullname(const char* name, char* dest, int destSize) const;
 
 	/* Buffer */
-	ComPtr<ID3D12Resource> CreateGpuBuffer(const void* data, UINT64 byteSize);
-	void UpdateConstantBuffer(ComPtr<ID3D12Resource> buffer, int offset, const void* data, int byteSize) const;
+	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize);
+	ComPtr<ID3D12Resource> CreateUploadHeapBuffer(UINT64 byteSize) const;
+	//#DEBUG this should have more generic functionality
+	void UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const;
 
 	/* Shutdown and clean up Win32 specific stuff */
 	void ShutdownWin32();
 
 	/* Factory functionality */
-	void CreatePictureObject(int x, int y, const char* pictureName);
+	void CreatePictureObject(const char* pictureName);
 
 	/* Rendering */
 	void Draw(const GraphicalObject& object);
@@ -146,7 +164,7 @@ private:
 	void LoadPalette();
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
-	
+	void GenerateYInverseAndCenterMatrix();
 
 	HWND		m_hWindows = nullptr;
 
@@ -201,6 +219,7 @@ private:
 	// we finish execution of command list that references this. So I will just put this stuff here
 	// and clear this vector at the end of every frame.
 	std::vector<ComPtr<ID3D12Resource>> m_uploadResources;
+	ComPtr<ID3D12Resource> m_streamingVertexResource;
 
 	std::array<unsigned int, 256> m_8To24Table;
 	// Bookkeeping for which descriptors are taken and which aren't. This is very simple,
@@ -212,4 +231,9 @@ private:
 
 	XMFLOAT4X4 m_projectionMat;
 	XMFLOAT4X4 m_viewMat;
+	// DirectX and OpenGL have different directions for Y axis,
+	// this matrix is required to fix this. Also apparently original Quake 2
+	// had origin in a middle of a screen, while we have it in upper left corner,
+	// so we need to center content to the screen center
+	XMFLOAT4X4 m_yInverseAndCenterMatrix;
 };
