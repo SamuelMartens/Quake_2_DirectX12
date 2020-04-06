@@ -17,8 +17,8 @@
 #include "d3dx12.h"
 #include "dx_texture.h"
 #include "dx_common.h"
-#include "dx_graphicalobject.h"
-#include "dx_constantbuffer.h"
+#include "dx_objects.h"
+#include "dx_buffer.h"
 #include "dx_shaderdefinitions.h"
 
 extern "C"
@@ -31,16 +31,20 @@ namespace FArg
 	struct UpdateUploadHeapBuff
 	{
 		ComPtr<ID3D12Resource> buffer;
-		int offset = 0;
+		int offset = -1;
 		const void* data = 0;
-		int byteSize = 0;
-		int alignment = 0;
+		int byteSize = -1;
+		int alignment = -1;
 	};
 };
 
 
-//#TODO currently I do : Update - Draw, Update - Draw. It should be Update Update , Draw Draw
-
+//#TODO 
+// 1) currently I do : Update - Draw, Update - Draw. It should be Update Update , Draw Draw
+// 2) One huge vertex buffer for both streaming and persistent, minimize transitions if step 1 is fulfilled
+//    and buffer allocation
+// 3) Make your wrappers as exclusive owners of some resource, and operate with smart pointers instead to avoid mess
+//    during resource management.(This requires rewrite some stuff like Textures or buffers)
 class Renderer
 {
 private:
@@ -55,7 +59,9 @@ private:
 	constexpr static int		 QCBV_SRV_DESCRIPTORS_NUM = 256;
 	constexpr static int		 QCONST_BUFFER_ALIGNMENT = 256;
 	constexpr static int		 QCONST_BUFFER_SIZE = 256 * 2048;
+	constexpr static int		 QSTREAMING_VERTEX_BUFFER_SIZE = 256 * 2048;
 
+	constexpr static char		 QRAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
 
 public:
 
@@ -78,11 +84,15 @@ public:
 	int AllocSrvSlot();
 
 	void DeleteConstantBuffMemory(int offset);
+	void DeleteResources(ComPtr<ID3D12Resource> resourceToDelete);
+
 
 	/* API functions */
 	void Init(WNDPROC WindowProc, HINSTANCE hInstance);
 	void Draw_Pic(int x, int y, char* name);
+	void Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data);
 	void GetPicSize(int* x, int* y, const char* name) const;
+	void SetPalette(const unsigned char* palette);
 
 private:
 
@@ -90,6 +100,8 @@ private:
 	void InitWin32(WNDPROC WindowProc, HINSTANCE hInstance);
 	/* Initialize DirectX stuff */
 	void InitDX();
+
+	void InitUtils();
 
 	void InitScissorRect();
 
@@ -119,8 +131,6 @@ private:
 	void CreateInputLayout();
 	void LoadShaders();
 
-	void CreateConstantBuffer();
-
 	void CreateTextureSampler();
 
 	int GetMSAASampleCount() const;
@@ -139,15 +149,16 @@ private:
 	void PresentAndSwapBuffers();
 
 	/* Texture */
-	void CreateTexture(char* name);
+	void CreateTextureFromFile(char* name);
 	void CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Texture& outTex);
+	void CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 	void GetTextureFullname(const char* name, char* dest, int destSize) const;
+	void UpdateTexture(Texture& tex, const std::byte* data);
 
 	/* Buffer */
 	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize);
 	ComPtr<ID3D12Resource> CreateUploadHeapBuffer(UINT64 byteSize) const;
-	//#DEBUG this should have more generic functionality
 	void UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const;
 
 	/* Shutdown and clean up Win32 specific stuff */
@@ -158,13 +169,13 @@ private:
 
 	/* Rendering */
 	void Draw(const GraphicalObject& object);
+	void DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos);
 
 	/* Utils */
 	void GetDrawAreaSize(int* Width, int* Height);
-	void LoadPalette();
+	void Load8To24Table();
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
-	void GenerateYInverseAndCenterMatrix();
 
 	HWND		m_hWindows = nullptr;
 
@@ -194,7 +205,8 @@ private:
 	ComPtr<ID3DBlob> m_psShader;
 	ComPtr<ID3DBlob> m_vsShader;
 
-	ConstantBuffer m_constantBuffer;
+	AllocBuffer m_constantBuffer;
+	AllocBuffer m_streamingVertexBuffer;
 
 	D3D12_VIEWPORT m_viewport;
 	tagRECT		   m_scissorRect;
@@ -219,15 +231,21 @@ private:
 	// we finish execution of command list that references this. So I will just put this stuff here
 	// and clear this vector at the end of every frame.
 	std::vector<ComPtr<ID3D12Resource>> m_uploadResources;
-	ComPtr<ID3D12Resource> m_streamingVertexResource;
+	// If we want to delete resource we can't do this right away cause there is a high chance that this 
+	// resource will still be in use, so we just put it here and delete it later 
+	std::vector<ComPtr<ID3D12Resource>> m_resourcesToDelete;
 
 	std::array<unsigned int, 256> m_8To24Table;
+	std::array<unsigned int, 256> m_rawPalette;
+
 	// Bookkeeping for which descriptors are taken and which aren't. This is very simple,
 	// true means slot is taken.
 	std::array<bool, QCBV_SRV_DESCRIPTORS_NUM> m_cbvSrvRegistry;
 
 	// Should I separate UI from game object? Damn, is this NWN speaks in me
 	std::vector<GraphicalObject> m_graphicalObjects;
+
+	std::vector<int> m_streamingConstOffsets;
 
 	XMFLOAT4X4 m_projectionMat;
 	XMFLOAT4X4 m_viewMat;

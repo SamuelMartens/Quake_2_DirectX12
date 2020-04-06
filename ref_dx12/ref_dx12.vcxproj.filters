@@ -39,10 +39,16 @@
     <ClInclude Include="dx_texture.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="dx_graphicalobject.h">
+    <ClInclude Include="dx_common.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="dx_common.h">
+    <ClInclude Include="dx_buffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dx_objects.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dx_shaderdefinitions.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -67,7 +73,10 @@
     <ClCompile Include="..\game\q_shared.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="dx_graphicalobject.cpp">
+    <ClCompile Include="dx_buffer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dx_objects.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

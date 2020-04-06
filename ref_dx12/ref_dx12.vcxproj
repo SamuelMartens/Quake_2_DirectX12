@@ -22,9 +22,9 @@
     <ClInclude Include="..\game\q_shared.h" />
     <ClInclude Include="..\qcommon\qcommon.h" />
     <ClInclude Include="d3dx12.h" />
-    <ClInclude Include="dx_constantbuffer.h" />
+    <ClInclude Include="dx_buffer.h" />
     <ClInclude Include="dx_common.h" />
-    <ClInclude Include="dx_graphicalobject.h" />
+    <ClInclude Include="dx_objects.h" />
     <ClInclude Include="dx_local.h" />
     <ClInclude Include="dx_app.h" />
     <ClInclude Include="dx_shaderdefinitions.h" />
@@ -37,8 +37,8 @@
   <ItemGroup>
     <ClCompile Include="..\game\q_shared.c" />
     <ClCompile Include="dx_app.cpp" />
-    <ClCompile Include="dx_constantbuffer.cpp" />
-    <ClCompile Include="dx_graphicalobject.cpp" />
+    <ClCompile Include="dx_buffer.cpp" />
+    <ClCompile Include="dx_objects.cpp" />
     <ClCompile Include="dx_rmain.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">

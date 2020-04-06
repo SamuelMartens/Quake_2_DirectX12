@@ -1,4 +1,4 @@
-#include "dx_graphicalobject.h"
+#include "dx_objects.h"
 
 #include "dx_app.h"
 

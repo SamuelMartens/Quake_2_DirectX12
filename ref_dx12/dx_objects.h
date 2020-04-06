@@ -2,8 +2,10 @@
 
 #include <string>
 #include <d3d12.h>
+#include <memory>
 
 #include "dx_common.h"
+#include "dx_buffer.h"
 
 class GraphicalObject
 {

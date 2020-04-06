@@ -38,7 +38,7 @@ void Renderer::Init(WNDPROC WindowProc, HINSTANCE hInstance)
 	InitWin32(WindowProc, hInstance);
 	InitDX();
 
-	LoadPalette();
+	Load8To24Table();
 }
 
 void Renderer::BeginFrame(float CameraSeparation)
@@ -108,6 +108,19 @@ void Renderer::EndFrame()
 	FlushCommandQueue();
 	// We flushed command queue, we know for sure that it is safe to release those resources
 	m_uploadResources.clear();
+
+	// Streaming drawing stuff
+	m_streamingVertexBuffer.allocator.ClearAll();
+
+	for(int offset : m_streamingConstOffsets)
+	{
+		m_constantBuffer.allocator.Delete(offset);
+	}
+	m_streamingConstOffsets.clear();
+
+
+	// Deal with resource we wanted to delete
+	m_resourcesToDelete.clear();
 }
 
 void Renderer::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
@@ -226,13 +239,39 @@ void Renderer::InitDX()
 	InitScissorRect();
 
 	CreateTextureSampler();
-	CreateConstantBuffer();
 
-	GenerateYInverseAndCenterMatrix();
+	InitUtils();
 
 	// If we recorded some commands during initialization, execute them here
 	ExecuteCommandLists();
 	FlushCommandQueue();
+}
+
+void Renderer::InitUtils()
+{
+	// Generate utils matrices
+	int drawAreaWidth = 0;
+	int drawAreaHeight = 0;
+
+	GetDrawAreaSize(&drawAreaWidth, &drawAreaHeight);
+
+	XMMATRIX sseResultMatrix = XMMatrixIdentity();
+	sseResultMatrix.r[1] = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
+	sseResultMatrix = XMMatrixTranslation(-drawAreaWidth / 2, -drawAreaHeight / 2, 0.0f) * sseResultMatrix;
+	XMStoreFloat4x4(&m_yInverseAndCenterMatrix, sseResultMatrix);
+
+	// Create constant buffer
+	m_constantBuffer.allocator.Init(QCONST_BUFFER_SIZE);
+	assert(Utils::Align(QCONST_BUFFER_SIZE, QCONST_BUFFER_ALIGNMENT) == QCONST_BUFFER_SIZE);
+	m_constantBuffer.gpuBuffer = CreateUploadHeapBuffer(QCONST_BUFFER_SIZE);
+
+
+	// Create streaming vertex buffer
+	m_streamingVertexBuffer.allocator.Init(QSTREAMING_VERTEX_BUFFER_SIZE);
+	m_streamingVertexBuffer.gpuBuffer = CreateUploadHeapBuffer(QSTREAMING_VERTEX_BUFFER_SIZE);
+
+	// Init raw palette with 0
+	std::fill(m_rawPalette.begin(), m_rawPalette.end(), 0);
 }
 
 void Renderer::InitScissorRect()
@@ -602,21 +641,6 @@ void Renderer::LoadShaders()
 	m_vsShader = LoadCompiledShader(vsShader);
 }
 
-void Renderer::CreateConstantBuffer()
-{
-	m_constantBuffer.allocator.Init(QCONST_BUFFER_SIZE);
-
-	assert(Utils::Align(QCONST_BUFFER_SIZE, QCONST_BUFFER_ALIGNMENT) == QCONST_BUFFER_SIZE);
-
-	m_device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(QCONST_BUFFER_SIZE),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&m_constantBuffer.gpuBuffer));
-}
-
 void Renderer::CreateTextureSampler()
 {
 	D3D12_SAMPLER_DESC samplerDesc = {};
@@ -712,7 +736,7 @@ void Renderer::PresentAndSwapBuffers()
 	m_currentBackBuffer = (m_currentBackBuffer + 1) % QSWAP_CHAIN_BUFFER_COUNT;
 }
 
-void Renderer::CreateTexture(char* name)
+void Renderer::CreateTextureFromFile(char* name)
 {
 	if (name == nullptr)
 		return;
@@ -787,13 +811,7 @@ void Renderer::CreateTexture(char* name)
 	//	image32 = resampledImage.data();
 	//}
 
-	Texture tex;
-	CreateGpuTexture(image32, width, height, bpp, tex);
-
-	tex.width = width;
-	tex.height = height;
-
-	m_textures.insert(std::make_pair(std::string(name), tex));
+	CreateTextureFromData(reinterpret_cast<std::byte*>(image32), width, height, bpp, name);
 
 	if (image != nullptr)
 	{
@@ -810,7 +828,7 @@ void Renderer::CreateGpuTexture(const unsigned int* raw, int width, int height, 
 {
 	D3D12_RESOURCE_DESC textureDesc = {};
 	textureDesc.MipLevels = 1;
-	textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	textureDesc.Format =  DXGI_FORMAT_R8G8B8A8_UNORM;
 	textureDesc.Width = width;
 	textureDesc.Height = height;
 	textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
@@ -836,7 +854,8 @@ void Renderer::CreateGpuTexture(const unsigned int* raw, int width, int height, 
 	m_uploadResources.push_back(textureUploadBuffer);
 
 	D3D12_SUBRESOURCE_DATA textureData = {};
-	textureData.pData = &raw[0];
+	textureData.pData = raw;
+	// Divide by 8 cause bpp is bits per pixel, not bytes
 	textureData.RowPitch = width * bpp / 8;
 	// Not SlicePitch but texture size in our case
 	textureData.SlicePitch = textureData.RowPitch * height;
@@ -863,6 +882,18 @@ void Renderer::CreateGpuTexture(const unsigned int* raw, int width, int height, 
 	descriptor.Offset(descInd, m_cbvSrbDescriptorSize);
 
 	m_device->CreateShaderResourceView(outTex.buffer.Get(), &srvDescription, descriptor);
+}
+
+void Renderer::CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name)
+{
+	Texture tex;
+	CreateGpuTexture(reinterpret_cast<const unsigned int*>(data), width, height, bpp, tex);
+
+	tex.width = width;
+	tex.height = height;
+	tex.bpp = bpp;
+
+	m_textures.insert_or_assign(std::string(name), std::move(tex));
 }
 
 ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer(const void* data, UINT64 byteSize)
@@ -945,7 +976,7 @@ ComPtr<ID3D12Resource> Renderer::CreateUploadHeapBuffer(UINT64 byteSize) const
 
 void Renderer::UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const
 {
-	const unsigned int dataSize = Utils::Align(args.byteSize, args.alignment);
+	const unsigned int dataSize = args.alignment != 0 ? Utils::Align(args.byteSize, args.alignment) : args.byteSize;
 
 	BYTE* mappedMemory = nullptr;
 	// This parameter indicates the range that CPU might read. If begin and end are equal, we promise
@@ -983,6 +1014,7 @@ void Renderer::DeleteConstantBuffMemory(int offset)
 	m_constantBuffer.allocator.Delete(offset);
 }
 
+
 ComPtr<ID3DBlob> Renderer::LoadCompiledShader(const std::string& filename) const
 {
 	std::ifstream fin(filename, std::ios::binary);
@@ -1014,38 +1046,13 @@ void Renderer::CreatePictureObject(const char* pictureName)
 	newObject.textureKey = pictureName;
 
 	const Texture& texture = m_textures.find(newObject.textureKey)->second;
-	// 
-	//   1 +------------+ 2
-	//     |            |
-	//     |            |
-	//     |            |
-	//   0 +------------+ 3
-	//
-
-	const float w = texture.width;
-	const float h = texture.height;
-
-	ShDef::Vert::PosTexCoord vert0 = { XMFLOAT4(0.0f,  h, 0.0f, 1.0f),   XMFLOAT2(0.0f, 1.0f) };
-	ShDef::Vert::PosTexCoord vert1 = { XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f) };
-	ShDef::Vert::PosTexCoord vert2 = { XMFLOAT4(w, 0.0f, 0.0f, 1.0f),	 XMFLOAT2(1.0f, 0.0f) };
-	ShDef::Vert::PosTexCoord vert3 = { XMFLOAT4(w, h, 0.0f, 1.0f),		 XMFLOAT2(1.0f, 1.0f) };
-
-
 
 	// Create vertex buffer in RAM
-	ShDef::Vert::PosTexCoord vertices[6] =
-	{
-		vert0,
-		vert1,
-		vert2,
-
-		vert0,
-		vert2,
-		vert3
-	};
+	std::array<ShDef::Vert::PosTexCoord,6> vertices;
+	Utils::MakeQuad(texture.width, texture.height, vertices.data());
 
 
-	newObject.vertexBuffer = CreateDefaultHeapBuffer(&vertices, sizeof(vertices));
+	newObject.vertexBuffer = CreateDefaultHeapBuffer(vertices.data(), sizeof(vertices));
 
 	static const unsigned int PictureObjectConstSize = Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT);
 
@@ -1114,8 +1121,89 @@ void Renderer::Draw(const GraphicalObject& object)
 	m_commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
 
 
-	m_commandList->DrawInstanced(6, 1, 0, 0);
+	m_commandList->DrawInstanced(vertBuffView.SizeInBytes / vertBuffView.StrideInBytes, 1, 0, 0);
 }
+
+void Renderer::DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos)
+{
+	// Update transformation mat
+	ShDef::ConstBuff::TransMat transMat;
+	XMMATRIX modelMat = XMMatrixTranslation(
+		pos.x,
+		pos.y,
+		pos.z
+	);
+
+	XMMATRIX sseViewMat = XMLoadFloat4x4(&m_viewMat);
+	XMMATRIX sseProjMat = XMLoadFloat4x4(&m_projectionMat);
+	XMMATRIX sseYInverseAndCenterMat = XMLoadFloat4x4(&m_yInverseAndCenterMatrix);
+
+	XMMATRIX mvpMat = modelMat * sseYInverseAndCenterMat * sseViewMat * sseProjMat;
+
+	XMStoreFloat4x4(&transMat.transformationMat, mvpMat);
+
+	int constantBufferOffset = m_constantBuffer.allocator.Allocate(Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT));
+	m_streamingConstOffsets.push_back(constantBufferOffset);
+
+	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
+	updateConstBufferArgs.buffer = m_constantBuffer.gpuBuffer;
+	updateConstBufferArgs.offset = constantBufferOffset;
+	updateConstBufferArgs.data = &transMat;
+	updateConstBufferArgs.byteSize = sizeof(transMat);
+	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
+
+	// Update our constant buffer
+	UpdateUploadHeapBuff(updateConstBufferArgs);
+	
+	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	// Deal with vertex buffer
+	int vertexBufferOffset = m_streamingVertexBuffer.allocator.Allocate(Utils::Align(verticesSizeInBytes, 24));
+
+	FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
+	updateVertexBufferArgs.buffer = m_streamingVertexBuffer.gpuBuffer;
+	updateVertexBufferArgs.offset = vertexBufferOffset;
+	updateVertexBufferArgs.data = vertices;
+	updateVertexBufferArgs.byteSize = verticesSizeInBytes;
+	updateVertexBufferArgs.alignment = 0;
+	UpdateUploadHeapBuff(updateVertexBufferArgs);
+
+	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
+	vertBuffView.BufferLocation = m_streamingVertexBuffer.gpuBuffer->GetGPUVirtualAddress() + vertexBufferOffset;
+	vertBuffView.StrideInBytes = verticesStride;
+	vertBuffView.SizeInBytes = verticesSizeInBytes;
+	
+	m_commandList->IASetVertexBuffers(0, 1, &vertBuffView);
+
+	// Binding root signature params
+
+	// 1)
+	assert(m_textures.find(texName) != m_textures.end());
+
+	const Texture& texture = m_textures.find(texName)->second;
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(m_cbvSrvHeap->GetGPUDescriptorHandleForHeapStart());
+	texHandle.Offset(texture.texView->srvIndex, m_cbvSrbDescriptorSize);
+
+	m_commandList->SetGraphicsRootDescriptorTable(0, texHandle);
+
+
+	// 2)
+	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
+	samplerHandle.Offset(texture.samplerInd, m_samplerDescriptorSize);
+
+	m_commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
+
+	// 3)
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_constantBuffer.gpuBuffer->GetGPUVirtualAddress();
+	cbAddress += constantBufferOffset;
+
+	m_commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
+
+
+	m_commandList->DrawInstanced(verticesSizeInBytes / verticesStride, 1, 0, 0);
+}
+
 
 void Renderer::GetDrawAreaSize(int* Width, int* Height)
 {
@@ -1128,7 +1216,7 @@ void Renderer::GetDrawAreaSize(int* Width, int* Height)
 	GetRefImport().Vid_GetModeInfo(Width, Height, static_cast<int>(mode->value));
 }
 
-void Renderer::LoadPalette()
+void Renderer::Load8To24Table()
 {
 	char colorMapFilename[] = "pics/colormap.pcx";
 
@@ -1220,20 +1308,9 @@ void Renderer::FindImageScaledSizes(int width, int height, int& scaledWidth, int
 	min(scaledHeight, maxSize);
 }
 
-void Renderer::GenerateYInverseAndCenterMatrix()
+void Renderer::DeleteResources(ComPtr<ID3D12Resource> resourceToDelete)
 {
-	int drawAreaWidth = 0;
-	int drawAreaHeight = 0;
-
-	GetDrawAreaSize(&drawAreaWidth, &drawAreaHeight);
-
-	XMMATRIX sseResultMatrix = XMMatrixIdentity();
-
-	sseResultMatrix.r[1] = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
-
-	sseResultMatrix = XMMatrixTranslation(-drawAreaWidth / 2, -drawAreaHeight / 2, 0.0f) * sseResultMatrix;
-
-	XMStoreFloat4x4(&m_yInverseAndCenterMatrix, sseResultMatrix);
+	m_resourcesToDelete.push_back(resourceToDelete);
 }
 
 void Renderer::ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight)
@@ -1294,6 +1371,35 @@ void Renderer::GetTextureFullname(const char* name, char* dest, int destSize) co
 	}
 }
 
+void Renderer::UpdateTexture(Texture& tex, const std::byte* data)
+{
+	// Count alignment and go for what we need
+	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(tex.buffer.Get(), 0, 1);
+
+	ComPtr<ID3D12Resource> textureUploadBuffer = CreateUploadHeapBuffer(uploadBufferSize);
+
+	m_uploadResources.push_back(textureUploadBuffer);
+
+	D3D12_SUBRESOURCE_DATA textureData = {};
+	textureData.pData = data;
+	// Divide by 8 cause bpp is bits per pixel, not bytes
+	textureData.RowPitch = tex.width * tex.bpp / 8;
+	// Not SlicePitch but texture size in our case
+	textureData.SlicePitch = textureData.RowPitch * tex.height;
+
+	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		tex.buffer.Get(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_COPY_DEST
+	));
+
+	UpdateSubresources(m_commandList.Get(), tex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
+	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		tex.buffer.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+}
+
 void Renderer::Draw_Pic(int x, int y, char* name)
 {
 	std::array<char, MAX_QPATH> fullName;
@@ -1303,7 +1409,7 @@ void Renderer::Draw_Pic(int x, int y, char* name)
 	// Make sure texture exists
 	if (m_textures.find(fullName.data()) == m_textures.end())
 	{
-		CreateTexture(fullName.data());
+		CreateTextureFromFile(fullName.data());
 	}
 
 	// Make sure object exists
@@ -1313,27 +1419,61 @@ void Renderer::Draw_Pic(int x, int y, char* name)
 		return strcmp(fullName.data(), obj.textureKey.c_str()) == 0;
 	});
 
-	if (targetObject == m_graphicalObjects.end())
+
+	const Texture& texture = m_textures.find(fullName.data())->second;
+
+	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
+	Utils::MakeQuad(texture.width, texture.height, vertices.data());
+
+	DrawStreaming(reinterpret_cast<std::byte*>(vertices.data()),
+		vertices.size() * sizeof(ShDef::Vert::PosTexCoord),
+		sizeof(ShDef::Vert::PosTexCoord),
+		fullName.data(),
+		XMFLOAT4(x, y, 0.0f, 1.0f));
+}
+
+void Renderer::Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data)
+{
+	const int texSize = textureWidth * textureHeight;
+	
+	std::vector<unsigned int> texture(texSize, 0);
+
+	for (int i = 0; i < texSize; ++i)
 	{
-		//#TODO nothing controls lifetime of these objects. External API will never 
-		// make a request delete it. Proper solution would be to implement DrawStreaming
-		// so temporary geometry will be created avery draw call for this, and the deleted in the end of the
-		// frame.
-		CreatePictureObject(fullName.data());
-
-		targetObject = m_graphicalObjects.end() - 1;
+		texture[i] = m_rawPalette[std::to_integer<int>(data[i])];
 	}
+	
+	auto rawTexIt = m_textures.find(QRAW_TEXTURE_NAME);
+	if (rawTexIt == m_textures.end()
+		|| rawTexIt->second.width != textureWidth
+		|| rawTexIt->second.height != textureHeight)
+	{
+		constexpr int textureBitsPerPixel = 32;
+		CreateTextureFromData(reinterpret_cast<std::byte*>(texture.data()), textureWidth, textureHeight, textureBitsPerPixel, QRAW_TEXTURE_NAME);
 
-	targetObject->position.x = x;
-	targetObject->position.y = y;
+		rawTexIt = m_textures.find(QRAW_TEXTURE_NAME);
+	}
+	else
+	{
+		UpdateTexture(rawTexIt->second, reinterpret_cast<std::byte*>(texture.data()));
+	}
+	
 
-	// We have everything we need, now draw
-	Draw(*targetObject);	
+	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
+	Utils::MakeQuad(quadWidth, quadHeight, vertices.data());
+
+	const int vertexStride = sizeof(ShDef::Vert::PosTexCoord);
+
+	DrawStreaming(reinterpret_cast<std::byte*>(vertices.data()), 
+		vertices.size()* vertexStride,
+		vertexStride,
+		QRAW_TEXTURE_NAME,
+		XMFLOAT4(x, y, 0.0f, 1.0f));
 }
 
 void Renderer::GetPicSize(int* x, int* y, const char* name) const
 {
-	// I realy use this in a few places, any chance I can redesign this? This lines of code is 
+	// I really use this in a few places, any chance I can redesign this? This lines of code is 
 	// kind off retarded
 	std::array<char, MAX_QPATH> fullName;
 
@@ -1350,5 +1490,31 @@ void Renderer::GetPicSize(int* x, int* y, const char* name) const
 	{
 		*x = -1;
 		*y = -1;
+	}
+}
+
+void Renderer::SetPalette(const unsigned char* palette)
+{
+	unsigned char* rawPalette = reinterpret_cast<unsigned char *>(m_rawPalette.data());
+
+	if (palette)
+	{
+		for (int i = 0; i < 256; i++)
+		{
+			rawPalette[i * 4 + 0] = palette[i * 3 + 0];
+			rawPalette[i * 4 + 1] = palette[i * 3 + 1];
+			rawPalette[i * 4 + 2] = palette[i * 3 + 2];
+			rawPalette[i * 4 + 3] = 0xff;
+		}
+	}
+	else
+	{
+		for (int i = 0; i < 256; i++)
+		{
+			rawPalette[i * 4 + 0] = m_8To24Table[i] & 0xff;
+			rawPalette[i * 4 + 1] = (m_8To24Table[i] >> 8) & 0xff;
+			rawPalette[i * 4 + 2] = (m_8To24Table[i] >> 16) & 0xff;
+			rawPalette[i * 4 + 3] = 0xff;
+		}
 	}
 }

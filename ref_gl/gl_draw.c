@@ -329,8 +329,12 @@ void Draw_StretchRaw (int x, int y, int w, int h, int cols, int rows, byte *data
 
 	GL_Bind (0);
 
+	// Pick if want to scale or not
 	if (rows<=256)
 	{
+		// we don't want to scale in this case. Height scale equal 1
+		// this is weird cause if we have less than 256 we should scale up. Hmmm
+		// Also this is inverted scale
 		hscale = 1;
 		trows = rows;
 	}
@@ -339,23 +343,36 @@ void Draw_StretchRaw (int x, int y, int w, int h, int cols, int rows, byte *data
 		hscale = rows/256.0;
 		trows = 256;
 	}
+	// Bottom of texture coordinates.
+	// If we have image less than 256 pixels in height
+	// we submit 256 anyway, so texture wouldn't occupy all image
 	t = rows*hscale / 256;
 
 	if ( !qglColorTableEXT )
 	{
 		unsigned *dest;
-
+		// iterate over every row
 		for (i=0 ; i<trows ; i++)
 		{
+			// current row index
 			row = (int)(i*hscale);
+			// in case scaling is more than one
 			if (row > rows)
 				break;
+			// source is pointer to that row in data
+			// (with scaling)
 			source = data + cols*row;
+			// destination is that row (without scaling !!!) 
 			dest = &image32[i*256];
+			// If you want to divide by 256 (which is texture width, you have to divide by this num first)
 			fracstep = cols*0x10000/256;
 			frac = fracstep >> 1;
+			// We assign every pixel value in destination row here
 			for (j=0 ; j<256 ; j++)
 			{
+
+				int ind = frac >> 16;
+				// Just get 256 step in source
 				dest[j] = r_rawpalette[source[frac>>16]];
 				frac += fracstep;
 			}

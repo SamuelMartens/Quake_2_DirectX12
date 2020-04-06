@@ -413,3 +413,32 @@ void Utils::LoadTGA(char* filename, std::byte** image, int* width, int* height)
 
 	ri.FS_FreeFile(buffer);
 }
+
+void Utils::MakeQuad(float width, float height, ShDef::Vert::PosTexCoord* outVert)
+{
+	const float w = width;
+	const float h = height;
+
+	// 
+	//   1 +------------+ 2
+	//     |            |
+	//     |            |
+	//     |            |
+	//   0 +------------+ 3
+	//
+
+	ShDef::Vert::PosTexCoord vert0 = { XMFLOAT4(0.0f,  h, 0.0f, 1.0f),   XMFLOAT2(0.0f, 1.0f) };
+	ShDef::Vert::PosTexCoord vert1 = { XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f) };
+	ShDef::Vert::PosTexCoord vert2 = { XMFLOAT4(w, 0.0f, 0.0f, 1.0f),	 XMFLOAT2(1.0f, 0.0f) };
+	ShDef::Vert::PosTexCoord vert3 = { XMFLOAT4(w, h, 0.0f, 1.0f),		 XMFLOAT2(1.0f, 1.0f) };
+
+
+
+	outVert[0] = vert0;
+	outVert[1] = vert1;
+	outVert[2] = vert2;
+
+	outVert[3] = vert0;
+	outVert[4] = vert2;
+	outVert[5] = vert3;
+}

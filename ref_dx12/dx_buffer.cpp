@@ -1,4 +1,4 @@
-#include "dx_constantbuffer.h"
+#include "dx_buffer.h"
 
 #include <cassert>
 #include <algorithm>
@@ -77,3 +77,9 @@ void BufferAllocator::Delete(int offset)
 
 	allocations.erase(it);
 }
+
+void BufferAllocator::ClearAll()
+{
+	allocations.clear();
+}
+

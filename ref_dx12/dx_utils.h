@@ -7,6 +7,8 @@
 #include <comdef.h>
 #include <cstddef>
 
+#include "dx_shaderdefinitions.h"
+
 namespace Utils
 {
 	void Sprintf(char* dest, int size, const char* fmt, ...);
@@ -58,6 +60,9 @@ namespace Utils
 	void LoadPCX(char* filename, std::byte** image, std::byte** palette,int* width, int* height);
 	void LoadWal(char* filename, std::byte** image, int* width, int* height);
 	void LoadTGA(char* filename, std::byte** image, int* width, int* height);
+
+
+	void MakeQuad(float width, float height, ShDef::Vert::PosTexCoord* outVert);
 }
 
 // Helper utility converts D3D API failures into exceptions.

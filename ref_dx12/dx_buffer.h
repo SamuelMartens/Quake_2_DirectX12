@@ -2,6 +2,7 @@
 
 #include <list>
 #include <d3d12.h>
+#include <memory>
 
 #include "dx_common.h"
 
@@ -30,16 +31,16 @@ public:
 	int Allocate(int size);
 	void Delete(int offset);
 
+	void ClearAll();
+
 private:
 
 	int SIZE = -1;
 
 	std::list<Allocation> allocations;
-
 };
 
-
-struct ConstantBuffer
+struct AllocBuffer
 {
 	BufferAllocator allocator;
 	ComPtr<ID3D12Resource> gpuBuffer;
