@@ -12,5 +12,11 @@ struct VertexOut
 float4 main(VertexOut vOut) : SV_Target
 {
 	float4 color = gDiffuseMap.Sample(gSamLinearWrap, vOut.pTex);
+    
+    if (color.a == 0)
+    {
+        discard;
+    }
+    
     return color;
 }

@@ -414,10 +414,8 @@ void Utils::LoadTGA(char* filename, std::byte** image, int* width, int* height)
 	ri.FS_FreeFile(buffer);
 }
 
-void Utils::MakeQuad(float width, float height, ShDef::Vert::PosTexCoord* outVert)
+void Utils::MakeQuad(XMFLOAT2 posMin, XMFLOAT2 posMax, XMFLOAT2 texMin, XMFLOAT2 texMax, ShDef::Vert::PosTexCoord* outVert)
 {
-	const float w = width;
-	const float h = height;
 
 	// 
 	//   1 +------------+ 2
@@ -427,11 +425,10 @@ void Utils::MakeQuad(float width, float height, ShDef::Vert::PosTexCoord* outVer
 	//   0 +------------+ 3
 	//
 
-	ShDef::Vert::PosTexCoord vert0 = { XMFLOAT4(0.0f,  h, 0.0f, 1.0f),   XMFLOAT2(0.0f, 1.0f) };
-	ShDef::Vert::PosTexCoord vert1 = { XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f) };
-	ShDef::Vert::PosTexCoord vert2 = { XMFLOAT4(w, 0.0f, 0.0f, 1.0f),	 XMFLOAT2(1.0f, 0.0f) };
-	ShDef::Vert::PosTexCoord vert3 = { XMFLOAT4(w, h, 0.0f, 1.0f),		 XMFLOAT2(1.0f, 1.0f) };
-
+	ShDef::Vert::PosTexCoord vert0 = { XMFLOAT4(posMin.x, posMax.y, 0.0f, 1.0f), XMFLOAT2(texMin.x, texMax.y) };
+	ShDef::Vert::PosTexCoord vert1 = { XMFLOAT4(posMin.x, posMin.y, 0.0f, 1.0f), XMFLOAT2(texMin.x, texMin.y) };
+	ShDef::Vert::PosTexCoord vert2 = { XMFLOAT4(posMax.x, posMin.y, 0.0f, 1.0f), XMFLOAT2(texMax.x, texMin.y) };
+	ShDef::Vert::PosTexCoord vert3 = { XMFLOAT4(posMax.x, posMax.y, 0.0f, 1.0f), XMFLOAT2(texMax.x, texMax.y) };
 
 
 	outVert[0] = vert0;

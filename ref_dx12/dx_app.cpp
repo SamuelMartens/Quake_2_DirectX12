@@ -736,13 +736,18 @@ void Renderer::PresentAndSwapBuffers()
 	m_currentBackBuffer = (m_currentBackBuffer + 1) % QSWAP_CHAIN_BUFFER_COUNT;
 }
 
-void Renderer::CreateTextureFromFile(char* name)
+void Renderer::CreateTextureFromFile(const char* name)
 {
 	if (name == nullptr)
 		return;
 
+	std::array<char, MAX_QPATH> texFullName;
+	GetTextureFullname(name, texFullName.data(), texFullName.size());
+	char* fullNamePtr = texFullName.data();
+
+
 	constexpr int fileExtensionLength = 4;
-	const char* texFileExtension = name + strlen(name) - fileExtensionLength;
+	const char* texFileExtension = fullNamePtr + strlen(fullNamePtr) - fileExtensionLength;
 
 	std::byte* image = nullptr;
 	std::byte* palette = nullptr;
@@ -753,17 +758,17 @@ void Renderer::CreateTextureFromFile(char* name)
 	if (strcmp(texFileExtension, ".pcx") == 0)
 	{
 		bpp = 8;
-		Utils::LoadPCX(name, &image, &palette, &width, &height);
+		Utils::LoadPCX(fullNamePtr, &image, &palette, &width, &height);
 	}
 	else if (strcmp(texFileExtension, ".wal") == 0)
 	{
 		bpp = 8;
-		Utils::LoadWal(name, &image, &width, &height);
+		Utils::LoadWal(fullNamePtr, &image, &width, &height);
 	}
 	else if (strcmp(texFileExtension, ".tga") == 0)
 	{
 		bpp = 32;
-		Utils::LoadTGA(name, &image, &width, &height);
+		Utils::LoadTGA(fullNamePtr, &image, &width, &height);
 	}
 	else
 	{
@@ -1049,7 +1054,11 @@ void Renderer::CreatePictureObject(const char* pictureName)
 
 	// Create vertex buffer in RAM
 	std::array<ShDef::Vert::PosTexCoord,6> vertices;
-	Utils::MakeQuad(texture.width, texture.height, vertices.data());
+	Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f), 
+		XMFLOAT2(texture.width, texture.height),
+		XMFLOAT2(0.0f, 0.0f),
+		XMFLOAT2(1.0f, 1.0f),
+		vertices.data());
 
 
 	newObject.vertexBuffer = CreateDefaultHeapBuffer(vertices.data(), sizeof(vertices));
@@ -1061,32 +1070,6 @@ void Renderer::CreatePictureObject(const char* pictureName)
 
 void Renderer::Draw(const GraphicalObject& object)
 {
-	// Update transformation mat
-	ShDef::ConstBuff::TransMat transMat;
-	XMMATRIX modelMat = XMMatrixTranslation(
-		object.position.x,
-		object.position.y,
-		object.position.z
-	);
-
-	XMMATRIX sseViewMat = XMLoadFloat4x4(&m_viewMat);
-	XMMATRIX sseProjMat = XMLoadFloat4x4(&m_projectionMat);
-	XMMATRIX sseYInverseAndCenterMat = XMLoadFloat4x4(&m_yInverseAndCenterMatrix);
-
-	XMMATRIX mvpMat =  modelMat * sseYInverseAndCenterMat * sseViewMat * sseProjMat;
-	
-
-	XMStoreFloat4x4(&transMat.transformationMat, mvpMat);
-
-	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	updateConstBufferArgs.buffer = m_constantBuffer.gpuBuffer;
-	updateConstBufferArgs.offset = object.constantBufferOffset;
-	updateConstBufferArgs.data = &transMat;
-	updateConstBufferArgs.byteSize = sizeof(transMat);
-	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
-	// Update our constant buffer
-	UpdateUploadHeapBuff(updateConstBufferArgs);
-
 	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	
 	// Set vertex buffer
@@ -1120,41 +1103,18 @@ void Renderer::Draw(const GraphicalObject& object)
 
 	m_commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
 
-
+	// Finally, draw
 	m_commandList->DrawInstanced(vertBuffView.SizeInBytes / vertBuffView.StrideInBytes, 1, 0, 0);
 }
 
 void Renderer::DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos)
 {
-	// Update transformation mat
-	ShDef::ConstBuff::TransMat transMat;
-	XMMATRIX modelMat = XMMatrixTranslation(
-		pos.x,
-		pos.y,
-		pos.z
-	);
-
-	XMMATRIX sseViewMat = XMLoadFloat4x4(&m_viewMat);
-	XMMATRIX sseProjMat = XMLoadFloat4x4(&m_projectionMat);
-	XMMATRIX sseYInverseAndCenterMat = XMLoadFloat4x4(&m_yInverseAndCenterMatrix);
-
-	XMMATRIX mvpMat = modelMat * sseYInverseAndCenterMat * sseViewMat * sseProjMat;
-
-	XMStoreFloat4x4(&transMat.transformationMat, mvpMat);
-
+	// Allocate and update constant buffer
 	int constantBufferOffset = m_constantBuffer.allocator.Allocate(Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT));
 	m_streamingConstOffsets.push_back(constantBufferOffset);
 
-	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	updateConstBufferArgs.buffer = m_constantBuffer.gpuBuffer;
-	updateConstBufferArgs.offset = constantBufferOffset;
-	updateConstBufferArgs.data = &transMat;
-	updateConstBufferArgs.byteSize = sizeof(transMat);
-	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
+	UpdateConstantBuffer(pos, { 1.0f, 1.0f, 1.0f, 0.0f }, constantBufferOffset);
 
-	// Update our constant buffer
-	UpdateUploadHeapBuff(updateConstBufferArgs);
-	
 	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	// Deal with vertex buffer
@@ -1178,7 +1138,7 @@ void Renderer::DrawStreaming(const std::byte* vertices, int verticesSizeInBytes,
 	// Binding root signature params
 
 	// 1)
-	assert(m_textures.find(texName) != m_textures.end());
+	assert(m_textures.find(texName) != m_textures.end() && "Can't draw, texture is not found.");
 
 	const Texture& texture = m_textures.find(texName)->second;
 
@@ -1313,6 +1273,41 @@ void Renderer::DeleteResources(ComPtr<ID3D12Resource> resourceToDelete)
 	m_resourcesToDelete.push_back(resourceToDelete);
 }
 
+void Renderer::UpdateConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offset)
+{
+	assert(offset != GraphicalObject::INVALID_OFFSET &&
+		"Can't update constant buffer, invalid offset.");
+
+	// Update transformation mat
+	ShDef::ConstBuff::TransMat transMat;
+	XMMATRIX modelMat = XMMatrixScaling(scale.x, scale.y, scale.z);
+
+	modelMat = modelMat * XMMatrixTranslation(
+		position.x,
+		position.y,
+		position.z
+	);
+
+
+	XMMATRIX sseViewMat = XMLoadFloat4x4(&m_viewMat);
+	XMMATRIX sseProjMat = XMLoadFloat4x4(&m_projectionMat);
+	XMMATRIX sseYInverseAndCenterMat = XMLoadFloat4x4(&m_yInverseAndCenterMatrix);
+
+	XMMATRIX mvpMat = modelMat * sseYInverseAndCenterMat * sseViewMat * sseProjMat;
+
+
+	XMStoreFloat4x4(&transMat.transformationMat, mvpMat);
+
+	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
+	updateConstBufferArgs.buffer = m_constantBuffer.gpuBuffer;
+	updateConstBufferArgs.offset = offset;
+	updateConstBufferArgs.data = &transMat;
+	updateConstBufferArgs.byteSize = sizeof(transMat);
+	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
+	// Update our constant buffer
+	UpdateUploadHeapBuff(updateConstBufferArgs);
+}
+
 void Renderer::ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight)
 {
 	// Copied from GL_ResampleTexture
@@ -1400,35 +1395,35 @@ void Renderer::UpdateTexture(Texture& tex, const std::byte* data)
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 }
 
-void Renderer::Draw_Pic(int x, int y, char* name)
+void Renderer::Draw_Pic(int x, int y, const char* name)
 {
-	std::array<char, MAX_QPATH> fullName;
-
-	GetTextureFullname(name, fullName.data(), fullName.size());
-	
 	// Make sure texture exists
-	if (m_textures.find(fullName.data()) == m_textures.end())
+	if (m_textures.find(name) == m_textures.end())
 	{
-		CreateTextureFromFile(fullName.data());
+		CreateTextureFromFile(name);
 	}
 
 	// Make sure object exists
 	auto targetObject = std::find_if(m_graphicalObjects.begin(), m_graphicalObjects.end(), 
-		[&fullName](const GraphicalObject& obj) 
+		[name](const GraphicalObject& obj) 
 	{
-		return strcmp(fullName.data(), obj.textureKey.c_str()) == 0;
+		return strcmp(name, obj.textureKey.c_str()) == 0;
 	});
 
 
-	const Texture& texture = m_textures.find(fullName.data())->second;
+	const Texture& texture = m_textures.find(name)->second;
 
 	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
-	Utils::MakeQuad(texture.width, texture.height, vertices.data());
+	Utils::MakeQuad(XMFLOAT2( 0.0f, 0.0f ),
+		XMFLOAT2( texture.width, texture.height ),
+		XMFLOAT2( 0.0f, 0.0f ),
+		XMFLOAT2( 1.0f, 1.0f ),
+		vertices.data());
 
 	DrawStreaming(reinterpret_cast<std::byte*>(vertices.data()),
 		vertices.size() * sizeof(ShDef::Vert::PosTexCoord),
 		sizeof(ShDef::Vert::PosTexCoord),
-		fullName.data(),
+		name,
 		XMFLOAT4(x, y, 0.0f, 1.0f));
 }
 
@@ -1460,7 +1455,11 @@ void Renderer::Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int text
 	
 
 	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
-	Utils::MakeQuad(quadWidth, quadHeight, vertices.data());
+	Utils::MakeQuad(XMFLOAT2( 0.0f, 0.0f ),
+		XMFLOAT2( quadWidth, quadHeight ),
+		XMFLOAT2( 0.0f, 0.0f ),
+		XMFLOAT2( 1.0f, 1.0f ),
+		vertices.data());
 
 	const int vertexStride = sizeof(ShDef::Vert::PosTexCoord);
 
@@ -1471,15 +1470,50 @@ void Renderer::Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int text
 		XMFLOAT4(x, y, 0.0f, 1.0f));
 }
 
+void Renderer::Draw_Char(int x, int y, int num)
+{
+	num &= 0xFF;
+
+	constexpr int charSize = 8;
+
+	if ((num & 127) == 32)
+		return;		// space
+
+	if (y <= -charSize)
+		return;		// totally off screen
+
+	constexpr float texCoordScale = 0.0625f;
+
+	const float uCoord = (num & 15) * texCoordScale;
+	const float vCoord = (num >> 4) * texCoordScale;
+	const float texSize = texCoordScale;
+
+	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
+	Utils::MakeQuad(XMFLOAT2( 0.0f, 0.0f ),
+		XMFLOAT2(charSize, charSize),
+		XMFLOAT2(uCoord, vCoord),
+		XMFLOAT2(uCoord + texSize, vCoord + texSize),
+		vertices.data());
+
+	const int vertexStride = sizeof(ShDef::Vert::PosTexCoord);
+
+	// Proper place for this is in Init(), but file loading system is not ready, when
+	// init is called for renderer
+	if (m_textures.find(QFONT_TEXTURE_NAME) == m_textures.end())
+	{
+		CreateTextureFromFile(QFONT_TEXTURE_NAME);
+	}
+
+	DrawStreaming(reinterpret_cast<std::byte*>(vertices.data()),
+		vertices.size() * vertexStride,
+		vertexStride,
+		QFONT_TEXTURE_NAME,
+		XMFLOAT4(x, y, 0.0f, 1.0f));
+}
+
 void Renderer::GetPicSize(int* x, int* y, const char* name) const
 {
-	// I really use this in a few places, any chance I can redesign this? This lines of code is 
-	// kind off retarded
-	std::array<char, MAX_QPATH> fullName;
-
-	GetTextureFullname(name, fullName.data(), fullName.size());
-
-	const auto picIt = m_textures.find(fullName.data());
+	const auto picIt = m_textures.find(name);
 
 	if (picIt != m_textures.cend())
 	{

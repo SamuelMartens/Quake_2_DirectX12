@@ -23,7 +23,9 @@ public:
 
 	std::string textureKey;
 	ComPtr<ID3D12Resource> vertexBuffer;
+
 	XMFLOAT4 position = {0.0f, 0.0f, 0.0f, 1.0f};
+	XMFLOAT4 scale = { 1.0f, 1.0f, 1.0f, 0.0f };
 
 	int constantBufferOffset = INVALID_OFFSET;
 

@@ -61,8 +61,7 @@ namespace Utils
 	void LoadWal(char* filename, std::byte** image, int* width, int* height);
 	void LoadTGA(char* filename, std::byte** image, int* width, int* height);
 
-
-	void MakeQuad(float width, float height, ShDef::Vert::PosTexCoord* outVert);
+	void MakeQuad(XMFLOAT2 posMin, XMFLOAT2 posMax, XMFLOAT2 texMin, XMFLOAT2 texMax, ShDef::Vert::PosTexCoord* outVert);
 }
 
 // Helper utility converts D3D API failures into exceptions.

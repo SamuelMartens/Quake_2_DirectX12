@@ -53,7 +53,9 @@ void DX12_Draw_StretchPic(int x, int y, int w, int h, char *name)
 {}
 
 void DX12_Draw_Char(int x, int y, int c)
-{}
+{
+	Renderer::Inst().Draw_Char(x, y, c);
+}
 
 void DX12_Draw_TileClear(int x, int y, int w, int h, char *name)
 {}

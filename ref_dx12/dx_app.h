@@ -40,11 +40,13 @@ namespace FArg
 
 
 //#TODO 
-// 1) currently I do : Update - Draw, Update - Draw. It should be Update Update , Draw Draw
+// 1) currently I do : Update - Draw, Update - Draw. It should be Update Update , Draw Draw (especially text)
 // 2) One huge vertex buffer for both streaming and persistent, minimize transitions if step 1 is fulfilled
 //    and buffer allocation
 // 3) Make your wrappers as exclusive owners of some resource, and operate with smart pointers instead to avoid mess
 //    during resource management.(This requires rewrite some stuff like Textures or buffers)
+// 4) For Movies and UI we don't need stream drawing, but just one quad object  and the width and height would be
+//	  scaling of this quad along y or x axis
 class Renderer
 {
 private:
@@ -62,6 +64,7 @@ private:
 	constexpr static int		 QSTREAMING_VERTEX_BUFFER_SIZE = 256 * 2048;
 
 	constexpr static char		 QRAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
+	constexpr static char		 QFONT_TEXTURE_NAME[] = "conchars";
 
 public:
 
@@ -74,9 +77,6 @@ public:
 
 	static Renderer& Inst();
 
-	void BeginFrame(float CameraSeparation);
-	void EndFrame();
-
 	const refimport_t& GetRefImport() const { return m_refImport; };
 	void SetRefImport(refimport_t RefImport) { m_refImport = RefImport; };
 
@@ -85,12 +85,15 @@ public:
 
 	void DeleteConstantBuffMemory(int offset);
 	void DeleteResources(ComPtr<ID3D12Resource> resourceToDelete);
-
+	void UpdateConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offset);
 
 	/* API functions */
+	void BeginFrame(float CameraSeparation);
+	void EndFrame();
 	void Init(WNDPROC WindowProc, HINSTANCE hInstance);
-	void Draw_Pic(int x, int y, char* name);
+	void Draw_Pic(int x, int y, const char* name);
 	void Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data);
+	void Draw_Char(int x, int y, int num);
 	void GetPicSize(int* x, int* y, const char* name) const;
 	void SetPalette(const unsigned char* palette);
 
@@ -149,7 +152,7 @@ private:
 	void PresentAndSwapBuffers();
 
 	/* Texture */
-	void CreateTextureFromFile(char* name);
+	void CreateTextureFromFile(const char* name);
 	void CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Texture& outTex);
 	void CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
