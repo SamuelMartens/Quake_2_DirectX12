@@ -12,8 +12,10 @@ extern "C"
 
 /** Wrap C++ functionality in C interface **/
 // Register map as the world
-void DX12_BeginReg(char* map)
-{}
+void DX12_BeginRegistration(char* map)
+{
+	Renderer::Inst().RegisterWorldModel(map);
+}
 
 struct model_s* DX12_RegModel(char* model)
 {
@@ -27,7 +29,7 @@ struct image_s* DX12_RegSkin(char* skin)
 
 struct image_s* DX12_Draw_FindPic(char* name)
 {
-	return NULL;
+	return reinterpret_cast<image_s*>(Renderer::Inst().RegisterDrawPic(name));
 }
 
 void DX12_SetSky (char* name, float rotate, vec3_t axis)
@@ -41,7 +43,7 @@ void DX12_RenderFrame(refdef_t *fd)
 
 void DX12_Draw_GetPicSize(int *w, int *h, char *name)
 {
-	Renderer::Inst().GetPicSize(w, h, name);
+	Renderer::Inst().GetDrawTextureSize(w, h, name);
 }
 
 void DX12_Draw_Pic(int x, int y, char *name)
@@ -109,7 +111,7 @@ refexport_t GetRefAPI (refimport_t rimp)
 
 	re.api_version = API_VERSION;
 
-	re.BeginRegistration = DX12_BeginReg;
+	re.BeginRegistration = DX12_BeginRegistration;
 	re.RegisterModel = DX12_RegModel;
 	re.RegisterSkin = DX12_RegSkin;
 	re.RegisterPic = DX12_Draw_FindPic;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dx_glmodel.h"
+
 /*
 
 Non-rendering part of the game, uses some structure that are defined
@@ -10,9 +12,7 @@ DX renderer.
 */
 
 // Outside used mostly for checking is nullptr, and pointer comparison
-//#DEBUG do I need to define something here if what I said before is the case?
-struct image_s
-{};
+//#TODO do I need to define something here if what I said before is the case?
 
-struct model_s
+struct image_s
 {};

@@ -335,13 +335,14 @@ void Mod_LoadVertexes (lump_t *l)
 	dvertex_t	*in;
 	mvertex_t	*out;
 	int			i, count;
-
+	// Add offset of this lump to model base.
 	in = (void *)(mod_base + l->fileofs);
 	if (l->filelen % sizeof(*in))
 		ri.Sys_Error (ERR_DROP, "MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
+	// Get count
 	count = l->filelen / sizeof(*in);
 	out = Hunk_Alloc ( count*sizeof(*out));	
-
+	// Global variable is used for result
 	loadmodel->vertexes = out;
 	loadmodel->numvertexes = count;
 
@@ -869,7 +870,11 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 		((int *)header)[i] = LittleLong ( ((int *)header)[i]);
 
 // load into heap
-	
+	// Very similar loading functions. 
+	// Usual algorithm is:
+	// 1) Find offset from beginning of the file
+	// 2) Find count
+	// 3) Iterate and load one by one vertex or surface, whatever
 	Mod_LoadVertexes (&header->lumps[LUMP_VERTEXES]);
 	Mod_LoadEdges (&header->lumps[LUMP_EDGES]);
 	Mod_LoadSurfedges (&header->lumps[LUMP_SURFEDGES]);

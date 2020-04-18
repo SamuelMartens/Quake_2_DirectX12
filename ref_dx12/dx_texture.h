@@ -2,6 +2,7 @@
 
 #include <d3d12.h>
 #include <memory>
+#include <string>
 
 #include "d3dx12.h"
 #include "dx_common.h"
@@ -35,6 +36,8 @@ public:
 
 	ComPtr<ID3D12Resource> buffer;
 	std::shared_ptr<TextureView> texView;
+
+	std::string name;
 
 	int samplerInd = 0;
 

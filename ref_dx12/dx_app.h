@@ -20,6 +20,7 @@
 #include "dx_objects.h"
 #include "dx_buffer.h"
 #include "dx_shaderdefinitions.h"
+#include "dx_glmodel.h"
 
 extern "C"
 {
@@ -80,12 +81,16 @@ public:
 	const refimport_t& GetRefImport() const { return m_refImport; };
 	void SetRefImport(refimport_t RefImport) { m_refImport = RefImport; };
 
+	// Shader resource view management
 	void FreeSrvSlot(int slotIndex);
 	int AllocSrvSlot();
 
+	// Buffers management
 	void DeleteConstantBuffMemory(int offset);
 	void DeleteResources(ComPtr<ID3D12Resource> resourceToDelete);
 	void UpdateConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offset);
+
+	Texture* FindOrCreateTexture(std::string_view textureName);
 
 	/* API functions */
 	void BeginFrame(float CameraSeparation);
@@ -94,8 +99,10 @@ public:
 	void Draw_Pic(int x, int y, const char* name);
 	void Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data);
 	void Draw_Char(int x, int y, int num);
-	void GetPicSize(int* x, int* y, const char* name) const;
+	void GetDrawTextureSize(int* x, int* y, const char* name) const;
 	void SetPalette(const unsigned char* palette);
+	void RegisterWorldModel(const char* model);
+	Texture* RegisterDrawPic(const char* name);
 
 private:
 
@@ -152,11 +159,11 @@ private:
 	void PresentAndSwapBuffers();
 
 	/* Texture */
-	void CreateTextureFromFile(const char* name);
+	Texture* CreateTextureFromFile(const char* name);
 	void CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Texture& outTex);
-	void CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name);
+	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
-	void GetTextureFullname(const char* name, char* dest, int destSize) const;
+	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
 	void UpdateTexture(Texture& tex, const std::byte* data);
 
 	/* Buffer */

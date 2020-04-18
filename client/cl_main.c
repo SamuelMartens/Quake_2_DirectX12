@@ -1733,11 +1733,10 @@ void CL_Frame (int msec)
 	SCR_UpdateScreen ();
 	if (host_speeds->value)
 		time_after_ref = Sys_Milliseconds ();
-
+	//#SWITCH uncomment next two functions to turn on audio
 	// update audio
-	S_Update (cl.refdef.vieworg, cl.v_forward, cl.v_right, cl.v_up);
-	
-	CDAudio_Update();
+	//S_Update (cl.refdef.vieworg, cl.v_forward, cl.v_right, cl.v_up);
+	//CDAudio_Update();
 
 	// advance local effects for next frame
 	CL_RunDLights ();

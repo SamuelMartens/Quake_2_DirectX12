@@ -4,6 +4,7 @@
 #include <string>
 #include <fstream>
 #include <algorithm>
+#include <string_view>
 #include <d3dcompiler.h>
 #include <DirectXColors.h>
 
@@ -11,6 +12,7 @@
 #include "../win32/winquake.h"
 #include "dx_utils.h"
 #include "dx_shaderdefinitions.h"
+#include "dx_glmodel.h"
 
 
 Renderer::Renderer()
@@ -736,18 +738,19 @@ void Renderer::PresentAndSwapBuffers()
 	m_currentBackBuffer = (m_currentBackBuffer + 1) % QSWAP_CHAIN_BUFFER_COUNT;
 }
 
-void Renderer::CreateTextureFromFile(const char* name)
+Texture* Renderer::CreateTextureFromFile(const char* name)
 {
 	if (name == nullptr)
-		return;
+		return nullptr;
 
-	std::array<char, MAX_QPATH> texFullName;
-	GetTextureFullname(name, texFullName.data(), texFullName.size());
-	char* fullNamePtr = texFullName.data();
+	std::array<char, MAX_QPATH> nonConstName;
+	// Some old functions access only non const pointer, that's just work around
+	char* nonConstNamePtr = nonConstName.data();
+	strcpy(nonConstNamePtr, name);
 
 
 	constexpr int fileExtensionLength = 4;
-	const char* texFileExtension = fullNamePtr + strlen(fullNamePtr) - fileExtensionLength;
+	const char* texFileExtension = nonConstNamePtr + strlen(nonConstNamePtr) - fileExtensionLength;
 
 	std::byte* image = nullptr;
 	std::byte* palette = nullptr;
@@ -758,44 +761,48 @@ void Renderer::CreateTextureFromFile(const char* name)
 	if (strcmp(texFileExtension, ".pcx") == 0)
 	{
 		bpp = 8;
-		Utils::LoadPCX(fullNamePtr, &image, &palette, &width, &height);
+		Utils::LoadPCX(nonConstNamePtr, &image, &palette, &width, &height);
 	}
 	else if (strcmp(texFileExtension, ".wal") == 0)
 	{
 		bpp = 8;
-		Utils::LoadWal(fullNamePtr, &image, &width, &height);
+		Utils::LoadWal(nonConstNamePtr, &image, &width, &height);
 	}
 	else if (strcmp(texFileExtension, ".tga") == 0)
 	{
 		bpp = 32;
-		Utils::LoadTGA(fullNamePtr, &image, &width, &height);
+		Utils::LoadTGA(nonConstNamePtr, &image, &width, &height);
 	}
 	else
 	{
-		assert(false);
-		return;
+		assert(false && "Invalid texture file extension");
+		return nullptr;
 	}
 
 	if (image == nullptr)
 	{
-		assert(false);
-		return;
+		assert(false && "Failed to create texture from file");
+		return nullptr;
 	}
 
 	unsigned int* image32 = nullptr;
 	constexpr int maxImageSize = 512 * 256;
-	//#TODO this should probably be static pointer, and exist on heap
-	std::vector<unsigned int> fixedImage(maxImageSize, 0);
+	// This would be great to have this on heap, but it's too big and
+	// cause stack overflow immediately on entrance in function
+	static unsigned int* fixedImage = new unsigned int[maxImageSize];
+#ifdef _DEBUG
+	memset(fixedImage, 0, maxImageSize * sizeof(unsigned int));
+#endif
 	
 	//#TODO I ignore texture type (which is basically represents is this texture sky or
 	// or something else. It's kind of important here, as we need to handle pictures
 	// differently sometimes depending on type. I will need to take care of it later.
 	if (bpp == 8)
 	{
-		ImageBpp8To32(image, width, height, fixedImage.data());
+		ImageBpp8To32(image, width, height, fixedImage);
 		bpp = 32;
 
-		image32 = fixedImage.data();
+		image32 = fixedImage;
 	}
 	else
 	{
@@ -816,7 +823,7 @@ void Renderer::CreateTextureFromFile(const char* name)
 	//	image32 = resampledImage.data();
 	//}
 
-	CreateTextureFromData(reinterpret_cast<std::byte*>(image32), width, height, bpp, name);
+	Texture* createdTex = CreateTextureFromData(reinterpret_cast<std::byte*>(image32), width, height, bpp, name);
 
 	if (image != nullptr)
 	{
@@ -827,6 +834,8 @@ void Renderer::CreateTextureFromFile(const char* name)
 	{
 		free(palette);
 	}
+
+	return createdTex;
 }
 
 void Renderer::CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Texture& outTex)
@@ -889,7 +898,7 @@ void Renderer::CreateGpuTexture(const unsigned int* raw, int width, int height, 
 	m_device->CreateShaderResourceView(outTex.buffer.Get(), &srvDescription, descriptor);
 }
 
-void Renderer::CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name)
+Texture* Renderer::CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name)
 {
 	Texture tex;
 	CreateGpuTexture(reinterpret_cast<const unsigned int*>(data), width, height, bpp, tex);
@@ -898,7 +907,9 @@ void Renderer::CreateTextureFromData(const std::byte* data, int width, int heigh
 	tex.height = height;
 	tex.bpp = bpp;
 
-	m_textures.insert_or_assign(std::string(name), std::move(tex));
+	tex.name = name;
+
+	return &m_textures.insert_or_assign(tex.name, std::move(tex)).first->second;
 }
 
 ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer(const void* data, UINT64 byteSize)
@@ -1308,6 +1319,23 @@ void Renderer::UpdateConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offse
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
+Texture* Renderer::FindOrCreateTexture(std::string_view textureName)
+{
+	Texture* texture = nullptr;
+	auto texIt = m_textures.find(textureName.data());
+
+	if (texIt != m_textures.end())
+	{
+		texture = &texIt->second;
+	}
+	else
+	{
+		texture = CreateTextureFromFile(textureName.data());
+	}
+
+	return texture;
+}
+
 void Renderer::ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight)
 {
 	// Copied from GL_ResampleTexture
@@ -1353,7 +1381,7 @@ void Renderer::ResampleTexture(const unsigned *in, int inwidth, int inheight, un
 	}
 }
 
-void Renderer::GetTextureFullname(const char* name, char* dest, int destSize) const
+void Renderer::GetDrawTextureFullname(const char* name, char* dest, int destSize) const
 {
 	if (name[0] != '/' && name[0] != '\\')
 	{
@@ -1397,11 +1425,10 @@ void Renderer::UpdateTexture(Texture& tex, const std::byte* data)
 
 void Renderer::Draw_Pic(int x, int y, const char* name)
 {
-	// Make sure texture exists
-	if (m_textures.find(name) == m_textures.end())
-	{
-		CreateTextureFromFile(name);
-	}
+	std::array<char, MAX_QPATH> texFullName;
+	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
+
+	const Texture& texture = *FindOrCreateTexture(texFullName.data());
 
 	// Make sure object exists
 	auto targetObject = std::find_if(m_graphicalObjects.begin(), m_graphicalObjects.end(), 
@@ -1409,9 +1436,6 @@ void Renderer::Draw_Pic(int x, int y, const char* name)
 	{
 		return strcmp(name, obj.textureKey.c_str()) == 0;
 	});
-
-
-	const Texture& texture = m_textures.find(name)->second;
 
 	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
 	Utils::MakeQuad(XMFLOAT2( 0.0f, 0.0f ),
@@ -1423,7 +1447,7 @@ void Renderer::Draw_Pic(int x, int y, const char* name)
 	DrawStreaming(reinterpret_cast<std::byte*>(vertices.data()),
 		vertices.size() * sizeof(ShDef::Vert::PosTexCoord),
 		sizeof(ShDef::Vert::PosTexCoord),
-		name,
+		texFullName.data(),
 		XMFLOAT4(x, y, 0.0f, 1.0f));
 }
 
@@ -1497,23 +1521,29 @@ void Renderer::Draw_Char(int x, int y, int num)
 
 	const int vertexStride = sizeof(ShDef::Vert::PosTexCoord);
 
+	std::array<char, MAX_QPATH> texFullName;
+	GetDrawTextureFullname(QFONT_TEXTURE_NAME, texFullName.data(), texFullName.size());
+
 	// Proper place for this is in Init(), but file loading system is not ready, when
 	// init is called for renderer
-	if (m_textures.find(QFONT_TEXTURE_NAME) == m_textures.end())
+	if (m_textures.find(texFullName.data()) == m_textures.end())
 	{
-		CreateTextureFromFile(QFONT_TEXTURE_NAME);
+		CreateTextureFromFile(texFullName.data());
 	}
 
 	DrawStreaming(reinterpret_cast<std::byte*>(vertices.data()),
 		vertices.size() * vertexStride,
 		vertexStride,
-		QFONT_TEXTURE_NAME,
+		texFullName.data(),
 		XMFLOAT4(x, y, 0.0f, 1.0f));
 }
 
-void Renderer::GetPicSize(int* x, int* y, const char* name) const
+void Renderer::GetDrawTextureSize(int* x, int* y, const char* name) const
 {
-	const auto picIt = m_textures.find(name);
+	std::array<char, MAX_QPATH> texFullName;
+	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
+
+	const auto picIt = m_textures.find(texFullName.data());
 
 	if (picIt != m_textures.cend())
 	{
@@ -1551,4 +1581,27 @@ void Renderer::SetPalette(const unsigned char* palette)
 			rawPalette[i * 4 + 3] = 0xff;
 		}
 	}
+}
+
+void Renderer::RegisterWorldModel(const char* model)
+{
+	//#TODO I am not sure that I want old models implementation yet.
+	// I might write a wrapper of my own. 
+	// IMPORTANT: don't forget to deleteion of old world according to
+	// Quake logic
+
+	char fullName[MAX_QPATH];
+	Utils::Sprintf(fullName, sizeof(fullName), "maps/%s.bsp", model);
+
+	model_t* worldModel = Mod_ForName(fullName, qTrue);
+}
+
+Texture* Renderer::RegisterDrawPic(const char* name)
+{
+	std::array<char, MAX_QPATH> texFullName;
+	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
+
+	Texture* newTex = FindOrCreateTexture(texFullName.data());
+	
+	return newTex;
 }

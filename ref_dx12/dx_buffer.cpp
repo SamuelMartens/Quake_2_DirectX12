@@ -11,55 +11,53 @@ void BufferAllocator::Init(int size)
 
 int BufferAllocator::Allocate(int size)
 {
-	// This is pretty bad algorithm as it contains a lot of repetative code
-	// feels like there is a chance to do it properly
-	int currentOffset = 0;
-
-	decltype(allocations)::iterator currentAllocation = allocations.begin();
-	
 	// Check before existing allocations
-	const int nextAlloc = currentAllocation == allocations.end() ? SIZE : currentAllocation->offset;
-
-	if (nextAlloc >= size)
 	{
-		Allocation newAlloc = { currentOffset, size };
-		allocations.push_front(newAlloc);
+		const int nextOffset = allocations.empty() ? SIZE : allocations.begin()->offset;
 
-		return newAlloc.offset;
+		if (nextOffset >= size)
+		{
+			allocations.push_front({ 0, size });
+		}
 	}
 
 	// Check between existing allocations
-	while (currentAllocation != allocations.end())
 	{
-		if (currentAllocation->offset - currentOffset >= size)
+		const int numIntervals = allocations.size() - 1;
+
+		auto currAllocIt = allocations.begin();
+		auto nextAllocIt = std::next(currAllocIt, 1);
+
+		for (int i = 0; i < numIntervals; ++i, ++currAllocIt, ++nextAllocIt)
 		{
-			Allocation newAlloc;
-			newAlloc.offset = currentOffset;
-			newAlloc.size = size;
-
-			allocations.insert(currentAllocation, newAlloc);
-
-			return newAlloc.offset;
+			const int currAllocEnd = currAllocIt->offset + currAllocIt->size;
+			if (nextAllocIt->offset - currAllocEnd >= size)
+			{
+				allocations.insert(currAllocIt, { currAllocEnd, size });
+				return currAllocEnd;
+			}
 		}
-
-		currentOffset = currentAllocation->size + currentAllocation->offset;
-		++currentAllocation;
-	} 
-
-	// Check after existing allocations
-	if (SIZE - currentOffset < size)
-	{
-		assert(false && "Failed memory allocation");
-		return -1;
 	}
 
-	Allocation newAlloc;
-	newAlloc.offset = currentOffset;
-	newAlloc.size = size;
+	// Check after existing allocations
+	{
+		// We checked empty case in the beginning of the function
+		if (!allocations.empty())
+		{
+			const Allocation& lastAlloc = allocations.back();
+			const int lastAllocEnd = lastAlloc.offset + lastAlloc.size;
 
-	allocations.push_back(newAlloc);
+			if (SIZE - lastAllocEnd >= size)
+			{
+				allocations.push_back({ lastAllocEnd, size });
+				return lastAllocEnd;
+			}
+		}
 
-	return newAlloc.offset;
+		assert(false && "Failed to allocate part of buffer");
+		return -1;
+
+	}
 }
 
 void BufferAllocator::Delete(int offset)

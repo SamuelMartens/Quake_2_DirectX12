@@ -31,6 +31,15 @@ The .pak files are just a linear collapse of a directory tree
 ========================================================================
 */
 
+#ifdef  _WIN32
+
+#pragma once
+
+#endif //  _WIN32
+
+#include "../game/q_shared.h"
+
+
 #define IDPAKHEADER		(('K'<<24)+('C'<<16)+('A'<<8)+'P')
 
 typedef struct
