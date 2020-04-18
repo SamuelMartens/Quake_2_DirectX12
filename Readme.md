@@ -6,7 +6,9 @@
 
 - This repo doesn't contain any assets so you still need original game to run it.
 
-- I do this project for fun, so no guarantees is given.
+- I do this project for fun, so no guarantees are given.
+
+- DirectX12 renderer lives in ref_dx12 directory so 99% of changes happen there.
 
 How to run:
   1) Open quake2.sln
