@@ -21,6 +21,7 @@
 #include "dx_buffer.h"
 #include "dx_shaderdefinitions.h"
 #include "dx_glmodel.h"
+#include "dx_camera.h"
 
 extern "C"
 {
@@ -61,11 +62,13 @@ private:
 	constexpr static int		 QTRANSPARENT_TABLE_VAL = 255;
 	constexpr static int		 QCBV_SRV_DESCRIPTORS_NUM = 256;
 	constexpr static int		 QCONST_BUFFER_ALIGNMENT = 256;
-	constexpr static int		 QCONST_BUFFER_SIZE = 256 * 2048;
+	constexpr static int		 QCONST_BUFFER_SIZE = 256 * 1024 * 1024;
 	constexpr static int		 QSTREAMING_VERTEX_BUFFER_SIZE = 256 * 2048;
 
 	constexpr static char		 QRAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
 	constexpr static char		 QFONT_TEXTURE_NAME[] = "conchars";
+
+	constexpr static bool		 QDEBUG_LAYER_ENABLED = false;
 
 public:
 
@@ -88,12 +91,14 @@ public:
 	// Buffers management
 	void DeleteConstantBuffMemory(int offset);
 	void DeleteResources(ComPtr<ID3D12Resource> resourceToDelete);
-	void UpdateConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offset);
+	
+	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offset);
+	void UpdateGraphicalObjectConstantBuffer(const GraphicalObject& obj);
 
 	Texture* FindOrCreateTexture(std::string_view textureName);
 
 	/* API functions */
-	void BeginFrame(float CameraSeparation);
+	void BeginFrame();
 	void EndFrame();
 	void Init(WNDPROC WindowProc, HINSTANCE hInstance);
 	void Draw_Pic(int x, int y, const char* name);
@@ -102,6 +107,7 @@ public:
 	void GetDrawTextureSize(int* x, int* y, const char* name) const;
 	void SetPalette(const unsigned char* palette);
 	void RegisterWorldModel(const char* model);
+	void RenderFrame(const refdef_t& frameUpdateData);
 	Texture* RegisterDrawPic(const char* name);
 
 private:
@@ -110,6 +116,8 @@ private:
 	void InitWin32(WNDPROC WindowProc, HINSTANCE hInstance);
 	/* Initialize DirectX stuff */
 	void InitDX();
+
+	void EnableDebugLayer();
 
 	void InitUtils();
 
@@ -151,7 +159,7 @@ private:
 
 	void ExecuteCommandLists();
 	void FlushCommandQueue();
-	
+
 	ID3D12Resource* GetCurrentBackBuffer();
 	D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentBackBufferView();
 	D3D12_CPU_DESCRIPTOR_HANDLE GetDepthStencilView();
@@ -176,9 +184,12 @@ private:
 
 	/* Factory functionality */
 	void CreatePictureObject(const char* pictureName);
+	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf);
+	void DecomposeGLModelNode(const model_t& model, const mnode_t& node);
 
 	/* Rendering */
 	void Draw(const GraphicalObject& object);
+	void DrawIndiced(const GraphicalObject& object);
 	void DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos);
 
 	/* Utils */
@@ -186,6 +197,7 @@ private:
 	void Load8To24Table();
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
+	bool IsVisible(const GraphicalObject& obj) const;
 
 	HWND		m_hWindows = nullptr;
 
@@ -256,12 +268,14 @@ private:
 	std::vector<GraphicalObject> m_graphicalObjects;
 
 	std::vector<int> m_streamingConstOffsets;
-
-	XMFLOAT4X4 m_projectionMat;
-	XMFLOAT4X4 m_viewMat;
+	
+	XMFLOAT4X4 m_uiProjectionMat;
+	XMFLOAT4X4 m_uiViewMat;
 	// DirectX and OpenGL have different directions for Y axis,
 	// this matrix is required to fix this. Also apparently original Quake 2
 	// had origin in a middle of a screen, while we have it in upper left corner,
 	// so we need to center content to the screen center
 	XMFLOAT4X4 m_yInverseAndCenterMatrix;
+
+	Camera m_camera;
 };

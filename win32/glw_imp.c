@@ -63,7 +63,6 @@ static qboolean VerifyDriver( void )
 
 qboolean VID_CreateWindow( int width, int height, qboolean fullscreen )
 {
-	//#INFO windows creation
 	WNDCLASS		wc;
 	RECT			r;
 	cvar_t			*vid_xpos, *vid_ypos;

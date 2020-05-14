@@ -13,7 +13,7 @@ VSCon_Printf
 Print to Visual Studio developers console
 =================
 */
-
+//#DEBUG fix this function it accepts only one argument
 void Utils::VSCon_Printf(const char *msg, ...)
 {
 	va_list		argptr;
@@ -67,12 +67,12 @@ typedef struct _TargaHeader {
 
 #endif
 
-
 unsigned int Utils::Align(unsigned int size, unsigned int alignment)
 {
 	--alignment;
 	return (size + alignment) & ~alignment;
 }
+
 void Utils::Sprintf(char* dest, int size, const char* fmt, ...)
 {
 	int		len;
@@ -438,4 +438,25 @@ void Utils::MakeQuad(XMFLOAT2 posMin, XMFLOAT2 posMax, XMFLOAT2 texMin, XMFLOAT2
 	outVert[3] = vert0;
 	outVert[4] = vert2;
 	outVert[5] = vert3;
+}
+
+std::vector<uint32_t> Utils::GetIndicesListForTrianglelistFromPolygonPrimitive(int numVertices)
+{
+	constexpr int TRIANGLE_VERT_NUM = 3;
+
+	assert(numVertices >= TRIANGLE_VERT_NUM && "Invalid vert num for triangle list generation");
+
+	std::vector<uint32_t> indices;
+	indices.reserve((numVertices - 2) * TRIANGLE_VERT_NUM);
+
+	constexpr uint32_t rootInd = 0;
+
+	for (uint32_t i = rootInd + 1; i < numVertices - 1; ++i)
+	{
+		indices.push_back(rootInd);
+		indices.push_back(i);
+		indices.push_back(i + 1);
+	}
+
+	return indices;
 }

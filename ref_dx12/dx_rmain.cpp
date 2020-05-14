@@ -39,7 +39,9 @@ void DX12_EndReg(void)
 {}
 
 void DX12_RenderFrame(refdef_t *fd)
-{}
+{
+	Renderer::Inst().RenderFrame(*fd);
+}
 
 void DX12_Draw_GetPicSize(int *w, int *h, char *name)
 {
@@ -88,7 +90,7 @@ void DX12_Shutdown(void)
 
 void DX12_BeginFrame( float camera_separation )
 {
-	Renderer::Inst().BeginFrame(camera_separation);
+	Renderer::Inst().BeginFrame();
 }
 
 void DX12_EndFrame(void)

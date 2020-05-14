@@ -13,14 +13,15 @@
 #include "dx_utils.h"
 #include "dx_shaderdefinitions.h"
 #include "dx_glmodel.h"
+#include "dx_camera.h"
 
 
 Renderer::Renderer()
 {
 	XMMATRIX tempMat = XMMatrixIdentity();
 
-	XMStoreFloat4x4(&m_projectionMat, tempMat);
-	XMStoreFloat4x4(&m_viewMat, tempMat);
+	XMStoreFloat4x4(&m_uiProjectionMat, tempMat);
+	XMStoreFloat4x4(&m_uiViewMat, tempMat);
 }
 
 Renderer& Renderer::Inst()
@@ -43,11 +44,8 @@ void Renderer::Init(WNDPROC WindowProc, HINSTANCE hInstance)
 	Load8To24Table();
 }
 
-void Renderer::BeginFrame(float CameraSeparation)
+void Renderer::BeginFrame()
 {
-	ThrowIfFailed(m_commandListAlloc->Reset());
-	ThrowIfFailed(m_commandList->Reset(m_commandListAlloc.Get(), m_pipelineState.Get()));
-
 	// Resetting viewport is mandatory
 	m_commandList->RSSetViewports(1, &m_viewport);
 	// Resetting scissor is mandatory 
@@ -82,13 +80,12 @@ void Renderer::BeginFrame(float CameraSeparation)
 
 	m_commandList->SetGraphicsRootSignature(m_rootSingature.Get());
 
-
 	// Set some matrices
 	XMMATRIX tempMat = XMMatrixIdentity();
-	XMStoreFloat4x4(&m_viewMat, tempMat);
+	XMStoreFloat4x4(&m_uiViewMat, tempMat);
 
 	tempMat = XMMatrixOrthographicLH(m_viewport.Width, m_viewport.Height, 0.0f, 1.0f);
-	XMStoreFloat4x4(&m_projectionMat, tempMat);
+	XMStoreFloat4x4(&m_uiProjectionMat, tempMat);
 }
 
 void Renderer::EndFrame()
@@ -104,10 +101,18 @@ void Renderer::EndFrame()
 	);
 
 	ExecuteCommandLists();
+	FlushCommandQueue();
+
+	// Safe to do here since Flush command queue is here. This used to be in the BeginFrame()
+	// but it seems like some logic like loading new data on GPU happens after EndFrame, but
+	// before BeginFrame. I can try to create separate command list for such things, or deffer
+	// them and do it in the beginning of the frame.
+	ThrowIfFailed(m_commandListAlloc->Reset());
+	ThrowIfFailed(m_commandList->Reset(m_commandListAlloc.Get(), m_pipelineState.Get()));
 
 	PresentAndSwapBuffers();
+	
 
-	FlushCommandQueue();
 	// We flushed command queue, we know for sure that it is safe to release those resources
 	m_uploadResources.clear();
 
@@ -119,7 +124,6 @@ void Renderer::EndFrame()
 		m_constantBuffer.allocator.Delete(offset);
 	}
 	m_streamingConstOffsets.clear();
-
 
 	// Deal with resource we wanted to delete
 	m_resourcesToDelete.clear();
@@ -202,15 +206,7 @@ void Renderer::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 
 void Renderer::InitDX()
 {
-	//#TODO all this stuff should be reworked to avoid redundant
-	// members of the class
-#if defined(DEBUG) || defined(_DEBUG)
-	// Enable D3D12 debug layer
-	Microsoft::WRL::ComPtr<ID3D12Debug> DebugController;
-
-	ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&DebugController)));
-	DebugController->EnableDebugLayer();
-#endif
+	EnableDebugLayer();
 
 	CreateDxgiFactory();
 	CreateDevice();
@@ -244,9 +240,24 @@ void Renderer::InitDX()
 
 	InitUtils();
 
-	// If we recorded some commands during initialization, execute them here
 	ExecuteCommandLists();
 	FlushCommandQueue();
+
+	ThrowIfFailed(m_commandListAlloc->Reset());
+	ThrowIfFailed(m_commandList->Reset(m_commandListAlloc.Get(), m_pipelineState.Get()));
+}
+
+void Renderer::EnableDebugLayer()
+{
+	if (QDEBUG_LAYER_ENABLED == false)
+	{
+		return;
+	}
+
+	Microsoft::WRL::ComPtr<ID3D12Debug> DebugController;
+
+	ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&DebugController)));
+	DebugController->EnableDebugLayer();
 }
 
 void Renderer::InitUtils()
@@ -445,7 +456,7 @@ void Renderer::CreateSwapChain()
 	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 	swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 
-	// Node: Swap chain uses queue to perform flush.
+	// Note: Swap chain uses queue to perform flush.
 	ThrowIfFailed(m_dxgiFactory->CreateSwapChain(m_commandQueue.Get(),
 		&swapChainDesc,
 		m_swapChain.GetAddressOf()));
@@ -680,6 +691,9 @@ int Renderer::GetMSAAQuality() const
 //************************************
 void Renderer::FlushCommandQueue()
 {
+	// I actually rely on this stuff in some places, so I just need to be careful
+	// when big refactoring time comes. 
+
 	// Advance the fence value to mark a new point
 	++m_currentFenceValue;
 
@@ -1079,6 +1093,91 @@ void Renderer::CreatePictureObject(const char* pictureName)
 	newObject.constantBufferOffset = m_constantBuffer.allocator.Allocate(PictureObjectConstSize);
 }
 
+void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf)
+{
+	// Fill up vertex buffer
+	std::vector<ShDef::Vert::PosTexCoord> vertices;
+	for (const glpoly_t* poly = surf.polys; poly != nullptr; poly = poly->chain)
+	{
+		constexpr int vertexsize = 7;
+
+		// xyz s1t1 s2t2
+		const float* glVert = poly->verts[0];
+		for (int i = 0; i < poly->numverts; ++i, glVert += vertexsize)
+		{
+			ShDef::Vert::PosTexCoord dxVert;
+			dxVert.position = { glVert[0], glVert[1], glVert[2], 1.0f };
+			dxVert.texCoord = { glVert[3], glVert[4] };
+
+			vertices.push_back(std::move(dxVert));
+		}
+	}
+
+	if (vertices.empty())
+	{
+		return;
+	}
+
+	GraphicalObject& obj = m_graphicalObjects.emplace_back(GraphicalObject());
+	// Set the texture name
+	obj.textureKey = surf.texinfo->image->name;
+
+	obj.vertexBuffer = CreateDefaultHeapBuffer(vertices.data(), sizeof(ShDef::Vert::PosTexCoord) * vertices.size());
+
+	static uint64_t allocSize = 0;
+	uint64_t size = sizeof(ShDef::Vert::PosTexCoord) * vertices.size();
+
+	assert(obj.vertexBuffer != nullptr && "Failed to create vertex buffer on GL surface transformation");
+
+	// Fill up index buffer
+	std::vector<uint32_t> indices;
+	indices = Utils::GetIndicesListForTrianglelistFromPolygonPrimitive(vertices.size());
+
+	obj.indexBuffer = CreateDefaultHeapBuffer(indices.data(), sizeof(uint32_t) * indices.size());
+
+	const unsigned int PictureObjectConstSize = Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT);
+
+	// My allocator is insanely naive, and slow, I really should implement some proper allocator
+	obj.constantBufferOffset = m_constantBuffer.allocator.Allocate(PictureObjectConstSize);
+
+	std::vector<XMFLOAT4> verticesPos;
+	verticesPos.reserve(vertices.size());
+
+	for (const ShDef::Vert::PosTexCoord& vertex : vertices)
+	{
+		verticesPos.push_back(vertex.position);
+	}
+
+	obj.GenerateBoundingBox(verticesPos);
+}
+
+void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node)
+{
+	// Looks like if leaf return, leafs don't contain any geom
+	if (node.contents != -1)
+	{
+		return;
+	}
+
+	// This is intermediate node, keep going for a leafs
+	DecomposeGLModelNode(model, *node.children[0]);
+	DecomposeGLModelNode(model, *node.children[1]);
+
+	// Each surface inside node represents stand alone object with its own texture
+
+	const unsigned int lastSurfInd = node.firstsurface + node.numsurfaces;
+	const msurface_t* surf = &model.surfaces[node.firstsurface];
+
+	for (unsigned int surfInd = node.firstsurface; 
+			surfInd < lastSurfInd;
+			++surfInd, ++surf)
+	{
+		assert(surf != nullptr && "Error during graphical objects generation");
+
+		CreateGraphicalObjectFromGLSurface(*surf);
+	}
+}
+
 void Renderer::Draw(const GraphicalObject& object)
 {
 	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -1118,13 +1217,62 @@ void Renderer::Draw(const GraphicalObject& object)
 	m_commandList->DrawInstanced(vertBuffView.SizeInBytes / vertBuffView.StrideInBytes, 1, 0, 0);
 }
 
+void Renderer::DrawIndiced(const GraphicalObject& object)
+{
+	assert(object.indexBuffer != nullptr && "Trying to draw indexed object without index buffer");
+
+	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	// Set vertex buffer
+	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
+	vertBuffView.BufferLocation = object.vertexBuffer->GetGPUVirtualAddress();
+	vertBuffView.StrideInBytes = sizeof(ShDef::Vert::PosTexCoord);
+	vertBuffView.SizeInBytes = object.vertexBuffer->GetDesc().Width;
+
+	m_commandList->IASetVertexBuffers(0, 1, &vertBuffView);
+
+	// Set index buffer
+	D3D12_INDEX_BUFFER_VIEW indexBufferView;
+	indexBufferView.BufferLocation = object.indexBuffer->GetGPUVirtualAddress();
+	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+	indexBufferView.SizeInBytes = object.indexBuffer->GetDesc().Width;
+
+	m_commandList->IASetIndexBuffer(&indexBufferView);
+
+
+	// Binding root signature params
+
+	// 1)
+	const Texture& texture = m_textures.find(object.textureKey)->second;
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(m_cbvSrvHeap->GetGPUDescriptorHandleForHeapStart());
+	texHandle.Offset(texture.texView->srvIndex, m_cbvSrbDescriptorSize);
+
+	m_commandList->SetGraphicsRootDescriptorTable(0, texHandle);
+
+	// 2)
+	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
+	samplerHandle.Offset(texture.samplerInd, m_samplerDescriptorSize);
+
+	m_commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
+
+	// 3)
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_constantBuffer.gpuBuffer->GetGPUVirtualAddress();
+	cbAddress += object.constantBufferOffset;
+
+	m_commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
+
+	// Finally, draw
+	m_commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
+}
+
 void Renderer::DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos)
 {
 	// Allocate and update constant buffer
 	int constantBufferOffset = m_constantBuffer.allocator.Allocate(Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT));
 	m_streamingConstOffsets.push_back(constantBufferOffset);
 
-	UpdateConstantBuffer(pos, { 1.0f, 1.0f, 1.0f, 0.0f }, constantBufferOffset);
+	UpdateStreamingConstantBuffer(pos, { 1.0f, 1.0f, 1.0f, 0.0f }, constantBufferOffset);
 
 	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
@@ -1279,12 +1427,34 @@ void Renderer::FindImageScaledSizes(int width, int height, int& scaledWidth, int
 	min(scaledHeight, maxSize);
 }
 
+bool Renderer::IsVisible(const GraphicalObject& obj) const
+{
+	const static XMFLOAT4 divVector = XMFLOAT4(2.0f, 2.0f, 2.0f, 1.0f);
+	const static FXMVECTOR sseDivVect = XMLoadFloat4(&divVector);
+
+	FXMVECTOR sseBoundindBoxMin = XMLoadFloat4(&obj.bbMin);
+	FXMVECTOR sseBoundindBoxMax = XMLoadFloat4(&obj.bbMax);
+	FXMVECTOR sseBoundingBoxCenter = 
+		XMVectorDivide(XMVectorAdd(sseBoundindBoxMax, sseBoundindBoxMin), sseDivVect);
+
+	FXMVECTOR sseCameraPos = XMLoadFloat4(&m_camera.position);
+
+	XMFLOAT4 lenVector;
+	XMStoreFloat4(&lenVector, XMVector4Length(XMVectorSubtract(sseCameraPos, sseBoundingBoxCenter)));
+
+	const float distance = lenVector.x;
+
+	constexpr float visibilityDist = 600.0f;
+
+	return distance < visibilityDist;
+}
+
 void Renderer::DeleteResources(ComPtr<ID3D12Resource> resourceToDelete)
 {
 	m_resourcesToDelete.push_back(resourceToDelete);
 }
 
-void Renderer::UpdateConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offset)
+void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offset)
 {
 	assert(offset != GraphicalObject::INVALID_OFFSET &&
 		"Can't update constant buffer, invalid offset.");
@@ -1292,7 +1462,7 @@ void Renderer::UpdateConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offse
 	// Update transformation mat
 	ShDef::ConstBuff::TransMat transMat;
 	XMMATRIX modelMat = XMMatrixScaling(scale.x, scale.y, scale.z);
-
+	
 	modelMat = modelMat * XMMatrixTranslation(
 		position.x,
 		position.y,
@@ -1300,14 +1470,14 @@ void Renderer::UpdateConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offse
 	);
 
 
-	XMMATRIX sseViewMat = XMLoadFloat4x4(&m_viewMat);
-	XMMATRIX sseProjMat = XMLoadFloat4x4(&m_projectionMat);
+	XMMATRIX sseViewMat = XMLoadFloat4x4(&m_uiViewMat);
+	XMMATRIX sseProjMat = XMLoadFloat4x4(&m_uiProjectionMat);
 	XMMATRIX sseYInverseAndCenterMat = XMLoadFloat4x4(&m_yInverseAndCenterMatrix);
 
-	XMMATRIX mvpMat = modelMat * sseYInverseAndCenterMat * sseViewMat * sseProjMat;
+	XMMATRIX sseMvpMat = modelMat * sseYInverseAndCenterMat * sseViewMat * sseProjMat;
 
 
-	XMStoreFloat4x4(&transMat.transformationMat, mvpMat);
+	XMStoreFloat4x4(&transMat.transformationMat, sseMvpMat);
 
 	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
 	updateConstBufferArgs.buffer = m_constantBuffer.gpuBuffer;
@@ -1316,6 +1486,26 @@ void Renderer::UpdateConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offse
 	updateConstBufferArgs.byteSize = sizeof(transMat);
 	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
 	// Update our constant buffer
+	UpdateUploadHeapBuff(updateConstBufferArgs);
+}
+
+void Renderer::UpdateGraphicalObjectConstantBuffer(const GraphicalObject& obj)
+{
+	XMMATRIX sseMvpMat = obj.GenerateModelMat() *
+		m_camera.GenerateViewMatrix() *
+		m_camera.GenerateProjectionMatrix();
+
+	XMFLOAT4X4 mvpMat;
+	XMStoreFloat4x4(&mvpMat, sseMvpMat);
+
+
+	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
+	updateConstBufferArgs.buffer = m_constantBuffer.gpuBuffer;
+	updateConstBufferArgs.offset = obj.constantBufferOffset;
+	updateConstBufferArgs.data = &mvpMat;
+	updateConstBufferArgs.byteSize = sizeof(mvpMat);
+	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
+
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
@@ -1429,13 +1619,6 @@ void Renderer::Draw_Pic(int x, int y, const char* name)
 	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
 
 	const Texture& texture = *FindOrCreateTexture(texFullName.data());
-
-	// Make sure object exists
-	auto targetObject = std::find_if(m_graphicalObjects.begin(), m_graphicalObjects.end(), 
-		[name](const GraphicalObject& obj) 
-	{
-		return strcmp(name, obj.textureKey.c_str()) == 0;
-	});
 
 	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
 	Utils::MakeQuad(XMFLOAT2( 0.0f, 0.0f ),
@@ -1587,13 +1770,42 @@ void Renderer::RegisterWorldModel(const char* model)
 {
 	//#TODO I am not sure that I want old models implementation yet.
 	// I might write a wrapper of my own. 
-	// IMPORTANT: don't forget to deleteion of old world according to
-	// Quake logic
+	// IMPORTANT: don't forget to deletion of old world according to
+	// Quake logic.
 
 	char fullName[MAX_QPATH];
 	Utils::Sprintf(fullName, sizeof(fullName), "maps/%s.bsp", model);
 
+	//#DEBUG world model is taken from that list of preallocated models
+	// I don't think I should use that. I should have some kind of container
+	// for this "model_t" which are most likely are gonna be temporary objects
 	model_t* worldModel = Mod_ForName(fullName, qTrue);
+
+	DecomposeGLModelNode(*worldModel, *worldModel->nodes);
+}
+
+void Renderer::RenderFrame(const refdef_t& frameUpdateData)
+{
+	m_camera.Update(frameUpdateData);
+
+	for (const GraphicalObject& obj : m_graphicalObjects)
+	{
+		if (!IsVisible(obj))
+		{
+			continue;
+		}
+
+		UpdateGraphicalObjectConstantBuffer(obj);
+
+		if (obj.indexBuffer != nullptr)
+		{
+			DrawIndiced(obj);
+		}
+		else
+		{
+			Draw(obj);
+		}
+	}
 }
 
 Texture* Renderer::RegisterDrawPic(const char* name)

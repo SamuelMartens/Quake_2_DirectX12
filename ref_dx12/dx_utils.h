@@ -6,6 +6,7 @@
 #include <sstream>
 #include <comdef.h>
 #include <cstddef>
+#include <vector>
 
 #include "dx_shaderdefinitions.h"
 
@@ -62,6 +63,8 @@ namespace Utils
 	void LoadTGA(char* filename, std::byte** image, int* width, int* height);
 
 	void MakeQuad(XMFLOAT2 posMin, XMFLOAT2 posMax, XMFLOAT2 texMin, XMFLOAT2 texMax, ShDef::Vert::PosTexCoord* outVert);
+
+	std::vector<uint32_t> GetIndicesListForTrianglelistFromPolygonPrimitive(int numVertices);
 }
 
 // Helper utility converts D3D API failures into exceptions.

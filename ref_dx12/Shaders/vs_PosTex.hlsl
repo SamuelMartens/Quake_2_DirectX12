@@ -21,6 +21,7 @@ struct VertexOut
 VertexOut main(VertexIn vIn)
 {
 	VertexOut vOut;
+    // Funny enought, by default matrices are packed as column major.
     vOut.pPos = mul(gWorldViewProj, vIn.vPos);
     
 	vOut.pTex = vIn.vTex;
