@@ -17,7 +17,7 @@ struct Camera
 	XMFLOAT2 fov = { 0.0f, 0.0f };
 	XMFLOAT4 position = { 0.0f, 0.0f, 0.0f, 1.0f };
 	XMFLOAT3 viewangles = { 0.0f, 0.0f, 0.0f };
-	//#DEBUG currently this data is also stored in DxApp, it should be taken from here
+
 	int width = 0;
 	int height = 0;
 };

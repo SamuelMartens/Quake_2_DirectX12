@@ -13,7 +13,6 @@ VSCon_Printf
 Print to Visual Studio developers console
 =================
 */
-//#DEBUG fix this function it accepts only one argument
 void Utils::VSCon_Printf(const char *msg, ...)
 {
 	va_list		argptr;

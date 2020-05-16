@@ -7,6 +7,7 @@
 #include <string_view>
 #include <d3dcompiler.h>
 #include <DirectXColors.h>
+#include <memory>
 
 
 #include "../win32/winquake.h"
@@ -14,7 +15,7 @@
 #include "dx_shaderdefinitions.h"
 #include "dx_glmodel.h"
 #include "dx_camera.h"
-
+#include "dx_model.h"
 
 Renderer::Renderer()
 {
@@ -47,7 +48,15 @@ void Renderer::Init(WNDPROC WindowProc, HINSTANCE hInstance)
 void Renderer::BeginFrame()
 {
 	// Resetting viewport is mandatory
-	m_commandList->RSSetViewports(1, &m_viewport);
+	D3D12_VIEWPORT viewport;
+	viewport.TopLeftX = 0;
+	viewport.TopLeftY = 0;
+	viewport.Width = static_cast<float>(m_camera.width);
+	viewport.Height = static_cast<float>(m_camera.height);
+	viewport.MinDepth = 0.0f;
+	viewport.MaxDepth = 1.0f;
+
+	m_commandList->RSSetViewports(1, &viewport);
 	// Resetting scissor is mandatory 
 	m_commandList->RSSetScissorRects(1, &m_scissorRect);
 
@@ -84,7 +93,7 @@ void Renderer::BeginFrame()
 	XMMATRIX tempMat = XMMatrixIdentity();
 	XMStoreFloat4x4(&m_uiViewMat, tempMat);
 
-	tempMat = XMMatrixOrthographicLH(m_viewport.Width, m_viewport.Height, 0.0f, 1.0f);
+	tempMat = XMMatrixOrthographicRH(m_camera.width, m_camera.height, 0.0f, 1.0f);
 	XMStoreFloat4x4(&m_uiProjectionMat, tempMat);
 }
 
@@ -233,7 +242,7 @@ void Renderer::InitDX()
 
 	CreatePipelineState();
 
-	InitViewport();
+	InitCamera();
 	InitScissorRect();
 
 	CreateTextureSampler();
@@ -298,20 +307,16 @@ void Renderer::InitScissorRect()
 	m_scissorRect = { 0, 0, drawAreaWidth, drawAreaHeight };
 }
 
-void Renderer::InitViewport()
+void Renderer::InitCamera()
 {
 	int DrawAreaWidth = 0;
 	int DrawAreaHeight = 0;
 
 	GetDrawAreaSize(&DrawAreaWidth, &DrawAreaHeight);
 	// Init viewport
-	m_viewport;
-	m_viewport.TopLeftX = 0.0f;
-	m_viewport.TopLeftY = 0.0f;
-	m_viewport.Width = static_cast<float>(DrawAreaWidth);
-	m_viewport.Height = static_cast<float>(DrawAreaHeight);
-	m_viewport.MinDepth = 0.0f;
-	m_viewport.MaxDepth = 1.0f;
+
+	m_camera.width = DrawAreaWidth;
+	m_camera.height = DrawAreaHeight;
 }
 
 void Renderer::CreateDepthStencilBufferAndView()
@@ -1768,20 +1773,22 @@ void Renderer::SetPalette(const unsigned char* palette)
 
 void Renderer::RegisterWorldModel(const char* model)
 {
-	//#TODO I am not sure that I want old models implementation yet.
-	// I might write a wrapper of my own. 
-	// IMPORTANT: don't forget to deletion of old world according to
-	// Quake logic.
+	//#TODO I need to manage map model lifetime. So for example in this function
+	// I would need to delete old map model and related to it objects before loading
+	// a new one. (make sure to handle properly when some object is needed in the new
+	// model, so you don't load it twice). Currently it doesn't make sense to do anything
+	// with this, because I will have other models in game and I want to handle world model 
+	// as part of this system. Maybe I should leave it as it is and just use old system?
 
 	char fullName[MAX_QPATH];
 	Utils::Sprintf(fullName, sizeof(fullName), "maps/%s.bsp", model);
+	
+	// Create new world model
+	model_t* mapModel = Mod_ForName(fullName, qTrue);
 
-	//#DEBUG world model is taken from that list of preallocated models
-	// I don't think I should use that. I should have some kind of container
-	// for this "model_t" which are most likely are gonna be temporary objects
-	model_t* worldModel = Mod_ForName(fullName, qTrue);
+	DecomposeGLModelNode(*mapModel, *mapModel->nodes);
 
-	DecomposeGLModelNode(*worldModel, *worldModel->nodes);
+	Mod_Free(mapModel);
 }
 
 void Renderer::RenderFrame(const refdef_t& frameUpdateData)

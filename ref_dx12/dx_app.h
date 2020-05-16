@@ -123,7 +123,7 @@ private:
 
 	void InitScissorRect();
 
-	void InitViewport();
+	void InitCamera();
 
 	void CreateDepthStencilBufferAndView();
 
@@ -230,7 +230,6 @@ private:
 	AllocBuffer m_constantBuffer;
 	AllocBuffer m_streamingVertexBuffer;
 
-	D3D12_VIEWPORT m_viewport;
 	tagRECT		   m_scissorRect;
 
 	INT	m_currentBackBuffer = 0;
