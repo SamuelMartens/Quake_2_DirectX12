@@ -16,7 +16,7 @@ Model& Model::operator=(Model&& other)
 {
 	if (this == &other)
 	{
-		return;
+		return *this;
 	}
 
 	glModel = other.glModel;
