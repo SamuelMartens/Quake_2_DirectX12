@@ -165,7 +165,8 @@ void Renderer::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 	windowClass.lpszMenuName	= 0;
 	windowClass.lpszClassName  = static_cast<LPCSTR>(windowsClassName.c_str());
 
-	assert(RegisterClass(&windowClass) && "Failed to register win class.");
+	ATOM classReg = RegisterClass(&windowClass);
+	assert(classReg != 0 && "Failed to register win class.");
 
 	screenRect.left = 0;
 	screenRect.top = 0;
