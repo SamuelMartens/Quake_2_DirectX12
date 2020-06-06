@@ -22,6 +22,7 @@
 #include "dx_shaderdefinitions.h"
 #include "dx_glmodel.h"
 #include "dx_camera.h"
+#include "dx_material.h"
 
 extern "C"
 {
@@ -34,7 +35,16 @@ namespace FArg
 	{
 		ComPtr<ID3D12Resource> buffer;
 		int offset = -1;
-		const void* data = 0;
+		const void* data = nullptr;
+		int byteSize = -1;
+		int alignment = -1;
+	};
+
+	struct UpdateDefaultHeapBuff
+	{
+		ComPtr<ID3D12Resource> buffer;
+		int offset = -1;
+		const void* data = nullptr;
 		int byteSize = -1;
 		int alignment = -1;
 	};
@@ -49,6 +59,12 @@ namespace FArg
 //    during resource management.(This requires rewrite some stuff like Textures or buffers)
 // 4) For Movies and UI we don't need stream drawing, but just one quad object  and the width and height would be
 //	  scaling of this quad along y or x axis
+// 5) When I give back something after memory allocation it is easier to give back handler than exact memory access,
+//	  because then I can safely move allocated memory around in allocator and don't worry that something will happened
+// 6) Add exclusive buffer for memory allocations. Never allocate separate small buffers
+// 7) If decided to go with preallocated GPU buffers I should come up with some way to control buffers states
+//	  and actively avoid redundant state transitions
+// 8) Wrap everything in one namespace?
 class Renderer
 {
 private:
@@ -60,10 +76,13 @@ private:
 	constexpr static bool		 QMSAA_ENABLED = false;
 	constexpr static int		 QMSAA_SAMPLE_COUNT = 4;
 	constexpr static int		 QTRANSPARENT_TABLE_VAL = 255;
-	constexpr static int		 QCBV_SRV_DESCRIPTORS_NUM = 256;
+	constexpr static int		 QCBV_SRV_DESCRIPTORS_NUM = 512;
 	constexpr static int		 QCONST_BUFFER_ALIGNMENT = 256;
 	constexpr static int		 QCONST_BUFFER_SIZE = 256 * 1024 * 1024;
 	constexpr static int		 QSTREAMING_VERTEX_BUFFER_SIZE = 256 * 2048;
+	// 1 GB of default memory
+	constexpr static int		 QDEFAULT_MEMORY_BUFFER_SIZE = 1 * 1024 * 1024 * 1024;
+	constexpr static int		 QDEFAULT_MEMORY_BUFFER_HANDLERS_NUM = 1024;
 
 	constexpr static char		 QRAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
 	constexpr static char		 QFONT_TEXTURE_NAME[] = "conchars";
@@ -91,6 +110,7 @@ public:
 	// Buffers management
 	void DeleteConstantBuffMemory(int offset);
 	void DeleteResources(ComPtr<ID3D12Resource> resourceToDelete);
+	void DeleteDefaultMemoryBufferViaHandler(BufferHandler handler);
 	
 	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offset);
 	void UpdateGraphicalObjectConstantBuffer(const GraphicalObject& obj);
@@ -109,6 +129,7 @@ public:
 	void RegisterWorldModel(const char* model);
 	void RenderFrame(const refdef_t& frameUpdateData);
 	Texture* RegisterDrawPic(const char* name);
+	model_s* RegisterModel(const char* name);
 
 private:
 
@@ -148,6 +169,7 @@ private:
 	void CreatePipelineState();
 	void CreateInputLayout();
 	void LoadShaders();
+	void CreateMaterials();
 
 	void CreateTextureSampler();
 
@@ -178,12 +200,14 @@ private:
 	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize);
 	ComPtr<ID3D12Resource> CreateUploadHeapBuffer(UINT64 byteSize) const;
 	void UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const;
+	void UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args);
 
 	/* Shutdown and clean up Win32 specific stuff */
 	void ShutdownWin32();
 
 	/* Factory functionality */
 	void CreatePictureObject(const char* pictureName);
+	DynamicGraphicalObject CreateDynamicGraphicObjectFromGLModel(const model_t* model);
 	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf);
 	void DecomposeGLModelNode(const model_t& model, const mnode_t& node);
 
@@ -198,6 +222,10 @@ private:
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
 	bool IsVisible(const GraphicalObject& obj) const;
+
+	/* Materials */
+	Material CompileMaterial(const MaterialSource& materialSourse) const;
+	void SetMaterial(const std::string& materialName);
 
 	HWND		m_hWindows = nullptr;
 
@@ -220,6 +248,7 @@ private:
 	ComPtr<ID3D12DescriptorHeap>	  m_cbvSrvHeap;
 	ComPtr<ID3D12DescriptorHeap>	  m_samplerHeap;
 
+	//#DEBUG get rid of this hardcoded crap
 	std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputLayout;
 	ComPtr<ID3D12PipelineState>		  m_pipelineState;
 	ComPtr<ID3D12RootSignature>		  m_rootSingature;
@@ -227,8 +256,13 @@ private:
 	ComPtr<ID3DBlob> m_psShader;
 	ComPtr<ID3DBlob> m_vsShader;
 
-	AllocBuffer m_constantBuffer;
-	AllocBuffer m_streamingVertexBuffer;
+	AllocBuffer<QCONST_BUFFER_SIZE> m_constantBuffer;
+	AllocBuffer<QSTREAMING_VERTEX_BUFFER_SIZE> m_streamingVertexBuffer;
+	// I am trying to change the way I work with gpu memory, by preallocating
+	// a huge chunk of memory and avoiding frequent small allocations. It's all
+	// inconsistent right now, cause this is just prototype
+	HandlerBuffer<QDEFAULT_MEMORY_BUFFER_SIZE, QDEFAULT_MEMORY_BUFFER_HANDLERS_NUM> m_defaultMemoryBuffer;
+	
 
 	tagRECT		   m_scissorRect;
 
@@ -265,6 +299,7 @@ private:
 
 	// Should I separate UI from game object? Damn, is this NWN speaks in me
 	std::vector<GraphicalObject> m_graphicalObjects;
+	std::unordered_map<model_t*, DynamicGraphicalObject> m_dynamicGraphicalObjects;
 
 	std::vector<int> m_streamingConstOffsets;
 	
@@ -277,4 +312,6 @@ private:
 	XMFLOAT4X4 m_yInverseAndCenterMatrix;
 
 	Camera m_camera;
+
+	std::vector<Material> m_materials;
 };

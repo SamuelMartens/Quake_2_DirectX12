@@ -65,6 +65,13 @@ namespace Utils
 	void MakeQuad(XMFLOAT2 posMin, XMFLOAT2 posMax, XMFLOAT2 texMin, XMFLOAT2 texMax, ShDef::Vert::PosTexCoord* outVert);
 
 	std::vector<uint32_t> GetIndicesListForTrianglelistFromPolygonPrimitive(int numVertices);
+
+	inline bool VecEqual(const XMFLOAT2& v1, const XMFLOAT2& v2)
+	{
+		constexpr float epsilon = 0.00001f;
+
+		return std::abs(v1.x - v2.x) < epsilon && std::abs(v1.y - v2.y) < epsilon;
+	}
 }
 
 // Helper utility converts D3D API failures into exceptions.

@@ -1026,6 +1026,7 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 	loadmodel->type = mod_brush;
 	if (loadmodel != mod_known) 
 	{
+		//#DEBUG assert oplace
 		char msg[] = "Loaded a brush model after the world";
 		ri.Sys_Error (ERR_DROP, msg);
 	}
@@ -1240,10 +1241,7 @@ void Mod_LoadAliasModel (model_t *mod, void *buffer)
 		pheader->num_skins*MAX_SKINNAME);
 	for (i=0 ; i<pheader->num_skins ; i++)
 	{
-		//#GLREPLACE
-		//mod->skins[i] = GL_FindImage ((char *)pheader + pheader->ofs_skins + i*MAX_SKINNAME
-		//	, it_skin);
-		assert(false && "GL re implement");
+		mod->skins[i] = Renderer::Inst().FindOrCreateTexture((char *)pheader + pheader->ofs_skins + i*MAX_SKINNAME);
 	}
 
 	mod->mins[0] = -32;
@@ -1303,10 +1301,8 @@ void Mod_LoadSpriteModel (model_t *mod, void *buffer)
 		sprout->frames[i].origin_x = LittleLong (sprin->frames[i].origin_x);
 		sprout->frames[i].origin_y = LittleLong (sprin->frames[i].origin_y);
 		memcpy (sprout->frames[i].name, sprin->frames[i].name, MAX_SKINNAME);
-		//#GLREPLACE
-		//mod->skins[i] = GL_FindImage (sprout->frames[i].name,
-		//	it_sprite);
-		assert(false && "GL re implement");
+		
+		mod->skins[i] = Renderer::Inst().FindOrCreateTexture(sprout->frames[i].name);
 	}
 
 	mod->type = mod_sprite;

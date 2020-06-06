@@ -17,6 +17,115 @@
 #include "dx_camera.h"
 #include "dx_model.h"
 
+#ifdef max
+#undef max
+#endif
+
+namespace
+{
+	inline void PushBackUvInd(const float* uvInd, std::vector<int>& indices, std::vector<XMFLOAT2>& texCoords)
+	{
+		texCoords.emplace_back(XMFLOAT2(uvInd[0], uvInd[1]));
+		indices.push_back(uvInd[2]);
+	}
+
+	void UnwindDynamicGeomIntoTriangleList(const int* order, std::vector<int>& indices, std::vector<XMFLOAT2>& texCoords)
+	{
+		while (true)
+		{
+			int vertCount = *order++;
+
+			if (vertCount == 0)
+			{
+				break;
+			}
+
+			assert(vertCount * vertCount >= 9 && "Weird vert count, during dynamic geom transform");
+
+			if (vertCount < 0)
+			{
+				// Negative vert count means treat vertices like triangle fan
+				vertCount *= -1;
+
+				const float* firstUvInd = reinterpret_cast<const float*>(order);
+				const float* uvInd = firstUvInd + 3;
+
+
+				for (int i = 1; i < vertCount - 2; ++i)
+				{
+					PushBackUvInd(firstUvInd, indices, texCoords);
+
+					PushBackUvInd(uvInd, indices, texCoords);
+
+					uvInd += 3;
+					PushBackUvInd(uvInd, indices, texCoords);
+				}
+			}
+			else
+			{
+				// Positive vert count means treat vertices like triangle strip
+
+				const float* uvInd = reinterpret_cast<const float*>(order);
+
+				for (int i = 0; i < vertCount - 2; ++i)
+				{
+					PushBackUvInd(uvInd + 0 * 3, indices, texCoords);
+					PushBackUvInd(uvInd + 1 * 3, indices, texCoords);
+					PushBackUvInd(uvInd + 2 * 3, indices, texCoords);
+
+					uvInd += 3;
+				}
+
+			}
+			
+			order += 3 * vertCount;
+		}
+	}
+
+
+	std::vector<XMFLOAT2> NormalizeDynamGeomTexCoords(const std::vector<int>& indices, const std::vector<XMFLOAT2>& originalTexCoords)
+	{
+		if (indices.empty())
+		{
+			return std::vector<XMFLOAT2>();
+		}
+
+		assert(indices.size() % 3 == 0 && "Invalid indices in Tex Coord normalization");
+
+		// Find max index
+		int maxIndex = 0;
+		for (int index : indices)
+		{
+			maxIndex = std::max(index, maxIndex);
+		}
+
+		const XMFLOAT2 initTexCoords = XMFLOAT2(-1.0f, -1.0f);
+		std::vector<XMFLOAT2> normalizedTexCoords(maxIndex + 1, initTexCoords);
+
+		// Now fill tex coords with proper data
+		for (int i = 0; i < indices.size(); ++i)
+		{
+			// There might be a situation when the same vertex associated with different tex coords.
+			// I don't think that would happened, but I am just gonna check it here
+			// Basically, I need to make sure that vertex that we are about to write is either uninitialized or
+			// the same.
+			assert(Utils::VecEqual(initTexCoords, normalizedTexCoords[indices[i]]) ||
+					Utils::VecEqual(normalizedTexCoords[indices[i]], originalTexCoords[i]) &&
+					"Different tex coords for the same vertex");
+
+			normalizedTexCoords[indices[i]] = originalTexCoords[i];
+		}
+
+
+		assert(std::find_if(normalizedTexCoords.begin(), normalizedTexCoords.end(), [&initTexCoords](const XMFLOAT2& texCoord) 
+		{
+			return Utils::VecEqual(initTexCoords, texCoord);
+		}) == normalizedTexCoords.end() && "Unitialized tex coord");
+
+		return normalizedTexCoords;
+	}
+}
+
 Renderer::Renderer()
 {
 	XMMATRIX tempMat = XMMatrixIdentity();
@@ -284,14 +393,14 @@ void Renderer::InitUtils()
 	XMStoreFloat4x4(&m_yInverseAndCenterMatrix, sseResultMatrix);
 
 	// Create constant buffer
-	m_constantBuffer.allocator.Init(QCONST_BUFFER_SIZE);
 	assert(Utils::Align(QCONST_BUFFER_SIZE, QCONST_BUFFER_ALIGNMENT) == QCONST_BUFFER_SIZE);
 	m_constantBuffer.gpuBuffer = CreateUploadHeapBuffer(QCONST_BUFFER_SIZE);
 
-
 	// Create streaming vertex buffer
-	m_streamingVertexBuffer.allocator.Init(QSTREAMING_VERTEX_BUFFER_SIZE);
 	m_streamingVertexBuffer.gpuBuffer = CreateUploadHeapBuffer(QSTREAMING_VERTEX_BUFFER_SIZE);
+
+	// Create default memory buffer
+	m_defaultMemoryBuffer.allocBuffer.gpuBuffer = CreateDefaultHeapBuffer(nullptr ,QDEFAULT_MEMORY_BUFFER_SIZE);
 
 	// Init raw palette with 0
 	std::fill(m_rawPalette.begin(), m_rawPalette.end(), 0);
@@ -660,6 +769,104 @@ void Renderer::LoadShaders()
 	m_vsShader = LoadCompiledShader(vsShader);
 }
 
+void Renderer::CreateMaterials()
+{
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC defaultPsoDesc;
+	ZeroMemory(&defaultPsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+
+	defaultPsoDesc.pRootSignature = m_rootSingature.Get();
+	defaultPsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	defaultPsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	defaultPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	defaultPsoDesc.SampleMask = UINT_MAX;
+	defaultPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	defaultPsoDesc.NumRenderTargets = 1;
+	defaultPsoDesc.RTVFormats[0] = QBACK_BUFFER_FORMAT;
+	defaultPsoDesc.SampleDesc.Count = GetMSAASampleCount();
+	defaultPsoDesc.SampleDesc.Quality = GetMSAAQuality();
+	defaultPsoDesc.DSVFormat = QDEPTH_STENCIL_FORMAT;
+
+
+	// Create static geom material
+	MaterialSource staticGeomMaterial;
+	staticGeomMaterial.name = "StaticGeometry";
+	staticGeomMaterial.inputLayout = {
+		{"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+	};
+
+	staticGeomMaterial.psoDesc = defaultPsoDesc;
+	staticGeomMaterial.psoDesc.InputLayout =
+	{ 
+		staticGeomMaterial.inputLayout.data(),
+		static_cast<UINT>(staticGeomMaterial.inputLayout.size())
+	};
+
+	staticGeomMaterial.shaders[MaterialSource::ShaderType::Vs] = "vs_PosTex.cso";
+	staticGeomMaterial.shaders[MaterialSource::ShaderType::Ps] = "ps_PosTex.cso";
+
+	staticGeomMaterial.rootSignatureFlags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+	m_materials.push_back(CompileMaterial(staticGeomMaterial));
+}
+
+MaterialCompiled Renderer::CompileMaterial(const MaterialSource& materialSourse) const
+{
+	MaterialCompiled materialCompiled;
+
+	materialCompiled.name = materialSourse.name;
+
+	// Compiler root signature
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(
+		materialSourse.rootParameters.size(),
+		materialSourse.rootParameters.data(),
+		materialSourse.staticSamplers.size(),
+		materialSourse.staticSamplers.empty() ? nullptr : materialSourse.staticSamplers.data(),
+		materialSourse.rootSignatureFlags);
+	materialCompiled.rootSingature = SerializeAndCreateRootSigFromRootDesc(rootSigDesc);
+
+	// Compile shaders
+	 std::array<ComPtr<ID3DBlob>, MaterialSource::ShaderType::SIZE> compiledShaders;
+
+	for (int i = 0; i < MaterialSource::ShaderType::SIZE; ++i)
+	{
+		if (materialSourse.shaders[i].empty())
+		{
+			continue;
+		}
+
+		compiledShaders[i] = LoadCompiledShader(materialSourse.shaders[i]);
+	}
+
+	// Create pso 
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc(materialSourse.psoDesc);
+
+	psoDesc.pRootSignature = materialCompiled.rootSingature.Get();
+	psoDesc.InputLayout = { materialSourse.inputLayout.data(), static_cast<UINT>(materialSourse.inputLayout.size())};
+
+	ComPtr<ID3DBlob> currentBlob = compiledShaders[MaterialSource::ShaderType::Vs];
+	assert(currentBlob != nullptr && "Empty vertex shader blob");
+
+	psoDesc.VS = 
+	{
+		reinterpret_cast<BYTE*>(currentBlob->GetBufferPointer()),
+		currentBlob->GetBufferSize()
+	};
+
+	currentBlob = compiledShaders[MaterialSource::ShaderType::Ps];
+	assert(currentBlob != nullptr && "Empty pixel shader blob");
+
+	psoDesc.PS = 
+	{
+		reinterpret_cast<BYTE*>(currentBlob->GetBufferPointer()),
+		currentBlob->GetBufferSize()
+	};
+
+	ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&materialCompiled.pipelineState)));
+
+	return materialCompiled;
+}
+
 void Renderer::CreateTextureSampler()
 {
 	D3D12_SAMPLER_DESC samplerDesc = {};
@@ -959,17 +1166,20 @@ ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer(const void* data, UINT6
 		IID_PPV_ARGS(&buffer)
 	));
 
-	// Create upload buffer
-	ComPtr<ID3D12Resource> uploadBuffer = CreateUploadHeapBuffer(byteSize);
-	m_uploadResources.push_back(uploadBuffer);
+	if (data != nullptr)
+	{
+		// Create upload buffer
+		ComPtr<ID3D12Resource> uploadBuffer = CreateUploadHeapBuffer(byteSize);
+		m_uploadResources.push_back(uploadBuffer);
 
-	// Describe upload resource data 
-	D3D12_SUBRESOURCE_DATA subResourceData = {};
-	subResourceData.pData = data;
-	subResourceData.RowPitch = byteSize;
-	subResourceData.SlicePitch = subResourceData.RowPitch;
+		// Describe upload resource data 
+		D3D12_SUBRESOURCE_DATA subResourceData = {};
+		subResourceData.pData = data;
+		subResourceData.RowPitch = byteSize;
+		subResourceData.SlicePitch = subResourceData.RowPitch;
 
-	UpdateSubresources(m_commandList.Get(), buffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
+		UpdateSubresources(m_commandList.Get(), buffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
+	}
 
 	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		buffer.Get(),
@@ -1012,6 +1222,12 @@ ComPtr<ID3D12Resource> Renderer::CreateUploadHeapBuffer(UINT64 byteSize) const
 
 void Renderer::UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const
 {
+	assert(args.buffer != nullptr &&
+		args.alignment != -1 &&
+		args.byteSize != -1 &&
+		args.data != nullptr &&
+		args.offset != -1 && "Uninitialized arguments in update upload buff");
+
 	const unsigned int dataSize = args.alignment != 0 ? Utils::Align(args.byteSize, args.alignment) : args.byteSize;
 
 	BYTE* mappedMemory = nullptr;
@@ -1026,6 +1242,46 @@ void Renderer::UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const
 	args.buffer->Unmap(0, &mappedRange);
 }
 
+void Renderer::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
+{
+	assert(args.buffer != nullptr &&
+		args.alignment != -1 &&
+		args.byteSize != -1 &&
+		args.data != nullptr &&
+		args.offset != -1 && "Uninitialized arguments in update default buff");
+
+	const unsigned int dataSize = args.alignment != 0 ? Utils::Align(args.byteSize, args.alignment) : args.byteSize;
+
+
+	// Create upload buffer
+	ComPtr<ID3D12Resource> uploadBuffer = CreateUploadHeapBuffer(args.byteSize);
+	m_uploadResources.push_back(uploadBuffer);
+
+	// Describe upload resource data 
+	D3D12_SUBRESOURCE_DATA subResourceData = {};
+	subResourceData.pData = args.data;
+	subResourceData.RowPitch = dataSize;
+	subResourceData.SlicePitch = subResourceData.RowPitch;
+
+
+	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		args.buffer.Get(),
+		D3D12_RESOURCE_STATE_GENERIC_READ, 
+		D3D12_RESOURCE_STATE_COPY_DEST
+	));
+
+	// Last argument is intentionally args.byteSize, cause that's how much data we pass to this function
+	// we don't want to read out of range
+	m_commandList->CopyBufferRegion(args.buffer.Get(), args.offset, uploadBuffer.Get(), 0, args.byteSize);
+
+	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		args.buffer.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_GENERIC_READ
+	));
+
+}
+
 void Renderer::FreeSrvSlot(int slotIndex)
 {
 	assert(m_cbvSrvRegistry[slotIndex] == true);
@@ -1038,7 +1294,7 @@ int Renderer::AllocSrvSlot()
 {
 	auto res = std::find(m_cbvSrvRegistry.begin(), m_cbvSrvRegistry.end(), false);
 
-	assert(res != m_cbvSrvRegistry.end());
+	assert(res != m_cbvSrvRegistry.end() && "Can't allocate shader resource view.");
 
 	*res = true;
 
@@ -1097,6 +1353,114 @@ void Renderer::CreatePictureObject(const char* pictureName)
 	static const unsigned int PictureObjectConstSize = Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT);
 
 	newObject.constantBufferOffset = m_constantBuffer.allocator.Allocate(PictureObjectConstSize);
+}
+
+DynamicGraphicalObject Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t* model)
+{
+	DynamicGraphicalObject object;
+
+	const dmdl_t* aliasHeader = reinterpret_cast<dmdl_t*>(model->extradata);
+	assert(aliasHeader != nullptr && "Alias header for dynamic object is not found.");
+
+	// Header data
+	object.headerData.animFrameSizeInBytes = aliasHeader->framesize;
+	object.headerData.animFrameVertsNum = aliasHeader->num_xyz;
+	//#DEBUG Filter out RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE for now!
+
+	// Allocate buffers on CPU, that we will use for transferring our stuff
+	
+
+	std::vector<int> indexBuffer;
+	std::vector<XMFLOAT2> unnormalizedTexCoords;
+	// This is just heuristic guess of how much memory we will need.
+	indexBuffer.reserve(aliasHeader->num_xyz);
+	unnormalizedTexCoords.reserve(aliasHeader->num_xyz);
+
+	// Get texture coords and indices in one buffer
+	const int* order = reinterpret_cast<const int*>(reinterpret_cast<const byte*>(aliasHeader) + aliasHeader->ofs_glcmds);
+	UnwindDynamicGeomIntoTriangleList(order, indexBuffer, unnormalizedTexCoords);
+	std::vector<XMFLOAT2> texCoordsBuffer = NormalizeDynamGeomTexCoords(indexBuffer, unnormalizedTexCoords);
+
+	const int verticesNum = aliasHeader->num_frames * aliasHeader->num_xyz;
+	std::vector<XMFLOAT4> vertexBuffer;
+	vertexBuffer.reserve(verticesNum);
+
+	// Animation frames data
+	object.animationFrames.reserve(aliasHeader->num_frames);
+	const daliasframe_t* currentFrame = reinterpret_cast<const daliasframe_t*>(
+		(reinterpret_cast<const byte*>(aliasHeader) + aliasHeader->ofs_frames));
+
+	for (int i = 0; i < aliasHeader->num_frames; ++i)
+	{
+		DynamicGraphicalObject::AnimFrame& animFrame = object.animationFrames.emplace_back(DynamicGraphicalObject::AnimFrame());
+
+		animFrame.name = currentFrame->name;
+		animFrame.scale = XMFLOAT3(currentFrame->scale[0], currentFrame->scale[1], currentFrame->scale[2]);
+		animFrame.translate = XMFLOAT3(currentFrame->translate[0], currentFrame->translate[1], currentFrame->translate[2]);
+
+		// Fill up vertices
+		for (int j = 0; j < aliasHeader->num_xyz; ++j)
+		{
+			const byte* currentVert = currentFrame->verts[j].v;
+			vertexBuffer.push_back(XMFLOAT4(
+				currentVert[0],
+				currentVert[1],
+				currentVert[2],
+				1.0f));
+		}
+
+		// Get next frame
+		currentFrame = reinterpret_cast<const daliasframe_t*>(
+			(reinterpret_cast<const byte*>(currentFrame) + aliasHeader->framesize));
+
+	}
+
+	// Load GPU buffers
+	const int vertexBufferSize = vertexBuffer.size() * sizeof(XMFLOAT4);
+	const int indexBufferSize = indexBuffer.size() * sizeof(int);
+	const int texCoordsBufferSize = texCoordsBuffer.size() * sizeof(XMFLOAT2);
+
+	object.vertices = m_defaultMemoryBuffer.Allocate(vertexBufferSize);
+	object.indices = m_defaultMemoryBuffer.Allocate(indexBufferSize);
+	object.textureCoords = m_defaultMemoryBuffer.Allocate(texCoordsBufferSize);
+
+	// Get vertices in
+	FArg::UpdateDefaultHeapBuff updateArgs;
+	updateArgs.alignment = 0;
+	updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	updateArgs.byteSize = vertexBufferSize;
+	updateArgs.data = reinterpret_cast<const void*>(vertexBuffer.data());
+	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.vertices);
+	
+	UpdateDefaultHeapBuff(updateArgs);
+
+	// Get indices in
+	updateArgs.alignment = 0;
+	updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	updateArgs.byteSize = indexBufferSize;
+	updateArgs.data = reinterpret_cast<const void*>(indexBuffer.data());
+	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.indices);
+
+	UpdateDefaultHeapBuff(updateArgs);
+
+	// Get tex coords in
+	updateArgs.alignment = 0;
+	updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	updateArgs.byteSize = texCoordsBufferSize;
+	updateArgs.data = reinterpret_cast<const void*>(texCoordsBuffer.data());
+	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.textureCoords);
+
+	UpdateDefaultHeapBuff(updateArgs);
+
+	// Get textures in
+	object.textures.reserve(aliasHeader->num_skins);
+
+	for (int i = 0; i < aliasHeader->num_skins; ++i)
+	{
+		object.textures.push_back(model->skins[i]->name);
+	}
+
+	return object;
 }
 
 void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf)
@@ -1450,7 +1814,7 @@ bool Renderer::IsVisible(const GraphicalObject& obj) const
 
 	const float distance = lenVector.x;
 
-	constexpr float visibilityDist = 600.0f;
+	constexpr float visibilityDist = 150.0f;
 
 	return distance < visibilityDist;
 }
@@ -1458,6 +1822,11 @@ bool Renderer::IsVisible(const GraphicalObject& obj) const
 void Renderer::DeleteResources(ComPtr<ID3D12Resource> resourceToDelete)
 {
 	m_resourcesToDelete.push_back(resourceToDelete);
+}
+
+void Renderer::DeleteDefaultMemoryBufferViaHandler(BufferHandler handler)
+{
+	m_defaultMemoryBuffer.Delete(handler);
 }
 
 void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offset)
@@ -1772,6 +2141,11 @@ void Renderer::SetPalette(const unsigned char* palette)
 	}
 }
 
+//#DEBUG if I will decide to go with quake default model handling I might do it properly
+#define	MAX_MOD_KNOWN	512
+extern model_t	mod_known[MAX_MOD_KNOWN];
+extern model_t* r_worldmodel;
+
 void Renderer::RegisterWorldModel(const char* model)
 {
 	//#TODO I need to manage map model lifetime. So for example in this function
@@ -1784,12 +2158,22 @@ void Renderer::RegisterWorldModel(const char* model)
 	char fullName[MAX_QPATH];
 	Utils::Sprintf(fullName, sizeof(fullName), "maps/%s.bsp", model);
 	
+	char varName[] = "flushmap";
+	char varDefVal[] = "0";
+	cvar_t* flushMap = GetRefImport().Cvar_Get(varName, varDefVal, 0);
+
+	if (strcmp(mod_known[0].name, fullName) || flushMap->value)
+	{
+		Mod_Free(&mod_known[0]);
+	}
+
 	// Create new world model
 	model_t* mapModel = Mod_ForName(fullName, qTrue);
 
-	DecomposeGLModelNode(*mapModel, *mapModel->nodes);
+	// Legacy from quake 2 model handling system
+	r_worldmodel = mapModel;
 
-	Mod_Free(mapModel);
+	DecomposeGLModelNode(*mapModel, *mapModel->nodes);
 }
 
 void Renderer::RenderFrame(const refdef_t& frameUpdateData)
@@ -1824,4 +2208,51 @@ Texture* Renderer::RegisterDrawPic(const char* name)
 	Texture* newTex = FindOrCreateTexture(texFullName.data());
 	
 	return newTex;
+}
+
+model_s* Renderer::RegisterModel(const char* name)
+{
+	std::string modelName = name;
+
+	model_t* mod = Mod_ForName(modelName.data(), qFalse);
+
+	if (mod)
+	{
+		switch (mod->type)
+		{
+		case mod_sprite:
+		{
+			dsprite_t* sprites = reinterpret_cast<dsprite_t *>(mod->extradata);
+			for (int i = 0; i < sprites->numframes; ++i)
+			{
+				mod->skins[i] = FindOrCreateTexture(sprites->frames[i].name);
+			}
+
+			m_dynamicGraphicalObjects[mod] = CreateDynamicGraphicObjectFromGLModel(mod);
+
+			break;
+		}
+		case mod_alias:
+		{
+			dmdl_t* pheader = reinterpret_cast<dmdl_t*>(mod->extradata);
+			for (int i = 0; i < pheader->num_skins; ++i)
+			{
+				char* imageName = reinterpret_cast<char*>(pheader) + pheader->ofs_skins + i * MAX_SKINNAME;
+				mod->skins[i] = FindOrCreateTexture(imageName);
+			}
+
+			m_dynamicGraphicalObjects[mod] = CreateDynamicGraphicObjectFromGLModel(mod);
+
+			break;
+		}
+		case mod_brush:
+		{
+			break;
+		}
+		default:
+			break;
+		}
+	}
+
+	return mod;
 }

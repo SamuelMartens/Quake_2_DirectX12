@@ -11,6 +11,13 @@ namespace ShDef
 			XMFLOAT4 position = { 0.0f, 0.0f, 0.0f, 1.0f };
 			XMFLOAT2 texCoord = { 0.0f, 0.0f };
 		};
+
+		struct PosPosTexCoord
+		{
+			XMFLOAT4 position0 = { 0.0f, 0.0f, 0.0f, 1.0f };
+			XMFLOAT4 position1 = { 0.0f, 0.0f, 0.0f, 1.0f };
+			XMFLOAT2 texCoord = { 0.0f, 0.0f };
+		};
 	}
 
 	namespace ConstBuff

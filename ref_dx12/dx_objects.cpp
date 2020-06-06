@@ -12,12 +12,12 @@
 #undef max
 #endif
 
+#define PREVENT_SELF_MOVE_CONSTRUCT if (this == &other) { return; }
+#define PREVENT_SELF_MOVE_ASSIGN if (this == &other) { return *this; }
+
 GraphicalObject::GraphicalObject(GraphicalObject&& other)
 {
-	if (this == &other)
-	{
-		return;
-	}
+	PREVENT_SELF_MOVE_CONSTRUCT;
 
 	textureKey = std::move(other.textureKey);
 	vertexBuffer = other.vertexBuffer;
@@ -68,10 +68,7 @@ XMMATRIX GraphicalObject::GenerateModelMat() const
 
 GraphicalObject& GraphicalObject::GraphicalObject::operator=(GraphicalObject&& other)
 {
-	if (this == &other)
-	{
-		return *this;
-	}
+	PREVENT_SELF_MOVE_ASSIGN;
 
 	textureKey = std::move(other.textureKey);
 	vertexBuffer = other.vertexBuffer;
@@ -91,5 +88,69 @@ GraphicalObject::~GraphicalObject()
 	if (constantBufferOffset != -1)
 	{
 		Renderer::Inst().DeleteConstantBuffMemory(constantBufferOffset);
+	}
+}
+
+DynamicGraphicalObject::DynamicGraphicalObject(DynamicGraphicalObject&& other)
+{
+	PREVENT_SELF_MOVE_CONSTRUCT;
+
+	textures = std::move(other.textures);
+	
+	headerData = other.headerData;
+	other.headerData.animFrameSizeInBytes = -1;
+	other.headerData.animFrameVertsNum = -1;
+
+	textureCoords = other.textureCoords;
+	other.textureCoords = INVALID_BUFFER_HANDLER;
+
+	vertices = other.vertices;
+	other.vertices = INVALID_BUFFER_HANDLER;
+	
+	indices = other.indices;
+	other.indices = INVALID_BUFFER_HANDLER;
+
+	animationFrames = std::move(other.animationFrames);
+}
+
+DynamicGraphicalObject& DynamicGraphicalObject::operator=(DynamicGraphicalObject&& other)
+{
+	PREVENT_SELF_MOVE_ASSIGN;
+
+	textures = std::move(other.textures);
+
+	headerData = other.headerData;
+	other.headerData.animFrameSizeInBytes = -1;
+	other.headerData.animFrameVertsNum = -1;
+
+	textureCoords = other.textureCoords;
+	other.textureCoords = INVALID_BUFFER_HANDLER;
+
+	vertices = other.vertices;
+	other.vertices = INVALID_BUFFER_HANDLER;
+
+	indices = other.indices;
+	other.indices = INVALID_BUFFER_HANDLER;
+
+	animationFrames = std::move(other.animationFrames);
+
+	return *this;
+}
+
+DynamicGraphicalObject::~DynamicGraphicalObject()
+{
+	if (indices != INVALID_BUFFER_HANDLER)
+	{
+		Renderer::Inst().DeleteDefaultMemoryBufferViaHandler(indices);
+	}
+
+	if (vertices != INVALID_BUFFER_HANDLER)
+	{
+		Renderer::Inst().DeleteDefaultMemoryBufferViaHandler(vertices);
+	}
+
+	if (textureCoords != INVALID_BUFFER_HANDLER)
+	{
+		Renderer::Inst().DeleteDefaultMemoryBufferViaHandler(textureCoords);
 	}
 }

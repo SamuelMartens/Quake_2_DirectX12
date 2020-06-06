@@ -8,6 +8,11 @@
 #include "dx_common.h"
 #include "dx_buffer.h"
 
+extern "C" 
+{
+	#include "../client/ref.h"
+};
+
 class GraphicalObject
 {
 public:
@@ -42,4 +47,50 @@ public:
 	XMFLOAT4 bbMin = { 0.0f, 0.0f, 0.0f, 1.0f };;
 
 	~GraphicalObject();
+};
+
+class DynamicGraphicalObject
+{
+public:
+	// Derives from dmdl_t. 
+	struct HeaderData
+	{
+		//#DEBUG do I need to keep it here?
+		int animFrameSizeInBytes = -1;
+		int animFrameVertsNum = -1;
+	};
+
+	struct AnimFrame
+	{
+		XMFLOAT3 scale = {1.0f, 1.0f, 1.0f};
+		XMFLOAT3 translate = { 0.0f, 0.0f, 0.0f };
+		std::string name;
+	};
+
+	DynamicGraphicalObject() = default;
+
+	DynamicGraphicalObject(const DynamicGraphicalObject&) = delete;
+	DynamicGraphicalObject& operator=(const DynamicGraphicalObject&) = delete;
+
+	DynamicGraphicalObject(DynamicGraphicalObject&& other);
+	DynamicGraphicalObject& operator=(DynamicGraphicalObject&& other);
+
+	// - A few textures is possible. So skins should be in vector
+	std::vector<std::string> textures;
+
+	// - Data from dmdl_t (stored in extradata)
+	HeaderData headerData;
+
+	// - Texture coordinates not interpolated stored in extradata as well
+	BufferHandler textureCoords = INVALID_BUFFER_HANDLER;
+
+	// - Vertices, sequence of keyframe vertices
+	BufferHandler vertices = INVALID_BUFFER_HANDLER;
+
+	BufferHandler indices = INVALID_BUFFER_HANDLER;
+
+	// - Animation frames
+	std::vector<AnimFrame> animationFrames;
+
+	~DynamicGraphicalObject();
 };

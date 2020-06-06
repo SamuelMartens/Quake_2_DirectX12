@@ -19,7 +19,7 @@ void DX12_BeginRegistration(char* map)
 
 struct model_s* DX12_RegModel(char* model)
 {
-	return NULL;
+	return Renderer::Inst().RegisterModel(model);
 }
 
 struct image_s* DX12_RegSkin(char* skin)
