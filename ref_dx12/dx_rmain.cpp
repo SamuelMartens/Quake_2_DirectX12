@@ -36,7 +36,9 @@ void DX12_SetSky (char* name, float rotate, vec3_t axis)
 {}
 
 void DX12_EndReg(void)
-{}
+{
+	Renderer::Inst().EndLevelLoading();
+}
 
 void DX12_RenderFrame(refdef_t *fd)
 {

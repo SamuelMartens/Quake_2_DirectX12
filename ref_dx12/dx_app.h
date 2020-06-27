@@ -70,24 +70,30 @@ class Renderer
 private:
 	Renderer();
 
-	constexpr static DXGI_FORMAT QBACK_BUFFER_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
-	constexpr static DXGI_FORMAT QDEPTH_STENCIL_FORMAT = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	
 	constexpr static int		 QSWAP_CHAIN_BUFFER_COUNT = 2;
 	constexpr static bool		 QMSAA_ENABLED = false;
 	constexpr static int		 QMSAA_SAMPLE_COUNT = 4;
 	constexpr static int		 QTRANSPARENT_TABLE_VAL = 255;
 	constexpr static int		 QCBV_SRV_DESCRIPTORS_NUM = 512;
 	constexpr static int		 QCONST_BUFFER_ALIGNMENT = 256;
-	constexpr static int		 QCONST_BUFFER_SIZE = 256 * 1024 * 1024;
+	// 64 MB for const buffer memory
+	constexpr static int		 QCONST_BUFFER_SIZE = 64 * 1024 * 1024;
 	constexpr static int		 QSTREAMING_VERTEX_BUFFER_SIZE = 256 * 2048;
-	// 1 GB of default memory
-	constexpr static int		 QDEFAULT_MEMORY_BUFFER_SIZE = 1 * 1024 * 1024 * 1024;
+	// 256 MB of default memory
+	constexpr static int		 QDEFAULT_MEMORY_BUFFER_SIZE = 256 * 1024 * 1024;
 	constexpr static int		 QDEFAULT_MEMORY_BUFFER_HANDLERS_NUM = 1024;
 
 	constexpr static char		 QRAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
 	constexpr static char		 QFONT_TEXTURE_NAME[] = "conchars";
 
 	constexpr static bool		 QDEBUG_LAYER_ENABLED = false;
+
+public:
+
+	constexpr static DXGI_FORMAT QBACK_BUFFER_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
+	constexpr static DXGI_FORMAT QDEPTH_STENCIL_FORMAT = DXGI_FORMAT_D24_UNORM_S8_UINT;
+
 
 public:
 
@@ -114,6 +120,7 @@ public:
 	
 	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offset);
 	void UpdateGraphicalObjectConstantBuffer(const GraphicalObject& obj);
+	void UpdateDynamicObjectConstantBuffer(const DynamicGraphicalObject& obj, const entity_t& entity);
 
 	Texture* FindOrCreateTexture(std::string_view textureName);
 
@@ -130,6 +137,11 @@ public:
 	void RenderFrame(const refdef_t& frameUpdateData);
 	Texture* RegisterDrawPic(const char* name);
 	model_s* RegisterModel(const char* name);
+	void EndLevelLoading();
+
+	/* Utils (for public use) */
+	int GetMSAASampleCount() const;
+	int GetMSAAQuality() const;
 
 private:
 
@@ -165,16 +177,9 @@ private:
 	void CreateDevice();
 	void CreateDxgiFactory();
 
-	void CreateRootSignature();
-	void CreatePipelineState();
-	void CreateInputLayout();
-	void LoadShaders();
-	void CreateMaterials();
+	void CreateCompiledMaterials();
 
 	void CreateTextureSampler();
-
-	int GetMSAASampleCount() const;
-	int GetMSAAQuality() const;
 
 	ComPtr<ID3DBlob> LoadCompiledShader(const std::string& filename) const;
 	ComPtr<ID3D12RootSignature> SerializeAndCreateRootSigFromRootDesc(const CD3DX12_ROOT_SIGNATURE_DESC& rootSigDesc) const;
@@ -214,6 +219,7 @@ private:
 	/* Rendering */
 	void Draw(const GraphicalObject& object);
 	void DrawIndiced(const GraphicalObject& object);
+	void DrawIndiced(const DynamicGraphicalObject& object, const entity_t& entity);
 	void DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos);
 
 	/* Utils */
@@ -222,10 +228,12 @@ private:
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
 	bool IsVisible(const GraphicalObject& obj) const;
+	bool IsVisible(const entity_t& entity) const;
 
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;
 	void SetMaterial(const std::string& materialName);
+	void ClearMaterial();
 
 	HWND		m_hWindows = nullptr;
 
@@ -247,14 +255,6 @@ private:
 	ComPtr<ID3D12DescriptorHeap>	  m_dsvHeap;
 	ComPtr<ID3D12DescriptorHeap>	  m_cbvSrvHeap;
 	ComPtr<ID3D12DescriptorHeap>	  m_samplerHeap;
-
-	//#DEBUG get rid of this hardcoded crap
-	std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputLayout;
-	ComPtr<ID3D12PipelineState>		  m_pipelineState;
-	ComPtr<ID3D12RootSignature>		  m_rootSingature;
-
-	ComPtr<ID3DBlob> m_psShader;
-	ComPtr<ID3DBlob> m_vsShader;
 
 	AllocBuffer<QCONST_BUFFER_SIZE> m_constantBuffer;
 	AllocBuffer<QSTREAMING_VERTEX_BUFFER_SIZE> m_streamingVertexBuffer;
@@ -314,4 +314,5 @@ private:
 	Camera m_camera;
 
 	std::vector<Material> m_materials;
+	std::string m_currentMaterialName;
 };

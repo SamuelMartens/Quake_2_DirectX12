@@ -239,7 +239,9 @@ void GL_UpdateSwapInterval( void )
 		{
 #ifdef _WIN32
 			if ( qwglSwapIntervalEXT )
-				qwglSwapIntervalEXT( gl_swapinterval->value );
+				//#INFO switch GL vsync
+				//qwglSwapIntervalEXT(gl_swapinterval->value);
+				qwglSwapIntervalEXT(0);
 #endif
 		}
 	}

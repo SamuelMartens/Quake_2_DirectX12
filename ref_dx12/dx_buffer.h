@@ -11,11 +11,21 @@
 
 #include "dx_common.h"
 
-struct Allocation
+
+using BufferHandler = uint32_t;
+
+
+namespace BufConst 
 {
 	static constexpr int INVALID_OFFSET = -1;
+	extern const BufferHandler INVALID_BUFFER_HANDLER;
+};
 
-	int offset = INVALID_OFFSET;
+struct Allocation
+{
+	
+
+	int offset = BufConst::INVALID_OFFSET;
 	int size = -1;
 };
 
@@ -82,7 +92,7 @@ public:
 			}
 
 			assert(false && "Failed to allocate part of buffer");
-			return Allocation::INVALID_OFFSET;
+			return BufConst::INVALID_OFFSET;
 
 		}
 	};
@@ -133,21 +143,13 @@ struct AllocBuffer
 	ComPtr<ID3D12Resource> gpuBuffer;
 };
 
-
-
-
-using BufferHandler = uint32_t;
-//#DEBUG INVALID_HANDLER is so generic. Collision chance is so HIGH
-extern const BufferHandler INVALID_BUFFER_HANDLER;
-
-
 template<int BUFFER_SIZE, int HANDLERS_NUM>
 class HandlerBuffer
 {
 public:
 
 	HandlerBuffer()
-		: m_handlers(HANDLERS_NUM, Allocation::INVALID_OFFSET)
+		: m_handlers(HANDLERS_NUM, BufConst::INVALID_OFFSET)
 	{};
 
 	HandlerBuffer(const HandlerBuffer&) = delete;
@@ -160,18 +162,18 @@ public:
 
 	BufferHandler Allocate(int size)
 	{
-		BufferHandler handler = INVALID_BUFFER_HANDLER;
+		BufferHandler handler = BufConst::INVALID_BUFFER_HANDLER;
 		// Find free handler slot
 		for (BufferHandler currentH = 0; currentH < HANDLERS_NUM; ++currentH)
 		{
-			if (m_handlers[currentH] == Allocation::INVALID_OFFSET)
+			if (m_handlers[currentH] == BufConst::INVALID_OFFSET)
 			{
 				handler = currentH;
 				break;
 			}
 		}
 
-		assert(handler != INVALID_BUFFER_HANDLER);
+		assert(handler != BufConst::INVALID_BUFFER_HANDLER);
 
 		m_handlers[handler] = allocBuffer.allocator.Allocate(size);
 
@@ -180,11 +182,11 @@ public:
 
 	void Delete(BufferHandler handler)
 	{
-		assert(m_handlers[handler] != Allocation::INVALID_OFFSET);
+		assert(m_handlers[handler] != BufConst::INVALID_OFFSET);
 
 		allocBuffer.allocator.Delete(m_handlers[handler]);
 
-		m_handlers[handler] = Allocation::INVALID_OFFSET;
+		m_handlers[handler] = BufConst::INVALID_OFFSET;
 	}
 
 	// IMPORTANT: handler is intentional layer of abstraction between offset and
@@ -192,7 +194,7 @@ public:
 	// keep handler around, ask for offset when you need it.
 	int GetOffset(BufferHandler handler) const
 	{
-		assert(m_handlers[handler] != Allocation::INVALID_OFFSET);
+		assert(m_handlers[handler] != BufConst::INVALID_OFFSET);
 		return m_handlers[handler];
 	}
 

@@ -17,6 +17,7 @@ float4 main(VertexOut vOut) : SV_Target
     {
         discard;
     }
-    
+    //#DEBUG don't need this shader probably
+    //
     return color;
 }

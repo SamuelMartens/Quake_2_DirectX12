@@ -11,13 +11,6 @@ namespace ShDef
 			XMFLOAT4 position = { 0.0f, 0.0f, 0.0f, 1.0f };
 			XMFLOAT2 texCoord = { 0.0f, 0.0f };
 		};
-
-		struct PosPosTexCoord
-		{
-			XMFLOAT4 position0 = { 0.0f, 0.0f, 0.0f, 1.0f };
-			XMFLOAT4 position1 = { 0.0f, 0.0f, 0.0f, 1.0f };
-			XMFLOAT2 texCoord = { 0.0f, 0.0f };
-		};
 	}
 
 	namespace ConstBuff
@@ -25,6 +18,19 @@ namespace ShDef
 		struct TransMat
 		{
 			XMFLOAT4X4 transformationMat;
+		};
+
+		struct AnimInterp
+		{
+			XMFLOAT4 animMove;
+			XMFLOAT4 frontLerp;
+			XMFLOAT4 backLetp;
+		};
+
+		struct AnimInterpTranstMap
+		{
+			AnimInterp animInterp;
+			TransMat transMat;
 		};
 	}
 }

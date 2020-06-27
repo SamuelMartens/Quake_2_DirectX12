@@ -11,6 +11,13 @@ class MaterialSource
 {
 public:
 
+	static const std::string STATIC_MATERIAL_NAME;
+	static const std::string DYNAMIC_MATERIAL_NAME;
+
+	static std::vector<MaterialSource> ConstructSourceMaterials();
+
+public:
+
 	enum ShaderType
 	{
 		Vs = 0,
@@ -20,8 +27,11 @@ public:
 
 	MaterialSource();
 
-	MaterialSource(const MaterialSource&) = default;
-	MaterialSource& operator=(const MaterialSource&) = default;
+	// The reason to remove copy functionality here is because when we initialize some structures
+	// during material creation we pass pointers from descriptorRanges, which got invalidated
+	// if you copy objects around
+	MaterialSource(const MaterialSource&) = delete;
+	MaterialSource& operator=(const MaterialSource&) = delete;
 
 	MaterialSource(MaterialSource&&) = default;
 	MaterialSource& operator=(MaterialSource&&) = default;
@@ -34,24 +44,27 @@ public:
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
 	std::vector<D3D12_INPUT_ELEMENT_DESC> inputLayout;
 
+	// I need to keep this object in memory until serialization
+	std::vector<std::vector<CD3DX12_DESCRIPTOR_RANGE>> descriptorRanges;
+
 	std::vector<CD3DX12_ROOT_PARAMETER> rootParameters;
 	std::vector<CD3DX12_STATIC_SAMPLER_DESC> staticSamplers;
 	D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
 };
 
-class MaterialCompiled
+class Material
 {
 public:
 
-	MaterialCompiled() = default;
+	Material() = default;
 
-	MaterialCompiled(const MaterialCompiled&) = default;
-	MaterialCompiled& operator=(const MaterialCompiled&) = default;
+	Material(const Material&) = default;
+	Material& operator=(const Material&) = default;
 
-	MaterialCompiled(MaterialCompiled&&) = default;
-	MaterialCompiled& operator=(MaterialCompiled&&) = default;
+	Material(Material&&) = default;
+	Material& operator=(Material&&) = default;
 
-	~MaterialCompiled() = default;
+	~Material() = default;
 
 	std::string name;
 

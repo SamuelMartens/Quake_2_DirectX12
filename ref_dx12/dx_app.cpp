@@ -8,6 +8,7 @@
 #include <d3dcompiler.h>
 #include <DirectXColors.h>
 #include <memory>
+#include <tuple>
 
 
 #include "../win32/winquake.h"
@@ -16,6 +17,12 @@
 #include "dx_glmodel.h"
 #include "dx_camera.h"
 #include "dx_model.h"
+
+//#DEBUG
+#define USE_PIX
+//END
+
+#include "pix3.h"
 
 #ifdef max
 #undef max
@@ -26,7 +33,9 @@ namespace
 	inline void PushBackUvInd(const float* uvInd, std::vector<int>& indices, std::vector<XMFLOAT2>& texCoords)
 	{
 		texCoords.emplace_back(XMFLOAT2(uvInd[0], uvInd[1]));
-		indices.push_back(uvInd[2]);
+
+		const int index = (reinterpret_cast<const int*>(uvInd))[2];
+		indices.push_back(index);
 	}
 
 	void UnwindDynamicGeomIntoTriangleList(const int* order, std::vector<int>& indices, std::vector<XMFLOAT2>& texCoords)
@@ -49,9 +58,7 @@ namespace
 
 				const float* firstUvInd = reinterpret_cast<const float*>(order);
 				const float* uvInd = firstUvInd + 3;
-
-
-				for (int i = 1; i < vertCount - 2; ++i)
+				for (int i = 1; i < vertCount - 1; ++i)
 				{
 					PushBackUvInd(firstUvInd, indices, texCoords);
 
@@ -64,9 +71,7 @@ namespace
 			else
 			{
 				// Positive vert count means treat vertices like triangle strip
-
 				const float* uvInd = reinterpret_cast<const float*>(order);
-
 				for (int i = 0; i < vertCount - 2; ++i)
 				{
 					PushBackUvInd(uvInd + 0 * 3, indices, texCoords);
@@ -82,49 +87,86 @@ namespace
 		}
 	}
 
+	// indices , texCoords, vertices reorder ind
+	using NormalizedDynamGeom_t = std::tuple<std::vector<int>, std::vector<XMFLOAT2>, std::vector<int>>;
 
-	std::vector<XMFLOAT2> NormalizeDynamGeomTexCoords(const std::vector<int>& indices, const std::vector<XMFLOAT2>& originalTexCoords)
+	NormalizedDynamGeom_t NormalizedDynamGeomVertTexCoord(const std::vector<int>& originalInd, const std::vector<XMFLOAT2>& originalTexCoord)
 	{
-		if (indices.empty())
+		std::vector<int> reorderInd;
+		std::vector<XMFLOAT2> reorderTexCoord;
+		std::vector<int> reorderVert;
+
+		if (originalInd.empty())
 		{
-			return std::vector<XMFLOAT2>();
+			return std::make_tuple(reorderInd, reorderTexCoord, reorderVert);
 		}
 
-		assert(indices.size() % 3 == 0 && "Invalid indices in Tex Coord normalization");
+		assert(originalInd.size() % 3 == 0 && "Invalid indices in Tex Coord normalization");
 
 		// Find max index
 		int maxIndex = 0;
-		for (int index : indices)
+		for (int index : originalInd)
 		{
 			maxIndex = std::max(index, maxIndex);
 		}
 
 		const XMFLOAT2 initTexCoords = XMFLOAT2(-1.0f, -1.0f);
-		std::vector<XMFLOAT2> normalizedTexCoords(maxIndex + 1, initTexCoords);
+		const int initReorderVert = -1;
 
-		// Now fill tex coords with proper data
-		for (int i = 0; i < indices.size(); ++i)
+		reorderInd = originalInd;
+		reorderTexCoord.resize(maxIndex + 1, initTexCoords);
+		reorderVert.resize(maxIndex + 1, initReorderVert);
+
+		for (int i = 0; i < originalInd.size(); ++i)
 		{
-			// There might be a situation when the same vertex associated with different tex coords.
-			// I don't think that would happened, but I am just gonna check it here
-			// Basically, I need to make sure that vertex that we are about to write is either uninitialized or
-			// the same.
-			assert(Utils::VecEqual(initTexCoords, normalizedTexCoords[indices[i]]) ||
-					Utils::VecEqual(normalizedTexCoords[indices[i]], originalTexCoords[i]) &&
-					"Different tex coords for the same vertex");
+			const int vertInd = originalInd[i];
 
-			normalizedTexCoords[indices[i]] = originalTexCoords[i];
+			if (!Utils::VecEqual(initTexCoords, reorderTexCoord[vertInd]) &&
+				!Utils::VecEqual(reorderTexCoord[vertInd], originalTexCoord[i]))
+			{
+				// Not uninitialized, and not the same tex coords. Means collision detected
+				
+				// Append original vert ind to the end. 
+				reorderVert.push_back(vertInd);
+				// Append new tex coord to the end
+				reorderTexCoord.push_back(originalTexCoord[i]);
+				// Now make index buffer to point on the end of our texCoord, vertexBuffers
+				reorderInd[i] = reorderVert.size() - 1;
+			}
+			else
+			{
+				// No collision case
+				// Vertex that is occupied initially should use this spot, as intended
+				reorderVert[vertInd] = vertInd;
+				reorderTexCoord[vertInd] = originalTexCoord[i];
+				reorderInd[i] = vertInd;
+			}
+
 		}
 
+		return std::make_tuple(reorderInd, reorderTexCoord, reorderVert);
+	}
 
-		assert(std::find_if(normalizedTexCoords.begin(), normalizedTexCoords.end(), [&initTexCoords](const XMFLOAT2& texCoord) 
+	void AppendNormalizedVertexData(const std::vector<int>& normalizedVertIndices, const std::vector<XMFLOAT4>& unnormalizedVertices,
+		std::vector<XMFLOAT4>& normalizedVertices)
+	{
+		for (int i = 0; i < normalizedVertIndices.size(); ++i)
 		{
-			return Utils::VecEqual(initTexCoords, texCoord);
-		}) == normalizedTexCoords.end() && "Unitialized tex coord");
+			const int unnormalizedVertInd = normalizedVertIndices[i];
 
-		return normalizedTexCoords;
+			if (unnormalizedVertInd == -1)
+			{
+				assert(false && "Uninitialized vert ind");
+				normalizedVertices.push_back(XMFLOAT4(0.0f, 0.0f, 0.0f, -1.0f));
+			}
+			else
+			{
+				normalizedVertices.push_back(unnormalizedVertices[unnormalizedVertInd]);
+			}
+		}
 	}
 }
+
 
 Renderer::Renderer()
 {
@@ -196,8 +238,6 @@ void Renderer::BeginFrame()
 	ID3D12DescriptorHeap* descriptorHeaps[] = { m_cbvSrvHeap.Get(), m_samplerHeap.Get() };
 	m_commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
-	m_commandList->SetGraphicsRootSignature(m_rootSingature.Get());
-
 	// Set some matrices
 	XMMATRIX tempMat = XMMatrixIdentity();
 	XMStoreFloat4x4(&m_uiViewMat, tempMat);
@@ -226,7 +266,9 @@ void Renderer::EndFrame()
 	// before BeginFrame. I can try to create separate command list for such things, or deffer
 	// them and do it in the beginning of the frame.
 	ThrowIfFailed(m_commandListAlloc->Reset());
-	ThrowIfFailed(m_commandList->Reset(m_commandListAlloc.Get(), m_pipelineState.Get()));
+	ThrowIfFailed(m_commandList->Reset(m_commandListAlloc.Get(), nullptr));
+	// Material should reset along with command list
+	ClearMaterial();
 
 	PresentAndSwapBuffers();
 	
@@ -346,11 +388,7 @@ void Renderer::InitDX()
 	CreateRenderTargetViews();
 	CreateDepthStencilBufferAndView();
 
-	CreateRootSignature();
-	CreateInputLayout();
-	LoadShaders();
-
-	CreatePipelineState();
+	CreateCompiledMaterials();
 
 	InitCamera();
 	InitScissorRect();
@@ -363,7 +401,7 @@ void Renderer::InitDX()
 	FlushCommandQueue();
 
 	ThrowIfFailed(m_commandListAlloc->Reset());
-	ThrowIfFailed(m_commandList->Reset(m_commandListAlloc.Get(), m_pipelineState.Get()));
+	ThrowIfFailed(m_commandList->Reset(m_commandListAlloc.Get(), nullptr));
 }
 
 void Renderer::EnableDebugLayer()
@@ -659,7 +697,7 @@ ComPtr<ID3D12RootSignature> Renderer::SerializeAndCreateRootSigFromRootDesc(cons
 {
 	ComPtr<ID3DBlob> serializedRootSig = nullptr;
 	ComPtr<ID3DBlob> errorBlob = nullptr;
-	
+
 	ThrowIfFailed(D3D12SerializeRootSignature(
 		&rootSigDesc,
 		D3D_ROOT_SIGNATURE_VERSION_1,
@@ -688,131 +726,20 @@ void Renderer::ExecuteCommandLists()
 	m_commandQueue->ExecuteCommandLists(_countof(cmdLists), cmdLists);	
 }
 
-void Renderer::CreateRootSignature()
+
+void Renderer::CreateCompiledMaterials()
 {
-	// Root signature is an array of root parameters
-	CD3DX12_ROOT_PARAMETER slotRootParameters[3];
+	std::vector<MaterialSource> materialsSource = MaterialSource::ConstructSourceMaterials();
 
-	// First parameter texture descriptor table
-	CD3DX12_DESCRIPTOR_RANGE textureCbvTable[1];
-	textureCbvTable[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-
-	slotRootParameters[0].InitAsDescriptorTable(_countof(textureCbvTable), textureCbvTable);
-
-	// Second parameter is samplers descriptor table
-	CD3DX12_DESCRIPTOR_RANGE samplersTable[1];
-	samplersTable[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0);
-
-	slotRootParameters[1].InitAsDescriptorTable(1, samplersTable);
-
-	// Third parameter in constant buffer view
-	slotRootParameters[2].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
-
-	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(
-		_countof(slotRootParameters),
-		slotRootParameters,
-		0,
-		nullptr,
-		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-
-	m_rootSingature = SerializeAndCreateRootSigFromRootDesc(rootSigDesc);
-}
-
-void Renderer::CreatePipelineState()
-{
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
-
-	ZeroMemory(&psoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
-
-	psoDesc.InputLayout = { m_inputLayout.data(), static_cast<UINT>(m_inputLayout.size())};
-	psoDesc.pRootSignature = m_rootSingature.Get();
-	psoDesc.VS =
+	for (const MaterialSource& matSource : materialsSource)
 	{
-		reinterpret_cast<BYTE*>(m_vsShader->GetBufferPointer()),
-		m_vsShader->GetBufferSize()
-	};
-	psoDesc.PS =
-	{
-		reinterpret_cast<BYTE*>(m_psShader->GetBufferPointer()),
-		m_psShader->GetBufferSize()
-	};
-
-	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	psoDesc.SampleMask = UINT_MAX;
-	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	psoDesc.NumRenderTargets = 1;
-	psoDesc.RTVFormats[0] = QBACK_BUFFER_FORMAT;
-	psoDesc.SampleDesc.Count = GetMSAASampleCount();
-	psoDesc.SampleDesc.Quality = GetMSAAQuality();
-	psoDesc.DSVFormat = QDEPTH_STENCIL_FORMAT;
-
-	ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)));
+		m_materials.push_back(CompileMaterial(matSource));
+	}
 }
 
-void Renderer::CreateInputLayout()
+Material Renderer::CompileMaterial(const MaterialSource& materialSourse) const
 {
-	m_inputLayout = {
-		{"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-		{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
-	};
-}
-
-
-void Renderer::LoadShaders()
-{
-	const std::string psShader = "ps_PosTex.cso";
-	const std::string vsShader = "vs_PosTex.cso";
-
-	m_psShader = LoadCompiledShader(psShader);
-	m_vsShader = LoadCompiledShader(vsShader);
-}
-
-void Renderer::CreateMaterials()
-{
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC defaultPsoDesc;
-	ZeroMemory(&defaultPsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
-
-	defaultPsoDesc.pRootSignature = m_rootSingature.Get();
-	defaultPsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	defaultPsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-	defaultPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	defaultPsoDesc.SampleMask = UINT_MAX;
-	defaultPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	defaultPsoDesc.NumRenderTargets = 1;
-	defaultPsoDesc.RTVFormats[0] = QBACK_BUFFER_FORMAT;
-	defaultPsoDesc.SampleDesc.Count = GetMSAASampleCount();
-	defaultPsoDesc.SampleDesc.Quality = GetMSAAQuality();
-	defaultPsoDesc.DSVFormat = QDEPTH_STENCIL_FORMAT;
-
-
-	// Create static geom material
-	MaterialSource staticGeomMaterial;
-	staticGeomMaterial.name = "StaticGeometry";
-	staticGeomMaterial.inputLayout = {
-		{"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-		{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
-	};
-
-	staticGeomMaterial.psoDesc = defaultPsoDesc;
-	staticGeomMaterial.psoDesc.InputLayout =
-	{ 
-		staticGeomMaterial.inputLayout.data(),
-		static_cast<UINT>(staticGeomMaterial.inputLayout.size())
-	};
-
-	staticGeomMaterial.shaders[MaterialSource::ShaderType::Vs] = "vs_PosTex.cso";
-	staticGeomMaterial.shaders[MaterialSource::ShaderType::Ps] = "ps_PosTex.cso";
-
-	staticGeomMaterial.rootSignatureFlags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-
-	m_materials.push_back(CompileMaterial(staticGeomMaterial));
-}
-
-MaterialCompiled Renderer::CompileMaterial(const MaterialSource& materialSourse) const
-{
-	MaterialCompiled materialCompiled;
+	Material materialCompiled;
 
 	materialCompiled.name = materialSourse.name;
 
@@ -823,6 +750,7 @@ MaterialCompiled Renderer::CompileMaterial(const MaterialSource& materialSourse)
 		materialSourse.staticSamplers.size(),
 		materialSourse.staticSamplers.empty() ? nullptr : materialSourse.staticSamplers.data(),
 		materialSourse.rootSignatureFlags);
+
 	materialCompiled.rootSingature = SerializeAndCreateRootSigFromRootDesc(rootSigDesc);
 
 	// Compile shaders
@@ -865,6 +793,31 @@ MaterialCompiled Renderer::CompileMaterial(const MaterialSource& materialSourse)
 	ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&materialCompiled.pipelineState)));
 
 	return materialCompiled;
+}
+
+void Renderer::SetMaterial(const std::string& materialName)
+{
+	if (materialName == m_currentMaterialName)
+	{
+		return;
+	}
+
+	m_currentMaterialName = materialName;
+
+	auto materialIt = std::find_if(m_materials.begin(), m_materials.end(), [materialName](const Material& mat)
+	{
+		return mat.name == materialName;
+	});
+	
+	assert(materialIt != m_materials.end() && "Can't set requested material. It's not found");
+
+	m_commandList->SetGraphicsRootSignature(materialIt->rootSingature.Get());
+	m_commandList->SetPipelineState(materialIt->pipelineState.Get());
+}
+
+void Renderer::ClearMaterial()
+{
+	m_currentMaterialName.clear();
 }
 
 void Renderer::CreateTextureSampler()
@@ -1257,12 +1210,13 @@ void Renderer::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
 	ComPtr<ID3D12Resource> uploadBuffer = CreateUploadHeapBuffer(args.byteSize);
 	m_uploadResources.push_back(uploadBuffer);
 
-	// Describe upload resource data 
-	D3D12_SUBRESOURCE_DATA subResourceData = {};
-	subResourceData.pData = args.data;
-	subResourceData.RowPitch = dataSize;
-	subResourceData.SlicePitch = subResourceData.RowPitch;
-
+	FArg::UpdateUploadHeapBuff uploadHeapBuffArgs;
+	uploadHeapBuffArgs.alignment = 0;
+	uploadHeapBuffArgs.buffer = uploadBuffer;
+	uploadHeapBuffArgs.byteSize = args.byteSize;
+	uploadHeapBuffArgs.data = args.data;
+	uploadHeapBuffArgs.offset = 0;
+	UpdateUploadHeapBuff(uploadHeapBuffArgs);
 
 	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		args.buffer.Get(),
@@ -1364,26 +1318,30 @@ DynamicGraphicalObject Renderer::CreateDynamicGraphicObjectFromGLModel(const mod
 
 	// Header data
 	object.headerData.animFrameSizeInBytes = aliasHeader->framesize;
-	object.headerData.animFrameVertsNum = aliasHeader->num_xyz;
-	//#DEBUG Filter out RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE for now!
 
 	// Allocate buffers on CPU, that we will use for transferring our stuff
-	
-
-	std::vector<int> indexBuffer;
+	std::vector<int> unnormalizedIndexBuffer;
 	std::vector<XMFLOAT2> unnormalizedTexCoords;
 	// This is just heuristic guess of how much memory we will need.
-	indexBuffer.reserve(aliasHeader->num_xyz);
+	unnormalizedIndexBuffer.reserve(aliasHeader->num_xyz);
 	unnormalizedTexCoords.reserve(aliasHeader->num_xyz);
 
 	// Get texture coords and indices in one buffer
 	const int* order = reinterpret_cast<const int*>(reinterpret_cast<const byte*>(aliasHeader) + aliasHeader->ofs_glcmds);
-	UnwindDynamicGeomIntoTriangleList(order, indexBuffer, unnormalizedTexCoords);
-	std::vector<XMFLOAT2> texCoordsBuffer = NormalizeDynamGeomTexCoords(indexBuffer, unnormalizedTexCoords);
+	UnwindDynamicGeomIntoTriangleList(order, unnormalizedIndexBuffer, unnormalizedTexCoords);
+	
+	auto[normalizedIndexBuffer, normalizedTexCoordsBuffer, normalizedVertexIndices] = 
+		NormalizedDynamGeomVertTexCoord(unnormalizedIndexBuffer, unnormalizedTexCoords);
 
-	const int verticesNum = aliasHeader->num_frames * aliasHeader->num_xyz;
+	object.headerData.animFrameVertsNum = normalizedVertexIndices.size();
+	object.headerData.indicesNum = normalizedIndexBuffer.size();
+
+	const int verticesNum = aliasHeader->num_frames * object.headerData.animFrameVertsNum;
 	std::vector<XMFLOAT4> vertexBuffer;
 	vertexBuffer.reserve(verticesNum);
+
+	std::vector<XMFLOAT4> singleFrameVertexBuffer;
+	singleFrameVertexBuffer.reserve(object.headerData.animFrameVertsNum);
 
 	// Animation frames data
 	object.animationFrames.reserve(aliasHeader->num_frames);
@@ -1395,19 +1353,21 @@ DynamicGraphicalObject Renderer::CreateDynamicGraphicObjectFromGLModel(const mod
 		DynamicGraphicalObject::AnimFrame& animFrame = object.animationFrames.emplace_back(DynamicGraphicalObject::AnimFrame());
 
 		animFrame.name = currentFrame->name;
-		animFrame.scale = XMFLOAT3(currentFrame->scale[0], currentFrame->scale[1], currentFrame->scale[2]);
-		animFrame.translate = XMFLOAT3(currentFrame->translate[0], currentFrame->translate[1], currentFrame->translate[2]);
+		animFrame.scale = XMFLOAT4(currentFrame->scale[0], currentFrame->scale[1], currentFrame->scale[2], 0.0f);
+		animFrame.translate = XMFLOAT4(currentFrame->translate[0], currentFrame->translate[1], currentFrame->translate[2], 0.0f);
 
-		// Fill up vertices
+		// Fill up one frame vertices (unnormalized)
+		singleFrameVertexBuffer.clear();
 		for (int j = 0; j < aliasHeader->num_xyz; ++j)
 		{
 			const byte* currentVert = currentFrame->verts[j].v;
-			vertexBuffer.push_back(XMFLOAT4(
+			singleFrameVertexBuffer.push_back(XMFLOAT4(
 				currentVert[0],
 				currentVert[1],
 				currentVert[2],
 				1.0f));
 		}
+		AppendNormalizedVertexData(normalizedVertexIndices, singleFrameVertexBuffer, vertexBuffer);
 
 		// Get next frame
 		currentFrame = reinterpret_cast<const daliasframe_t*>(
@@ -1417,8 +1377,8 @@ DynamicGraphicalObject Renderer::CreateDynamicGraphicObjectFromGLModel(const mod
 
 	// Load GPU buffers
 	const int vertexBufferSize = vertexBuffer.size() * sizeof(XMFLOAT4);
-	const int indexBufferSize = indexBuffer.size() * sizeof(int);
-	const int texCoordsBufferSize = texCoordsBuffer.size() * sizeof(XMFLOAT2);
+	const int indexBufferSize = normalizedIndexBuffer.size() * sizeof(int);
+	const int texCoordsBufferSize = normalizedTexCoordsBuffer.size() * sizeof(XMFLOAT2);
 
 	object.vertices = m_defaultMemoryBuffer.Allocate(vertexBufferSize);
 	object.indices = m_defaultMemoryBuffer.Allocate(indexBufferSize);
@@ -1431,14 +1391,13 @@ DynamicGraphicalObject Renderer::CreateDynamicGraphicObjectFromGLModel(const mod
 	updateArgs.byteSize = vertexBufferSize;
 	updateArgs.data = reinterpret_cast<const void*>(vertexBuffer.data());
 	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.vertices);
-	
 	UpdateDefaultHeapBuff(updateArgs);
 
 	// Get indices in
 	updateArgs.alignment = 0;
 	updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
 	updateArgs.byteSize = indexBufferSize;
-	updateArgs.data = reinterpret_cast<const void*>(indexBuffer.data());
+	updateArgs.data = reinterpret_cast<const void*>(normalizedIndexBuffer.data());
 	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.indices);
 
 	UpdateDefaultHeapBuff(updateArgs);
@@ -1447,9 +1406,8 @@ DynamicGraphicalObject Renderer::CreateDynamicGraphicObjectFromGLModel(const mod
 	updateArgs.alignment = 0;
 	updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
 	updateArgs.byteSize = texCoordsBufferSize;
-	updateArgs.data = reinterpret_cast<const void*>(texCoordsBuffer.data());
+	updateArgs.data = reinterpret_cast<const void*>(normalizedTexCoordsBuffer.data());
 	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.textureCoords);
-
 	UpdateDefaultHeapBuff(updateArgs);
 
 	// Get textures in
@@ -1459,6 +1417,12 @@ DynamicGraphicalObject Renderer::CreateDynamicGraphicObjectFromGLModel(const mod
 	{
 		object.textures.push_back(model->skins[i]->name);
 	}
+
+	// Allocate constant buffer
+	static const unsigned int DynamicObjectConstSize = 
+		Utils::Align(sizeof(ShDef::ConstBuff::AnimInterpTranstMap), QCONST_BUFFER_ALIGNMENT);
+
+	object.constantBufferOffset = m_constantBuffer.allocator.Allocate(DynamicObjectConstSize);
 
 	return object;
 }
@@ -1623,6 +1587,97 @@ void Renderer::DrawIndiced(const GraphicalObject& object)
 	// 2)
 	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
 	samplerHandle.Offset(texture.samplerInd, m_samplerDescriptorSize);
+
+	m_commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
+
+	// 3)
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_constantBuffer.gpuBuffer->GetGPUVirtualAddress();
+	cbAddress += object.constantBufferOffset;
+
+	m_commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
+
+	// Finally, draw
+	m_commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
+}
+
+void Renderer::DrawIndiced(const DynamicGraphicalObject& object, const entity_t& entity)
+{
+	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	// Set vertex buffer views
+	const int vertexBufferStart = m_defaultMemoryBuffer.GetOffset(object.vertices);
+	const D3D12_GPU_VIRTUAL_ADDRESS defaultMemBuffVirtAddress = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+
+	constexpr int vertexSize = sizeof(XMFLOAT4);
+	const int frameSize = vertexSize * object.headerData.animFrameVertsNum;
+
+	D3D12_VERTEX_BUFFER_VIEW vertexBufferViews[3];
+
+
+	// Position0
+	vertexBufferViews[0].BufferLocation = defaultMemBuffVirtAddress +
+		vertexBufferStart + frameSize * entity.oldframe;
+	vertexBufferViews[0].StrideInBytes = vertexSize;
+	vertexBufferViews[0].SizeInBytes = frameSize;
+
+	// Position1
+	vertexBufferViews[1].BufferLocation = defaultMemBuffVirtAddress +
+		vertexBufferStart + frameSize * entity.frame;
+	vertexBufferViews[1].StrideInBytes = vertexSize;
+	vertexBufferViews[1].SizeInBytes = frameSize;
+
+	// TexCoord
+	constexpr int texCoordStrideSize = sizeof(XMFLOAT2);
+
+	vertexBufferViews[2].BufferLocation = defaultMemBuffVirtAddress +
+		m_defaultMemoryBuffer.GetOffset(object.textureCoords);
+	vertexBufferViews[2].StrideInBytes = texCoordStrideSize;
+	vertexBufferViews[2].SizeInBytes = texCoordStrideSize * object.headerData.animFrameVertsNum;
+
+	m_commandList->IASetVertexBuffers(0, _countof(vertexBufferViews), vertexBufferViews);
+
+
+	// Set index buffer
+	D3D12_INDEX_BUFFER_VIEW indexBufferView;
+	indexBufferView.BufferLocation = defaultMemBuffVirtAddress +
+		m_defaultMemoryBuffer.GetOffset(object.indices);
+	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+	indexBufferView.SizeInBytes = object.headerData.indicesNum * sizeof(uint32_t);
+
+	m_commandList->IASetIndexBuffer(&indexBufferView);
+
+	// Pick texture
+	assert(entity.skin == nullptr && "Custom skin. I am not prepared for this");
+
+	auto texIt = m_textures.end();
+
+	if (entity.skinnum >= MAX_MD2SKINS)
+	{
+		texIt = m_textures.find(object.textures[0]);
+	}
+	else
+	{
+		texIt = m_textures.find(object.textures[entity.skinnum]);
+
+		if (texIt == m_textures.end())
+		{
+			texIt = m_textures.find(object.textures[0]);
+		}
+	}
+
+	assert(texIt != m_textures.end() && "Not texture found for dynamic object rendering. Implement fall back");
+
+	// Binding root signature params
+
+	// 1)
+	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(m_cbvSrvHeap->GetGPUDescriptorHandleForHeapStart());
+	texHandle.Offset(texIt->second.texView->srvIndex, m_cbvSrbDescriptorSize);
+
+	m_commandList->SetGraphicsRootDescriptorTable(0, texHandle);
+
+	// 2)
+	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
+	samplerHandle.Offset(texIt->second.samplerInd, m_samplerDescriptorSize);
 
 	m_commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
 
@@ -1814,9 +1869,26 @@ bool Renderer::IsVisible(const GraphicalObject& obj) const
 
 	const float distance = lenVector.x;
 
-	constexpr float visibilityDist = 150.0f;
+	constexpr float visibilityDist = 400.0f;
+
+	//#DEBUG
+	return false;
+	//END
 
 	return distance < visibilityDist;
+}
+
+bool Renderer::IsVisible(const entity_t& entity) const
+{
+	FXMVECTOR sseEntityPos = XMLoadFloat4(&XMFLOAT4(entity.origin[0], entity.origin[1], entity.origin[2], 1.0f));
+	FXMVECTOR sseCameraPos = XMLoadFloat4(&m_camera.position);
+	
+	XMFLOAT4 lenVector;
+	XMStoreFloat4(&lenVector, XMVector4Length(XMVectorSubtract(sseCameraPos, sseEntityPos)));
+
+	constexpr float visibilityDist = 400.0f;
+	
+	return lenVector.x < visibilityDist;
 }
 
 void Renderer::DeleteResources(ComPtr<ID3D12Resource> resourceToDelete)
@@ -1831,7 +1903,7 @@ void Renderer::DeleteDefaultMemoryBufferViaHandler(BufferHandler handler)
 
 void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offset)
 {
-	assert(offset != GraphicalObject::INVALID_OFFSET &&
+	assert(offset != BufConst::INVALID_OFFSET &&
 		"Can't update constant buffer, invalid offset.");
 
 	// Update transformation mat
@@ -1879,6 +1951,51 @@ void Renderer::UpdateGraphicalObjectConstantBuffer(const GraphicalObject& obj)
 	updateConstBufferArgs.offset = obj.constantBufferOffset;
 	updateConstBufferArgs.data = &mvpMat;
 	updateConstBufferArgs.byteSize = sizeof(mvpMat);
+	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
+
+	UpdateUploadHeapBuff(updateConstBufferArgs);
+}
+
+void Renderer::UpdateDynamicObjectConstantBuffer(const DynamicGraphicalObject& obj, const entity_t& entity)
+{
+	// Calculate transformation matrix
+	XMMATRIX sseMvpMat = DynamicGraphicalObject::GenerateModelMat(entity) *
+		m_camera.GenerateViewMatrix() *
+		m_camera.GenerateProjectionMatrix();
+
+	XMFLOAT4X4 mvpMat;
+	XMStoreFloat4x4(&mvpMat, sseMvpMat);
+
+	// Calculate animation data
+	auto[animMove, frontLerp, backLerp] = obj.GenerateAnimInterpolationData(entity);
+
+	constexpr int updateDataSize = sizeof(ShDef::ConstBuff::AnimInterpTranstMap);
+
+	std::array<std::byte, updateDataSize> updateData;
+	
+	std::byte* updateDataPtr = updateData.data();
+	// It is possible to do it nicely via template parameter pack and unfold
+	int cpySize = sizeof(XMFLOAT4X4);
+	memcpy(updateDataPtr, &mvpMat, cpySize);
+	updateDataPtr += cpySize;
+
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &animMove, cpySize);
+	updateDataPtr += cpySize;
+
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &frontLerp, cpySize);
+	updateDataPtr += cpySize;
+
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &backLerp, cpySize);
+	updateDataPtr += cpySize;
+
+	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
+	updateConstBufferArgs.buffer = m_constantBuffer.gpuBuffer;
+	updateConstBufferArgs.offset = obj.constantBufferOffset;
+	updateConstBufferArgs.data = updateData.data();
+	updateConstBufferArgs.byteSize = updateDataSize;
 	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
 
 	UpdateUploadHeapBuff(updateConstBufferArgs);
@@ -1990,6 +2107,8 @@ void Renderer::UpdateTexture(Texture& tex, const std::byte* data)
 
 void Renderer::Draw_Pic(int x, int y, const char* name)
 {
+	SetMaterial(MaterialSource::STATIC_MATERIAL_NAME);
+
 	std::array<char, MAX_QPATH> texFullName;
 	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
 
@@ -2013,6 +2132,8 @@ void Renderer::Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int text
 {
 	const int texSize = textureWidth * textureHeight;
 	
+	SetMaterial(MaterialSource::STATIC_MATERIAL_NAME);
+
 	std::vector<unsigned int> texture(texSize, 0);
 
 	for (int i = 0; i < texSize; ++i)
@@ -2054,6 +2175,8 @@ void Renderer::Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int text
 
 void Renderer::Draw_Char(int x, int y, int num)
 {
+	SetMaterial(MaterialSource::STATIC_MATERIAL_NAME);
+
 	num &= 0xFF;
 
 	constexpr int charSize = 8;
@@ -2174,15 +2297,23 @@ void Renderer::RegisterWorldModel(const char* model)
 	r_worldmodel = mapModel;
 
 	DecomposeGLModelNode(*mapModel, *mapModel->nodes);
+
+	//#DEBUG can I delete world model here and free some memory?
+	// try it!
 }
 
 void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 {
 	m_camera.Update(frameUpdateData);
+	//#DEBUG uncomment
+
+	// Render static geometry 
+	PIXBeginEvent(m_commandList.Get(), PIX_COLOR(255, 153, 0), "Static geometry");
+	SetMaterial(MaterialSource::STATIC_MATERIAL_NAME);
 
 	for (const GraphicalObject& obj : m_graphicalObjects)
 	{
-		if (!IsVisible(obj))
+		if (IsVisible(obj) == false)
 		{
 			continue;
 		}
@@ -2198,6 +2329,37 @@ void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 			Draw(obj);
 		}
 	}
+	PIXEndEvent();
+
+	// Render dynamic geometry
+	PIXBeginEvent(m_commandList.Get(), PIX_COLOR(51, 204, 51), "Static geometry");
+	SetMaterial(MaterialSource::DYNAMIC_MATERIAL_NAME);
+
+	for (int i = 0; i < frameUpdateData.num_entities; ++i)
+	{
+		const entity_t& entity = (frameUpdateData.entities[i]);
+
+		if (entity.flags  & ( RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE | RF_SHELL_DOUBLE | RF_SHELL_HALF_DAM) ||
+			IsVisible(entity) == false)
+		{
+			continue;
+		}
+
+		//#DEBUG solve this properly
+		if (entity.model == nullptr || (entity.model && strcmp(entity.model->name, "maps/base1.bsp") == 0))
+		{
+			continue;
+		}
+
+		assert(m_dynamicGraphicalObjects.find(entity.model) != m_dynamicGraphicalObjects.end()
+			&& "Cannot render dynamic graphical object. Such model is not found");
+
+
+		const DynamicGraphicalObject& obj = m_dynamicGraphicalObjects[entity.model];
+		UpdateDynamicObjectConstantBuffer(obj, entity);
+		DrawIndiced(obj, entity);
+	}
+	PIXEndEvent();
 }
 
 Texture* Renderer::RegisterDrawPic(const char* name)
@@ -2222,13 +2384,14 @@ model_s* Renderer::RegisterModel(const char* name)
 		{
 		case mod_sprite:
 		{
-			dsprite_t* sprites = reinterpret_cast<dsprite_t *>(mod->extradata);
-			for (int i = 0; i < sprites->numframes; ++i)
-			{
-				mod->skins[i] = FindOrCreateTexture(sprites->frames[i].name);
-			}
+			//#TODO implement sprites 
+			//dsprite_t* sprites = reinterpret_cast<dsprite_t *>(mod->extradata);
+			//for (int i = 0; i < sprites->numframes; ++i)
+			//{
+			//	mod->skins[i] = FindOrCreateTexture(sprites->frames[i].name);
+			//}
 
-			m_dynamicGraphicalObjects[mod] = CreateDynamicGraphicObjectFromGLModel(mod);
+			//m_dynamicGraphicalObjects[mod] = CreateDynamicGraphicObjectFromGLModel(mod);
 
 			break;
 		}
@@ -2255,4 +2418,9 @@ model_s* Renderer::RegisterModel(const char* name)
 	}
 
 	return mod;
+}
+
+void Renderer::EndLevelLoading()
+{
+	Mod_FreeAll();
 }

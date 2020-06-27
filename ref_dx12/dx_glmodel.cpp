@@ -316,6 +316,7 @@ model_t *Mod_ForName (char *name, qboolean crash)
 	// load the file
 	//
 	modfilelen = ri.FS_LoadFile (mod->name, (void**)&buf);
+
 	if (!buf)
 	{
 		if (crash) 
@@ -335,7 +336,6 @@ model_t *Mod_ForName (char *name, qboolean crash)
 
 
 	// call the appropriate loader
-	
 	switch (LittleLong(*(unsigned *)buf))
 	{
 	case IDALIASHEADER:
@@ -344,8 +344,9 @@ model_t *Mod_ForName (char *name, qboolean crash)
 		break;
 		
 	case IDSPRITEHEADER:
-		loadmodel->extradata = Hunk_Begin (0x10000);
-		Mod_LoadSpriteModel (mod, buf);
+		//#TODO implement proper Spite loading
+		//loadmodel->extradata = Hunk_Begin (0x10000);
+		//Mod_LoadSpriteModel (mod, buf);
 		break;
 	
 	case IDBSPHEADER:
@@ -1026,7 +1027,6 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 	loadmodel->type = mod_brush;
 	if (loadmodel != mod_known) 
 	{
-		//#DEBUG assert oplace
 		char msg[] = "Loaded a brush model after the world";
 		ri.Sys_Error (ERR_DROP, msg);
 	}
@@ -1319,6 +1319,12 @@ void Mod_Free (model_t *mod)
 {
 	Hunk_Free (mod->extradata);
 	memset (mod, 0, sizeof(*mod));
+}
+
+void Mod_FreeHank(model_t *mod)
+{
+	Hunk_Free (mod->extradata);
+	mod->extradata = NULL;
 }
 
 /*

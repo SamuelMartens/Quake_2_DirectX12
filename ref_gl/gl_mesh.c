@@ -148,10 +148,10 @@ void GL_DrawAliasFrameLerp (dmdl_t *paliashdr, float backlerp)
 	}
 
 	lerp = s_lerped[0];
-
+	//#INFO actually do interpolation ( I can do this on GPU)
 	GL_LerpVerts( paliashdr->num_xyz, v, ov, verts, lerp, move, frontv, backv );
 
-	if ( gl_vertex_arrays->value )
+	if ( gl_vertex_arrays->value)
 	{
 		float colorArray[MAX_VERTS*4];
 
@@ -262,8 +262,8 @@ void GL_DrawAliasFrameLerp (dmdl_t *paliashdr, float backlerp)
 					index_xyz = order[2];
 					order += 3;
 
-					qglColor4f( shadelight[0], shadelight[1], shadelight[2], alpha);
-					qglVertex3fv (s_lerped[index_xyz]);
+					qglColor4f(shadelight[0], shadelight[1], shadelight[2], alpha);
+					qglVertex3fv(s_lerped[index_xyz]);
 
 				} while (--count);
 			}
@@ -271,6 +271,7 @@ void GL_DrawAliasFrameLerp (dmdl_t *paliashdr, float backlerp)
 			{
 				do
 				{
+					//#STEP actual drawing
 					// texture coordinates come from the draw list
 					qglTexCoord2f (((float *)order)[0], ((float *)order)[1]);
 					index_xyz = order[2];
@@ -524,6 +525,8 @@ void R_DrawAliasModel (entity_t *e)
 	vec3_t		bbox[8];
 	image_t		*skin;
 
+
+	// Cull model if this is not hand
 	if ( !( e->flags & RF_WEAPONMODEL ) )
 	{
 		if ( R_CullAliasModel( bbox, e ) )
@@ -544,6 +547,8 @@ void R_DrawAliasModel (entity_t *e)
 	// PMM - rewrote, reordered to handle new shells & mixing
 	// PMM - 3.20 code .. replaced with original way of doing it to keep mod authors happy
 	//
+	
+	//#STEP Pick some lighting
 	if ( currententity->flags & ( RF_SHELL_HALF_DAM | RF_SHELL_GREEN | RF_SHELL_RED | RF_SHELL_BLUE | RF_SHELL_DOUBLE ) )
 	{
 		VectorClear (shadelight);
@@ -629,6 +634,7 @@ void R_DrawAliasModel (entity_t *e)
 	//		}
 	// pmm
 */
+	//#STEP Pick some lighting
 	else if ( currententity->flags & RF_FULLBRIGHT )
 	{
 		for (i=0 ; i<3 ; i++)
@@ -676,6 +682,7 @@ void R_DrawAliasModel (entity_t *e)
 		}
 	}
 
+	//#STEP Pick some lighting
 	if ( currententity->flags & RF_MINLIGHT )
 	{
 		for (i=0 ; i<3 ; i++)
@@ -688,6 +695,7 @@ void R_DrawAliasModel (entity_t *e)
 			shadelight[2] = 0.1;
 		}
 	}
+
 
 	if ( currententity->flags & RF_GLOW )
 	{	// bonus items will pulse with time
@@ -732,9 +740,11 @@ void R_DrawAliasModel (entity_t *e)
 	//
 	// draw all the triangles
 	//
+	//#STEP Pick some lighting
 	if (currententity->flags & RF_DEPTHHACK) // hack the depth range to prevent view model from poking into walls
 		qglDepthRange (gldepthmin, gldepthmin + 0.3*(gldepthmax-gldepthmin));
 
+	//#STEP get perspective matrix
 	if ( ( currententity->flags & RF_WEAPONMODEL ) && ( r_lefthand->value == 1.0F ) )
 	{
 		extern void MYgluPerspective( GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdouble zFar );
@@ -751,9 +761,11 @@ void R_DrawAliasModel (entity_t *e)
 
     qglPushMatrix ();
 	e->angles[PITCH] = -e->angles[PITCH];	// sigh.
+	//#STEP get model matrix
 	R_RotateForEntity (e);
 	e->angles[PITCH] = -e->angles[PITCH];	// sigh.
 
+	//#STEP pick texture
 	// select skin
 	if (currententity->skin)
 		skin = currententity->skin;	// custom player skin
@@ -773,9 +785,9 @@ void R_DrawAliasModel (entity_t *e)
 	GL_Bind(skin->texnum);
 
 	// draw it
-
+	//#STEP select smooth or flat shading
 	qglShadeModel (GL_SMOOTH);
-
+	//#STEP set how to treat texture
 	GL_TexEnv( GL_MODULATE );
 	if ( currententity->flags & RF_TRANSLUCENT )
 	{
