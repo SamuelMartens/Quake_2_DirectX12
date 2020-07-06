@@ -77,6 +77,7 @@ private:
 	constexpr static int		 QTRANSPARENT_TABLE_VAL = 255;
 	constexpr static int		 QCBV_SRV_DESCRIPTORS_NUM = 512;
 	constexpr static int		 QCONST_BUFFER_ALIGNMENT = 256;
+	constexpr static int		 QDYNAM_OBJECT_CONST_BUFFER_POOL_SIZE = 512;
 	// 64 MB for const buffer memory
 	constexpr static int		 QCONST_BUFFER_SIZE = 64 * 1024 * 1024;
 	constexpr static int		 QSTREAMING_VERTEX_BUFFER_SIZE = 256 * 2048;
@@ -119,8 +120,8 @@ public:
 	void DeleteDefaultMemoryBufferViaHandler(BufferHandler handler);
 	
 	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offset);
-	void UpdateGraphicalObjectConstantBuffer(const GraphicalObject& obj);
-	void UpdateDynamicObjectConstantBuffer(const DynamicGraphicalObject& obj, const entity_t& entity);
+	void UpdateGraphicalObjectConstantBuffer(const StaticObject& obj);
+	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity);
 
 	Texture* FindOrCreateTexture(std::string_view textureName);
 
@@ -212,14 +213,14 @@ private:
 
 	/* Factory functionality */
 	void CreatePictureObject(const char* pictureName);
-	DynamicGraphicalObject CreateDynamicGraphicObjectFromGLModel(const model_t* model);
+	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model);
 	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf);
 	void DecomposeGLModelNode(const model_t& model, const mnode_t& node);
 
 	/* Rendering */
-	void Draw(const GraphicalObject& object);
-	void DrawIndiced(const GraphicalObject& object);
-	void DrawIndiced(const DynamicGraphicalObject& object, const entity_t& entity);
+	void Draw(const StaticObject& object);
+	void DrawIndiced(const StaticObject& object);
+	void DrawIndiced(const DynamicObject& object, const entity_t& entity);
 	void DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos);
 
 	/* Utils */
@@ -227,8 +228,10 @@ private:
 	void Load8To24Table();
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
-	bool IsVisible(const GraphicalObject& obj) const;
+	bool IsVisible(const StaticObject& obj) const;
 	bool IsVisible(const entity_t& entity) const;
+	DynamicObjectConstBuffer& FindDynamicObjConstBuffer();
+
 
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;
@@ -298,8 +301,12 @@ private:
 	std::array<bool, QCBV_SRV_DESCRIPTORS_NUM> m_cbvSrvRegistry;
 
 	// Should I separate UI from game object? Damn, is this NWN speaks in me
-	std::vector<GraphicalObject> m_graphicalObjects;
-	std::unordered_map<model_t*, DynamicGraphicalObject> m_dynamicGraphicalObjects;
+	std::vector<StaticObject> m_staticObjects;
+	std::unordered_map<model_t*, DynamicObjectModel> m_dynamicObjectsModels;
+	// Expected to set a size for it during initialization. Don't change size afterward
+	std::vector<DynamicObjectConstBuffer> m_dynamicObjectsConstBuffersPool;
+	// Dynamic objects drawn in this frame. Will be flashed when rendering is finished
+	std::vector<DynamicObject> m_frameDynamicObjects;
 
 	std::vector<int> m_streamingConstOffsets;
 	

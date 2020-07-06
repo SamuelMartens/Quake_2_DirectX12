@@ -14,20 +14,20 @@ extern "C"
 	#include "../client/ref.h"
 };
 
-class GraphicalObject
+class StaticObject
 {
 public:
 
 	// IMPORTANT: don't forget to modify move constructor/assignment
 	// when new members with limited lifetime is added to this class
 
-	GraphicalObject() = default;
+	StaticObject() = default;
 
-	GraphicalObject(const GraphicalObject&) = delete;
-	GraphicalObject& operator=(const GraphicalObject&) = delete;
+	StaticObject(const StaticObject&) = delete;
+	StaticObject& operator=(const StaticObject&) = delete;
 
-	GraphicalObject(GraphicalObject&& other);
-	GraphicalObject& operator=(GraphicalObject&& other);
+	StaticObject(StaticObject&& other);
+	StaticObject& operator=(StaticObject&& other);
 
 	void GenerateBoundingBox(const std::vector<XMFLOAT4>& vertices);
 	XMMATRIX GenerateModelMat() const;
@@ -45,10 +45,10 @@ public:
 	XMFLOAT4 bbMax = { 0.0f, 0.0f, 0.0f, 1.0f };
 	XMFLOAT4 bbMin = { 0.0f, 0.0f, 0.0f, 1.0f };;
 
-	~GraphicalObject();
+	~StaticObject();
 };
 
-class DynamicGraphicalObject
+class DynamicObjectModel
 {
 public:
 	//#DEBUG do I really need to keep it as a separate struct?
@@ -68,13 +68,13 @@ public:
 		std::string name;
 	};
 
-	DynamicGraphicalObject() = default;
+	DynamicObjectModel() = default;
 
-	DynamicGraphicalObject(const DynamicGraphicalObject&) = delete;
-	DynamicGraphicalObject& operator=(const DynamicGraphicalObject&) = delete;
+	DynamicObjectModel(const DynamicObjectModel&) = delete;
+	DynamicObjectModel& operator=(const DynamicObjectModel&) = delete;
 
-	DynamicGraphicalObject(DynamicGraphicalObject&& other);
-	DynamicGraphicalObject& operator=(DynamicGraphicalObject&& other);
+	DynamicObjectModel(DynamicObjectModel&& other);
+	DynamicObjectModel& operator=(DynamicObjectModel&& other);
 
 	static XMMATRIX GenerateModelMat(const entity_t& entity);
 
@@ -98,7 +98,47 @@ public:
 	// - Animation frames
 	std::vector<AnimFrame> animationFrames;
 
-	int constantBufferOffset = BufConst::INVALID_OFFSET;
+	~DynamicObjectModel();
+};
 
-	~DynamicGraphicalObject();
+
+class DynamicObjectConstBuffer
+{
+public:
+	DynamicObjectConstBuffer() = default;
+
+	DynamicObjectConstBuffer(const DynamicObjectConstBuffer&) = delete;
+	DynamicObjectConstBuffer& operator=(const DynamicObjectConstBuffer&) = delete;
+
+	DynamicObjectConstBuffer(DynamicObjectConstBuffer&& other);
+	DynamicObjectConstBuffer& operator=(DynamicObjectConstBuffer&& other);
+
+	~DynamicObjectConstBuffer();
+
+	int constantBufferOffset = BufConst::INVALID_OFFSET;
+	bool isInUse = false;
+};
+
+// Temporary object. Should exist only for one draw call
+struct DynamicObject
+{
+	DynamicObject(DynamicObjectModel* newModel, DynamicObjectConstBuffer* newConstBuffer) :
+		model(newModel),
+		constBuffer(newConstBuffer)
+	{
+		assert(constBuffer != nullptr && "Dynamic object cannot be created with null const buffer");
+
+		constBuffer->isInUse = true;
+	};
+
+	DynamicObject(const DynamicObject&) = delete;
+	DynamicObject& operator=(const DynamicObject&) = delete;
+
+	DynamicObject(DynamicObject&&);
+	DynamicObject& operator=(DynamicObject&&);
+
+	~DynamicObject();
+
+	DynamicObjectModel* model = nullptr;
+	DynamicObjectConstBuffer* constBuffer = nullptr;
 };

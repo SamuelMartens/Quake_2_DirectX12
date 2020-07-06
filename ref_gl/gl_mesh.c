@@ -60,11 +60,12 @@ void GL_LerpVerts( int nverts, dtrivertx_t *v, dtrivertx_t *ov, dtrivertx_t *ver
 	{
 		for (i=0 ; i < nverts; i++, v++, ov++, lerp+=4 )
 		{
-			float *normal = r_avertexnormals[verts[i].lightnormalindex];
+			//#DEBUG uncomment
+			//float *normal = r_avertexnormals[verts[i].lightnormalindex];
 
-			lerp[0] = move[0] + ov->v[0]*backv[0] + v->v[0]*frontv[0] + normal[0] * POWERSUIT_SCALE;
-			lerp[1] = move[1] + ov->v[1]*backv[1] + v->v[1]*frontv[1] + normal[1] * POWERSUIT_SCALE;
-			lerp[2] = move[2] + ov->v[2]*backv[2] + v->v[2]*frontv[2] + normal[2] * POWERSUIT_SCALE; 
+			//lerp[0] = move[0] + ov->v[0]*backv[0] + v->v[0]*frontv[0] + normal[0] * POWERSUIT_SCALE;
+			//lerp[1] = move[1] + ov->v[1]*backv[1] + v->v[1]*frontv[1] + normal[1] * POWERSUIT_SCALE;
+			//lerp[2] = move[2] + ov->v[2]*backv[2] + v->v[2]*frontv[2] + normal[2] * POWERSUIT_SCALE; 
 		}
 	}
 	else
@@ -124,6 +125,37 @@ void GL_DrawAliasFrameLerp (dmdl_t *paliashdr, float backlerp)
 	if ( currententity->flags & ( RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE | RF_SHELL_DOUBLE | RF_SHELL_HALF_DAM) )
 		qglDisable( GL_TEXTURE_2D );
 
+	//#DEBUG
+	backlerp = 0.7200009;
+
+	currententity->oldorigin[0] = -311.875;
+	currententity->oldorigin[1] = -112.125;
+	currententity->oldorigin[2] = -21.25;
+	
+	currententity->origin[0] = -299.25;
+	currententity->origin[1] = -124.875;
+	currententity->origin[2] = -21.25;
+	
+	currententity->angles[0] = 0.0;
+	currententity->angles[1] = -45.0;
+	currententity->angles[2] = 0.0;
+
+	frame->translate[0] = -20.395;
+	frame->translate[1] = -13.138;
+	frame->translate[2] = -24.380;
+
+	oldframe->translate[0] = -23.43;
+	oldframe->translate[1] = -22.32;
+	oldframe->translate[2] = -24.04;
+
+	if (currententity->frame != currententity->oldframe)
+	{
+		int kk = 0;
+		++kk;
+	}
+
+	//END
+
 	frontlerp = 1.0 - backlerp;
 
 	// move should be the delta back to the previous frame * backlerp
@@ -135,6 +167,13 @@ void GL_DrawAliasFrameLerp (dmdl_t *paliashdr, float backlerp)
 	move[2] = DotProduct (delta, vectors[2]);	// up
 
 	VectorAdd (move, oldframe->translate, move);
+
+	//#DEBUG
+	float move1[3];
+	move1[0] = move[0];
+	move1[1] = move[1];
+	move1[2] = move[2];
+	//END
 
 	for (i=0 ; i<3 ; i++)
 	{

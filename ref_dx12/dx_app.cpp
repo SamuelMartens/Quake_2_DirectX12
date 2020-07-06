@@ -17,12 +17,7 @@
 #include "dx_glmodel.h"
 #include "dx_camera.h"
 #include "dx_model.h"
-
-//#DEBUG
-#define USE_PIX
-//END
-
-#include "pix3.h"
+#include "dx_diagnostics.h"
 
 #ifdef max
 #undef max
@@ -285,8 +280,11 @@ void Renderer::EndFrame()
 	}
 	m_streamingConstOffsets.clear();
 
-	// Deal with resource we wanted to delete
+	// Delete resource we wanted to delete
 	m_resourcesToDelete.clear();
+	// We are done with dynamic objects rendering. It's safe
+	// to delete them
+	m_frameDynamicObjects.clear();
 }
 
 void Renderer::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
@@ -442,6 +440,9 @@ void Renderer::InitUtils()
 
 	// Init raw palette with 0
 	std::fill(m_rawPalette.begin(), m_rawPalette.end(), 0);
+
+	// Init dynamic objects constant buffers pool
+	m_dynamicObjectsConstBuffersPool.resize(QDYNAM_OBJECT_CONST_BUFFER_POOL_SIZE);
 }
 
 void Renderer::InitScissorRect()
@@ -1236,6 +1237,30 @@ void Renderer::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
 
 }
 
+DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
+{
+	auto resIt = std::find_if(m_dynamicObjectsConstBuffersPool.begin(), m_dynamicObjectsConstBuffersPool.end(), 
+		[](const DynamicObjectConstBuffer& buff) 
+	{
+		return buff.isInUse == false;
+	});
+
+	assert(resIt != m_dynamicObjectsConstBuffersPool.end() && "Can't find free dynamic object const buffer");
+
+
+	if (resIt->constantBufferOffset == BufConst::INVALID_OFFSET)
+	{
+		// This buffer doesn't have any memory allocated. Do it now
+		// Allocate constant buffer
+		static const unsigned int DynamicObjectConstSize =
+			Utils::Align(sizeof(ShDef::ConstBuff::AnimInterpTranstMap), QCONST_BUFFER_ALIGNMENT);
+
+		resIt->constantBufferOffset = m_constantBuffer.allocator.Allocate(DynamicObjectConstSize);
+	}
+
+	return *resIt;
+}
+
 void Renderer::FreeSrvSlot(int slotIndex)
 {
 	assert(m_cbvSrvRegistry[slotIndex] == true);
@@ -1287,7 +1312,7 @@ void Renderer::ShutdownWin32()
 
 void Renderer::CreatePictureObject(const char* pictureName)
 {
-	GraphicalObject& newObject = m_graphicalObjects.emplace_back(GraphicalObject());
+	StaticObject& newObject = m_staticObjects.emplace_back(StaticObject());
 
 	newObject.textureKey = pictureName;
 
@@ -1309,9 +1334,9 @@ void Renderer::CreatePictureObject(const char* pictureName)
 	newObject.constantBufferOffset = m_constantBuffer.allocator.Allocate(PictureObjectConstSize);
 }
 
-DynamicGraphicalObject Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t* model)
+DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t* model)
 {
-	DynamicGraphicalObject object;
+	DynamicObjectModel object;
 
 	const dmdl_t* aliasHeader = reinterpret_cast<dmdl_t*>(model->extradata);
 	assert(aliasHeader != nullptr && "Alias header for dynamic object is not found.");
@@ -1350,7 +1375,7 @@ DynamicGraphicalObject Renderer::CreateDynamicGraphicObjectFromGLModel(const mod
 
 	for (int i = 0; i < aliasHeader->num_frames; ++i)
 	{
-		DynamicGraphicalObject::AnimFrame& animFrame = object.animationFrames.emplace_back(DynamicGraphicalObject::AnimFrame());
+		DynamicObjectModel::AnimFrame& animFrame = object.animationFrames.emplace_back(DynamicObjectModel::AnimFrame());
 
 		animFrame.name = currentFrame->name;
 		animFrame.scale = XMFLOAT4(currentFrame->scale[0], currentFrame->scale[1], currentFrame->scale[2], 0.0f);
@@ -1418,12 +1443,6 @@ DynamicGraphicalObject Renderer::CreateDynamicGraphicObjectFromGLModel(const mod
 		object.textures.push_back(model->skins[i]->name);
 	}
 
-	// Allocate constant buffer
-	static const unsigned int DynamicObjectConstSize = 
-		Utils::Align(sizeof(ShDef::ConstBuff::AnimInterpTranstMap), QCONST_BUFFER_ALIGNMENT);
-
-	object.constantBufferOffset = m_constantBuffer.allocator.Allocate(DynamicObjectConstSize);
-
 	return object;
 }
 
@@ -1452,7 +1471,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf)
 		return;
 	}
 
-	GraphicalObject& obj = m_graphicalObjects.emplace_back(GraphicalObject());
+	StaticObject& obj = m_staticObjects.emplace_back(StaticObject());
 	// Set the texture name
 	obj.textureKey = surf.texinfo->image->name;
 
@@ -1512,7 +1531,7 @@ void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node)
 	}
 }
 
-void Renderer::Draw(const GraphicalObject& object)
+void Renderer::Draw(const StaticObject& object)
 {
 	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	
@@ -1551,7 +1570,7 @@ void Renderer::Draw(const GraphicalObject& object)
 	m_commandList->DrawInstanced(vertBuffView.SizeInBytes / vertBuffView.StrideInBytes, 1, 0, 0);
 }
 
-void Renderer::DrawIndiced(const GraphicalObject& object)
+void Renderer::DrawIndiced(const StaticObject& object)
 {
 	assert(object.indexBuffer != nullptr && "Trying to draw indexed object without index buffer");
 
@@ -1600,16 +1619,19 @@ void Renderer::DrawIndiced(const GraphicalObject& object)
 	m_commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
 }
 
-void Renderer::DrawIndiced(const DynamicGraphicalObject& object, const entity_t& entity)
+void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity)
 {
 	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
+	const DynamicObjectModel& model = *object.model;
+	const DynamicObjectConstBuffer& constBuffer = *object.constBuffer;
+
 	// Set vertex buffer views
-	const int vertexBufferStart = m_defaultMemoryBuffer.GetOffset(object.vertices);
+	const int vertexBufferStart = m_defaultMemoryBuffer.GetOffset(model.vertices);
 	const D3D12_GPU_VIRTUAL_ADDRESS defaultMemBuffVirtAddress = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
 
 	constexpr int vertexSize = sizeof(XMFLOAT4);
-	const int frameSize = vertexSize * object.headerData.animFrameVertsNum;
+	const int frameSize = vertexSize * model.headerData.animFrameVertsNum;
 
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferViews[3];
 
@@ -1630,9 +1652,9 @@ void Renderer::DrawIndiced(const DynamicGraphicalObject& object, const entity_t&
 	constexpr int texCoordStrideSize = sizeof(XMFLOAT2);
 
 	vertexBufferViews[2].BufferLocation = defaultMemBuffVirtAddress +
-		m_defaultMemoryBuffer.GetOffset(object.textureCoords);
+		m_defaultMemoryBuffer.GetOffset(model.textureCoords);
 	vertexBufferViews[2].StrideInBytes = texCoordStrideSize;
-	vertexBufferViews[2].SizeInBytes = texCoordStrideSize * object.headerData.animFrameVertsNum;
+	vertexBufferViews[2].SizeInBytes = texCoordStrideSize * model.headerData.animFrameVertsNum;
 
 	m_commandList->IASetVertexBuffers(0, _countof(vertexBufferViews), vertexBufferViews);
 
@@ -1640,9 +1662,9 @@ void Renderer::DrawIndiced(const DynamicGraphicalObject& object, const entity_t&
 	// Set index buffer
 	D3D12_INDEX_BUFFER_VIEW indexBufferView;
 	indexBufferView.BufferLocation = defaultMemBuffVirtAddress +
-		m_defaultMemoryBuffer.GetOffset(object.indices);
+		m_defaultMemoryBuffer.GetOffset(model.indices);
 	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-	indexBufferView.SizeInBytes = object.headerData.indicesNum * sizeof(uint32_t);
+	indexBufferView.SizeInBytes = model.headerData.indicesNum * sizeof(uint32_t);
 
 	m_commandList->IASetIndexBuffer(&indexBufferView);
 
@@ -1653,15 +1675,15 @@ void Renderer::DrawIndiced(const DynamicGraphicalObject& object, const entity_t&
 
 	if (entity.skinnum >= MAX_MD2SKINS)
 	{
-		texIt = m_textures.find(object.textures[0]);
+		texIt = m_textures.find(model.textures[0]);
 	}
 	else
 	{
-		texIt = m_textures.find(object.textures[entity.skinnum]);
+		texIt = m_textures.find(model.textures[entity.skinnum]);
 
 		if (texIt == m_textures.end())
 		{
-			texIt = m_textures.find(object.textures[0]);
+			texIt = m_textures.find(model.textures[0]);
 		}
 	}
 
@@ -1683,7 +1705,7 @@ void Renderer::DrawIndiced(const DynamicGraphicalObject& object, const entity_t&
 
 	// 3)
 	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_constantBuffer.gpuBuffer->GetGPUVirtualAddress();
-	cbAddress += object.constantBufferOffset;
+	cbAddress += constBuffer.constantBufferOffset;
 
 	m_commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
 
@@ -1852,7 +1874,7 @@ void Renderer::FindImageScaledSizes(int width, int height, int& scaledWidth, int
 	min(scaledHeight, maxSize);
 }
 
-bool Renderer::IsVisible(const GraphicalObject& obj) const
+bool Renderer::IsVisible(const StaticObject& obj) const
 {
 	const static XMFLOAT4 divVector = XMFLOAT4(2.0f, 2.0f, 2.0f, 1.0f);
 	const static FXMVECTOR sseDivVect = XMLoadFloat4(&divVector);
@@ -1870,10 +1892,6 @@ bool Renderer::IsVisible(const GraphicalObject& obj) const
 	const float distance = lenVector.x;
 
 	constexpr float visibilityDist = 400.0f;
-
-	//#DEBUG
-	return false;
-	//END
 
 	return distance < visibilityDist;
 }
@@ -1936,7 +1954,7 @@ void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, 
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-void Renderer::UpdateGraphicalObjectConstantBuffer(const GraphicalObject& obj)
+void Renderer::UpdateGraphicalObjectConstantBuffer(const StaticObject& obj)
 {
 	XMMATRIX sseMvpMat = obj.GenerateModelMat() *
 		m_camera.GenerateViewMatrix() *
@@ -1956,10 +1974,10 @@ void Renderer::UpdateGraphicalObjectConstantBuffer(const GraphicalObject& obj)
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-void Renderer::UpdateDynamicObjectConstantBuffer(const DynamicGraphicalObject& obj, const entity_t& entity)
+void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity)
 {
 	// Calculate transformation matrix
-	XMMATRIX sseMvpMat = DynamicGraphicalObject::GenerateModelMat(entity) *
+	XMMATRIX sseMvpMat = DynamicObjectModel::GenerateModelMat(entity) *
 		m_camera.GenerateViewMatrix() *
 		m_camera.GenerateProjectionMatrix();
 
@@ -1967,7 +1985,8 @@ void Renderer::UpdateDynamicObjectConstantBuffer(const DynamicGraphicalObject& o
 	XMStoreFloat4x4(&mvpMat, sseMvpMat);
 
 	// Calculate animation data
-	auto[animMove, frontLerp, backLerp] = obj.GenerateAnimInterpolationData(entity);
+	//#DEBUG shall this method belong to model?
+	auto[animMove, frontLerp, backLerp] = obj.model->GenerateAnimInterpolationData(entity);
 
 	constexpr int updateDataSize = sizeof(ShDef::ConstBuff::AnimInterpTranstMap);
 
@@ -1991,9 +2010,11 @@ void Renderer::UpdateDynamicObjectConstantBuffer(const DynamicGraphicalObject& o
 	memcpy(updateDataPtr, &backLerp, cpySize);
 	updateDataPtr += cpySize;
 
+	assert(obj.constBuffer->constantBufferOffset != BufConst::INVALID_OFFSET && "Can't update dynamic const buffer, invalid offset");
+
 	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
 	updateConstBufferArgs.buffer = m_constantBuffer.gpuBuffer;
-	updateConstBufferArgs.offset = obj.constantBufferOffset;
+	updateConstBufferArgs.offset = obj.constBuffer->constantBufferOffset;
 	updateConstBufferArgs.data = updateData.data();
 	updateConstBufferArgs.byteSize = updateDataSize;
 	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
@@ -2305,13 +2326,13 @@ void Renderer::RegisterWorldModel(const char* model)
 void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 {
 	m_camera.Update(frameUpdateData);
-	//#DEBUG uncomment
 
 	// Render static geometry 
-	PIXBeginEvent(m_commandList.Get(), PIX_COLOR(255, 153, 0), "Static geometry");
+	Diagnostics::BeginEvent(m_commandList.Get(), "Static materials");
+
 	SetMaterial(MaterialSource::STATIC_MATERIAL_NAME);
 
-	for (const GraphicalObject& obj : m_graphicalObjects)
+	for (const StaticObject& obj : m_staticObjects)
 	{
 		if (IsVisible(obj) == false)
 		{
@@ -2329,10 +2350,12 @@ void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 			Draw(obj);
 		}
 	}
-	PIXEndEvent();
+
+	Diagnostics::EndEvent(m_commandList.Get());
 
 	// Render dynamic geometry
-	PIXBeginEvent(m_commandList.Get(), PIX_COLOR(51, 204, 51), "Static geometry");
+	Diagnostics::BeginEvent(m_commandList.Get(), "Dynamic materials");
+	
 	SetMaterial(MaterialSource::DYNAMIC_MATERIAL_NAME);
 
 	for (int i = 0; i < frameUpdateData.num_entities; ++i)
@@ -2351,15 +2374,23 @@ void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 			continue;
 		}
 
-		assert(m_dynamicGraphicalObjects.find(entity.model) != m_dynamicGraphicalObjects.end()
+		assert(m_dynamicObjectsModels.find(entity.model) != m_dynamicObjectsModels.end()
 			&& "Cannot render dynamic graphical object. Such model is not found");
 
+		
 
-		const DynamicGraphicalObject& obj = m_dynamicGraphicalObjects[entity.model];
-		UpdateDynamicObjectConstantBuffer(obj, entity);
-		DrawIndiced(obj, entity);
+		DynamicObjectModel& model = m_dynamicObjectsModels[entity.model];
+		DynamicObjectConstBuffer& constBuffer = FindDynamicObjConstBuffer();
+
+		// Const buffer should be a separate component, because if we don't do this different enities
+		// will use the same model, but with different transformation
+		DynamicObject& object = m_frameDynamicObjects.emplace_back(DynamicObject(&model, &constBuffer ));
+
+		UpdateDynamicObjectConstantBuffer(object, entity);
+		DrawIndiced(object, entity);
 	}
-	PIXEndEvent();
+
+	Diagnostics::EndEvent(m_commandList.Get());
 }
 
 Texture* Renderer::RegisterDrawPic(const char* name)
@@ -2404,7 +2435,7 @@ model_s* Renderer::RegisterModel(const char* name)
 				mod->skins[i] = FindOrCreateTexture(imageName);
 			}
 
-			m_dynamicGraphicalObjects[mod] = CreateDynamicGraphicObjectFromGLModel(mod);
+			m_dynamicObjectsModels[mod] = CreateDynamicGraphicObjectFromGLModel(mod);
 
 			break;
 		}

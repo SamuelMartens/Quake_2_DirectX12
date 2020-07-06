@@ -72,7 +72,6 @@ namespace Utils
 
 		return std::abs(v1.x - v2.x) < epsilon && std::abs(v1.y - v2.y) < epsilon;
 	}
-
 }
 
 // Helper utility converts D3D API failures into exceptions.

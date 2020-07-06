@@ -15,7 +15,7 @@
 #define PREVENT_SELF_MOVE_CONSTRUCT if (this == &other) { return; }
 #define PREVENT_SELF_MOVE_ASSIGN if (this == &other) { return *this; }
 
-GraphicalObject::GraphicalObject(GraphicalObject&& other)
+StaticObject::StaticObject(StaticObject&& other)
 {
 	PREVENT_SELF_MOVE_CONSTRUCT;
 
@@ -34,7 +34,7 @@ GraphicalObject::GraphicalObject(GraphicalObject&& other)
 }
 
 
-void GraphicalObject::GenerateBoundingBox(const std::vector<XMFLOAT4>& vertices)
+void StaticObject::GenerateBoundingBox(const std::vector<XMFLOAT4>& vertices)
 {
 	constexpr float minFloat = std::numeric_limits<float>::min();
 	constexpr float maxFloat = std::numeric_limits<float>::max();
@@ -54,7 +54,7 @@ void GraphicalObject::GenerateBoundingBox(const std::vector<XMFLOAT4>& vertices)
 	}
 }
 
-XMMATRIX GraphicalObject::GenerateModelMat() const
+XMMATRIX StaticObject::GenerateModelMat() const
 {
 	XMMATRIX modelMat = XMMatrixScaling(scale.x, scale.y, scale.z);
 	modelMat = modelMat * XMMatrixTranslation(
@@ -66,7 +66,7 @@ XMMATRIX GraphicalObject::GenerateModelMat() const
 	return modelMat;
 }
 
-GraphicalObject& GraphicalObject::GraphicalObject::operator=(GraphicalObject&& other)
+StaticObject& StaticObject::StaticObject::operator=(StaticObject&& other)
 {
 	PREVENT_SELF_MOVE_ASSIGN;
 
@@ -83,7 +83,7 @@ GraphicalObject& GraphicalObject::GraphicalObject::operator=(GraphicalObject&& o
 	return *this;
 }
 
-GraphicalObject::~GraphicalObject()
+StaticObject::~StaticObject()
 {
 	if (constantBufferOffset != BufConst::INVALID_OFFSET)
 	{
@@ -91,7 +91,7 @@ GraphicalObject::~GraphicalObject()
 	}
 }
 
-DynamicGraphicalObject::DynamicGraphicalObject(DynamicGraphicalObject&& other)
+DynamicObjectModel::DynamicObjectModel(DynamicObjectModel&& other)
 {
 	PREVENT_SELF_MOVE_CONSTRUCT;
 
@@ -111,13 +111,10 @@ DynamicGraphicalObject::DynamicGraphicalObject(DynamicGraphicalObject&& other)
 	indices = other.indices;
 	other.indices = BufConst::INVALID_BUFFER_HANDLER;
 
-	constantBufferOffset = other.constantBufferOffset;
-	other.constantBufferOffset = BufConst::INVALID_OFFSET;
-
 	animationFrames = std::move(other.animationFrames);
 }
 
-XMMATRIX DynamicGraphicalObject::GenerateModelMat(const entity_t& entity)
+XMMATRIX DynamicObjectModel::GenerateModelMat(const entity_t& entity)
 {
 	const XMFLOAT4 axisX = XMFLOAT4(1.0, 0.0, 0.0, 0.0);
 	const XMFLOAT4 axisY = XMFLOAT4(0.0, 1.0, 0.0, 0.0);
@@ -139,15 +136,15 @@ XMMATRIX DynamicGraphicalObject::GenerateModelMat(const entity_t& entity)
 }
 
 // move, front lerp, back lerp
-std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> DynamicGraphicalObject::GenerateAnimInterpolationData(const entity_t& entity) const
+std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> DynamicObjectModel::GenerateAnimInterpolationData(const entity_t& entity) const
 {
-	const DynamicGraphicalObject::AnimFrame& oldFrame = animationFrames[entity.oldframe];
-	const DynamicGraphicalObject::AnimFrame& frame = animationFrames[entity.frame];
+	const DynamicObjectModel::AnimFrame& oldFrame = animationFrames[entity.oldframe];
+	const DynamicObjectModel::AnimFrame& frame = animationFrames[entity.frame];
 
 	XMVECTOR sseOldOrigin = XMLoadFloat4(&XMFLOAT4(entity.oldorigin[0], entity.oldorigin[1], entity.oldorigin[2], 1.0f));
 	XMVECTOR sseOrigin = XMLoadFloat4(&XMFLOAT4(entity.origin[0], entity.origin[1], entity.origin[2], 1.0f));
 
-	XMVECTOR delta = XMVectorSubtract(sseOldOrigin, sseOrigin);
+	XMVECTOR sseDelta = XMVectorSubtract(sseOldOrigin, sseOrigin);
 
 	// Generate anim transformation mat
 	//#DEBUG this stuff is used in a few places, any way we can generalize this?
@@ -155,27 +152,36 @@ std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> DynamicGraphicalObject::GenerateAnimInt
 	const XMFLOAT4 axisY = XMFLOAT4(0.0, 1.0, 0.0, 0.0);
 	const XMFLOAT4 axisZ = XMFLOAT4(0.0, 0.0, 1.0, 0.0);
 
+	//#DEBUG switch
 	const XMFLOAT4 angles = XMFLOAT4(entity.angles[0], entity.angles[1], entity.angles[2], 0.0f);
 
 	XMMATRIX sseRotationMat =
-		XMMatrixRotationAxis(XMLoadFloat4(&axisX), XMConvertToRadians(angles.z)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&axisY), XMConvertToRadians(angles.x)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&axisZ), XMConvertToRadians(angles.y));
+		XMMatrixRotationAxis(XMLoadFloat4(&axisZ), XMConvertToRadians(-angles.y)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&axisY), XMConvertToRadians(-angles.x)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&axisX), XMConvertToRadians(-angles.z));
 
-	const XMFLOAT4 sign = XMFLOAT4(1.0f, -1.0f, 1.0f, 0.0f);
-
-	XMVECTOR sseMove = XMVectorMultiplyAdd(
-		XMVector4Transform(delta, sseRotationMat),
-		XMLoadFloat4(&sign),
-		XMLoadFloat4(&oldFrame.translate));
-
-	XMFLOAT4 move;
-	XMStoreFloat4(&move, sseMove);
+	// All we do here is transforming delta from world coordinates to model local coordinates
+	XMVECTOR sseMove = XMVectorAdd(
+		XMVector4Transform(sseDelta, sseRotationMat),
+		XMLoadFloat4(&oldFrame.translate)
+	);
 
 	const float backLerp = entity.backlerp;
 
 	XMFLOAT4 frontLerpVec = XMFLOAT4(1.0f - backLerp, 1.0f - backLerp, 1.0f - backLerp, 0.0f);
 	XMFLOAT4 backLerpVec = XMFLOAT4(backLerp, backLerp, backLerp, 0.0f);
+
+	//#DEBUG make it better, like use front/back lerp proper naming
+	sseMove = XMVectorMultiplyAdd(
+		XMLoadFloat4(&backLerpVec),
+		sseMove,
+		XMVectorMultiply(XMLoadFloat4(&frontLerpVec), XMLoadFloat4(&frame.translate))
+	);
+	//END
+
+	XMFLOAT4 move;
+	XMStoreFloat4(&move, sseMove);
+
 
 	XMVECTOR sseFrontLerp = XMVectorMultiply(XMLoadFloat4(&frontLerpVec), XMLoadFloat4(&frame.scale));
 	XMVECTOR sseBackLerp = XMVectorMultiply(XMLoadFloat4(&backLerpVec), XMLoadFloat4(&oldFrame.scale));
@@ -186,7 +192,7 @@ std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> DynamicGraphicalObject::GenerateAnimInt
 	return std::make_tuple(move, frontLerpVec, backLerpVec);
 }
 
-DynamicGraphicalObject& DynamicGraphicalObject::operator=(DynamicGraphicalObject&& other)
+DynamicObjectModel& DynamicObjectModel::operator=(DynamicObjectModel&& other)
 {
 	PREVENT_SELF_MOVE_ASSIGN;
 
@@ -206,15 +212,12 @@ DynamicGraphicalObject& DynamicGraphicalObject::operator=(DynamicGraphicalObject
 	indices = other.indices;
 	other.indices = BufConst::INVALID_BUFFER_HANDLER;
 
-	constantBufferOffset = other.constantBufferOffset;
-	other.constantBufferOffset = BufConst::INVALID_OFFSET;
-
 	animationFrames = std::move(other.animationFrames);
 
 	return *this;
 }
 
-DynamicGraphicalObject::~DynamicGraphicalObject()
+DynamicObjectModel::~DynamicObjectModel()
 {
 	if (indices != BufConst::INVALID_BUFFER_HANDLER)
 	{
@@ -230,9 +233,58 @@ DynamicGraphicalObject::~DynamicGraphicalObject()
 	{
 		Renderer::Inst().DeleteDefaultMemoryBufferViaHandler(textureCoords);
 	}
+}
 
+DynamicObjectConstBuffer::DynamicObjectConstBuffer(DynamicObjectConstBuffer&& other)
+{
+	//#DEBUG if this works change it everywhere 
+	// this also eliminates PREVENT_SELF_MOVE_CONSTRUCT
+	*this = std::move(other);
+}
+
+DynamicObjectConstBuffer& DynamicObjectConstBuffer::operator=(DynamicObjectConstBuffer&& other)
+{
+	PREVENT_SELF_MOVE_ASSIGN
+
+	constantBufferOffset = other.constantBufferOffset;
+	other.constantBufferOffset = BufConst::INVALID_OFFSET;
+
+	isInUse = other.isInUse;
+	other.isInUse = false;
+
+	return *this;
+}
+
+DynamicObjectConstBuffer::~DynamicObjectConstBuffer()
+{
 	if (constantBufferOffset != BufConst::INVALID_OFFSET)
 	{
 		Renderer::Inst().DeleteConstantBuffMemory(constantBufferOffset);
+	}
+}
+
+DynamicObject::DynamicObject(DynamicObject&& other)
+{
+	*this = std::move(other);
+}
+
+DynamicObject& DynamicObject::operator=(DynamicObject&& other)
+{
+	PREVENT_SELF_MOVE_ASSIGN
+
+	model = other.model;
+	other.model = nullptr;
+
+	constBuffer = other.constBuffer;
+	other.constBuffer = nullptr;
+
+	return *this;
+}
+
+DynamicObject::~DynamicObject()
+{
+	if (constBuffer != nullptr)
+	{
+		constBuffer->isInUse = false;
 	}
 }
