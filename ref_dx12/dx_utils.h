@@ -7,13 +7,24 @@
 #include <comdef.h>
 #include <cstddef>
 #include <vector>
+#include <DirectXMath.h>
 
 #include "dx_shaderdefinitions.h"
 
+using namespace DirectX;
+
 namespace Utils
 {
-	void Sprintf(char* dest, int size, const char* fmt, ...);
-	void VSCon_Printf(const char *msg, ...);
+	/* CONSTANTS */
+
+	// I don't think this 3 constants deserve their own Math namespace for now.
+	// However if I will have more math related stuff I should definitely make separate
+	// namespace
+	extern const XMFLOAT4 axisX;
+	extern const XMFLOAT4 axisY;
+	extern const XMFLOAT4 axisZ;
+
+	/* CLASSES */
 
 	class Exception : public std::exception
 	{
@@ -21,7 +32,7 @@ namespace Utils
 
 		Exception() = default;
 		Exception(HRESULT hResult, const std::string& errorFuncName, const std::string& errorFileName,
-			int errorLineNumber):
+			int errorLineNumber) :
 			functionName(errorFuncName),
 			fileName(errorFileName),
 			lineNumber(errorLineNumber),
@@ -53,6 +64,12 @@ namespace Utils
 		std::string fileName;
 		int lineNumber;
 	};
+
+
+	/* FUNCTIONS */
+
+	void Sprintf(char* dest, int size, const char* fmt, ...);
+	void VSCon_Printf(const char *msg, ...);
 
 	unsigned int Align(unsigned int size, unsigned int alignment);
 

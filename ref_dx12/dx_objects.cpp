@@ -3,6 +3,7 @@
 #include <limits>
 
 #include "dx_app.h"
+#include "dx_utils.h"
 
 #ifdef min
 #undef min
@@ -12,27 +13,29 @@
 #undef max
 #endif
 
-#define PREVENT_SELF_MOVE_CONSTRUCT if (this == &other) { return; }
 #define PREVENT_SELF_MOVE_ASSIGN if (this == &other) { return *this; }
 
 StaticObject::StaticObject(StaticObject&& other)
 {
-	PREVENT_SELF_MOVE_CONSTRUCT;
+	*this = std::move(other);
+}
+
+StaticObject& StaticObject::StaticObject::operator=(StaticObject&& other)
+{
+	PREVENT_SELF_MOVE_ASSIGN;
 
 	textureKey = std::move(other.textureKey);
 	vertexBuffer = other.vertexBuffer;
 	indexBuffer = other.indexBuffer;
-
 	position = other.position;
-
 	constantBufferOffset = other.constantBufferOffset;
-
 	bbMin = std::move(other.bbMin);
 	bbMax = std::move(other.bbMax);
-	
-	other.constantBufferOffset = BufConst::INVALID_OFFSET;
-}
 
+	other.constantBufferOffset = BufConst::INVALID_OFFSET;
+
+	return *this;
+}
 
 void StaticObject::GenerateBoundingBox(const std::vector<XMFLOAT4>& vertices)
 {
@@ -66,23 +69,6 @@ XMMATRIX StaticObject::GenerateModelMat() const
 	return modelMat;
 }
 
-StaticObject& StaticObject::StaticObject::operator=(StaticObject&& other)
-{
-	PREVENT_SELF_MOVE_ASSIGN;
-
-	textureKey = std::move(other.textureKey);
-	vertexBuffer = other.vertexBuffer;
-	indexBuffer = other.indexBuffer;
-	position = other.position;
-	constantBufferOffset = other.constantBufferOffset;
-	bbMin = std::move(other.bbMin);
-	bbMax = std::move(other.bbMax);
-
-	other.constantBufferOffset = BufConst::INVALID_OFFSET;
-
-	return *this;
-}
-
 StaticObject::~StaticObject()
 {
 	if (constantBufferOffset != BufConst::INVALID_OFFSET)
@@ -93,10 +79,17 @@ StaticObject::~StaticObject()
 
 DynamicObjectModel::DynamicObjectModel(DynamicObjectModel&& other)
 {
-	PREVENT_SELF_MOVE_CONSTRUCT;
-
-	textures = std::move(other.textures);
+	*this = std::move(other);
 	
+}
+
+DynamicObjectModel& DynamicObjectModel::operator=(DynamicObjectModel&& other)
+{
+	PREVENT_SELF_MOVE_ASSIGN;
+
+	name = std::move(other.name);
+	textures = std::move(other.textures);
+
 	headerData = other.headerData;
 	other.headerData.animFrameSizeInBytes = -1;
 	other.headerData.animFrameVertsNum = -1;
@@ -107,28 +100,25 @@ DynamicObjectModel::DynamicObjectModel(DynamicObjectModel&& other)
 
 	vertices = other.vertices;
 	other.vertices = BufConst::INVALID_BUFFER_HANDLER;
-	
+
 	indices = other.indices;
 	other.indices = BufConst::INVALID_BUFFER_HANDLER;
 
 	animationFrames = std::move(other.animationFrames);
+
+	return *this;
 }
 
 XMMATRIX DynamicObjectModel::GenerateModelMat(const entity_t& entity)
 {
-	const XMFLOAT4 axisX = XMFLOAT4(1.0, 0.0, 0.0, 0.0);
-	const XMFLOAT4 axisY = XMFLOAT4(0.0, 1.0, 0.0, 0.0);
-	const XMFLOAT4 axisZ = XMFLOAT4(0.0, 0.0, 1.0, 0.0);
-
 	// -entity.angles[0] is intentional. Done to avoid some Quake shenanigans
-	//#DEBUG try without this minus
 	const XMFLOAT4 angles = XMFLOAT4(-entity.angles[0], entity.angles[1], entity.angles[2], 0.0f);
 
 	// Quake 2 implementation of R_RotateForEntity 
 	XMMATRIX sseModelMat =
-		XMMatrixRotationAxis(XMLoadFloat4(&axisX), XMConvertToRadians(-angles.z)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&axisY), XMConvertToRadians(-angles.x)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&axisZ), XMConvertToRadians(angles.y)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisX), XMConvertToRadians(-angles.z)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisY), XMConvertToRadians(-angles.x)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisZ), XMConvertToRadians(angles.y)) *
 
 		XMMatrixTranslation(entity.origin[0], entity.origin[1], entity.origin[2]);
 
@@ -146,19 +136,13 @@ std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> DynamicObjectModel::GenerateAnimInterpo
 
 	XMVECTOR sseDelta = XMVectorSubtract(sseOldOrigin, sseOrigin);
 
-	// Generate anim transformation mat
-	//#DEBUG this stuff is used in a few places, any way we can generalize this?
-	const XMFLOAT4 axisX = XMFLOAT4(1.0, 0.0, 0.0, 0.0);
-	const XMFLOAT4 axisY = XMFLOAT4(0.0, 1.0, 0.0, 0.0);
-	const XMFLOAT4 axisZ = XMFLOAT4(0.0, 0.0, 1.0, 0.0);
-
-	//#DEBUG switch
 	const XMFLOAT4 angles = XMFLOAT4(entity.angles[0], entity.angles[1], entity.angles[2], 0.0f);
 
+	// Generate anim transformation mat
 	XMMATRIX sseRotationMat =
-		XMMatrixRotationAxis(XMLoadFloat4(&axisZ), XMConvertToRadians(-angles.y)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&axisY), XMConvertToRadians(-angles.x)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&axisX), XMConvertToRadians(-angles.z));
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisZ), XMConvertToRadians(-angles.y)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisY), XMConvertToRadians(-angles.x)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisX), XMConvertToRadians(-angles.z));
 
 	// All we do here is transforming delta from world coordinates to model local coordinates
 	XMVECTOR sseMove = XMVectorAdd(
@@ -171,50 +155,23 @@ std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> DynamicObjectModel::GenerateAnimInterpo
 	XMFLOAT4 frontLerpVec = XMFLOAT4(1.0f - backLerp, 1.0f - backLerp, 1.0f - backLerp, 0.0f);
 	XMFLOAT4 backLerpVec = XMFLOAT4(backLerp, backLerp, backLerp, 0.0f);
 
-	//#DEBUG make it better, like use front/back lerp proper naming
 	sseMove = XMVectorMultiplyAdd(
 		XMLoadFloat4(&backLerpVec),
 		sseMove,
 		XMVectorMultiply(XMLoadFloat4(&frontLerpVec), XMLoadFloat4(&frame.translate))
 	);
-	//END
 
 	XMFLOAT4 move;
 	XMStoreFloat4(&move, sseMove);
 
 
-	XMVECTOR sseFrontLerp = XMVectorMultiply(XMLoadFloat4(&frontLerpVec), XMLoadFloat4(&frame.scale));
-	XMVECTOR sseBackLerp = XMVectorMultiply(XMLoadFloat4(&backLerpVec), XMLoadFloat4(&oldFrame.scale));
+	XMVECTOR sseScaledFrontLerp = XMVectorMultiply(XMLoadFloat4(&frontLerpVec), XMLoadFloat4(&frame.scale));
+	XMVECTOR sseScaledBackLerp = XMVectorMultiply(XMLoadFloat4(&backLerpVec), XMLoadFloat4(&oldFrame.scale));
 
-	XMStoreFloat4(&frontLerpVec, sseFrontLerp);
-	XMStoreFloat4(&backLerpVec, sseBackLerp);
+	XMStoreFloat4(&frontLerpVec, sseScaledFrontLerp);
+	XMStoreFloat4(&backLerpVec, sseScaledBackLerp);
 
 	return std::make_tuple(move, frontLerpVec, backLerpVec);
-}
-
-DynamicObjectModel& DynamicObjectModel::operator=(DynamicObjectModel&& other)
-{
-	PREVENT_SELF_MOVE_ASSIGN;
-
-	textures = std::move(other.textures);
-
-	headerData = other.headerData;
-	other.headerData.animFrameSizeInBytes = -1;
-	other.headerData.animFrameVertsNum = -1;
-	other.headerData.indicesNum = -1;
-
-	textureCoords = other.textureCoords;
-	other.textureCoords = BufConst::INVALID_BUFFER_HANDLER;
-
-	vertices = other.vertices;
-	other.vertices = BufConst::INVALID_BUFFER_HANDLER;
-
-	indices = other.indices;
-	other.indices = BufConst::INVALID_BUFFER_HANDLER;
-
-	animationFrames = std::move(other.animationFrames);
-
-	return *this;
 }
 
 DynamicObjectModel::~DynamicObjectModel()
@@ -237,8 +194,6 @@ DynamicObjectModel::~DynamicObjectModel()
 
 DynamicObjectConstBuffer::DynamicObjectConstBuffer(DynamicObjectConstBuffer&& other)
 {
-	//#DEBUG if this works change it everywhere 
-	// this also eliminates PREVENT_SELF_MOVE_CONSTRUCT
 	*this = std::move(other);
 }
 

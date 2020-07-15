@@ -1321,12 +1321,6 @@ void Mod_Free (model_t *mod)
 	memset (mod, 0, sizeof(*mod));
 }
 
-void Mod_FreeHank(model_t *mod)
-{
-	Hunk_Free (mod->extradata);
-	mod->extradata = NULL;
-}
-
 /*
 ================
 Mod_FreeAll

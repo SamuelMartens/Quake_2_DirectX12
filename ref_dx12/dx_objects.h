@@ -51,11 +51,10 @@ public:
 class DynamicObjectModel
 {
 public:
-	//#DEBUG do I really need to keep it as a separate struct?
+
 	// Derives from dmdl_t. 
 	struct HeaderData
 	{
-		//#DEBUG do I need to keep it here?
 		int animFrameSizeInBytes = -1;
 		int animFrameVertsNum = -1;
 		int indicesNum = -1;
@@ -80,6 +79,8 @@ public:
 
 	 // move, front lerp, back lerp
 	std::tuple<XMFLOAT4,XMFLOAT4,XMFLOAT4> GenerateAnimInterpolationData(const entity_t& entity) const;
+
+	std::string name;
 
 	// - A few textures is possible. So skins should be in vector
 	std::vector<std::string> textures;

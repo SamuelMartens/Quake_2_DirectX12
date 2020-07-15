@@ -67,13 +67,26 @@ namespace
 			{
 				// Positive vert count means treat vertices like triangle strip
 				const float* uvInd = reinterpret_cast<const float*>(order);
+
+				bool swapOrder = true;
+
 				for (int i = 0; i < vertCount - 2; ++i)
 				{
-					PushBackUvInd(uvInd + 0 * 3, indices, texCoords);
-					PushBackUvInd(uvInd + 1 * 3, indices, texCoords);
-					PushBackUvInd(uvInd + 2 * 3, indices, texCoords);
+					if (swapOrder)
+					{
+						PushBackUvInd(uvInd + 0 * 3, indices, texCoords);
+						PushBackUvInd(uvInd + 1 * 3, indices, texCoords);
+						PushBackUvInd(uvInd + 2 * 3, indices, texCoords);
+					}
+					else
+					{
+						PushBackUvInd(uvInd + 0 * 3, indices, texCoords);
+						PushBackUvInd(uvInd + 2 * 3, indices, texCoords);
+						PushBackUvInd(uvInd + 1 * 3, indices, texCoords);
+					}
 
 					uvInd += 3;
+					swapOrder = !swapOrder;
 				}
 
 			}
@@ -1338,6 +1351,8 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 {
 	DynamicObjectModel object;
 
+	object.name = model->name;
+
 	const dmdl_t* aliasHeader = reinterpret_cast<dmdl_t*>(model->extradata);
 	assert(aliasHeader != nullptr && "Alias header for dynamic object is not found.");
 
@@ -1985,7 +2000,6 @@ void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entit
 	XMStoreFloat4x4(&mvpMat, sseMvpMat);
 
 	// Calculate animation data
-	//#DEBUG shall this method belong to model?
 	auto[animMove, frontLerp, backLerp] = obj.model->GenerateAnimInterpolationData(entity);
 
 	constexpr int updateDataSize = sizeof(ShDef::ConstBuff::AnimInterpTranstMap);
@@ -2285,7 +2299,8 @@ void Renderer::SetPalette(const unsigned char* palette)
 	}
 }
 
-//#DEBUG if I will decide to go with quake default model handling I might do it properly
+// This seems to take 188Kb of memory. Which is not that bad, so I will leave it
+// as it is for now. I believe there is other places to fix memory issues
 #define	MAX_MOD_KNOWN	512
 extern model_t	mod_known[MAX_MOD_KNOWN];
 extern model_t* r_worldmodel;
@@ -2318,9 +2333,6 @@ void Renderer::RegisterWorldModel(const char* model)
 	r_worldmodel = mapModel;
 
 	DecomposeGLModelNode(*mapModel, *mapModel->nodes);
-
-	//#DEBUG can I delete world model here and free some memory?
-	// try it!
 }
 
 void Renderer::RenderFrame(const refdef_t& frameUpdateData)
@@ -2362,14 +2374,9 @@ void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 	{
 		const entity_t& entity = (frameUpdateData.entities[i]);
 
-		if (entity.flags  & ( RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE | RF_SHELL_DOUBLE | RF_SHELL_HALF_DAM) ||
+		if (entity.model == nullptr ||
+			entity.flags  & ( RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE | RF_SHELL_DOUBLE | RF_SHELL_HALF_DAM) ||
 			IsVisible(entity) == false)
-		{
-			continue;
-		}
-
-		//#DEBUG solve this properly
-		if (entity.model == nullptr || (entity.model && strcmp(entity.model->name, "maps/base1.bsp") == 0))
 		{
 			continue;
 		}
@@ -2377,7 +2384,6 @@ void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 		assert(m_dynamicObjectsModels.find(entity.model) != m_dynamicObjectsModels.end()
 			&& "Cannot render dynamic graphical object. Such model is not found");
 
-		
 
 		DynamicObjectModel& model = m_dynamicObjectsModels[entity.model];
 		DynamicObjectConstBuffer& constBuffer = FindDynamicObjConstBuffer();
@@ -2423,7 +2429,10 @@ model_s* Renderer::RegisterModel(const char* name)
 			//}
 
 			//m_dynamicGraphicalObjects[mod] = CreateDynamicGraphicObjectFromGLModel(mod);
-
+			
+			// Remove after sprites implemented
+			Mod_Free(mod);
+			mod = NULL;
 			break;
 		}
 		case mod_alias:
@@ -2441,6 +2450,8 @@ model_s* Renderer::RegisterModel(const char* name)
 		}
 		case mod_brush:
 		{
+			//#TODO implement brush
+			mod = NULL;
 			break;
 		}
 		default:

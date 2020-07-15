@@ -1,4 +1,5 @@
 #include "dx_camera.h"
+#include "dx_utils.h"
 
 void Camera::Update(const refdef_t& updateData)
 {
@@ -32,19 +33,15 @@ XMMATRIX Camera::GenerateViewMatrix() const
 	//	- Y axis = Up/Down
 	//	- Z axis = Forward/Backward
 
-	const XMFLOAT4 axisX = XMFLOAT4(1.0, 0.0, 0.0, 0.0);
-	const XMFLOAT4 axisY = XMFLOAT4(0.0, 1.0, 0.0, 0.0);
-	const XMFLOAT4 axisZ = XMFLOAT4(0.0, 0.0, 1.0, 0.0);
-
 	XMMATRIX sseViewMat =
 		XMMatrixTranslation(-position.x, -position.y, -position.z) *
 
-		XMMatrixRotationAxis(XMLoadFloat4(&axisZ), XMConvertToRadians(-viewangles.y)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&axisY), XMConvertToRadians(-viewangles.x)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&axisX), XMConvertToRadians(-viewangles.z)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisZ), XMConvertToRadians(-viewangles.y)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisY), XMConvertToRadians(-viewangles.x)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisX), XMConvertToRadians(-viewangles.z)) *
 
-		XMMatrixRotationAxis(XMLoadFloat4(&axisZ), XMConvertToRadians(90.0f)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&axisX), XMConvertToRadians(-90.0f));
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisZ), XMConvertToRadians(90.0f)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisX), XMConvertToRadians(-90.0f));
 
 	return sseViewMat;
 

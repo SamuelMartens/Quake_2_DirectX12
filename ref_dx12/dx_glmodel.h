@@ -250,6 +250,3 @@ void	Hunk_Free(void *base);
 void	Mod_FreeAll(void);
 void	Mod_FreeAll(void);
 void	Mod_Free(model_t *mod);
-//#DEBUG actually use Model free
-void	Mod_FreeHank(model_t *mod);
-//END

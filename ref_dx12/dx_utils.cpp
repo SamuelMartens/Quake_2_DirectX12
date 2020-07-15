@@ -6,6 +6,11 @@
 
 #include "dx_app.h"
 
+
+const XMFLOAT4 Utils::axisX = XMFLOAT4(1.0, 0.0, 0.0, 0.0);
+const XMFLOAT4 Utils::axisY = XMFLOAT4(0.0, 1.0, 0.0, 0.0);
+const XMFLOAT4 Utils::axisZ = XMFLOAT4(0.0, 0.0, 1.0, 0.0);
+
 /*
 =================
 VSCon_Printf

@@ -14,9 +14,6 @@ std::vector<MaterialSource> MaterialSource::ConstructSourceMaterials()
 	ZeroMemory(&defaultPsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
 
 	defaultPsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	//#DEBUG
-	defaultPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
-	//END
 	defaultPsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	defaultPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 	defaultPsoDesc.SampleMask = UINT_MAX;
