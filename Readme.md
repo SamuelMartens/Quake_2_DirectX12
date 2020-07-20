@@ -13,7 +13,7 @@
 How to run:
   1) Open quake2.sln
   2) Open Property Manager
-  3) In Property Manager go quake2 -> Debug | Win32 -> Quake 2
+  3) In Property Manager go quake2 -> Debug/Release | Win32 -> Quake 2
   4) Click on User Macros
   5) Change GameDir to point on the root directory of the original game
   
