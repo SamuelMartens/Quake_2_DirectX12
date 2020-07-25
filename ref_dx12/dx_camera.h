@@ -1,5 +1,7 @@
 #pragma once
 
+#include <tuple>
+
 #include "dx_common.h"
 
 extern "C"
@@ -13,6 +15,8 @@ struct Camera
 
 	XMMATRIX GenerateViewMatrix() const;
 	XMMATRIX GenerateProjectionMatrix() const;
+	// Yaw, Pitch , Roll
+	std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> GetBasis() const;
 
 	XMFLOAT2 fov = { 0.0f, 0.0f };
 	XMFLOAT4 position = { 0.0f, 0.0f, 0.0f, 1.0f };

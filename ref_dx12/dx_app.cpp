@@ -383,6 +383,8 @@ void Renderer::InitDX()
 	CreateDxgiFactory();
 	CreateDevice();
 
+	SetDebugMessageFilter();
+
 	InitDescriptorSizes();
 
 	CreateFences();
@@ -422,10 +424,33 @@ void Renderer::EnableDebugLayer()
 		return;
 	}
 
-	Microsoft::WRL::ComPtr<ID3D12Debug> DebugController;
+	ComPtr<ID3D12Debug> debugController;
 
-	ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&DebugController)));
-	DebugController->EnableDebugLayer();
+	ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)));
+	debugController->EnableDebugLayer();
+}
+
+void Renderer::SetDebugMessageFilter()
+{
+	if (!QDEBUG_LAYER_ENABLED || !QDEBUG_MESSAGE_FILTER_ENABLED)
+	{
+		return;
+	}
+
+	ComPtr<ID3D12InfoQueue> infoQueue;
+	ThrowIfFailed(m_device.As(&infoQueue));
+
+	D3D12_MESSAGE_ID denyId[] =
+	{
+		D3D12_MESSAGE_ID_CORRUPTED_PARAMETER2
+	};
+
+	D3D12_INFO_QUEUE_FILTER filter = {};
+	filter.DenyList.NumIDs = _countof(denyId);
+	filter.DenyList.pIDList = denyId;
+
+	ThrowIfFailed(infoQueue->PushStorageFilter(&filter));
+
 }
 
 void Renderer::InitUtils()
@@ -786,25 +811,55 @@ Material Renderer::CompileMaterial(const MaterialSource& materialSourse) const
 	psoDesc.pRootSignature = materialCompiled.rootSingature.Get();
 	psoDesc.InputLayout = { materialSourse.inputLayout.data(), static_cast<UINT>(materialSourse.inputLayout.size())};
 
-	ComPtr<ID3DBlob> currentBlob = compiledShaders[MaterialSource::ShaderType::Vs];
-	assert(currentBlob != nullptr && "Empty vertex shader blob");
-
-	psoDesc.VS = 
+	ID3DBlob* currentBlob = nullptr;
+	for (int i = 0; i < MaterialSource::ShaderType::SIZE; ++i)
 	{
-		reinterpret_cast<BYTE*>(currentBlob->GetBufferPointer()),
-		currentBlob->GetBufferSize()
-	};
+		MaterialSource::ShaderType shaderType = static_cast<MaterialSource::ShaderType>(i);
+		currentBlob = compiledShaders[shaderType].Get();
 
-	currentBlob = compiledShaders[MaterialSource::ShaderType::Ps];
-	assert(currentBlob != nullptr && "Empty pixel shader blob");
-
-	psoDesc.PS = 
-	{
-		reinterpret_cast<BYTE*>(currentBlob->GetBufferPointer()),
-		currentBlob->GetBufferSize()
-	};
+		switch (shaderType)
+		{
+		case MaterialSource::ShaderType::Vs:
+			{
+				assert(currentBlob != nullptr && "Empty vertex shader blob");
+				psoDesc.VS =
+				{
+					reinterpret_cast<BYTE*>(currentBlob->GetBufferPointer()),
+					currentBlob->GetBufferSize()
+				};
+				break;
+			}
+		case MaterialSource::ShaderType::Ps:
+			{
+				assert(currentBlob != nullptr && "Empty pixel shader blob");
+				psoDesc.PS =
+				{
+					reinterpret_cast<BYTE*>(currentBlob->GetBufferPointer()),
+					currentBlob->GetBufferSize()
+				};
+				break;
+			}
+		case MaterialSource::ShaderType::Gs:
+			{
+				if (currentBlob != nullptr)
+				{
+					psoDesc.GS = 
+					{
+						reinterpret_cast<BYTE*>(currentBlob->GetBufferPointer()),
+						currentBlob->GetBufferSize()
+					};
+				}
+				break;
+			}
+		default:
+			assert(false && "Shader compilation failed. Unknown shader type");
+			break;
+		}
+	}
 
 	ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&materialCompiled.pipelineState)));
+
+	materialCompiled.primitiveTopology = materialSourse.primitiveTopology;
 
 	return materialCompiled;
 }
@@ -827,6 +882,7 @@ void Renderer::SetMaterial(const std::string& materialName)
 
 	m_commandList->SetGraphicsRootSignature(materialIt->rootSingature.Get());
 	m_commandList->SetPipelineState(materialIt->pipelineState.Get());
+	m_commandList->IASetPrimitiveTopology(materialIt->primitiveTopology);
 }
 
 void Renderer::ClearMaterial()
@@ -1548,8 +1604,6 @@ void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node)
 
 void Renderer::Draw(const StaticObject& object)
 {
-	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	
 	// Set vertex buffer
 	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
 	vertBuffView.BufferLocation = object.vertexBuffer->GetGPUVirtualAddress();
@@ -1588,8 +1642,6 @@ void Renderer::Draw(const StaticObject& object)
 void Renderer::DrawIndiced(const StaticObject& object)
 {
 	assert(object.indexBuffer != nullptr && "Trying to draw indexed object without index buffer");
-
-	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	// Set vertex buffer
 	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
@@ -1636,8 +1688,6 @@ void Renderer::DrawIndiced(const StaticObject& object)
 
 void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity)
 {
-	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
 	const DynamicObjectModel& model = *object.model;
 	const DynamicObjectConstBuffer& constBuffer = *object.constBuffer;
 
@@ -1736,8 +1786,6 @@ void Renderer::DrawStreaming(const std::byte* vertices, int verticesSizeInBytes,
 
 	UpdateStreamingConstantBuffer(pos, { 1.0f, 1.0f, 1.0f, 0.0f }, constantBufferOffset);
 
-	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
 	// Deal with vertex buffer
 	int vertexBufferOffset = m_streamingVertexBuffer.allocator.Allocate(Utils::Align(verticesSizeInBytes, 24));
 
@@ -1785,6 +1833,49 @@ void Renderer::DrawStreaming(const std::byte* vertices, int verticesSizeInBytes,
 	m_commandList->DrawInstanced(verticesSizeInBytes / verticesStride, 1, 0, 0);
 }
 
+
+void Renderer::AddParticleToDrawList(const particle_t& particle, int vertexBufferOffset)
+{
+	unsigned char color[4];
+	*reinterpret_cast<int *>(color) = m_8To24Table[particle.color];
+
+	ShDef::Vert::PosCol particleGpuData = {
+		XMFLOAT4(particle.origin[0], particle.origin[1], particle.origin[2], 1.0f),
+		XMFLOAT4(color[0] / 255.0f, color[1] / 255.0f, color[2] / 255.0f, particle.alpha)
+	};
+
+	// Deal with vertex buffer
+	FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
+	updateVertexBufferArgs.buffer = m_streamingVertexBuffer.gpuBuffer;
+	updateVertexBufferArgs.offset = vertexBufferOffset;
+	updateVertexBufferArgs.data = &particleGpuData;
+	updateVertexBufferArgs.byteSize = sizeof(particleGpuData);
+	updateVertexBufferArgs.alignment = 0;
+	UpdateUploadHeapBuff(updateVertexBufferArgs);
+}
+
+void Renderer::DrawParticleDrawList(int vertexBufferOffset, int vertexBufferSizeInBytes, int constBufferOffset)
+{
+	constexpr int vertexStrideInBytes = sizeof(ShDef::Vert::PosCol);
+
+	D3D12_VERTEX_BUFFER_VIEW vertBufferView;
+	vertBufferView.BufferLocation = m_streamingVertexBuffer.gpuBuffer->GetGPUVirtualAddress() + vertexBufferOffset;
+	vertBufferView.StrideInBytes = vertexStrideInBytes;
+	vertBufferView.SizeInBytes = vertexBufferSizeInBytes;
+
+	m_commandList->IASetVertexBuffers(0, 1, &vertBufferView);
+
+	// Binding root signature params
+	
+	// 1)
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_constantBuffer.gpuBuffer->GetGPUVirtualAddress();
+	cbAddress += constBufferOffset;
+
+	m_commandList->SetGraphicsRootConstantBufferView(0, cbAddress);
+
+	// Draw
+	m_commandList->DrawInstanced(vertexBufferSizeInBytes / vertexStrideInBytes, 1, 0, 0);
+}
 
 void Renderer::GetDrawAreaSize(int* Width, int* Height)
 {
@@ -1969,7 +2060,7 @@ void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, 
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-void Renderer::UpdateGraphicalObjectConstantBuffer(const StaticObject& obj)
+void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj)
 {
 	XMMATRIX sseMvpMat = obj.GenerateModelMat() *
 		m_camera.GenerateViewMatrix() *
@@ -2034,6 +2125,57 @@ void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entit
 	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
 
 	UpdateUploadHeapBuff(updateConstBufferArgs);
+}
+
+int Renderer::UpdateParticleConstantBuffer()
+{
+	constexpr int updateDataSize = sizeof(ShDef::ConstBuff::CameraDataTransMat);
+
+	const int constantBufferOffset = m_constantBuffer.allocator.Allocate(Utils::Align(updateDataSize, QCONST_BUFFER_ALIGNMENT));
+	m_streamingConstOffsets.push_back(constantBufferOffset);
+
+	assert(constantBufferOffset != BufConst::INVALID_OFFSET && "Can't update particle const buffer");
+
+	XMFLOAT4X4 mvpMat;
+
+	XMStoreFloat4x4(&mvpMat, m_camera.GenerateViewMatrix() * m_camera.GenerateProjectionMatrix());
+
+	auto[yaw, pitch, roll] = m_camera.GetBasis();
+
+	std::array<std::byte, updateDataSize> updateData;
+
+	std::byte* updateDataPtr = updateData.data();
+
+	int cpySize = sizeof(XMFLOAT4X4);
+	memcpy(updateDataPtr, &mvpMat, cpySize);
+	updateDataPtr += cpySize;
+
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &yaw, cpySize);
+	updateDataPtr += cpySize;
+
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &pitch, cpySize);
+	updateDataPtr += cpySize;
+
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &roll, cpySize);
+	updateDataPtr += cpySize;
+
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &m_camera.position, cpySize);
+	updateDataPtr += cpySize;
+
+	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
+	updateConstBufferArgs.buffer = m_constantBuffer.gpuBuffer;
+	updateConstBufferArgs.offset = constantBufferOffset;
+	updateConstBufferArgs.data = updateData.data();
+	updateConstBufferArgs.byteSize = updateDataSize;
+	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
+
+	UpdateUploadHeapBuff(updateConstBufferArgs);
+
+	return constantBufferOffset;
 }
 
 Texture* Renderer::FindOrCreateTexture(std::string_view textureName)
@@ -2339,7 +2481,7 @@ void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 {
 	m_camera.Update(frameUpdateData);
 
-	// Render static geometry 
+	// Static geometry 
 	Diagnostics::BeginEvent(m_commandList.Get(), "Static materials");
 
 	SetMaterial(MaterialSource::STATIC_MATERIAL_NAME);
@@ -2351,7 +2493,7 @@ void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 			continue;
 		}
 
-		UpdateGraphicalObjectConstantBuffer(obj);
+		UpdateStaticObjectConstantBuffer(obj);
 
 		if (obj.indexBuffer != nullptr)
 		{
@@ -2365,7 +2507,7 @@ void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 
 	Diagnostics::EndEvent(m_commandList.Get());
 
-	// Render dynamic geometry
+	// Dynamic geometry
 	Diagnostics::BeginEvent(m_commandList.Get(), "Dynamic materials");
 	
 	SetMaterial(MaterialSource::DYNAMIC_MATERIAL_NAME);
@@ -2394,6 +2536,37 @@ void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 
 		UpdateDynamicObjectConstantBuffer(object, entity);
 		DrawIndiced(object, entity);
+	}
+
+	Diagnostics::EndEvent(m_commandList.Get());
+
+	// Particles
+	Diagnostics::BeginEvent(m_commandList.Get(), "Particles");
+
+	if (frameUpdateData.num_particles > 0)
+	{
+		SetMaterial(MaterialSource::PARTICLE_MATERIAL_NAME);
+
+		// Particles share the same constant buffer, so we only need to update it once
+		const int constantBufferOffset = UpdateParticleConstantBuffer();
+
+		// Preallocate vertex buffer for particles
+		constexpr int singleParticleSize = sizeof(ShDef::Vert::PosCol);
+		const int vertexBufferSize = singleParticleSize * frameUpdateData.num_particles;
+		const int vertexBufferOffset = m_streamingVertexBuffer.allocator.Allocate(vertexBufferSize);
+
+		assert(vertexBufferOffset != BufConst::INVALID_OFFSET && "Failed to allocate particle vertex buffer");
+
+		// Gather all particles, and do one draw call for everything at once
+		const particle_t* particle = frameUpdateData.particles;
+		for (int i = 0, currentVertexBufferOffset = vertexBufferOffset; i < frameUpdateData.num_particles; ++i)
+		{
+			AddParticleToDrawList(*(particle + i), currentVertexBufferOffset);
+
+			currentVertexBufferOffset += singleParticleSize;
+		}
+
+		DrawParticleDrawList(vertexBufferOffset, vertexBufferSize, constantBufferOffset);
 	}
 
 	Diagnostics::EndEvent(m_commandList.Get());

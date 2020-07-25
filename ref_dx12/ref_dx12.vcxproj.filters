@@ -130,7 +130,13 @@
     <FxCompile Include="Shaders\vs_PosPosTex.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\ps_PosPosTex.hlsl">
+    <FxCompile Include="Shaders\gs_Particle.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ps_Particle.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\vs_Particle.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

@@ -53,3 +53,24 @@ XMMATRIX Camera::GenerateProjectionMatrix() const
 	constexpr int zFar = 4096;
 	return XMMatrixPerspectiveFovRH(XMConvertToRadians(fov.y), width / height, zNear, zFar);
 }
+
+
+std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> Camera::GetBasis() const
+{
+	// Extract basis from view matrix
+	XMFLOAT4X4 viewMat;
+	XMStoreFloat4x4(&viewMat, XMMatrixTranspose(GenerateViewMatrix()));
+
+	XMFLOAT4 yaw = *reinterpret_cast<XMFLOAT4*>(viewMat.m[1]);
+	XMFLOAT4 pitch =* reinterpret_cast<XMFLOAT4*>(viewMat.m[0]);
+	XMFLOAT4 roll;
+	// Initially point left, we need right
+	XMStoreFloat4(&roll, XMVectorScale(
+		XMLoadFloat4(reinterpret_cast<XMFLOAT4*>(viewMat.m[2])),
+		-1.0f));
+
+	// Eliminate transpose factor
+	yaw.w = pitch.w = roll.w = 0.0f;
+
+	return std::make_tuple(yaw, pitch, roll);
+}

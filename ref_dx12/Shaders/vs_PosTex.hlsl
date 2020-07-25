@@ -1,3 +1,4 @@
+
 cbuffer cbPerObject : register(b0)
 {
 	float4x4 gWorldViewProj;
@@ -6,15 +7,15 @@ cbuffer cbPerObject : register(b0)
 
 struct VertexIn
 {
-	float4 vPos : POSITION;
-	float2 vTex : TEXCOORD;
+	float4 Pos : POSITION;
+	float2 Tex : TEXCOORD;
 };
 
 
 struct VertexOut
 {
-	float4 pPos : SV_POSITION;
-	float2 pTex : TEXCOORD;
+	float4 Pos : SV_POSITION;
+	float2 Tex : TEXCOORD;
 };
 
 
@@ -22,9 +23,9 @@ VertexOut main(VertexIn vIn)
 {
 	VertexOut vOut;
     // Funny enought, by default matrices are packed as column major.
-    vOut.pPos = mul(gWorldViewProj, vIn.vPos);
+    vOut.Pos = mul(gWorldViewProj, vIn.Pos);
     
-	vOut.pTex = vIn.vTex;
+	vOut.Tex = vIn.Tex;
 
 	return vOut;
 }

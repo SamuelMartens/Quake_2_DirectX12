@@ -13,6 +13,7 @@ public:
 
 	static const std::string STATIC_MATERIAL_NAME;
 	static const std::string DYNAMIC_MATERIAL_NAME;
+	static const std::string PARTICLE_MATERIAL_NAME;
 
 	static std::vector<MaterialSource> ConstructSourceMaterials();
 
@@ -22,6 +23,7 @@ public:
 	{
 		Vs = 0,
 		Ps = 1,
+		Gs = 2,
 		SIZE
 	};
 
@@ -50,6 +52,8 @@ public:
 	std::vector<CD3DX12_ROOT_PARAMETER> rootParameters;
 	std::vector<CD3DX12_STATIC_SAMPLER_DESC> staticSamplers;
 	D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+
+	D3D_PRIMITIVE_TOPOLOGY primitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
 };
 
 class Material
@@ -70,4 +74,6 @@ public:
 
 	ComPtr<ID3D12PipelineState>		  pipelineState;
 	ComPtr<ID3D12RootSignature>		  rootSingature;
+
+	D3D_PRIMITIVE_TOPOLOGY primitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
 };

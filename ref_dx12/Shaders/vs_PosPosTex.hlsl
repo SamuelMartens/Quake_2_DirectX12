@@ -1,5 +1,3 @@
-
-//#DEBUG alignment should be done when I will allocate memory for this constant in C++(256)
 cbuffer cbPerObject : register(b0)
 {
 	float4x4 gWorldViewProj;
@@ -11,30 +9,29 @@ cbuffer cbPerObject : register(b0)
 
 struct VertexIn
 {
-	float4 vPos0 : POSITION0;
-    float4 vPos1 : POSITION1;
-	float2 vTex : TEXCOORD;
+	float4 Pos0 : POSITION0;
+    float4 Pos1 : POSITION1;
+	float2 Tex : TEXCOORD;
 };
 
 
 struct VertexOut
 {
-	float4 pPos : SV_POSITION;
-	float2 pTex : TEXCOORD;
+	float4 Pos : SV_POSITION;
+	float2 Tex : TEXCOORD;
 };
 
 
 VertexOut main(VertexIn vIn)
 {
-    float4 interpolatedPos = gAnimMove + vIn.vPos0 * gBackLerp + vIn.vPos1 * gFrontLerp;
-    //#DEBUG do I need this?
+    float4 interpolatedPos = gAnimMove + vIn.Pos0 * gBackLerp + vIn.Pos1 * gFrontLerp;
     interpolatedPos.w = 1.0f;
 
 	VertexOut vOut;
     // Funny enought, by default matrices are packed as column major.
-    vOut.pPos = mul(gWorldViewProj, interpolatedPos);
+    vOut.Pos = mul(gWorldViewProj, interpolatedPos);
     
-	vOut.pTex = vIn.vTex;
+	vOut.Tex = vIn.Tex;
 
 	return vOut;
 }

@@ -89,6 +89,7 @@ private:
 	constexpr static char		 QFONT_TEXTURE_NAME[] = "conchars";
 
 	constexpr static bool		 QDEBUG_LAYER_ENABLED = false;
+	constexpr static bool		 QDEBUG_MESSAGE_FILTER_ENABLED = true;
 
 public:
 
@@ -120,8 +121,9 @@ public:
 	void DeleteDefaultMemoryBufferViaHandler(BufferHandler handler);
 	
 	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offset);
-	void UpdateGraphicalObjectConstantBuffer(const StaticObject& obj);
+	void UpdateStaticObjectConstantBuffer(const StaticObject& obj);
 	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity);
+	int UpdateParticleConstantBuffer();
 
 	Texture* FindOrCreateTexture(std::string_view textureName);
 
@@ -152,6 +154,7 @@ private:
 	void InitDX();
 
 	void EnableDebugLayer();
+	void SetDebugMessageFilter();
 
 	void InitUtils();
 
@@ -222,6 +225,8 @@ private:
 	void DrawIndiced(const StaticObject& object);
 	void DrawIndiced(const DynamicObject& object, const entity_t& entity);
 	void DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos);
+	void AddParticleToDrawList(const particle_t& particle, int vertexBufferOffset);
+	void DrawParticleDrawList(int vertexBufferOffset, int vertexBufferSizeInBytes, int constBufferOffset);
 
 	/* Utils */
 	void GetDrawAreaSize(int* Width, int* Height);
