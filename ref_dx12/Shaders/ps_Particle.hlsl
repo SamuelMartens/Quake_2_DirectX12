@@ -10,8 +10,7 @@ float4 main(GeomVertOut vOut) : SV_Target
 {
     // We deal with quad, so everything outside 0.5 doesnt belong to
     // the square. 
-    float len = min(length(vOut.Center - vOut.ModelPos), 0.5) * 2.0;
-    float fade = lerp(1.0, 0.0, len);
+    float fade = 1.0 - min(length(vOut.Center - vOut.ModelPos), 0.5) * 2.0;
     
     float4 colorOut = vOut.Col * fade;
     
