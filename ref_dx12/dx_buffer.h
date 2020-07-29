@@ -8,7 +8,6 @@
 #include <cassert>
 #include <algorithm>
 
-
 #include "dx_common.h"
 
 
@@ -17,7 +16,7 @@ using BufferHandler = uint32_t;
 
 namespace BufConst 
 {
-	static constexpr int INVALID_OFFSET = -1;
+	constexpr int INVALID_OFFSET = -1;
 	extern const BufferHandler INVALID_BUFFER_HANDLER;
 };
 

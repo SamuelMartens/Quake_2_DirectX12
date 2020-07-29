@@ -39,7 +39,7 @@ public:
 	XMFLOAT4 position = { 0.0f, 0.0f, 0.0f, 1.0f };
 	XMFLOAT4 scale = { 1.0f, 1.0f, 1.0f, 0.0f };
 
-	int constantBufferOffset = BufConst::INVALID_OFFSET;
+	BufferHandler constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
 
 	// Bounding box
 	XMFLOAT4 bbMax = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -116,7 +116,7 @@ public:
 
 	~DynamicObjectConstBuffer();
 
-	int constantBufferOffset = BufConst::INVALID_OFFSET;
+	BufferHandler constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
 	bool isInUse = false;
 };
 

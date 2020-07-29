@@ -78,12 +78,13 @@ private:
 	constexpr static int		 QCBV_SRV_DESCRIPTORS_NUM = 512;
 	constexpr static int		 QCONST_BUFFER_ALIGNMENT = 256;
 	constexpr static int		 QDYNAM_OBJECT_CONST_BUFFER_POOL_SIZE = 512;
-	// 64 MB for const buffer memory
-	constexpr static int		 QCONST_BUFFER_SIZE = 64 * 1024 * 1024;
-	constexpr static int		 QSTREAMING_VERTEX_BUFFER_SIZE = 256 * 2048;
+	
+	// 128 MB of upload memory
+	constexpr static int		 QUPLOAD_MEMORY_BUFFER_SIZE = 128 * 1024 * 1024;
+	constexpr static int		 QUPLOAD_MEMORY_BUFFER_HANDLERS_NUM = 16382;
 	// 256 MB of default memory
 	constexpr static int		 QDEFAULT_MEMORY_BUFFER_SIZE = 256 * 1024 * 1024;
-	constexpr static int		 QDEFAULT_MEMORY_BUFFER_HANDLERS_NUM = 1024;
+	constexpr static int		 QDEFAULT_MEMORY_BUFFER_HANDLERS_NUM = 8192;
 
 	constexpr static char		 QRAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
 	constexpr static char		 QFONT_TEXTURE_NAME[] = "conchars";
@@ -116,14 +117,14 @@ public:
 	int AllocSrvSlot();
 
 	// Buffers management
-	void DeleteConstantBuffMemory(int offset);
 	void DeleteResources(ComPtr<ID3D12Resource> resourceToDelete);
-	void DeleteDefaultMemoryBufferViaHandler(BufferHandler handler);
+	void DeleteDefaultMemoryBuffer(BufferHandler handler);
+	void DeleteUploadMemoryBuffer(BufferHandler handler);
 	
-	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, int offset);
+	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler);
 	void UpdateStaticObjectConstantBuffer(const StaticObject& obj);
 	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity);
-	int UpdateParticleConstantBuffer();
+	BufferHandler UpdateParticleConstantBuffer();
 
 	Texture* FindOrCreateTexture(std::string_view textureName);
 
@@ -225,8 +226,8 @@ private:
 	void DrawIndiced(const StaticObject& object);
 	void DrawIndiced(const DynamicObject& object, const entity_t& entity);
 	void DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos);
-	void AddParticleToDrawList(const particle_t& particle, int vertexBufferOffset);
-	void DrawParticleDrawList(int vertexBufferOffset, int vertexBufferSizeInBytes, int constBufferOffset);
+	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
+	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler);
 
 	/* Utils */
 	void GetDrawAreaSize(int* Width, int* Height);
@@ -264,13 +265,10 @@ private:
 	ComPtr<ID3D12DescriptorHeap>	  m_cbvSrvHeap;
 	ComPtr<ID3D12DescriptorHeap>	  m_samplerHeap;
 
-	AllocBuffer<QCONST_BUFFER_SIZE> m_constantBuffer;
-	AllocBuffer<QSTREAMING_VERTEX_BUFFER_SIZE> m_streamingVertexBuffer;
-	// I am trying to change the way I work with gpu memory, by preallocating
-	// a huge chunk of memory and avoiding frequent small allocations. It's all
-	// inconsistent right now, cause this is just prototype
+	HandlerBuffer<QUPLOAD_MEMORY_BUFFER_SIZE, QUPLOAD_MEMORY_BUFFER_HANDLERS_NUM> m_uploadMemoryBuffer;
 	HandlerBuffer<QDEFAULT_MEMORY_BUFFER_SIZE, QDEFAULT_MEMORY_BUFFER_HANDLERS_NUM> m_defaultMemoryBuffer;
 	
+	std::vector<BufferHandler> m_streamingObjectsHandlers;
 
 	tagRECT		   m_scissorRect;
 
@@ -313,8 +311,6 @@ private:
 	// Dynamic objects drawn in this frame. Will be flashed when rendering is finished
 	std::vector<DynamicObject> m_frameDynamicObjects;
 
-	std::vector<int> m_streamingConstOffsets;
-	
 	XMFLOAT4X4 m_uiProjectionMat;
 	XMFLOAT4X4 m_uiViewMat;
 	// DirectX and OpenGL have different directions for Y axis,

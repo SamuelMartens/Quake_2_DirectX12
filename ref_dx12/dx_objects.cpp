@@ -28,11 +28,11 @@ StaticObject& StaticObject::StaticObject::operator=(StaticObject&& other)
 	vertexBuffer = other.vertexBuffer;
 	indexBuffer = other.indexBuffer;
 	position = other.position;
-	constantBufferOffset = other.constantBufferOffset;
+	constantBufferHandler = other.constantBufferHandler;
 	bbMin = std::move(other.bbMin);
 	bbMax = std::move(other.bbMax);
 
-	other.constantBufferOffset = BufConst::INVALID_OFFSET;
+	other.constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
 
 	return *this;
 }
@@ -71,9 +71,9 @@ XMMATRIX StaticObject::GenerateModelMat() const
 
 StaticObject::~StaticObject()
 {
-	if (constantBufferOffset != BufConst::INVALID_OFFSET)
+	if (constantBufferHandler != BufConst::INVALID_BUFFER_HANDLER)
 	{
-		Renderer::Inst().DeleteConstantBuffMemory(constantBufferOffset);
+		Renderer::Inst().DeleteUploadMemoryBuffer(constantBufferHandler);
 	}
 }
 
@@ -178,17 +178,17 @@ DynamicObjectModel::~DynamicObjectModel()
 {
 	if (indices != BufConst::INVALID_BUFFER_HANDLER)
 	{
-		Renderer::Inst().DeleteDefaultMemoryBufferViaHandler(indices);
+		Renderer::Inst().DeleteDefaultMemoryBuffer(indices);
 	}
 
 	if (vertices != BufConst::INVALID_BUFFER_HANDLER)
 	{
-		Renderer::Inst().DeleteDefaultMemoryBufferViaHandler(vertices);
+		Renderer::Inst().DeleteDefaultMemoryBuffer(vertices);
 	}
 
 	if (textureCoords != BufConst::INVALID_BUFFER_HANDLER)
 	{
-		Renderer::Inst().DeleteDefaultMemoryBufferViaHandler(textureCoords);
+		Renderer::Inst().DeleteDefaultMemoryBuffer(textureCoords);
 	}
 }
 
@@ -201,8 +201,8 @@ DynamicObjectConstBuffer& DynamicObjectConstBuffer::operator=(DynamicObjectConst
 {
 	PREVENT_SELF_MOVE_ASSIGN
 
-	constantBufferOffset = other.constantBufferOffset;
-	other.constantBufferOffset = BufConst::INVALID_OFFSET;
+	constantBufferHandler = other.constantBufferHandler;
+	other.constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
 
 	isInUse = other.isInUse;
 	other.isInUse = false;
@@ -212,9 +212,9 @@ DynamicObjectConstBuffer& DynamicObjectConstBuffer::operator=(DynamicObjectConst
 
 DynamicObjectConstBuffer::~DynamicObjectConstBuffer()
 {
-	if (constantBufferOffset != BufConst::INVALID_OFFSET)
+	if (constantBufferHandler != BufConst::INVALID_BUFFER_HANDLER)
 	{
-		Renderer::Inst().DeleteConstantBuffMemory(constantBufferOffset);
+		Renderer::Inst().DeleteUploadMemoryBuffer(constantBufferHandler);
 	}
 }
 
