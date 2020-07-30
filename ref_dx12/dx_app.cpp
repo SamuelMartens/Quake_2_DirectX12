@@ -1383,8 +1383,17 @@ void Renderer::CreatePictureObject(const char* pictureName)
 		XMFLOAT2(1.0f, 1.0f),
 		vertices.data());
 
+	newObject.verticesSizeInBytes = sizeof(vertices);
+	newObject.vertices = m_defaultMemoryBuffer.Allocate(newObject.verticesSizeInBytes);
+	
+	FArg::UpdateDefaultHeapBuff updateBuffArgs;
+	updateBuffArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	updateBuffArgs.offset = m_defaultMemoryBuffer.GetOffset(newObject.vertices);
+	updateBuffArgs.byteSize = newObject.verticesSizeInBytes;
+	updateBuffArgs.data = vertices.data();
+	updateBuffArgs.alignment = 0;
 
-	newObject.vertexBuffer = CreateDefaultHeapBuffer(vertices.data(), sizeof(vertices));
+	UpdateDefaultHeapBuff(updateBuffArgs);
 
 	static const unsigned int PictureObjectConstSize = Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT);
 
@@ -1534,18 +1543,35 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf)
 	// Set the texture name
 	obj.textureKey = surf.texinfo->image->name;
 
-	obj.vertexBuffer = CreateDefaultHeapBuffer(vertices.data(), sizeof(ShDef::Vert::PosTexCoord) * vertices.size());
+	obj.verticesSizeInBytes = sizeof(ShDef::Vert::PosTexCoord) * vertices.size();
+	obj.vertices = m_defaultMemoryBuffer.Allocate(obj.verticesSizeInBytes);
+
+	FArg::UpdateDefaultHeapBuff updateBuffArg;
+	updateBuffArg.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	updateBuffArg.offset = m_defaultMemoryBuffer.GetOffset(obj.vertices);
+	updateBuffArg.byteSize = obj.verticesSizeInBytes;
+	updateBuffArg.data = vertices.data();
+	updateBuffArg.alignment = 0;
+
+	UpdateDefaultHeapBuff(updateBuffArg);
 
 	static uint64_t allocSize = 0;
 	uint64_t size = sizeof(ShDef::Vert::PosTexCoord) * vertices.size();
-
-	assert(obj.vertexBuffer != nullptr && "Failed to create vertex buffer on GL surface transformation");
 
 	// Fill up index buffer
 	std::vector<uint32_t> indices;
 	indices = Utils::GetIndicesListForTrianglelistFromPolygonPrimitive(vertices.size());
 
-	obj.indexBuffer = CreateDefaultHeapBuffer(indices.data(), sizeof(uint32_t) * indices.size());
+	obj.indicesSizeInBytes = sizeof(uint32_t) * indices.size();
+	obj.indices = m_defaultMemoryBuffer.Allocate(obj.indicesSizeInBytes);
+
+	updateBuffArg.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	updateBuffArg.offset = m_defaultMemoryBuffer.GetOffset(obj.indices);
+	updateBuffArg.byteSize = obj.indicesSizeInBytes;
+	updateBuffArg.data = indices.data();
+	updateBuffArg.alignment = 0;
+
+	UpdateDefaultHeapBuff(updateBuffArg);
 
 	const unsigned int PictureObjectConstSize = Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT);
 
@@ -1593,9 +1619,9 @@ void Renderer::Draw(const StaticObject& object)
 {
 	// Set vertex buffer
 	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
-	vertBuffView.BufferLocation = object.vertexBuffer->GetGPUVirtualAddress();
+	vertBuffView.BufferLocation = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + m_defaultMemoryBuffer.GetOffset(object.vertices);
 	vertBuffView.StrideInBytes = sizeof( ShDef::Vert::PosTexCoord);
-	vertBuffView.SizeInBytes = object.vertexBuffer->GetDesc().Width;
+	vertBuffView.SizeInBytes = object.verticesSizeInBytes;
 
 	m_commandList->IASetVertexBuffers(0, 1, &vertBuffView);
 	
@@ -1628,21 +1654,21 @@ void Renderer::Draw(const StaticObject& object)
 
 void Renderer::DrawIndiced(const StaticObject& object)
 {
-	assert(object.indexBuffer != nullptr && "Trying to draw indexed object without index buffer");
+	assert(object.indices != BufConst::INVALID_BUFFER_HANDLER && "Trying to draw indexed object without index buffer");
 
 	// Set vertex buffer
 	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
-	vertBuffView.BufferLocation = object.vertexBuffer->GetGPUVirtualAddress();
+	vertBuffView.BufferLocation = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + m_defaultMemoryBuffer.GetOffset(object.vertices);
 	vertBuffView.StrideInBytes = sizeof(ShDef::Vert::PosTexCoord);
-	vertBuffView.SizeInBytes = object.vertexBuffer->GetDesc().Width;
+	vertBuffView.SizeInBytes = object.verticesSizeInBytes;
 
 	m_commandList->IASetVertexBuffers(0, 1, &vertBuffView);
 
 	// Set index buffer
 	D3D12_INDEX_BUFFER_VIEW indexBufferView;
-	indexBufferView.BufferLocation = object.indexBuffer->GetGPUVirtualAddress();
+	indexBufferView.BufferLocation = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + m_defaultMemoryBuffer.GetOffset(object.indices);
 	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-	indexBufferView.SizeInBytes = object.indexBuffer->GetDesc().Width;
+	indexBufferView.SizeInBytes = object.indicesSizeInBytes;
 
 	m_commandList->IASetIndexBuffer(&indexBufferView);
 
@@ -2489,7 +2515,7 @@ void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 
 		UpdateStaticObjectConstantBuffer(obj);
 
-		if (obj.indexBuffer != nullptr)
+		if (obj.indices != BufConst::INVALID_BUFFER_HANDLER)
 		{
 			DrawIndiced(obj);
 		}

@@ -25,8 +25,19 @@ StaticObject& StaticObject::StaticObject::operator=(StaticObject&& other)
 	PREVENT_SELF_MOVE_ASSIGN;
 
 	textureKey = std::move(other.textureKey);
-	vertexBuffer = other.vertexBuffer;
-	indexBuffer = other.indexBuffer;
+	
+	verticesSizeInBytes = other.verticesSizeInBytes;
+	other.verticesSizeInBytes = -1;
+
+	indicesSizeInBytes = other.indicesSizeInBytes;
+	other.indicesSizeInBytes = -1;
+
+	vertices = other.vertices;
+	other.vertices = BufConst::INVALID_BUFFER_HANDLER;
+
+	indices = other.indices;
+	other.indices = BufConst::INVALID_BUFFER_HANDLER;
+
 	position = other.position;
 	constantBufferHandler = other.constantBufferHandler;
 	bbMin = std::move(other.bbMin);
@@ -74,6 +85,16 @@ StaticObject::~StaticObject()
 	if (constantBufferHandler != BufConst::INVALID_BUFFER_HANDLER)
 	{
 		Renderer::Inst().DeleteUploadMemoryBuffer(constantBufferHandler);
+	}
+
+	if (vertices != BufConst::INVALID_BUFFER_HANDLER)
+	{
+		Renderer::Inst().DeleteDefaultMemoryBuffer(vertices);
+	}
+
+	if (indices != BufConst::INVALID_BUFFER_HANDLER)
+	{
+		Renderer::Inst().DeleteDefaultMemoryBuffer(indices);
 	}
 }
 

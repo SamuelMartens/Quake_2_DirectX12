@@ -84,7 +84,7 @@ private:
 	constexpr static int		 QUPLOAD_MEMORY_BUFFER_HANDLERS_NUM = 16382;
 	// 256 MB of default memory
 	constexpr static int		 QDEFAULT_MEMORY_BUFFER_SIZE = 256 * 1024 * 1024;
-	constexpr static int		 QDEFAULT_MEMORY_BUFFER_HANDLERS_NUM = 8192;
+	constexpr static int		 QDEFAULT_MEMORY_BUFFER_HANDLERS_NUM = 16382;
 
 	constexpr static char		 QRAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
 	constexpr static char		 QFONT_TEXTURE_NAME[] = "conchars";

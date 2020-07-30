@@ -33,8 +33,12 @@ public:
 	XMMATRIX GenerateModelMat() const;
 
 	std::string textureKey;
-	ComPtr<ID3D12Resource> vertexBuffer;
-	ComPtr<ID3D12Resource> indexBuffer;
+	
+	BufferHandler vertices = BufConst::INVALID_BUFFER_HANDLER;
+	BufferHandler indices = BufConst::INVALID_BUFFER_HANDLER;
+
+	int verticesSizeInBytes = -1;
+	int indicesSizeInBytes = -1;
 
 	XMFLOAT4 position = { 0.0f, 0.0f, 0.0f, 1.0f };
 	XMFLOAT4 scale = { 1.0f, 1.0f, 1.0f, 0.0f };

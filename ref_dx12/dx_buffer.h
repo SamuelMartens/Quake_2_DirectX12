@@ -172,7 +172,16 @@ public:
 			}
 		}
 
-		assert(handler != BufConst::INVALID_BUFFER_HANDLER);
+#ifdef _DEBUG
+
+		if (handler == BufConst::INVALID_BUFFER_HANDLER)
+		{
+			int freeHandlersLeft = std::count(m_handlers.begin(), m_handlers.end(), BufConst::INVALID_OFFSET);
+			Utils::VSCon_Printf("Free handlers left: %d \n", freeHandlersLeft);
+
+			assert(false && "Can't find free handler during allocation");
+		}
+#endif
 
 		m_handlers[handler] = allocBuffer.allocator.Allocate(size);
 
@@ -181,6 +190,8 @@ public:
 
 	void Delete(BufferHandler handler)
 	{
+		assert(handler != BufConst::INVALID_BUFFER_HANDLER && "Trying to delete invalid default buffer handler");
+
 		assert(m_handlers[handler] != BufConst::INVALID_OFFSET);
 
 		allocBuffer.allocator.Delete(m_handlers[handler]);
