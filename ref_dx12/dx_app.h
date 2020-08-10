@@ -23,6 +23,7 @@
 #include "dx_glmodel.h"
 #include "dx_camera.h"
 #include "dx_material.h"
+#include "dx_jobmultithreading.h"
 
 extern "C"
 {
@@ -53,18 +54,13 @@ namespace FArg
 
 //#TODO 
 // 1) currently I do : Update - Draw, Update - Draw. It should be Update Update , Draw Draw (especially text)
-// 2) One huge vertex buffer for both streaming and persistent, minimize transitions if step 1 is fulfilled
-//    and buffer allocation
-// 3) Make your wrappers as exclusive owners of some resource, and operate with smart pointers instead to avoid mess
+// 2) Make your wrappers as exclusive owners of some resource, and operate with smart pointers instead to avoid mess
 //    during resource management.(This requires rewrite some stuff like Textures or buffers)
-// 4) For Movies and UI we don't need stream drawing, but just one quad object  and the width and height would be
+// 3) For Movies and UI we don't need stream drawing, but just one quad object  and the width and height would be
 //	  scaling of this quad along y or x axis
-// 5) When I give back something after memory allocation it is easier to give back handler than exact memory access,
-//	  because then I can safely move allocated memory around in allocator and don't worry that something will happened
-// 6) Add exclusive buffer for memory allocations. Never allocate separate small buffers
-// 7) If decided to go with preallocated GPU buffers I should come up with some way to control buffers states
+// 4) If decided to go with preallocated GPU buffers I should come up with some way to control buffers states
 //	  and actively avoid redundant state transitions
-// 8) Wrap everything in one namespace?
+// 5) Implement occlusion query. If this is not enough, resurrect BSP tree.
 class Renderer
 {
 private:
@@ -323,4 +319,6 @@ private:
 
 	std::vector<Material> m_materials;
 	std::string m_currentMaterialName;
+
+	JobSystem m_jobSystem;
 };

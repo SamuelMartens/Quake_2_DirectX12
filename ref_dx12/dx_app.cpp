@@ -475,6 +475,8 @@ void Renderer::InitUtils()
 
 	// Init dynamic objects constant buffers pool
 	m_dynamicObjectsConstBuffersPool.resize(QDYNAM_OBJECT_CONST_BUFFER_POOL_SIZE);
+
+	m_jobSystem.Init();
 }
 
 void Renderer::InitScissorRect()

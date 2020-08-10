@@ -3,6 +3,7 @@
 #include "dx_glmodel.h"
 
 // Very thin wrapper around GL model. Needed for RAII only right now
+// Not used currently
 class Model
 {
 public:
