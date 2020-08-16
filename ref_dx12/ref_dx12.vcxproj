@@ -24,10 +24,13 @@
     <ClInclude Include="..\qcommon\qfiles.h" />
     <ClInclude Include="..\win32\winquake.h" />
     <ClInclude Include="d3dx12.h" />
+    <ClInclude Include="dx_allocators.h" />
     <ClInclude Include="dx_buffer.h" />
     <ClInclude Include="dx_camera.h" />
     <ClInclude Include="dx_common.h" />
+    <ClInclude Include="dx_descriptorheap.h" />
     <ClInclude Include="dx_diagnostics.h" />
+    <ClInclude Include="dx_frame.h" />
     <ClInclude Include="dx_glmodel.h" />
     <ClInclude Include="dx_jobmultithreading.h" />
     <ClInclude Include="dx_material.h" />
@@ -46,10 +49,13 @@
   <ItemGroup>
     <ClCompile Include="..\game\q_shared.c" />
     <ClCompile Include="..\win32\q_shwin.c" />
+    <ClCompile Include="dx_allocators.cpp" />
     <ClCompile Include="dx_app.cpp" />
     <ClCompile Include="dx_buffer.cpp" />
     <ClCompile Include="dx_camera.cpp" />
+    <ClCompile Include="dx_descriptorheap.cpp" />
     <ClCompile Include="dx_diagnostics.cpp" />
+    <ClCompile Include="dx_frame.cpp" />
     <ClCompile Include="dx_glmodel.cpp" />
     <ClCompile Include="dx_jobmultithreading.cpp" />
     <ClCompile Include="dx_material.cpp" />

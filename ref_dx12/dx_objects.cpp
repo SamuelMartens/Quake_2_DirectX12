@@ -13,7 +13,6 @@
 #undef max
 #endif
 
-#define PREVENT_SELF_MOVE_ASSIGN if (this == &other) { return *this; }
 
 StaticObject::StaticObject(StaticObject&& other)
 {

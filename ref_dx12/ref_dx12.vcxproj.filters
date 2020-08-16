@@ -75,6 +75,15 @@
     <ClInclude Include="dx_jobmultithreading.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="dx_frame.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dx_descriptorheap.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dx_allocators.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ref_dx12.def">
@@ -123,6 +132,15 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="dx_jobmultithreading.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dx_frame.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dx_descriptorheap.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dx_allocators.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

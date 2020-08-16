@@ -271,7 +271,7 @@ void Renderer::EndFrame()
 
 	// Safe to do here since Flush command queue is here. This used to be in the BeginFrame()
 	// but it seems like some logic like loading new data on GPU happens after EndFrame, but
-	// before BeginFrame. I can try to create separate command list for such things, or deffer
+	// before BeginFrame. I can try to create separate command list for such things, or defer
 	// them and do it in the beginning of the frame.
 	ThrowIfFailed(m_commandListAlloc->Reset());
 	ThrowIfFailed(m_commandList->Reset(m_commandListAlloc.Get(), nullptr));
@@ -386,15 +386,16 @@ void Renderer::InitDX()
 
 	InitDescriptorSizes();
 
-	CreateFences();
+	CreateFences(m_fence);
 
 	CreateCommandQueue();
-	CreateCmdAllocatorAndCmdList();
+	CreateCmdListAndCmdListAlloc(m_commandList, m_commandListAlloc);
 
 	CheckMSAAQualitySupport();
 
 	CreateSwapChain();
 
+	CreateDescriptorHeapsFrames();
 	CreateDescriptorsHeaps();
 
 	CreateRenderTargetViews();
@@ -408,6 +409,8 @@ void Renderer::InitDX()
 	CreateTextureSampler();
 
 	InitUtils();
+
+	InitFrames();
 
 	ExecuteCommandLists();
 	FlushCommandQueue();
@@ -500,6 +503,27 @@ void Renderer::InitCamera()
 
 	m_camera.width = DrawAreaWidth;
 	m_camera.height = DrawAreaHeight;
+}
+
+void Renderer::InitFrames()
+{
+	//#DEBUG swap chain buffer count shall be gone?
+	assert(QSWAP_CHAIN_BUFFER_COUNT == QFRAMES_NUM && "Swap chain buffer count shall be equal to frames num");
+
+	for (int i = 0; i < QFRAMES_NUM; ++i)
+	{
+		ComPtr<ID3D12Resource> swapChainBuffer;
+		ThrowIfFailed(m_swapChain->GetBuffer(i, IID_PPV_ARGS(&swapChainBuffer)));
+
+		m_frames[i].Init(swapChainBuffer);
+	}
+}
+
+void Renderer::CreateDescriptorHeapsFrames()
+{
+	rtvHeapFrames = std::make_unique<DescriptorHeap>(QRTV_DTV_DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, m_device);
+	dsvHeapFrames = std::make_unique<DescriptorHeap>(QRTV_DTV_DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, m_device);
+
 }
 
 void Renderer::CreateDepthStencilBufferAndView()
@@ -671,20 +695,20 @@ void Renderer::CheckMSAAQualitySupport()
 	assert(m_MSQualityLevels > 0 && "Unexpected MSAA quality levels");
 }
 
-void Renderer::CreateCmdAllocatorAndCmdList()
+void Renderer::CreateCmdListAndCmdListAlloc(ComPtr<ID3D12GraphicsCommandList>& commandList, ComPtr<ID3D12CommandAllocator>& commandListAlloc)
 {
 	// Create command allocator
 	ThrowIfFailed(m_device->CreateCommandAllocator(
 		D3D12_COMMAND_LIST_TYPE_DIRECT,
-		IID_PPV_ARGS(&m_commandListAlloc)));
+		IID_PPV_ARGS(&commandListAlloc)));
 
 	// Create command list 
 	ThrowIfFailed(m_device->CreateCommandList(
 		0,
 		D3D12_COMMAND_LIST_TYPE_DIRECT,
-		m_commandListAlloc.Get(),
+		commandListAlloc.Get(),
 		nullptr,
-		IID_PPV_ARGS(m_commandList.GetAddressOf())));
+		IID_PPV_ARGS(commandList.GetAddressOf())));
 }
 
 void Renderer::CreateCommandQueue()
@@ -697,10 +721,50 @@ void Renderer::CreateCommandQueue()
 	ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue)));
 }
 
-void Renderer::CreateFences()
+void Renderer::CreateFences(ComPtr<ID3D12Fence>& fence)
 {
 	// Create fence
-	ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
+	ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)));
+}
+
+void Renderer::CreateDepthStencilBuffer(ComPtr<ID3D12Resource>& buffer)
+{
+	int DrawAreaWidth = 0;
+	int DrawAreaHeight = 0;
+
+	GetDrawAreaSize(&DrawAreaWidth, &DrawAreaHeight);
+
+	// Create the depth/stencil buffer
+	D3D12_RESOURCE_DESC depthStencilDesc;
+	depthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	depthStencilDesc.Alignment = 0;
+	depthStencilDesc.Width = DrawAreaWidth;
+	depthStencilDesc.Height = DrawAreaHeight;
+	depthStencilDesc.DepthOrArraySize = 1;
+	depthStencilDesc.MipLevels = 1;
+	depthStencilDesc.Format = QDEPTH_STENCIL_FORMAT;
+	depthStencilDesc.SampleDesc.Count = GetMSAASampleCount();
+	depthStencilDesc.SampleDesc.Quality = GetMSAAQuality();
+	depthStencilDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+	D3D12_CLEAR_VALUE optimizedClearVal;
+	optimizedClearVal.Format = QDEPTH_STENCIL_FORMAT;
+	optimizedClearVal.DepthStencil.Depth = 1.0f;
+	optimizedClearVal.DepthStencil.Stencil = 0;
+
+	ThrowIfFailed(m_device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&depthStencilDesc,
+		D3D12_RESOURCE_STATE_COMMON,
+		&optimizedClearVal,
+		IID_PPV_ARGS(buffer.GetAddressOf())));
+}
+
+int Renderer::GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType) const
+{
+	return m_device->GetDescriptorHandleIncrementSize(descriptorHeapType);
 }
 
 void Renderer::InitDescriptorSizes()
@@ -976,7 +1040,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE Renderer::GetDepthStencilView()
 // Returns:   void
 // Details: Presents and swap current back buffer, and does some bookkeeping.
 // All preparations should be done at this point including buffers transitions.
-// This function will not do any oh these, so all on you. It do
+// This function will not do any oh these, so all on you.
 //************************************
 void Renderer::PresentAndSwapBuffers()
 {

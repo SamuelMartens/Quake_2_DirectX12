@@ -91,6 +91,8 @@ namespace Utils
 	}
 }
 
+#define PREVENT_SELF_MOVE_ASSIGN if (this == &other) { return *this; }
+
 // Helper utility converts D3D API failures into exceptions.
 #ifndef ThrowIfFailed
 #define ThrowIfFailed(func) \

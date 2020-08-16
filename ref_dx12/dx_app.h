@@ -13,6 +13,7 @@
 #include <vector>
 #include <unordered_map>
 #include <array>
+#include <memory>
 
 #include "d3dx12.h"
 #include "dx_texture.h"
@@ -24,6 +25,8 @@
 #include "dx_camera.h"
 #include "dx_material.h"
 #include "dx_jobmultithreading.h"
+#include "dx_frame.h"
+#include "dx_descriptorheap.h"
 
 extern "C"
 {
@@ -61,12 +64,15 @@ namespace FArg
 // 4) If decided to go with preallocated GPU buffers I should come up with some way to control buffers states
 //	  and actively avoid redundant state transitions
 // 5) Implement occlusion query. If this is not enough, resurrect BSP tree.
+// 6) Device and factory should leave in separate class. That would fix a lot(will do it after job system is implemented)
 class Renderer
 {
 private:
 	Renderer();
-
-	
+	//#DEBUG for debugging. Only multithreaded renderer should exist
+	constexpr static bool		QMULTITHREADED_RENDERING_ENABLED = true;
+	//END
+	constexpr static int		 QFRAMES_NUM = 2;
 	constexpr static int		 QSWAP_CHAIN_BUFFER_COUNT = 2;
 	constexpr static bool		 QMSAA_ENABLED = false;
 	constexpr static int		 QMSAA_SAMPLE_COUNT = 4;
@@ -75,6 +81,8 @@ private:
 	constexpr static int		 QCONST_BUFFER_ALIGNMENT = 256;
 	constexpr static int		 QDYNAM_OBJECT_CONST_BUFFER_POOL_SIZE = 512;
 	
+	constexpr static int		 QRTV_DTV_DESCRIPTOR_HEAP_SIZE = QFRAMES_NUM;
+
 	// 128 MB of upload memory
 	constexpr static int		 QUPLOAD_MEMORY_BUFFER_SIZE = 128 * 1024 * 1024;
 	constexpr static int		 QUPLOAD_MEMORY_BUFFER_HANDLERS_NUM = 16382;
@@ -143,6 +151,21 @@ public:
 	int GetMSAASampleCount() const;
 	int GetMSAAQuality() const;
 
+	/* Initialization and creation */
+	void CreateCmdListAndCmdListAlloc(ComPtr<ID3D12GraphicsCommandList>& commandList, ComPtr<ID3D12CommandAllocator>& commandListAlloc);
+	void CreateFences(ComPtr<ID3D12Fence>& fence);
+	void CreateDepthStencilBuffer(ComPtr<ID3D12Resource>& buffer);
+	int  GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType) const;
+
+
+
+public:
+	//#DEBUG new heaps, that would be used for frames.
+	// Also when old heaps are deleted remove frame postfix
+	// Public because it is already wrapped up in class
+	std::unique_ptr<DescriptorHeap>	rtvHeapFrames = nullptr;
+	std::unique_ptr<DescriptorHeap>	dsvHeapFrames = nullptr;
+
 private:
 
 	/* Initialize win32 specific stuff */
@@ -159,22 +182,24 @@ private:
 
 	void InitCamera();
 
+	void InitFrames();
+
 	void CreateDepthStencilBufferAndView();
 
 	void CreateRenderTargetViews();
 
+	void CreateDescriptorHeapsFrames();
+	//#DEBUG delete after old descriptor heaps are done
 	void CreateDescriptorsHeaps();
 
 	void CreateSwapChain();
 
 	void CheckMSAAQualitySupport();
 
-	void CreateCmdAllocatorAndCmdList();
-
 	void CreateCommandQueue();
 
-	void CreateFences();
 	void InitDescriptorSizes();
+
 	void CreateDevice();
 	void CreateDxgiFactory();
 
@@ -256,6 +281,7 @@ private:
 	ComPtr<ID3D12CommandAllocator>	  m_commandListAlloc;
 	ComPtr<ID3D12GraphicsCommandList> m_commandList;
 
+	//#DEBUG as soon as frames implemented delete this 
 	ComPtr<ID3D12DescriptorHeap>	  m_rtvHeap;
 	ComPtr<ID3D12DescriptorHeap>	  m_dsvHeap;
 	ComPtr<ID3D12DescriptorHeap>	  m_cbvSrvHeap;
@@ -321,4 +347,7 @@ private:
 	std::string m_currentMaterialName;
 
 	JobSystem m_jobSystem;
+
+	std::array<Frame, QFRAMES_NUM> m_frames;
+
 };
