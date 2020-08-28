@@ -147,10 +147,14 @@ public:
 	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler);
 	void UpdateStreamingConstantBufferFrames(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, Frame& frame);
 	void UpdateStaticObjectConstantBuffer(const StaticObject& obj);
+	void UpdateStaticObjectConstantBufferFrames(const StaticObject& obj, Frame& frame);
 	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity);
+	void UpdateDynamicObjectConstantBufferFrames(DynamicObject& obj, const entity_t& entity, Frame& frame);
 	BufferHandler UpdateParticleConstantBuffer();
+	BufferHandler UpdateParticleConstantBufferFrames(Frame& frame);
 
 	Texture* FindOrCreateTexture(std::string_view textureName);
+	Texture* FindOrCreateTextureFrames(std::string_view textureName, Frame& frame);
 
 	/*--- API functions begin --- */
 
@@ -173,6 +177,15 @@ public:
 	void BeginFrameFrames();
 	void EndFrameFrames();
 	void Draw_RawPicFrames(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data);
+	void Draw_PicFrames(int x, int y, const char* name);
+	void Draw_CharFrames(int x, int y, int num);
+	Texture* RegisterDrawPicFrames(const char* name);
+	void RegisterWorldModelFrames(const char* model);
+	model_s* RegisterModelFrames(const char* name);
+	void RenderFrameFrames(const refdef_t& frameUpdateData);
+
+
+
 
 	/*--- API functions end --- */
 
@@ -283,18 +296,27 @@ private:
 
 	/* Factory functionality */
 	void CreatePictureObject(const char* pictureName);
+	void CreatePictureObjectFrames(const char* pictureName, Frame& frame);
 	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model);
+	DynamicObjectModel CreateDynamicGraphicObjectFromGLModelFrames(const model_t* model, Frame& frame);
 	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf);
+	void CreateGraphicalObjectFromGLSurfaceFrames(const msurface_t& surf, Frame& frame);
 	void DecomposeGLModelNode(const model_t& model, const mnode_t& node);
+	void DecomposeGLModelNodeFrames(const model_t& model, const mnode_t& node, Frame& frame);
 
 	/* Rendering */
 	void Draw(const StaticObject& object);
+	void DrawFrames(const StaticObject& object, Frame& frame);
 	void DrawIndiced(const StaticObject& object);
+	void DrawIndicedFrames(const StaticObject& object, Frame& frame);
 	void DrawIndiced(const DynamicObject& object, const entity_t& entity);
+	void DrawIndicedFrames(const DynamicObject& object, const entity_t& entity, Frame& frame);
 	void DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos);
 	void DrawStreamingFrames(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, Frame& frame);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
+	void AddParticleToDrawListFrames(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
 	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler);
+	void DrawParticleDrawListFrames(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Frame& frame);
 
 	/* Utils */
 	void GetDrawAreaSize(int* Width, int* Height);

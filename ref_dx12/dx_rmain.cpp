@@ -14,12 +14,12 @@ extern "C"
 // Register map as the world
 void DX12_BeginRegistration(char* map)
 {
-	Renderer::Inst().RegisterWorldModel(map);
+	Renderer::Inst().RegisterWorldModelFrames(map);
 }
 
 struct model_s* DX12_RegModel(char* model)
 {
-	return Renderer::Inst().RegisterModel(model);
+	return Renderer::Inst().RegisterModelFrames(model);
 }
 
 struct image_s* DX12_RegSkin(char* skin)
@@ -29,7 +29,7 @@ struct image_s* DX12_RegSkin(char* skin)
 
 struct image_s* DX12_Draw_FindPic(char* name)
 {
-	return reinterpret_cast<image_s*>(Renderer::Inst().RegisterDrawPic(name));
+	return reinterpret_cast<image_s*>(Renderer::Inst().RegisterDrawPicFrames(name));
 }
 
 void DX12_SetSky (char* name, float rotate, vec3_t axis)
@@ -42,7 +42,7 @@ void DX12_EndReg(void)
 
 void DX12_RenderFrame(refdef_t *fd)
 {
-	Renderer::Inst().RenderFrame(*fd);
+	Renderer::Inst().RenderFrameFrames(*fd);
 }
 
 void DX12_Draw_GetPicSize(int *w, int *h, char *name)
@@ -52,7 +52,7 @@ void DX12_Draw_GetPicSize(int *w, int *h, char *name)
 
 void DX12_Draw_Pic(int x, int y, char *name)
 {
-	Renderer::Inst().Draw_Pic(x, y, name);
+	Renderer::Inst().Draw_PicFrames(x, y, name);
 }
 
 void DX12_Draw_StretchPic(int x, int y, int w, int h, char *name)
@@ -60,7 +60,7 @@ void DX12_Draw_StretchPic(int x, int y, int w, int h, char *name)
 
 void DX12_Draw_Char(int x, int y, int c)
 {
-	Renderer::Inst().Draw_Char(x, y, c);
+	Renderer::Inst().Draw_CharFrames(x, y, c);
 }
 
 void DX12_Draw_TileClear(int x, int y, int w, int h, char *name)

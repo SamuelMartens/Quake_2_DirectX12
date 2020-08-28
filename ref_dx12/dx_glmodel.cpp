@@ -7,10 +7,12 @@
 model_t	*loadmodel;
 int		modfilelen;
 
-void Mod_LoadSpriteModel (model_t *mod, void *buffer);
-void Mod_LoadBrushModel (model_t *mod, void *buffer);
-void Mod_LoadAliasModel (model_t *mod, void *buffer);
-model_t *Mod_LoadModel (model_t *mod, qboolean crash);
+void Mod_LoadSpriteModel(model_t *mod, void *buffer);
+void Mod_LoadSpriteModelFrames(model_t *mod, void *buffer, Frame& frame);
+void Mod_LoadBrushModel(model_t *mod, void *buffer);
+void Mod_LoadBrushModelFrames(model_t *mod, void *buffer, Frame& frame);
+void Mod_LoadAliasModel(model_t *mod, void *buffer);
+void Mod_LoadAliasModelFrames(model_t *mod, void *buffer, Frame& frame);
 
 byte	mod_novis[MAX_MAP_LEAFS/8];
 
@@ -369,6 +371,122 @@ model_t *Mod_ForName (char *name, qboolean crash)
 	return mod;
 }
 
+model_t * Mod_ForNameFrames(char *name, qboolean crash, Frame& frame)
+{
+	model_t	*mod;
+	unsigned *buf;
+	int		i;
+
+	const refimport_t& ri = Renderer::Inst().GetRefImport();
+
+
+	if (!name[0])
+	{
+		char msg[] = "Mod_ForName: NULL name";
+		ri.Sys_Error(ERR_DROP, msg);
+	}
+
+	//
+	// inline models are grabbed only from world model
+	//
+	if (name[0] == '*')
+	{
+		i = atoi(name + 1);
+		if (i < 1 || !r_worldmodel || i >= r_worldmodel->numsubmodels)
+		{
+			char msg[] = "bad inline model number";
+			ri.Sys_Error(ERR_DROP, msg);
+		}
+		return &mod_inline[i];
+	}
+
+	//
+	// search the currently loaded models
+	//
+	for (i = 0, mod = mod_known; i < mod_numknown; i++, mod++)
+	{
+		if (!mod->name[0])
+			continue;
+		if (!strcmp(mod->name, name))
+			return mod;
+	}
+
+	//
+	// find a free model slot spot
+	//
+	for (i = 0, mod = mod_known; i < mod_numknown; i++, mod++)
+	{
+		if (!mod->name[0])
+			break;	// free spot
+	}
+	if (i == mod_numknown)
+	{
+		if (mod_numknown == MAX_MOD_KNOWN)
+		{
+			char msg[] = "mod_numknown == MAX_MOD_KNOWN";
+			ri.Sys_Error(ERR_DROP, msg);
+		}
+		mod_numknown++;
+	}
+	strcpy(mod->name, name);
+
+	//
+	// load the file
+	//
+	modfilelen = ri.FS_LoadFile(mod->name, (void**)&buf);
+
+	if (!buf)
+	{
+		if (crash)
+		{
+			char msg[] = "Mod_NumForName: %s not found";
+			ri.Sys_Error(ERR_DROP, msg, mod->name);
+		}
+		memset(mod->name, 0, sizeof(mod->name));
+		return NULL;
+	}
+
+	loadmodel = mod;
+
+	//
+	// fill it in
+	//
+
+
+	// call the appropriate loader
+	switch (LittleLong(*(unsigned *)buf))
+	{
+	case IDALIASHEADER:
+		loadmodel->extradata = Hunk_Begin(0x200000);
+		Mod_LoadAliasModelFrames(mod, buf, frame);
+		break;
+
+	case IDSPRITEHEADER:
+		//#TODO implement proper Spite loading
+		//loadmodel->extradata = Hunk_Begin (0x10000);
+		//Mod_LoadSpriteModel (mod, buf);
+		break;
+
+	case IDBSPHEADER:
+		loadmodel->extradata = Hunk_Begin(0x1000000);
+		Mod_LoadBrushModelFrames(mod, buf, frame);
+		break;
+
+	default:
+	{
+		char msg[] = "Mod_NumForName: unknown filed for %s";
+		ri.Sys_Error(ERR_DROP, msg, mod->name);
+		break;
+	}
+	}
+
+	loadmodel->extradatasize = Hunk_End();
+
+	ri.FS_FreeFile(buf);
+
+	return mod;
+}
+
 /*
 ===============================================================================
 
@@ -607,6 +725,63 @@ void Mod_LoadTexinfo (lump_t *l)
 		out = &loadmodel->texinfo[i];
 		out->numframes = 1;
 		for (step = out->next ; step && step != out ; step=step->next)
+			out->numframes++;
+	}
+}
+
+void Mod_LoadTexinfoFrames(lump_t *l, Frame& frames)
+{
+	texinfo_t *in;
+	mtexinfo_t *out, *step;
+	int 	i, j, count;
+	char	name[MAX_QPATH];
+	int		next;
+
+	const refimport_t& ri = Renderer::Inst().GetRefImport();
+
+	in = (texinfo_t *)(mod_base + l->fileofs);
+	if (l->filelen % sizeof(*in))
+	{
+		char msg[] = "MOD_LoadBmodel: funny lump size in %s";
+		ri.Sys_Error(ERR_DROP, msg, loadmodel->name);
+	}
+	count = l->filelen / sizeof(*in);
+	out = (mtexinfo_t *)Hunk_Alloc(count * sizeof(*out));
+
+	loadmodel->texinfo = out;
+	loadmodel->numtexinfo = count;
+
+	for (i = 0; i < count; i++, in++, out++)
+	{
+		for (j = 0; j < 8; j++)
+			out->vecs[0][j] = LittleFloat(in->vecs[0][j]);
+
+		out->flags = LittleLong(in->flags);
+		next = LittleLong(in->nexttexinfo);
+		if (next > 0)
+			out->next = loadmodel->texinfo + next;
+		else
+			out->next = NULL;
+
+		char texNameFormat[] = "textures/%s.wal";
+		Com_sprintf(name, sizeof(name), texNameFormat, in->texture);
+
+		out->image = Renderer::Inst().FindOrCreateTextureFrames(name, frames);
+
+		if (!out->image)
+		{
+			char msg[] = "Couldn't load %s\n";
+			ri.Con_Printf(PRINT_ALL, msg, name);
+			out->image = r_notexture;
+		}
+	}
+
+	// count animation frames
+	for (i = 0; i < count; i++)
+	{
+		out = &loadmodel->texinfo[i];
+		out->numframes = 1;
+		for (step = out->next; step && step != out; step = step->next)
 			out->numframes++;
 	}
 }
@@ -1098,6 +1273,88 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 	}
 }
 
+void Mod_LoadBrushModelFrames(model_t *mod, void *buffer, Frame& frame)
+{
+	int			i;
+	dheader_t	*header;
+	mmodel_t 	*bm;
+
+	const refimport_t& ri = Renderer::Inst().GetRefImport();
+
+	loadmodel->type = mod_brush;
+	if (loadmodel != mod_known)
+	{
+		char msg[] = "Loaded a brush model after the world";
+		ri.Sys_Error(ERR_DROP, msg);
+	}
+
+	header = (dheader_t *)buffer;
+
+	i = LittleLong(header->version);
+	if (i != BSPVERSION)
+	{
+		char msg[] = "Mod_LoadBrushModel: %s has wrong version number (%i should be %i)";
+		ri.Sys_Error(ERR_DROP, msg, mod->name, i, BSPVERSION);
+	}
+
+	// swap all the lumps
+	mod_base = (byte *)header;
+
+	for (i = 0; i < sizeof(dheader_t) / 4; i++)
+		((int *)header)[i] = LittleLong(((int *)header)[i]);
+
+	// load into heap
+		// Very similar loading functions. 
+		// Usual algorithm is:
+		// 1) Find offset from beginning of the file
+		// 2) Find count
+		// 3) Iterate and load one by one vertex or surface, whatever
+	Mod_LoadVertexes(&header->lumps[LUMP_VERTEXES]);
+	Mod_LoadEdges(&header->lumps[LUMP_EDGES]);
+	Mod_LoadSurfedges(&header->lumps[LUMP_SURFEDGES]);
+	Mod_LoadLighting(&header->lumps[LUMP_LIGHTING]);
+	Mod_LoadPlanes(&header->lumps[LUMP_PLANES]);
+	Mod_LoadTexinfoFrames(&header->lumps[LUMP_TEXINFO], frame);
+	Mod_LoadFaces(&header->lumps[LUMP_FACES]);
+	Mod_LoadMarksurfaces(&header->lumps[LUMP_LEAFFACES]);
+	Mod_LoadVisibility(&header->lumps[LUMP_VISIBILITY]);
+	Mod_LoadLeafs(&header->lumps[LUMP_LEAFS]);
+	Mod_LoadNodes(&header->lumps[LUMP_NODES]);
+	Mod_LoadSubmodels(&header->lumps[LUMP_MODELS]);
+	mod->numframes = 2;		// regular and alternate animation
+
+//
+// set up the submodels
+//
+	for (i = 0; i < mod->numsubmodels; i++)
+	{
+		model_t	*starmod;
+
+		bm = &mod->submodels[i];
+		starmod = &mod_inline[i];
+
+		*starmod = *loadmodel;
+
+		starmod->firstmodelsurface = bm->firstface;
+		starmod->nummodelsurfaces = bm->numfaces;
+		starmod->firstnode = bm->headnode;
+		if (starmod->firstnode >= loadmodel->numnodes)
+		{
+			char msg[] = "Inline model %i has bad firstnode";
+			ri.Sys_Error(ERR_DROP, msg, i);
+		}
+
+		VectorCopy(bm->maxs, starmod->maxs);
+		VectorCopy(bm->mins, starmod->mins);
+		starmod->radius = bm->radius;
+
+		if (i == 0)
+			*loadmodel = *starmod;
+
+		starmod->numleafs = bm->visleafs;
+	}
+}
+
 /*
 ==============================================================================
 
@@ -1252,6 +1509,148 @@ void Mod_LoadAliasModel (model_t *mod, void *buffer)
 	mod->maxs[2] = 32;
 }
 
+void Mod_LoadAliasModelFrames(model_t *mod, void *buffer, Frame& frame)
+{
+	int					i, j;
+	dmdl_t				*pinmodel, *pheader;
+	dstvert_t			*pinst, *poutst;
+	dtriangle_t			*pintri, *pouttri;
+	daliasframe_t		*pinframe, *poutframe;
+	int					*pincmd, *poutcmd;
+	int					version;
+
+	const refimport_t& ri = Renderer::Inst().GetRefImport();
+
+	pinmodel = (dmdl_t *)buffer;
+
+	version = LittleLong(pinmodel->version);
+	if (version != ALIAS_VERSION)
+	{
+		char msg[] = "%s has wrong version number (%i should be %i)";
+		ri.Sys_Error(ERR_DROP, msg,
+			mod->name, version, ALIAS_VERSION);
+	}
+
+	pheader = (dmdl_t *)Hunk_Alloc(LittleLong(pinmodel->ofs_end));
+
+	// byte swap the header fields and sanity check
+	for (i = 0; i < sizeof(dmdl_t) / 4; i++)
+		((int *)pheader)[i] = LittleLong(((int *)buffer)[i]);
+
+	if (pheader->skinheight > MAX_LBM_HEIGHT)
+	{
+		char msg[] = "model %s has a skin taller than %d";
+		ri.Sys_Error(ERR_DROP, msg, mod->name,
+			MAX_LBM_HEIGHT);
+	}
+
+	if (pheader->num_xyz <= 0)
+	{
+		char msg[] = "model %s has no vertices";
+		ri.Sys_Error(ERR_DROP, msg, mod->name);
+	}
+
+	if (pheader->num_xyz > MAX_VERTS)
+	{
+		char msg[] = "model %s has too many vertices";
+		ri.Sys_Error(ERR_DROP, msg, mod->name);
+	}
+
+	if (pheader->num_st <= 0)
+	{
+		char msg[] = "model %s has no st vertices";
+		ri.Sys_Error(ERR_DROP, msg, mod->name);
+	}
+
+	if (pheader->num_tris <= 0)
+	{
+		char msg[] = "model %s has no triangles";
+		ri.Sys_Error(ERR_DROP, msg, mod->name);
+	}
+
+	if (pheader->num_frames <= 0)
+	{
+		char msg[] = "model %s has no frames";
+		ri.Sys_Error(ERR_DROP, msg, mod->name);
+	}
+
+	//
+	// load base s and t vertices (not used in gl version)
+	//
+	pinst = (dstvert_t *)((byte *)pinmodel + pheader->ofs_st);
+	poutst = (dstvert_t *)((byte *)pheader + pheader->ofs_st);
+
+	for (i = 0; i < pheader->num_st; i++)
+	{
+		poutst[i].s = LittleShort(pinst[i].s);
+		poutst[i].t = LittleShort(pinst[i].t);
+	}
+
+	//
+	// load triangle lists
+	//
+	pintri = (dtriangle_t *)((byte *)pinmodel + pheader->ofs_tris);
+	pouttri = (dtriangle_t *)((byte *)pheader + pheader->ofs_tris);
+
+	for (i = 0; i < pheader->num_tris; i++)
+	{
+		for (j = 0; j < 3; j++)
+		{
+			pouttri[i].index_xyz[j] = LittleShort(pintri[i].index_xyz[j]);
+			pouttri[i].index_st[j] = LittleShort(pintri[i].index_st[j]);
+		}
+	}
+
+	//
+	// load the frames
+	//
+	for (i = 0; i < pheader->num_frames; i++)
+	{
+		pinframe = (daliasframe_t *)((byte *)pinmodel
+			+ pheader->ofs_frames + i * pheader->framesize);
+		poutframe = (daliasframe_t *)((byte *)pheader
+			+ pheader->ofs_frames + i * pheader->framesize);
+
+		memcpy(poutframe->name, pinframe->name, sizeof(poutframe->name));
+		for (j = 0; j < 3; j++)
+		{
+			poutframe->scale[j] = LittleFloat(pinframe->scale[j]);
+			poutframe->translate[j] = LittleFloat(pinframe->translate[j]);
+		}
+		// verts are all 8 bit, so no swapping needed
+		memcpy(poutframe->verts, pinframe->verts,
+			pheader->num_xyz * sizeof(dtrivertx_t));
+
+	}
+
+	mod->type = mod_alias;
+
+	//
+	// load the glcmds
+	//
+	pincmd = (int *)((byte *)pinmodel + pheader->ofs_glcmds);
+	poutcmd = (int *)((byte *)pheader + pheader->ofs_glcmds);
+	for (i = 0; i < pheader->num_glcmds; i++)
+		poutcmd[i] = LittleLong(pincmd[i]);
+
+
+	// register all skins
+	memcpy((char *)pheader + pheader->ofs_skins, (char *)pinmodel + pheader->ofs_skins,
+		pheader->num_skins*MAX_SKINNAME);
+	for (i = 0; i < pheader->num_skins; i++)
+	{
+		mod->skins[i] = Renderer::Inst().FindOrCreateTextureFrames(
+			(char *)pheader + pheader->ofs_skins + i * MAX_SKINNAME, frame);
+	}
+
+	mod->mins[0] = -32;
+	mod->mins[1] = -32;
+	mod->mins[2] = -32;
+	mod->maxs[0] = 32;
+	mod->maxs[1] = 32;
+	mod->maxs[2] = 32;
+}
+
 /*
 ==============================================================================
 
@@ -1303,6 +1702,49 @@ void Mod_LoadSpriteModel (model_t *mod, void *buffer)
 		memcpy (sprout->frames[i].name, sprin->frames[i].name, MAX_SKINNAME);
 		
 		mod->skins[i] = Renderer::Inst().FindOrCreateTexture(sprout->frames[i].name);
+	}
+
+	mod->type = mod_sprite;
+}
+
+void Mod_LoadSpriteModelFrames(model_t *mod, void *buffer, Frame& frame)
+{
+	dsprite_t	*sprin, *sprout;
+	int			i;
+
+	const refimport_t& ri = Renderer::Inst().GetRefImport();
+
+	sprin = (dsprite_t *)buffer;
+	sprout = (dsprite_t *)Hunk_Alloc(modfilelen);
+
+	sprout->ident = LittleLong(sprin->ident);
+	sprout->version = LittleLong(sprin->version);
+	sprout->numframes = LittleLong(sprin->numframes);
+
+	if (sprout->version != SPRITE_VERSION)
+	{
+		char msg[] = "%s has wrong version number (%i should be %i)";
+		ri.Sys_Error(ERR_DROP, msg,
+			mod->name, sprout->version, SPRITE_VERSION);
+	}
+
+	if (sprout->numframes > MAX_MD2SKINS)
+	{
+		char msg[] = "%s has too many frames (%i > %i)";
+		ri.Sys_Error(ERR_DROP, msg,
+			mod->name, sprout->numframes, MAX_MD2SKINS);
+	}
+
+	// byte swap everything
+	for (i = 0; i < sprout->numframes; i++)
+	{
+		sprout->frames[i].width = LittleLong(sprin->frames[i].width);
+		sprout->frames[i].height = LittleLong(sprin->frames[i].height);
+		sprout->frames[i].origin_x = LittleLong(sprin->frames[i].origin_x);
+		sprout->frames[i].origin_y = LittleLong(sprin->frames[i].origin_y);
+		memcpy(sprout->frames[i].name, sprin->frames[i].name, MAX_SKINNAME);
+
+		mod->skins[i] = Renderer::Inst().FindOrCreateTextureFrames(sprout->frames[i].name, frame);
 	}
 
 	mod->type = mod_sprite;

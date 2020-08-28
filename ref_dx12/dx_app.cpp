@@ -2000,6 +2000,40 @@ void Renderer::CreatePictureObject(const char* pictureName)
 	newObject.constantBufferHandler = m_uploadMemoryBuffer.Allocate(PictureObjectConstSize);
 }
 
+void Renderer::CreatePictureObjectFrames(const char* pictureName, Frame& frame)
+{
+	StaticObject& newObject = m_staticObjects.emplace_back(StaticObject());
+
+	newObject.textureKey = pictureName;
+
+	const Texture& texture = m_textures.find(newObject.textureKey)->second;
+
+	// Create vertex buffer in RAM
+	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
+	Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
+		XMFLOAT2(texture.width, texture.height),
+		XMFLOAT2(0.0f, 0.0f),
+		XMFLOAT2(1.0f, 1.0f),
+		vertices.data());
+
+	newObject.verticesSizeInBytes = sizeof(vertices);
+	newObject.vertices = m_defaultMemoryBuffer.Allocate(newObject.verticesSizeInBytes);
+
+	FArg::UpdateDefaultHeapBuffFrames updateBuffArgs;
+	updateBuffArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	updateBuffArgs.offset = m_defaultMemoryBuffer.GetOffset(newObject.vertices);
+	updateBuffArgs.byteSize = newObject.verticesSizeInBytes;
+	updateBuffArgs.data = vertices.data();
+	updateBuffArgs.alignment = 0;
+	updateBuffArgs.frame = &frame;
+
+	UpdateDefaultHeapBuffFrames(updateBuffArgs);
+
+	static const unsigned int PictureObjectConstSize = Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT);
+
+	newObject.constantBufferHandler = m_uploadMemoryBuffer.Allocate(PictureObjectConstSize);
+}
+
 DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t* model)
 {
 	DynamicObjectModel object;
@@ -2114,6 +2148,122 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	return object;
 }
 
+DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModelFrames(const model_t* model, Frame& frame)
+{
+	DynamicObjectModel object;
+
+	object.name = model->name;
+
+	const dmdl_t* aliasHeader = reinterpret_cast<dmdl_t*>(model->extradata);
+	assert(aliasHeader != nullptr && "Alias header for dynamic object is not found.");
+
+	// Header data
+	object.headerData.animFrameSizeInBytes = aliasHeader->framesize;
+
+	// Allocate buffers on CPU, that we will use for transferring our stuff
+	std::vector<int> unnormalizedIndexBuffer;
+	std::vector<XMFLOAT2> unnormalizedTexCoords;
+	// This is just heuristic guess of how much memory we will need.
+	unnormalizedIndexBuffer.reserve(aliasHeader->num_xyz);
+	unnormalizedTexCoords.reserve(aliasHeader->num_xyz);
+
+	// Get texture coords and indices in one buffer
+	const int* order = reinterpret_cast<const int*>(reinterpret_cast<const byte*>(aliasHeader) + aliasHeader->ofs_glcmds);
+	UnwindDynamicGeomIntoTriangleList(order, unnormalizedIndexBuffer, unnormalizedTexCoords);
+
+	auto[normalizedIndexBuffer, normalizedTexCoordsBuffer, normalizedVertexIndices] =
+		NormalizedDynamGeomVertTexCoord(unnormalizedIndexBuffer, unnormalizedTexCoords);
+
+	object.headerData.animFrameVertsNum = normalizedVertexIndices.size();
+	object.headerData.indicesNum = normalizedIndexBuffer.size();
+
+	const int verticesNum = aliasHeader->num_frames * object.headerData.animFrameVertsNum;
+	std::vector<XMFLOAT4> vertexBuffer;
+	vertexBuffer.reserve(verticesNum);
+
+	std::vector<XMFLOAT4> singleFrameVertexBuffer;
+	singleFrameVertexBuffer.reserve(object.headerData.animFrameVertsNum);
+
+	// Animation frames data
+	object.animationFrames.reserve(aliasHeader->num_frames);
+	const daliasframe_t* currentFrame = reinterpret_cast<const daliasframe_t*>(
+		(reinterpret_cast<const byte*>(aliasHeader) + aliasHeader->ofs_frames));
+
+	for (int i = 0; i < aliasHeader->num_frames; ++i)
+	{
+		DynamicObjectModel::AnimFrame& animFrame = object.animationFrames.emplace_back(DynamicObjectModel::AnimFrame());
+
+		animFrame.name = currentFrame->name;
+		animFrame.scale = XMFLOAT4(currentFrame->scale[0], currentFrame->scale[1], currentFrame->scale[2], 0.0f);
+		animFrame.translate = XMFLOAT4(currentFrame->translate[0], currentFrame->translate[1], currentFrame->translate[2], 0.0f);
+
+		// Fill up one frame vertices (unnormalized)
+		singleFrameVertexBuffer.clear();
+		for (int j = 0; j < aliasHeader->num_xyz; ++j)
+		{
+			const byte* currentVert = currentFrame->verts[j].v;
+			singleFrameVertexBuffer.push_back(XMFLOAT4(
+				currentVert[0],
+				currentVert[1],
+				currentVert[2],
+				1.0f));
+		}
+		AppendNormalizedVertexData(normalizedVertexIndices, singleFrameVertexBuffer, vertexBuffer);
+
+		// Get next frame
+		currentFrame = reinterpret_cast<const daliasframe_t*>(
+			(reinterpret_cast<const byte*>(currentFrame) + aliasHeader->framesize));
+
+	}
+
+	// Load GPU buffers
+	const int vertexBufferSize = vertexBuffer.size() * sizeof(XMFLOAT4);
+	const int indexBufferSize = normalizedIndexBuffer.size() * sizeof(int);
+	const int texCoordsBufferSize = normalizedTexCoordsBuffer.size() * sizeof(XMFLOAT2);
+
+	object.vertices = m_defaultMemoryBuffer.Allocate(vertexBufferSize);
+	object.indices = m_defaultMemoryBuffer.Allocate(indexBufferSize);
+	object.textureCoords = m_defaultMemoryBuffer.Allocate(texCoordsBufferSize);
+
+	// Get vertices in
+	FArg::UpdateDefaultHeapBuffFrames updateArgs;
+	updateArgs.alignment = 0;
+	updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	updateArgs.byteSize = vertexBufferSize;
+	updateArgs.data = reinterpret_cast<const void*>(vertexBuffer.data());
+	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.vertices);
+	updateArgs.frame = &frame;
+	UpdateDefaultHeapBuffFrames(updateArgs);
+
+	// Get indices in
+	updateArgs.alignment = 0;
+	updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	updateArgs.byteSize = indexBufferSize;
+	updateArgs.data = reinterpret_cast<const void*>(normalizedIndexBuffer.data());
+	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.indices);
+	updateArgs.frame = &frame;
+	UpdateDefaultHeapBuffFrames(updateArgs);
+
+	// Get tex coords in
+	updateArgs.alignment = 0;
+	updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	updateArgs.byteSize = texCoordsBufferSize;
+	updateArgs.data = reinterpret_cast<const void*>(normalizedTexCoordsBuffer.data());
+	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.textureCoords);
+	updateArgs.frame = &frame;
+	UpdateDefaultHeapBuffFrames(updateArgs);
+
+	// Get textures in
+	object.textures.reserve(aliasHeader->num_skins);
+
+	for (int i = 0; i < aliasHeader->num_skins; ++i)
+	{
+		object.textures.push_back(model->skins[i]->name);
+	}
+
+	return object;
+}
+
 void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf)
 {
 	// Fill up vertex buffer
@@ -2188,6 +2338,82 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf)
 	obj.GenerateBoundingBox(verticesPos);
 }
 
+void Renderer::CreateGraphicalObjectFromGLSurfaceFrames(const msurface_t& surf, Frame& frame)
+{
+	// Fill up vertex buffer
+	std::vector<ShDef::Vert::PosTexCoord> vertices;
+	for (const glpoly_t* poly = surf.polys; poly != nullptr; poly = poly->chain)
+	{
+		constexpr int vertexsize = 7;
+
+		// xyz s1t1 s2t2
+		const float* glVert = poly->verts[0];
+		for (int i = 0; i < poly->numverts; ++i, glVert += vertexsize)
+		{
+			ShDef::Vert::PosTexCoord dxVert;
+			dxVert.position = { glVert[0], glVert[1], glVert[2], 1.0f };
+			dxVert.texCoord = { glVert[3], glVert[4] };
+
+			vertices.push_back(std::move(dxVert));
+		}
+	}
+
+	if (vertices.empty())
+	{
+		return;
+	}
+
+	StaticObject& obj = m_staticObjects.emplace_back(StaticObject());
+	// Set the texture name
+	obj.textureKey = surf.texinfo->image->name;
+
+	obj.verticesSizeInBytes = sizeof(ShDef::Vert::PosTexCoord) * vertices.size();
+	obj.vertices = m_defaultMemoryBuffer.Allocate(obj.verticesSizeInBytes);
+
+	FArg::UpdateDefaultHeapBuffFrames updateBuffArg;
+	updateBuffArg.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	updateBuffArg.offset = m_defaultMemoryBuffer.GetOffset(obj.vertices);
+	updateBuffArg.byteSize = obj.verticesSizeInBytes;
+	updateBuffArg.data = vertices.data();
+	updateBuffArg.alignment = 0;
+	updateBuffArg.frame = &frame;
+
+	UpdateDefaultHeapBuffFrames(updateBuffArg);
+
+	static uint64_t allocSize = 0;
+	uint64_t size = sizeof(ShDef::Vert::PosTexCoord) * vertices.size();
+
+	// Fill up index buffer
+	std::vector<uint32_t> indices;
+	indices = Utils::GetIndicesListForTrianglelistFromPolygonPrimitive(vertices.size());
+
+	obj.indicesSizeInBytes = sizeof(uint32_t) * indices.size();
+	obj.indices = m_defaultMemoryBuffer.Allocate(obj.indicesSizeInBytes);
+
+	updateBuffArg.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	updateBuffArg.offset = m_defaultMemoryBuffer.GetOffset(obj.indices);
+	updateBuffArg.byteSize = obj.indicesSizeInBytes;
+	updateBuffArg.data = indices.data();
+	updateBuffArg.alignment = 0;
+	updateBuffArg.frame = &frame;
+
+	UpdateDefaultHeapBuffFrames(updateBuffArg);
+
+	const unsigned int PictureObjectConstSize = Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT);
+
+	obj.constantBufferHandler = m_uploadMemoryBuffer.Allocate(PictureObjectConstSize);
+
+	std::vector<XMFLOAT4> verticesPos;
+	verticesPos.reserve(vertices.size());
+
+	for (const ShDef::Vert::PosTexCoord& vertex : vertices)
+	{
+		verticesPos.push_back(vertex.position);
+	}
+
+	obj.GenerateBoundingBox(verticesPos);
+}
+
 void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node)
 {
 	// Looks like if leaf return, leafs don't contain any geom
@@ -2212,6 +2438,33 @@ void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node)
 		assert(surf != nullptr && "Error during graphical objects generation");
 
 		CreateGraphicalObjectFromGLSurface(*surf);
+	}
+}
+
+void Renderer::DecomposeGLModelNodeFrames(const model_t& model, const mnode_t& node, Frame& frame)
+{
+	// Looks like if leaf return, leafs don't contain any geom
+	if (node.contents != -1)
+	{
+		return;
+	}
+
+	// This is intermediate node, keep going for a leafs
+	DecomposeGLModelNodeFrames(model, *node.children[0], frame);
+	DecomposeGLModelNodeFrames(model, *node.children[1], frame);
+
+	// Each surface inside node represents stand alone object with its own texture
+
+	const unsigned int lastSurfInd = node.firstsurface + node.numsurfaces;
+	const msurface_t* surf = &model.surfaces[node.firstsurface];
+
+	for (unsigned int surfInd = node.firstsurface;
+		surfInd < lastSurfInd;
+		++surfInd, ++surf)
+	{
+		assert(surf != nullptr && "Error during graphical objects generation");
+
+		CreateGraphicalObjectFromGLSurfaceFrames(*surf, frame);
 	}
 }
 
@@ -2250,6 +2503,44 @@ void Renderer::Draw(const StaticObject& object)
 
 	// Finally, draw
 	m_commandList->DrawInstanced(vertBuffView.SizeInBytes / vertBuffView.StrideInBytes, 1, 0, 0);
+}
+
+void Renderer::DrawFrames(const StaticObject& object, Frame& frame)
+{
+
+	// Set vertex buffer
+	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
+	vertBuffView.BufferLocation = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + m_defaultMemoryBuffer.GetOffset(object.vertices);
+	vertBuffView.StrideInBytes = sizeof(ShDef::Vert::PosTexCoord);
+	vertBuffView.SizeInBytes = object.verticesSizeInBytes;
+
+	frame.commandList->IASetVertexBuffers(0, 1, &vertBuffView);
+
+	// Binding root signature params
+
+	// 1)
+	const Texture& texture = m_textures.find(object.textureKey)->second;
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(m_cbvSrvHeap->GetGPUDescriptorHandleForHeapStart());
+	texHandle.Offset(texture.texView->srvIndex, m_cbvSrbDescriptorSize);
+
+	frame.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
+
+
+	// 2)
+	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
+	samplerHandle.Offset(texture.samplerInd, m_samplerDescriptorSize);
+
+	frame.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
+
+	// 3)
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+	cbAddress += m_uploadMemoryBuffer.GetOffset(object.constantBufferHandler);
+
+	frame.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
+
+	// Finally, draw
+	frame.commandList->DrawInstanced(vertBuffView.SizeInBytes / vertBuffView.StrideInBytes, 1, 0, 0);
 }
 
 void Renderer::DrawIndiced(const StaticObject& object)
@@ -2391,6 +2682,145 @@ void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity)
 	m_commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
 }
 
+void Renderer::DrawIndicedFrames(const StaticObject& object, Frame& frame)
+{
+	assert(object.indices != BufConst::INVALID_BUFFER_HANDLER && "Trying to draw indexed object without index buffer");
+
+	// Set vertex buffer
+	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
+	vertBuffView.BufferLocation = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + m_defaultMemoryBuffer.GetOffset(object.vertices);
+	vertBuffView.StrideInBytes = sizeof(ShDef::Vert::PosTexCoord);
+	vertBuffView.SizeInBytes = object.verticesSizeInBytes;
+
+	frame.commandList->IASetVertexBuffers(0, 1, &vertBuffView);
+
+	// Set index buffer
+	D3D12_INDEX_BUFFER_VIEW indexBufferView;
+	indexBufferView.BufferLocation = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + m_defaultMemoryBuffer.GetOffset(object.indices);
+	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+	indexBufferView.SizeInBytes = object.indicesSizeInBytes;
+
+	frame.commandList->IASetIndexBuffer(&indexBufferView);
+
+
+	// Binding root signature params
+
+	// 1)
+	const Texture& texture = m_textures.find(object.textureKey)->second;
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(m_cbvSrvHeap->GetGPUDescriptorHandleForHeapStart());
+	texHandle.Offset(texture.texView->srvIndex, m_cbvSrbDescriptorSize);
+
+	frame.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
+
+	// 2)
+	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
+	samplerHandle.Offset(texture.samplerInd, m_samplerDescriptorSize);
+
+	frame.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
+
+	// 3)
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+	cbAddress += m_uploadMemoryBuffer.GetOffset(object.constantBufferHandler);
+
+	frame.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
+
+	// Finally, draw
+	frame.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
+}
+
+void Renderer::DrawIndicedFrames(const DynamicObject& object, const entity_t& entity, Frame& frame)
+{
+	const DynamicObjectModel& model = *object.model;
+	const DynamicObjectConstBuffer& constBuffer = *object.constBuffer;
+
+	// Set vertex buffer views
+	const int vertexBufferStart = m_defaultMemoryBuffer.GetOffset(model.vertices);
+	const D3D12_GPU_VIRTUAL_ADDRESS defaultMemBuffVirtAddress = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+
+	constexpr int vertexSize = sizeof(XMFLOAT4);
+	const int frameSize = vertexSize * model.headerData.animFrameVertsNum;
+
+	D3D12_VERTEX_BUFFER_VIEW vertexBufferViews[3];
+
+
+	// Position0
+	vertexBufferViews[0].BufferLocation = defaultMemBuffVirtAddress +
+		vertexBufferStart + frameSize * entity.oldframe;
+	vertexBufferViews[0].StrideInBytes = vertexSize;
+	vertexBufferViews[0].SizeInBytes = frameSize;
+
+	// Position1
+	vertexBufferViews[1].BufferLocation = defaultMemBuffVirtAddress +
+		vertexBufferStart + frameSize * entity.frame;
+	vertexBufferViews[1].StrideInBytes = vertexSize;
+	vertexBufferViews[1].SizeInBytes = frameSize;
+
+	// TexCoord
+	constexpr int texCoordStrideSize = sizeof(XMFLOAT2);
+
+	vertexBufferViews[2].BufferLocation = defaultMemBuffVirtAddress +
+		m_defaultMemoryBuffer.GetOffset(model.textureCoords);
+	vertexBufferViews[2].StrideInBytes = texCoordStrideSize;
+	vertexBufferViews[2].SizeInBytes = texCoordStrideSize * model.headerData.animFrameVertsNum;
+
+	frame.commandList->IASetVertexBuffers(0, _countof(vertexBufferViews), vertexBufferViews);
+
+
+	// Set index buffer
+	D3D12_INDEX_BUFFER_VIEW indexBufferView;
+	indexBufferView.BufferLocation = defaultMemBuffVirtAddress +
+		m_defaultMemoryBuffer.GetOffset(model.indices);
+	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+	indexBufferView.SizeInBytes = model.headerData.indicesNum * sizeof(uint32_t);
+
+	frame.commandList->IASetIndexBuffer(&indexBufferView);
+
+	// Pick texture
+	assert(entity.skin == nullptr && "Custom skin. I am not prepared for this");
+
+	auto texIt = m_textures.end();
+
+	if (entity.skinnum >= MAX_MD2SKINS)
+	{
+		texIt = m_textures.find(model.textures[0]);
+	}
+	else
+	{
+		texIt = m_textures.find(model.textures[entity.skinnum]);
+
+		if (texIt == m_textures.end())
+		{
+			texIt = m_textures.find(model.textures[0]);
+		}
+	}
+
+	assert(texIt != m_textures.end() && "Not texture found for dynamic object rendering. Implement fall back");
+
+	// Binding root signature params
+
+	// 1)
+	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(m_cbvSrvHeap->GetGPUDescriptorHandleForHeapStart());
+	texHandle.Offset(texIt->second.texView->srvIndex, m_cbvSrbDescriptorSize);
+
+	frame.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
+
+	// 2)
+	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
+	samplerHandle.Offset(texIt->second.samplerInd, m_samplerDescriptorSize);
+
+	frame.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
+
+	// 3)
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+	cbAddress += m_uploadMemoryBuffer.GetOffset(constBuffer.constantBufferHandler);
+
+	frame.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
+
+	// Finally, draw
+	frame.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
+}
+
 void Renderer::DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos)
 {
 
@@ -2528,6 +2958,27 @@ void Renderer::AddParticleToDrawList(const particle_t& particle, BufferHandler v
 	UpdateUploadHeapBuff(updateVertexBufferArgs);
 }
 
+void Renderer::AddParticleToDrawListFrames(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset)
+{
+
+	unsigned char color[4];
+	*reinterpret_cast<int *>(color) = m_8To24Table[particle.color];
+
+	ShDef::Vert::PosCol particleGpuData = {
+		XMFLOAT4(particle.origin[0], particle.origin[1], particle.origin[2], 1.0f),
+		XMFLOAT4(color[0] / 255.0f, color[1] / 255.0f, color[2] / 255.0f, particle.alpha)
+	};
+
+	// Deal with vertex buffer
+	FArg::UpdateUploadHeapBuffFrames updateVertexBufferArgs;
+	updateVertexBufferArgs.buffer = m_uploadMemoryBuffer.allocBuffer.gpuBuffer;
+	updateVertexBufferArgs.offset = m_uploadMemoryBuffer.GetOffset(vertexBufferHandler) + vertexBufferOffset;
+	updateVertexBufferArgs.data = &particleGpuData;
+	updateVertexBufferArgs.byteSize = sizeof(particleGpuData);
+	updateVertexBufferArgs.alignment = 0;
+	UpdateUploadHeapBuffFrames(updateVertexBufferArgs);
+}
+
 void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler)
 {
 	constexpr int vertexStrideInBytes = sizeof(ShDef::Vert::PosCol);
@@ -2550,6 +3001,30 @@ void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int verte
 
 	// Draw
 	m_commandList->DrawInstanced(vertexBufferSizeInBytes / vertexStrideInBytes, 1, 0, 0);
+}
+
+void Renderer::DrawParticleDrawListFrames(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Frame& frame)
+{
+	constexpr int vertexStrideInBytes = sizeof(ShDef::Vert::PosCol);
+
+	D3D12_VERTEX_BUFFER_VIEW vertBufferView;
+	vertBufferView.BufferLocation = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() +
+		m_uploadMemoryBuffer.GetOffset(vertexBufferHandler);
+	vertBufferView.StrideInBytes = vertexStrideInBytes;
+	vertBufferView.SizeInBytes = vertexBufferSizeInBytes;
+
+	frame.commandList->IASetVertexBuffers(0, 1, &vertBufferView);
+
+	// Binding root signature params
+
+	// 1)
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+	cbAddress += m_uploadMemoryBuffer.GetOffset(constBufferHandler);
+
+	frame.commandList->SetGraphicsRootConstantBufferView(0, cbAddress);
+
+	// Draw
+	frame.commandList->DrawInstanced(vertexBufferSizeInBytes / vertexStrideInBytes, 1, 0, 0);
 }
 
 void Renderer::GetDrawAreaSize(int* Width, int* Height)
@@ -2795,6 +3270,26 @@ void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj)
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
+void Renderer::UpdateStaticObjectConstantBufferFrames(const StaticObject& obj, Frame& frame)
+{
+	XMMATRIX sseMvpMat = obj.GenerateModelMat() *
+		m_camera.GenerateViewMatrix() *
+		m_camera.GenerateProjectionMatrix();
+
+	XMFLOAT4X4 mvpMat;
+	XMStoreFloat4x4(&mvpMat, sseMvpMat);
+
+
+	FArg::UpdateUploadHeapBuffFrames updateConstBufferArgs;
+	updateConstBufferArgs.buffer = m_uploadMemoryBuffer.allocBuffer.gpuBuffer;
+	updateConstBufferArgs.offset = m_uploadMemoryBuffer.GetOffset(obj.constantBufferHandler);
+	updateConstBufferArgs.data = &mvpMat;
+	updateConstBufferArgs.byteSize = sizeof(mvpMat);
+	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
+
+	UpdateUploadHeapBuffFrames(updateConstBufferArgs);
+}
+
 void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity)
 {
 	// Calculate transformation matrix
@@ -2840,6 +3335,53 @@ void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entit
 	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
 
 	UpdateUploadHeapBuff(updateConstBufferArgs);
+}
+
+void Renderer::UpdateDynamicObjectConstantBufferFrames(DynamicObject& obj, const entity_t& entity, Frame& frame)
+{
+	// Calculate transformation matrix
+	XMMATRIX sseMvpMat = DynamicObjectModel::GenerateModelMat(entity) *
+		m_camera.GenerateViewMatrix() *
+		m_camera.GenerateProjectionMatrix();
+
+	XMFLOAT4X4 mvpMat;
+	XMStoreFloat4x4(&mvpMat, sseMvpMat);
+
+	// Calculate animation data
+	auto[animMove, frontLerp, backLerp] = obj.model->GenerateAnimInterpolationData(entity);
+
+	constexpr int updateDataSize = sizeof(ShDef::ConstBuff::AnimInterpTranstMap);
+
+	std::array<std::byte, updateDataSize> updateData;
+
+	std::byte* updateDataPtr = updateData.data();
+	// It is possible to do it nicely via template parameter pack and unfold
+	int cpySize = sizeof(XMFLOAT4X4);
+	memcpy(updateDataPtr, &mvpMat, cpySize);
+	updateDataPtr += cpySize;
+
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &animMove, cpySize);
+	updateDataPtr += cpySize;
+
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &frontLerp, cpySize);
+	updateDataPtr += cpySize;
+
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &backLerp, cpySize);
+	updateDataPtr += cpySize;
+
+	assert(obj.constBuffer->constantBufferHandler != BufConst::INVALID_BUFFER_HANDLER && "Can't update dynamic const buffer, invalid offset");
+
+	FArg::UpdateUploadHeapBuffFrames updateConstBufferArgs;
+	updateConstBufferArgs.buffer = m_uploadMemoryBuffer.allocBuffer.gpuBuffer;
+	updateConstBufferArgs.offset = m_uploadMemoryBuffer.GetOffset(obj.constBuffer->constantBufferHandler);
+	updateConstBufferArgs.data = updateData.data();
+	updateConstBufferArgs.byteSize = updateDataSize;
+	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
+
+	UpdateUploadHeapBuffFrames(updateConstBufferArgs);
 }
 
 BufferHandler Renderer::UpdateParticleConstantBuffer()
@@ -2893,6 +3435,57 @@ BufferHandler Renderer::UpdateParticleConstantBuffer()
 	return constantBufferHandler;
 }
 
+BufferHandler Renderer::UpdateParticleConstantBufferFrames(Frame& frame)
+{
+	constexpr int updateDataSize = sizeof(ShDef::ConstBuff::CameraDataTransMat);
+
+	const BufferHandler constantBufferHandler = m_uploadMemoryBuffer.Allocate(Utils::Align(updateDataSize, QCONST_BUFFER_ALIGNMENT));
+	frame.streamingObjectsHandlers.push_back(constantBufferHandler);
+
+	assert(constantBufferHandler != BufConst::INVALID_BUFFER_HANDLER && "Can't update particle const buffer");
+
+	XMFLOAT4X4 mvpMat;
+
+	XMStoreFloat4x4(&mvpMat, m_camera.GenerateViewMatrix() * m_camera.GenerateProjectionMatrix());
+
+	auto[yaw, pitch, roll] = m_camera.GetBasis();
+
+	std::array<std::byte, updateDataSize> updateData;
+
+	std::byte* updateDataPtr = updateData.data();
+
+	int cpySize = sizeof(XMFLOAT4X4);
+	memcpy(updateDataPtr, &mvpMat, cpySize);
+	updateDataPtr += cpySize;
+
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &yaw, cpySize);
+	updateDataPtr += cpySize;
+
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &pitch, cpySize);
+	updateDataPtr += cpySize;
+
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &roll, cpySize);
+	updateDataPtr += cpySize;
+
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &m_camera.position, cpySize);
+	updateDataPtr += cpySize;
+
+	FArg::UpdateUploadHeapBuffFrames updateConstBufferArgs;
+	updateConstBufferArgs.buffer = m_uploadMemoryBuffer.allocBuffer.gpuBuffer;
+	updateConstBufferArgs.offset = m_uploadMemoryBuffer.GetOffset(constantBufferHandler);
+	updateConstBufferArgs.data = updateData.data();
+	updateConstBufferArgs.byteSize = updateDataSize;
+	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
+
+	UpdateUploadHeapBuffFrames(updateConstBufferArgs);
+
+	return constantBufferHandler;
+}
+
 Texture* Renderer::FindOrCreateTexture(std::string_view textureName)
 {
 	Texture* texture = nullptr;
@@ -2905,6 +3498,23 @@ Texture* Renderer::FindOrCreateTexture(std::string_view textureName)
 	else
 	{
 		texture = CreateTextureFromFile(textureName.data());
+	}
+
+	return texture;
+}
+
+Texture* Renderer::FindOrCreateTextureFrames(std::string_view textureName, Frame& frame)
+{
+	Texture* texture = nullptr;
+	auto texIt = m_textures.find(textureName.data());
+
+	if (texIt != m_textures.end())
+	{
+		texture = &texIt->second;
+	}
+	else
+	{
+		texture = CreateTextureFromFileFrames(textureName.data(), frame);
 	}
 
 	return texture;
@@ -3480,7 +4090,9 @@ void Renderer::EndFrameFrames()
 	// We are done with dynamic objects rendering. It's safe
 	// to delete them
 	frame.dynamicObjects.clear();
-	//#DEBUG I don't deal with m_resourcesToDelete.clear();
+	
+	// Delete shared resources marked for deletion
+	m_resourcesToDelete.clear();
 }
 
 void Renderer::Draw_RawPicFrames(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data)
@@ -3530,4 +4142,274 @@ void Renderer::Draw_RawPicFrames(int x, int y, int quadWidth, int quadHeight, in
 		vertexStride,
 		QRAW_TEXTURE_NAME,
 		XMFLOAT4(x, y, 0.0f, 1.0f), frame);
+}
+
+void Renderer::Draw_PicFrames(int x, int y, const char* name)
+{
+	Frame& frame = GetCurrentFrame();
+
+	SetMaterialFrames(MaterialSource::STATIC_MATERIAL_NAME, frame);
+
+	std::array<char, MAX_QPATH> texFullName;
+	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
+
+	const Texture& texture = *FindOrCreateTextureFrames(texFullName.data(), frame);
+
+	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
+	Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
+		XMFLOAT2(texture.width, texture.height),
+		XMFLOAT2(0.0f, 0.0f),
+		XMFLOAT2(1.0f, 1.0f),
+		vertices.data());
+
+	DrawStreamingFrames(reinterpret_cast<std::byte*>(vertices.data()),
+		vertices.size() * sizeof(ShDef::Vert::PosTexCoord),
+		sizeof(ShDef::Vert::PosTexCoord),
+		texFullName.data(),
+		XMFLOAT4(x, y, 0.0f, 1.0f), frame);
+}
+
+void Renderer::Draw_CharFrames(int x, int y, int num)
+{
+	Frame& frame = GetCurrentFrame();
+
+	SetMaterialFrames(MaterialSource::STATIC_MATERIAL_NAME, frame);
+
+	num &= 0xFF;
+
+	constexpr int charSize = 8;
+
+	if ((num & 127) == 32)
+		return;		// space
+
+	if (y <= -charSize)
+		return;		// totally off screen
+
+	constexpr float texCoordScale = 0.0625f;
+
+	const float uCoord = (num & 15) * texCoordScale;
+	const float vCoord = (num >> 4) * texCoordScale;
+	const float texSize = texCoordScale;
+
+	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
+	Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
+		XMFLOAT2(charSize, charSize),
+		XMFLOAT2(uCoord, vCoord),
+		XMFLOAT2(uCoord + texSize, vCoord + texSize),
+		vertices.data());
+
+	const int vertexStride = sizeof(ShDef::Vert::PosTexCoord);
+
+	std::array<char, MAX_QPATH> texFullName;
+	GetDrawTextureFullname(QFONT_TEXTURE_NAME, texFullName.data(), texFullName.size());
+
+	// Proper place for this is in Init(), but file loading system is not ready, when
+	// init is called for renderer
+	if (m_textures.find(texFullName.data()) == m_textures.end())
+	{
+		CreateTextureFromFileFrames(texFullName.data(), frame);
+	}
+
+	DrawStreamingFrames(reinterpret_cast<std::byte*>(vertices.data()),
+		vertices.size() * vertexStride,
+		vertexStride,
+		texFullName.data(),
+		XMFLOAT4(x, y, 0.0f, 1.0f), frame);
+}
+
+Texture* Renderer::RegisterDrawPicFrames(const char* name)
+{
+	Frame& frame = GetCurrentFrame();
+
+	std::array<char, MAX_QPATH> texFullName;
+	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
+
+	Texture* newTex = FindOrCreateTextureFrames(texFullName.data(), frame);
+
+	return newTex;
+}
+
+void Renderer::RegisterWorldModelFrames(const char* model)
+{
+	//#TODO I need to manage map model lifetime. So for example in this function
+	// I would need to delete old map model and related to it objects before loading
+	// a new one. (make sure to handle properly when some object is needed in the new
+	// model, so you don't load it twice). Currently it doesn't make sense to do anything
+	// with this, because I will have other models in game and I want to handle world model 
+	// as part of this system. Maybe I should leave it as it is and just use old system?
+	Frame& frame = GetCurrentFrame();
+
+	char fullName[MAX_QPATH];
+	Utils::Sprintf(fullName, sizeof(fullName), "maps/%s.bsp", model);
+
+	char varName[] = "flushmap";
+	char varDefVal[] = "0";
+	cvar_t* flushMap = GetRefImport().Cvar_Get(varName, varDefVal, 0);
+
+	if (strcmp(mod_known[0].name, fullName) || flushMap->value)
+	{
+		Mod_Free(&mod_known[0]);
+	}
+
+	// Create new world model
+	model_t* mapModel = Mod_ForNameFrames(fullName, qTrue, frame);
+
+	// Legacy from quake 2 model handling system
+	r_worldmodel = mapModel;
+
+	DecomposeGLModelNodeFrames(*mapModel, *mapModel->nodes, frame);
+}
+
+model_s* Renderer::RegisterModelFrames(const char* name)
+{
+	std::string modelName = name;
+
+	Frame& frame = GetCurrentFrame();
+	
+	model_t* mod = Mod_ForNameFrames(modelName.data(), qFalse, frame);
+
+	if (mod)
+	{
+
+		switch (mod->type)
+		{
+		case mod_sprite:
+		{
+			//#TODO implement sprites 
+			//dsprite_t* sprites = reinterpret_cast<dsprite_t *>(mod->extradata);
+			//for (int i = 0; i < sprites->numframes; ++i)
+			//{
+			//	mod->skins[i] = FindOrCreateTexture(sprites->frames[i].name);
+			//}
+
+			//m_dynamicGraphicalObjects[mod] = CreateDynamicGraphicObjectFromGLModel(mod);
+
+			// Remove after sprites implemented
+			Mod_Free(mod);
+			mod = NULL;
+			break;
+		}
+		case mod_alias:
+		{
+			dmdl_t* pheader = reinterpret_cast<dmdl_t*>(mod->extradata);
+			for (int i = 0; i < pheader->num_skins; ++i)
+			{
+				char* imageName = reinterpret_cast<char*>(pheader) + pheader->ofs_skins + i * MAX_SKINNAME;
+				mod->skins[i] = FindOrCreateTextureFrames(imageName, frame);
+			}
+
+			m_dynamicObjectsModels[mod] = CreateDynamicGraphicObjectFromGLModelFrames(mod, frame);
+
+			break;
+		}
+		case mod_brush:
+		{
+			//#TODO implement brush
+			mod = NULL;
+			break;
+		}
+		default:
+			break;
+		}
+	}
+
+	return mod;
+}
+
+void Renderer::RenderFrameFrames(const refdef_t& frameUpdateData)
+{
+	Frame& frame = GetCurrentFrame();
+
+	m_camera.Update(frameUpdateData);
+
+	// Static geometry 
+	Diagnostics::BeginEvent(frame.commandList.Get(), "Static materials");
+
+	SetMaterialFrames(MaterialSource::STATIC_MATERIAL_NAME, frame);
+
+	for (const StaticObject& obj : m_staticObjects)
+	{
+		if (IsVisible(obj) == false)
+		{
+			continue;
+		}
+
+		UpdateStaticObjectConstantBufferFrames(obj, frame);
+
+		if (obj.indices != BufConst::INVALID_BUFFER_HANDLER)
+		{
+			DrawIndicedFrames(obj, frame);
+		}
+		else
+		{
+			DrawFrames(obj, frame);
+		}
+	}
+
+	Diagnostics::EndEvent(frame.commandList.Get());
+
+	// Dynamic geometry
+	Diagnostics::BeginEvent(frame.commandList.Get(), "Dynamic materials");
+
+	SetMaterialFrames(MaterialSource::DYNAMIC_MATERIAL_NAME, frame);
+
+	for (int i = 0; i < frameUpdateData.num_entities; ++i)
+	{
+		const entity_t& entity = (frameUpdateData.entities[i]);
+
+		if (entity.model == nullptr ||
+			entity.flags  & (RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE | RF_SHELL_DOUBLE | RF_SHELL_HALF_DAM) ||
+			IsVisible(entity) == false)
+		{
+			continue;
+		}
+
+		assert(m_dynamicObjectsModels.find(entity.model) != m_dynamicObjectsModels.end()
+			&& "Cannot render dynamic graphical object. Such model is not found");
+
+
+		DynamicObjectModel& model = m_dynamicObjectsModels[entity.model];
+		DynamicObjectConstBuffer& constBuffer = FindDynamicObjConstBuffer();
+
+		// Const buffer should be a separate component, because if we don't do this different enities
+		// will use the same model, but with different transformation
+		DynamicObject& object = frame.dynamicObjects.emplace_back(DynamicObject(&model, &constBuffer));
+
+		UpdateDynamicObjectConstantBufferFrames(object, entity, frame);
+		DrawIndicedFrames(object, entity, frame);
+	}
+
+	Diagnostics::EndEvent(frame.commandList.Get());
+
+	// Particles
+	Diagnostics::BeginEvent(frame.commandList.Get(), "Particles");
+
+	if (frameUpdateData.num_particles > 0)
+	{
+		SetMaterialFrames(MaterialSource::PARTICLE_MATERIAL_NAME, frame);
+
+		// Particles share the same constant buffer, so we only need to update it once
+		const BufferHandler particleConstantBufferHandler = UpdateParticleConstantBufferFrames(frame);
+
+		// Preallocate vertex buffer for particles
+		constexpr int singleParticleSize = sizeof(ShDef::Vert::PosCol);
+		const int vertexBufferSize = singleParticleSize * frameUpdateData.num_particles;
+		const BufferHandler particleVertexBufferHandler = m_uploadMemoryBuffer.Allocate(vertexBufferSize);
+		frame.streamingObjectsHandlers.push_back(particleVertexBufferHandler);
+
+		assert(particleVertexBufferHandler != BufConst::INVALID_BUFFER_HANDLER && "Failed to allocate particle vertex buffer");
+
+		// Gather all particles, and do one draw call for everything at once
+		const particle_t* particle = frameUpdateData.particles;
+		for (int i = 0, currentVertexBufferOffset = 0; i < frameUpdateData.num_particles; ++i)
+		{
+			AddParticleToDrawListFrames(*(particle + i), particleVertexBufferHandler, currentVertexBufferOffset);
+
+			currentVertexBufferOffset += singleParticleSize;
+		}
+
+		DrawParticleDrawListFrames(particleVertexBufferHandler, vertexBufferSize, particleConstantBufferHandler, frame);
+	}
+
+	Diagnostics::EndEvent(frame.commandList.Get());
 }
