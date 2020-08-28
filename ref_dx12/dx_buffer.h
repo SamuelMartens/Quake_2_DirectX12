@@ -142,7 +142,7 @@ struct AllocBuffer
 	ComPtr<ID3D12Resource> gpuBuffer;
 };
 
-template<int BUFFER_SIZE, int HANDLERS_NUM>
+template<int BUFFER_SIZE, int HANDLERS_NUM, int ENFORCED_ALIGNMENT = 0>
 class HandlerBuffer
 {
 public:
@@ -161,6 +161,12 @@ public:
 
 	BufferHandler Allocate(int size)
 	{
+		if constexpr (ENFORCED_ALIGNMENT != 0)
+		{
+			size = Utils::Align(size, ENFORCED_ALIGNMENT);
+		}
+
+
 		BufferHandler handler = BufConst::INVALID_BUFFER_HANDLER;
 		// Find free handler slot
 		for (BufferHandler currentH = 0; currentH < HANDLERS_NUM; ++currentH)
@@ -214,4 +220,23 @@ private:
 
 	std::vector<int> m_handlers;
 
+};
+
+
+
+// This name sucks, but I can't come up with something better. This is just utility structure
+// that helps keep together buffer and view, and also do debug check that structure is not
+// acquired twice.
+class AssertBufferAndView
+{
+public:
+
+	void Lock();
+	void Unlock();
+
+	ComPtr<ID3D12Resource> buffer;
+	int viewIndex = -1;
+
+private:
+	bool locked = false;
 };

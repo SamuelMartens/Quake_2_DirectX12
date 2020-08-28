@@ -20,64 +20,73 @@ Frame& Frame::operator=(Frame&& other)
 	commandListAlloc = other.commandListAlloc;
 	other.commandListAlloc = nullptr;
 
-	fence = other.fence;
-	other.fence = nullptr;
-
-	colorBuffer = other.colorBuffer;
-	other.colorBuffer = nullptr;
+	colorBufferAndView = other.colorBufferAndView;
+	other.colorBufferAndView = nullptr;
 
 	depthStencilBuffer = other.depthStencilBuffer;
 	other.depthStencilBuffer = nullptr;
 
-	colorBufferViewIndex = other.colorBufferViewIndex;
-	other.colorBufferViewIndex = -1;
-
 	depthBufferViewIndex = other.depthBufferViewIndex;
 	other.depthBufferViewIndex = -1;
 
-	dynamicObject = std::move(other.dynamicObject);
+	dynamicObjects = std::move(other.dynamicObjects);
+	
+	uploadResources = std::move(other.uploadResources);
+
+	streamingObjectsHandlers = std::move(other.streamingObjectsHandlers);
 
 	isInUse = other.isInUse;
 	other.isInUse = false;
 
+	fenceValue = other.fenceValue;
+	other.fenceValue = -1;
+
+	syncEvenHandle = other.syncEvenHandle;
+	other.syncEvenHandle = INVALID_HANDLE_VALUE;
+
+	currentMaterial = std::move(other.currentMaterial);
+
+	frameNumber = other.frameNumber;
+	other.frameNumber = -1;
+
 	return *this;
 }
 
-void Frame::Init(ComPtr<ID3D12Resource> newColorBuffer)
+void Frame::Init()
 {
-	assert(newColorBuffer != nullptr && "Can't initialize frame with empty color buffer");
 
 	Renderer& renderer = Renderer::Inst();
 
 	renderer.CreateCmdListAndCmdListAlloc(commandList, commandListAlloc);
-	renderer.CreateFences(fence);
-
-	colorBuffer = newColorBuffer;
-	colorBufferViewIndex = renderer.rtvHeapFrames->Allocate(colorBuffer);
 
 	renderer.CreateDepthStencilBuffer(depthStencilBuffer);
-	// Make sure depth buffer is ready for write
-	commandList->ResourceBarrier(1,
-		&CD3DX12_RESOURCE_BARRIER::Transition(
-			depthStencilBuffer.Get(),
-			D3D12_RESOURCE_STATE_COMMON,
-			D3D12_RESOURCE_STATE_DEPTH_WRITE
-		));
+	
+	commandList->Close();
 
 	depthBufferViewIndex = renderer.dsvHeapFrames->Allocate(depthStencilBuffer);
 }
 
+void Frame::ResetSyncData()
+{
+	assert(fenceValue != -1 && syncEvenHandle != INVALID_HANDLE_VALUE && 
+		"Trying to reset frame's sync data. But this data is invalid");
+
+	CloseHandle(syncEvenHandle);
+	syncEvenHandle = INVALID_HANDLE_VALUE;
+
+	fenceValue = -1;
+}
 
 Frame::~Frame()
 {
-	if (colorBufferViewIndex != -1)
-	{
-		Renderer::Inst().rtvHeapFrames->Delete(colorBufferViewIndex);
-	}
-
 	if (depthBufferViewIndex != -1)
 	{
 		Renderer::Inst().rtvHeapFrames->Delete(depthBufferViewIndex);
+	}
+
+	if (syncEvenHandle != INVALID_HANDLE_VALUE)
+	{
+		CloseHandle(syncEvenHandle);
 	}
 }
 

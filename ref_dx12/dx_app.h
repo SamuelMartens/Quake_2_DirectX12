@@ -14,6 +14,7 @@
 #include <unordered_map>
 #include <array>
 #include <memory>
+#include <atomic>
 
 #include "d3dx12.h"
 #include "dx_texture.h"
@@ -52,6 +53,25 @@ namespace FArg
 		int byteSize = -1;
 		int alignment = -1;
 	};
+
+	struct UpdateUploadHeapBuffFrames
+	{
+		ComPtr<ID3D12Resource> buffer;
+		int offset = -1;
+		const void* data = nullptr;
+		int byteSize = -1;
+		int alignment = -1;
+	};
+
+	struct UpdateDefaultHeapBuffFrames
+	{
+		ComPtr<ID3D12Resource> buffer;
+		int offset = -1;
+		const void* data = nullptr;
+		int byteSize = -1;
+		int alignment = -1;
+		Frame* frame = nullptr;
+	};
 };
 
 
@@ -69,9 +89,8 @@ class Renderer
 {
 private:
 	Renderer();
-	//#DEBUG for debugging. Only multithreaded renderer should exist
-	constexpr static bool		QMULTITHREADED_RENDERING_ENABLED = true;
-	//END
+
+
 	constexpr static int		 QFRAMES_NUM = 2;
 	constexpr static int		 QSWAP_CHAIN_BUFFER_COUNT = 2;
 	constexpr static bool		 QMSAA_ENABLED = false;
@@ -93,7 +112,7 @@ private:
 	constexpr static char		 QRAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
 	constexpr static char		 QFONT_TEXTURE_NAME[] = "conchars";
 
-	constexpr static bool		 QDEBUG_LAYER_ENABLED = false;
+	constexpr static bool		 QDEBUG_LAYER_ENABLED = true;
 	constexpr static bool		 QDEBUG_MESSAGE_FILTER_ENABLED = true;
 
 public:
@@ -126,16 +145,19 @@ public:
 	void DeleteUploadMemoryBuffer(BufferHandler handler);
 	
 	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler);
+	void UpdateStreamingConstantBufferFrames(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, Frame& frame);
 	void UpdateStaticObjectConstantBuffer(const StaticObject& obj);
 	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity);
 	BufferHandler UpdateParticleConstantBuffer();
 
 	Texture* FindOrCreateTexture(std::string_view textureName);
 
-	/* API functions */
+	/*--- API functions begin --- */
+
+	// Non framed
+	void Init(WNDPROC WindowProc, HINSTANCE hInstance);
 	void BeginFrame();
 	void EndFrame();
-	void Init(WNDPROC WindowProc, HINSTANCE hInstance);
 	void Draw_Pic(int x, int y, const char* name);
 	void Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data);
 	void Draw_Char(int x, int y, int num);
@@ -146,6 +168,13 @@ public:
 	Texture* RegisterDrawPic(const char* name);
 	model_s* RegisterModel(const char* name);
 	void EndLevelLoading();
+
+	// Framed
+	void BeginFrameFrames();
+	void EndFrameFrames();
+	void Draw_RawPicFrames(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data);
+
+	/*--- API functions end --- */
 
 	/* Utils (for public use) */
 	int GetMSAASampleCount() const;
@@ -172,11 +201,15 @@ private:
 	void InitWin32(WNDPROC WindowProc, HINSTANCE hInstance);
 	/* Initialize DirectX stuff */
 	void InitDX();
+	void InitDxFrames();
 
 	void EnableDebugLayer();
 	void SetDebugMessageFilter();
 
 	void InitUtils();
+
+	void InitMemory();
+	void InitMemoryFrames();
 
 	void InitScissorRect();
 
@@ -188,8 +221,9 @@ private:
 
 	void CreateRenderTargetViews();
 
+	void CreateSwapChainBuffersAndViews();
+
 	void CreateDescriptorHeapsFrames();
-	//#DEBUG delete after old descriptor heaps are done
 	void CreateDescriptorsHeaps();
 
 	void CreateSwapChain();
@@ -216,22 +250,33 @@ private:
 	ID3D12Resource* GetCurrentBackBuffer();
 	D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentBackBufferView();
 	D3D12_CPU_DESCRIPTOR_HANDLE GetDepthStencilView();
+	AssertBufferAndView& GetNextSwapChainBufferAndView();
 	
 	void PresentAndSwapBuffers();
+	void PresentAndSwapBuffersFrames(Frame& frame);
 
 	/* Texture */
 	Texture* CreateTextureFromFile(const char* name);
+	Texture* CreateTextureFromFileFrames(const char* name, Frame& frame);
 	void CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Texture& outTex);
+	void CreateGpuTextureFrames(const unsigned int* raw, int width, int height, int bpp, Frame& frame, Texture& outTex);
 	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name);
+	Texture* CreateTextureFromDataFrames(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame);
+	void UpdateTexture(Texture& tex, const std::byte* data);
+	void UpdateTextureFrames(Texture& tex, const std::byte* data, Frame& frame);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
-	void UpdateTexture(Texture& tex, const std::byte* data);
 
 	/* Buffer */
 	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize);
 	ComPtr<ID3D12Resource> CreateUploadHeapBuffer(UINT64 byteSize) const;
 	void UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const;
 	void UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args);
+
+	ComPtr<ID3D12Resource> CreateDefaultHeapBufferFrames(const void* data, UINT64 byteSize, Frame& frame);
+	ComPtr<ID3D12Resource> CreateUploadHeapBufferFrames(UINT64 byteSize) const;
+	void UpdateUploadHeapBuffFrames(FArg::UpdateUploadHeapBuffFrames& args) const;
+	void UpdateDefaultHeapBuffFrames(FArg::UpdateDefaultHeapBuffFrames& args);
 
 	/* Shutdown and clean up Win32 specific stuff */
 	void ShutdownWin32();
@@ -247,6 +292,7 @@ private:
 	void DrawIndiced(const StaticObject& object);
 	void DrawIndiced(const DynamicObject& object, const entity_t& entity);
 	void DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos);
+	void DrawStreamingFrames(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, Frame& frame);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
 	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler);
 
@@ -265,6 +311,24 @@ private:
 	void SetMaterial(const std::string& materialName);
 	void ClearMaterial();
 
+	void SetMaterialFrames(const std::string& name, Frame& frame);
+	void ClearMaterialFrames(Frame& frame);
+
+	/* Frames */
+	Frame& GetCurrentFrame();
+	void SubmitFrame(Frame& frame);
+	void WaitForFrame(Frame& frame) const;
+
+	// Difference between OpenFrame/CloseFrame and BeginFrame/EndFrame is that first one is more generic,
+	// means it supposed to be used for anything where you record command list
+	// and then submit it. BeginFrame/EndFrame on the other hand is directly related to drawing where you
+	// ,for example, have buffer to draw to
+	void OpenFrame(Frame& frame) const;
+	void CloseFrame(Frame& frame);
+
+	int GenerateFenceValue();
+	int GetFenceValue() const;
+
 	HWND		m_hWindows = nullptr;
 
 	refimport_t m_refImport;
@@ -277,6 +341,8 @@ private:
 	ComPtr<ID3D12Resource> m_swapChainBuffer[QSWAP_CHAIN_BUFFER_COUNT];
 	ComPtr<ID3D12Resource> m_depthStencilBuffer;
 
+	AssertBufferAndView m_swapChainBufferAndViewFrames[QSWAP_CHAIN_BUFFER_COUNT];
+
 	ComPtr<ID3D12CommandQueue>		  m_commandQueue;
 	ComPtr<ID3D12CommandAllocator>	  m_commandListAlloc;
 	ComPtr<ID3D12GraphicsCommandList> m_commandList;
@@ -287,7 +353,12 @@ private:
 	ComPtr<ID3D12DescriptorHeap>	  m_cbvSrvHeap;
 	ComPtr<ID3D12DescriptorHeap>	  m_samplerHeap;
 
-	HandlerBuffer<QUPLOAD_MEMORY_BUFFER_SIZE, QUPLOAD_MEMORY_BUFFER_HANDLERS_NUM> m_uploadMemoryBuffer;
+	// I need enforce alignment on this buffer, because I allocate constant buffers from it. 
+	// I don't want to create separate buffer just for constant buffers, because that would increase complexity
+	// without real need to do this. I still try to explicitly indicate places where I actually need alignment
+	// in case I would decide to refactor this into separate buffer
+	HandlerBuffer<QUPLOAD_MEMORY_BUFFER_SIZE, 
+		QUPLOAD_MEMORY_BUFFER_HANDLERS_NUM, QCONST_BUFFER_ALIGNMENT> m_uploadMemoryBuffer;
 	HandlerBuffer<QDEFAULT_MEMORY_BUFFER_SIZE, QDEFAULT_MEMORY_BUFFER_HANDLERS_NUM> m_defaultMemoryBuffer;
 	
 	std::vector<BufferHandler> m_streamingObjectsHandlers;
@@ -349,5 +420,11 @@ private:
 	JobSystem m_jobSystem;
 
 	std::array<Frame, QFRAMES_NUM> m_frames;
+	int m_currentFrameIndex = -1;
+
+	std::atomic<int>	m_fenceValue = 0;
+	ComPtr<ID3D12Fence>	m_fenceFrames;
+
+	int m_frameCounter = 0;
 
 };

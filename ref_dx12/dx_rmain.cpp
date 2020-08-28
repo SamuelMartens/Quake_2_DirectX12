@@ -74,7 +74,7 @@ void DX12_Draw_FadeScreen(void)
 
 void DX12_Draw_StretchRaw(int x, int y, int w, int h, int cols, int rows, byte *data)
 {
-	Renderer::Inst().Draw_RawPic(x, y, w, h, cols, rows, reinterpret_cast<std::byte*>(data));
+	Renderer::Inst().Draw_RawPicFrames(x, y, w, h, cols, rows, reinterpret_cast<std::byte*>(data));
 }
 
 qboolean DX12_Init( void *hinstance, void *hWnd )
@@ -92,12 +92,12 @@ void DX12_Shutdown(void)
 
 void DX12_BeginFrame( float camera_separation )
 {
-	Renderer::Inst().BeginFrame();
+	Renderer::Inst().BeginFrameFrames();
 }
 
 void DX12_EndFrame(void)
 {
-	Renderer::Inst().EndFrame();
+	Renderer::Inst().EndFrameFrames();
 }
 
 void DX12_SetPalette(const unsigned char *palette)
