@@ -30,7 +30,7 @@ int DescriptorHeap::Allocate(ComPtr<ID3D12Resource> resource, DescriptorHeap::De
 {
 	const int allocatedIndex = alloc.Allocate();
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE handle = GetHandle(allocatedIndex);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE handle = GetHandleCPU(allocatedIndex);
 
 	switch (TYPE)
 	{
@@ -73,7 +73,17 @@ void DescriptorHeap::Delete(int index)
 	alloc.Delete(index);
 }
 
-CD3DX12_CPU_DESCRIPTOR_HANDLE DescriptorHeap::GetHandle(int index)
+ID3D12DescriptorHeap* DescriptorHeap::GetHeapResource()
+{
+	return heap.Get();
+}
+
+CD3DX12_CPU_DESCRIPTOR_HANDLE DescriptorHeap::GetHandleCPU(int index) const
 {
 	return CD3DX12_CPU_DESCRIPTOR_HANDLE(heap->GetCPUDescriptorHandleForHeapStart(), index, DESCRIPTOR_SIZE);
+}
+
+CD3DX12_GPU_DESCRIPTOR_HANDLE DescriptorHeap::GetHandleGPU(int index) const
+{
+	return CD3DX12_GPU_DESCRIPTOR_HANDLE(heap->GetGPUDescriptorHandleForHeapStart(), index, DESCRIPTOR_SIZE);
 }

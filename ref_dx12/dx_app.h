@@ -117,10 +117,6 @@ public:
 	const refimport_t& GetRefImport() const { return m_refImport; };
 	void SetRefImport(refimport_t RefImport) { m_refImport = RefImport; };
 
-	// Shader resource view management
-	void FreeSrvSlot(int slotIndex);
-	int AllocSrvSlot();
-
 	// Buffers management
 	void DeleteResources(ComPtr<ID3D12Resource> resourceToDelete);
 	void DeleteDefaultMemoryBuffer(BufferHandler handler);
@@ -292,9 +288,7 @@ private:
 	AssertBufferAndView m_swapChainBuffersAndViews[QSWAP_CHAIN_BUFFER_COUNT];
 
 	ComPtr<ID3D12CommandQueue>		  m_commandQueue;
-
-	//#DEBUG as soon as frames implemented delete this 
-	ComPtr<ID3D12DescriptorHeap>	  m_cbvSrvHeap;
+	
 	ComPtr<ID3D12DescriptorHeap>	  m_samplerHeap;
 
 	// I need enforce alignment on this buffer, because I allocate constant buffers from it. 
@@ -327,11 +321,6 @@ private:
 
 	std::array<unsigned int, 256> m_8To24Table;
 	std::array<unsigned int, 256> m_rawPalette;
-
-	// Bookkeeping for which descriptors are taken and which aren't. This is very simple,
-	// true means slot is taken.
-	//#DEBUG remove this
-	std::array<bool, QCBV_SRV_DESCRIPTOR_HEAP_SIZE> m_cbvSrvRegistry;
 
 	// Should I separate UI from game object? Damn, is this NWN speaks in me
 	std::vector<StaticObject> m_staticObjects;

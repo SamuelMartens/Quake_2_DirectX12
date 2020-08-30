@@ -438,20 +438,6 @@ void Renderer::CreateDescriptorHeaps()
 	cbvSrvHeap = std::make_unique<DescriptorHeap>(QCBV_SRV_DESCRIPTOR_HEAP_SIZE,
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, m_device);
 
-	//#DEBUG change this to proper heaps(i.e my wrapper)
-	// Create ShaderResourceView and Constant Resource View heap
-	D3D12_DESCRIPTOR_HEAP_DESC srvCbvHeapDesc;
-	srvCbvHeapDesc.NumDescriptors = QCBV_SRV_DESCRIPTOR_HEAP_SIZE;
-	srvCbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvCbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	srvCbvHeapDesc.NodeMask = 0;
-
-	ThrowIfFailed(m_device->CreateDescriptorHeap(
-		&srvCbvHeapDesc,
-		IID_PPV_ARGS(m_cbvSrvHeap.GetAddressOf())));
-
-	std::fill(m_cbvSrvRegistry.begin(), m_cbvSrvRegistry.end(), false);
-
 	// Create sampler heap
 	D3D12_DESCRIPTOR_HEAP_DESC samplerHeapDesc;
 	samplerHeapDesc.NumDescriptors = 1;
@@ -1041,21 +1027,16 @@ void Renderer::CreateGpuTexture(const unsigned int* raw, int width, int height, 
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 
 
-	const int descInd = AllocSrvSlot();
-	outTex.texView = std::make_shared<TextureView>(descInd);
+	DescriptorHeap::Desc srvDescription = D3D12_SHADER_RESOURCE_VIEW_DESC{};
+	D3D12_SHADER_RESOURCE_VIEW_DESC& srvDescriptionRef = std::get<D3D12_SHADER_RESOURCE_VIEW_DESC>(srvDescription);
+	srvDescriptionRef.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDescriptionRef.Format = textureDesc.Format;
+	srvDescriptionRef.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDescriptionRef.Texture2D.MostDetailedMip = 0;
+	srvDescriptionRef.Texture2D.MipLevels = 1;
+	srvDescriptionRef.Texture2D.ResourceMinLODClamp = 0.0f;
 
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDescription = {};
-	srvDescription.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDescription.Format = textureDesc.Format;
-	srvDescription.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDescription.Texture2D.MostDetailedMip = 0;
-	srvDescription.Texture2D.MipLevels = 1;
-	srvDescription.Texture2D.ResourceMinLODClamp = 0.0f;
-
-	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptor(m_cbvSrvHeap->GetCPUDescriptorHandleForHeapStart());
-	descriptor.Offset(descInd, m_cbvSrbDescriptorSize);
-
-	m_device->CreateShaderResourceView(outTex.buffer.Get(), &srvDescription, descriptor);
+	outTex.texViewIndex = cbvSrvHeap->Allocate(outTex.buffer, &srvDescription);
 }
 
 Texture* Renderer::CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame)
@@ -1239,25 +1220,6 @@ DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
 	}
 
 	return *resIt;
-}
-
-void Renderer::FreeSrvSlot(int slotIndex)
-{
-	assert(m_cbvSrvRegistry[slotIndex] == true);
-
-	m_cbvSrvRegistry[slotIndex] = false;
-}
-
-// Looks for free slot and marks slot as taken 
-int Renderer::AllocSrvSlot()
-{
-	auto res = std::find(m_cbvSrvRegistry.begin(), m_cbvSrvRegistry.end(), false);
-
-	assert(res != m_cbvSrvRegistry.end() && "Can't allocate shader resource view.");
-
-	*res = true;
-
-	return std::distance(m_cbvSrvRegistry.begin(), res);
 }
 
 ComPtr<ID3DBlob> Renderer::LoadCompiledShader(const std::string& filename) const
@@ -1553,8 +1515,7 @@ void Renderer::Draw(const StaticObject& object, Frame& frame)
 	// 1)
 	const Texture& texture = m_textures.find(object.textureKey)->second;
 
-	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(m_cbvSrvHeap->GetGPUDescriptorHandleForHeapStart());
-	texHandle.Offset(texture.texView->srvIndex, m_cbvSrbDescriptorSize);
+	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);
 
 	frame.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
 
@@ -1601,8 +1562,7 @@ void Renderer::DrawIndiced(const StaticObject& object, Frame& frame)
 	// 1)
 	const Texture& texture = m_textures.find(object.textureKey)->second;
 
-	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(m_cbvSrvHeap->GetGPUDescriptorHandleForHeapStart());
-	texHandle.Offset(texture.texView->srvIndex, m_cbvSrbDescriptorSize);
+	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);;
 
 	frame.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
 
@@ -1693,8 +1653,7 @@ void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, 
 	// Binding root signature params
 
 	// 1)
-	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(m_cbvSrvHeap->GetGPUDescriptorHandleForHeapStart());
-	texHandle.Offset(texIt->second.texView->srvIndex, m_cbvSrbDescriptorSize);
+	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texIt->second.texViewIndex);;
 
 	frame.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
 
@@ -1749,8 +1708,7 @@ void Renderer::DrawStreaming(const std::byte* vertices, int verticesSizeInBytes,
 
 	const Texture& texture = m_textures.find(texName)->second;
 
-	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(m_cbvSrvHeap->GetGPUDescriptorHandleForHeapStart());
-	texHandle.Offset(texture.texView->srvIndex, m_cbvSrbDescriptorSize);
+	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);;
 
 	frame.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
 
@@ -2309,8 +2267,8 @@ void Renderer::BeginFrame()
 		)
 	);
 
-	D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = rtvHeap->GetHandle(frame.colorBufferAndView->viewIndex);
-	D3D12_CPU_DESCRIPTOR_HANDLE depthTargetView = dsvHeap->GetHandle(frame.depthBufferViewIndex);
+	D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = rtvHeap->GetHandleCPU(frame.colorBufferAndView->viewIndex);
+	D3D12_CPU_DESCRIPTOR_HANDLE depthTargetView = dsvHeap->GetHandleCPU(frame.depthBufferViewIndex);
 
 	// Clear back buffer and depth buffer
 	frame.commandList->ClearRenderTargetView(renderTargetView, DirectX::Colors::Black, 0, nullptr);
@@ -2326,7 +2284,7 @@ void Renderer::BeginFrame()
 	// Specify buffer we are going to render to
 	frame.commandList->OMSetRenderTargets(1, &renderTargetView, true, &depthTargetView);
 
-	ID3D12DescriptorHeap* descriptorHeaps[] = { m_cbvSrvHeap.Get(), m_samplerHeap.Get() };
+	ID3D12DescriptorHeap* descriptorHeaps[] = { cbvSrvHeap->GetHeapResource(), m_samplerHeap.Get() };
 	frame.commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
 	// Set some matrices

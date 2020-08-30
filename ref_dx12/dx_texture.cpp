@@ -2,42 +2,40 @@
 
 #include "dx_app.h"
 
-TextureView::TextureView(TextureView&& t)
+Texture::Texture(Texture&& other)
 {
-	if (&t == this)
-	{
-		return;
-	}
-
-	srvIndex = t.srvIndex;
-	t.srvIndex = EMPTY_SRV_IND;
+	*this = std::move(other);
 }
 
-TextureView::TextureView(int newSrvInd) :
-	srvIndex(newSrvInd)
-{}
-
-TextureView::~TextureView()
+Texture& Texture::operator=(Texture&& other)
 {
-	if (srvIndex != EMPTY_SRV_IND)
-	{
-		Renderer::Inst().FreeSrvSlot(srvIndex);
-	}
-}
+	PREVENT_SELF_MOVE_ASSIGN;
 
-TextureView& TextureView::operator=(TextureView&& t)
-{
-	if (&t != this)
-	{
-		srvIndex = t.srvIndex;
-		t.srvIndex = EMPTY_SRV_IND;
-	}
+	buffer = other.buffer;
+	other.buffer = nullptr;
+
+	texViewIndex = other.texViewIndex;
+	other.texViewIndex = Const::INVALID_INDEX;
+
+	name = std::move(other.name);
+
+	samplerInd = other.samplerInd;
+
+	width = other.width;
+	height = other.height;
+
+	bpp = other.bpp;
 
 	return *this;
 }
 
 Texture::~Texture()
 {
+	if (texViewIndex != Const::INVALID_INDEX)
+	{
+		Renderer::Inst().cbvSrvHeap->Delete(texViewIndex);
+	}
+
 	// This is a bit lame cause, resource might actually not be deleted, if 
 	// some other texture owns it.
 	Renderer::Inst().DeleteResources(buffer);

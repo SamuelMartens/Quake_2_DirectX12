@@ -6,36 +6,24 @@
 
 #include "d3dx12.h"
 #include "dx_common.h"
-
-// Implements exclusive ownership of SRV descriptor
-class TextureView
-{
-public:
-
-	constexpr static int EMPTY_SRV_IND = -1;
-
-	TextureView() = default;
-	TextureView(int newSrvInd);
-
-	TextureView(const TextureView&) = delete;
-	TextureView& operator=(const TextureView&) = delete;
-
-	TextureView(TextureView&& t);
-	TextureView& operator=(TextureView&& t);
-
-	~TextureView();
-
-	int srvIndex = EMPTY_SRV_IND;
-
-};
-
+#include "dx_utils.h"
 
 class Texture
 {
 public:
 
+	Texture() = default;
+
+	Texture(const Texture&) = delete;
+	Texture& operator=(const Texture&) = delete;
+
+	Texture(Texture&& other);
+	Texture& operator=(Texture&& other);
+
+	~Texture();
+	
 	ComPtr<ID3D12Resource> buffer;
-	std::shared_ptr<TextureView> texView;
+	int texViewIndex = Const::INVALID_INDEX;
 
 	std::string name;
 
@@ -46,5 +34,4 @@ public:
 	// bits per pixel
 	int bpp = 0;
 
-	~Texture();
 };

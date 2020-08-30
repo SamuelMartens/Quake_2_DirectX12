@@ -27,7 +27,10 @@ public:
 	int Allocate(ComPtr<ID3D12Resource> resource, DescriptorHeap::Desc* desc = nullptr);
 	void Delete(int index);
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE GetHandle(int index);
+	ID3D12DescriptorHeap* GetHeapResource();
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE GetHandleCPU(int index) const;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE GetHandleGPU(int index) const;
 
 private:
 
