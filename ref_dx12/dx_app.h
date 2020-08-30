@@ -52,24 +52,6 @@ namespace FArg
 		const void* data = nullptr;
 		int byteSize = -1;
 		int alignment = -1;
-	};
-
-	struct UpdateUploadHeapBuffFrames
-	{
-		ComPtr<ID3D12Resource> buffer;
-		int offset = -1;
-		const void* data = nullptr;
-		int byteSize = -1;
-		int alignment = -1;
-	};
-
-	struct UpdateDefaultHeapBuffFrames
-	{
-		ComPtr<ID3D12Resource> buffer;
-		int offset = -1;
-		const void* data = nullptr;
-		int byteSize = -1;
-		int alignment = -1;
 		Frame* frame = nullptr;
 	};
 };
@@ -144,47 +126,29 @@ public:
 	void DeleteDefaultMemoryBuffer(BufferHandler handler);
 	void DeleteUploadMemoryBuffer(BufferHandler handler);
 	
-	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler);
-	void UpdateStreamingConstantBufferFrames(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, Frame& frame);
-	void UpdateStaticObjectConstantBuffer(const StaticObject& obj);
-	void UpdateStaticObjectConstantBufferFrames(const StaticObject& obj, Frame& frame);
-	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity);
-	void UpdateDynamicObjectConstantBufferFrames(DynamicObject& obj, const entity_t& entity, Frame& frame);
-	BufferHandler UpdateParticleConstantBuffer();
-	BufferHandler UpdateParticleConstantBufferFrames(Frame& frame);
+	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, Frame& frame);
+	void UpdateStaticObjectConstantBuffer(const StaticObject& obj, Frame& frame);
+	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, Frame& frame);
+	BufferHandler UpdateParticleConstantBuffer(Frame& frame);
 
-	Texture* FindOrCreateTexture(std::string_view textureName);
-	Texture* FindOrCreateTextureFrames(std::string_view textureName, Frame& frame);
+	Texture* FindOrCreateTexture(std::string_view textureName, Frame& frame);
 
 	/*--- API functions begin --- */
 
-	// Non framed
 	void Init(WNDPROC WindowProc, HINSTANCE hInstance);
 	void BeginFrame();
 	void EndFrame();
-	void Draw_Pic(int x, int y, const char* name);
 	void Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data);
+	void Draw_Pic(int x, int y, const char* name);
 	void Draw_Char(int x, int y, int num);
 	void GetDrawTextureSize(int* x, int* y, const char* name) const;
 	void SetPalette(const unsigned char* palette);
-	void RegisterWorldModel(const char* model);
-	void RenderFrame(const refdef_t& frameUpdateData);
+
 	Texture* RegisterDrawPic(const char* name);
-	model_s* RegisterModel(const char* name);
+	void RegisterWorldModel(const char* model);
 	void EndLevelLoading();
-
-	// Framed
-	void BeginFrameFrames();
-	void EndFrameFrames();
-	void Draw_RawPicFrames(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data);
-	void Draw_PicFrames(int x, int y, const char* name);
-	void Draw_CharFrames(int x, int y, int num);
-	Texture* RegisterDrawPicFrames(const char* name);
-	void RegisterWorldModelFrames(const char* model);
-	model_s* RegisterModelFrames(const char* name);
-	void RenderFrameFrames(const refdef_t& frameUpdateData);
-
-
+	model_s* RegisterModel(const char* name);
+	void RenderFrame(const refdef_t& frameUpdateData);
 
 
 	/*--- API functions end --- */
@@ -202,19 +166,17 @@ public:
 
 
 public:
-	//#DEBUG new heaps, that would be used for frames.
-	// Also when old heaps are deleted remove frame postfix
+
 	// Public because it is already wrapped up in class
-	std::unique_ptr<DescriptorHeap>	rtvHeapFrames = nullptr;
-	std::unique_ptr<DescriptorHeap>	dsvHeapFrames = nullptr;
+	std::unique_ptr<DescriptorHeap>	rtvHeap = nullptr;
+	std::unique_ptr<DescriptorHeap>	dsvHeap = nullptr;
 
 private:
 
 	/* Initialize win32 specific stuff */
 	void InitWin32(WNDPROC WindowProc, HINSTANCE hInstance);
 	/* Initialize DirectX stuff */
-	void InitDX();
-	void InitDxFrames();
+	void InitDx();
 
 	void EnableDebugLayer();
 	void SetDebugMessageFilter();
@@ -222,7 +184,6 @@ private:
 	void InitUtils();
 
 	void InitMemory();
-	void InitMemoryFrames();
 
 	void InitScissorRect();
 
@@ -230,14 +191,9 @@ private:
 
 	void InitFrames();
 
-	void CreateDepthStencilBufferAndView();
-
-	void CreateRenderTargetViews();
-
 	void CreateSwapChainBuffersAndViews();
 
-	void CreateDescriptorHeapsFrames();
-	void CreateDescriptorsHeaps();
+	void CreateDescriptorHeaps();
 
 	void CreateSwapChain();
 
@@ -257,66 +213,40 @@ private:
 	ComPtr<ID3DBlob> LoadCompiledShader(const std::string& filename) const;
 	ComPtr<ID3D12RootSignature> SerializeAndCreateRootSigFromRootDesc(const CD3DX12_ROOT_SIGNATURE_DESC& rootSigDesc) const;
 
-	void ExecuteCommandLists();
-	void FlushCommandQueue();
-
-	ID3D12Resource* GetCurrentBackBuffer();
-	D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentBackBufferView();
-	D3D12_CPU_DESCRIPTOR_HANDLE GetDepthStencilView();
 	AssertBufferAndView& GetNextSwapChainBufferAndView();
 	
-	void PresentAndSwapBuffers();
-	void PresentAndSwapBuffersFrames(Frame& frame);
+	void PresentAndSwapBuffers(Frame& frame);
 
 	/* Texture */
-	Texture* CreateTextureFromFile(const char* name);
-	Texture* CreateTextureFromFileFrames(const char* name, Frame& frame);
-	void CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Texture& outTex);
-	void CreateGpuTextureFrames(const unsigned int* raw, int width, int height, int bpp, Frame& frame, Texture& outTex);
-	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name);
-	Texture* CreateTextureFromDataFrames(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame);
-	void UpdateTexture(Texture& tex, const std::byte* data);
-	void UpdateTextureFrames(Texture& tex, const std::byte* data, Frame& frame);
+	Texture* CreateTextureFromFile(const char* name, Frame& frame);
+	void CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Frame& frame, Texture& outTex);
+	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame);
+	void UpdateTexture(Texture& tex, const std::byte* data, Frame& frame);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
 
 	/* Buffer */
-	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize);
+	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, Frame& frame);
 	ComPtr<ID3D12Resource> CreateUploadHeapBuffer(UINT64 byteSize) const;
 	void UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const;
 	void UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args);
-
-	ComPtr<ID3D12Resource> CreateDefaultHeapBufferFrames(const void* data, UINT64 byteSize, Frame& frame);
-	ComPtr<ID3D12Resource> CreateUploadHeapBufferFrames(UINT64 byteSize) const;
-	void UpdateUploadHeapBuffFrames(FArg::UpdateUploadHeapBuffFrames& args) const;
-	void UpdateDefaultHeapBuffFrames(FArg::UpdateDefaultHeapBuffFrames& args);
 
 	/* Shutdown and clean up Win32 specific stuff */
 	void ShutdownWin32();
 
 	/* Factory functionality */
-	void CreatePictureObject(const char* pictureName);
-	void CreatePictureObjectFrames(const char* pictureName, Frame& frame);
-	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model);
-	DynamicObjectModel CreateDynamicGraphicObjectFromGLModelFrames(const model_t* model, Frame& frame);
-	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf);
-	void CreateGraphicalObjectFromGLSurfaceFrames(const msurface_t& surf, Frame& frame);
-	void DecomposeGLModelNode(const model_t& model, const mnode_t& node);
-	void DecomposeGLModelNodeFrames(const model_t& model, const mnode_t& node, Frame& frame);
+	void CreatePictureObject(const char* pictureName, Frame& frame);
+	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model, Frame& frame);
+	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Frame& frame);
+	void DecomposeGLModelNode(const model_t& model, const mnode_t& node, Frame& frame);
 
 	/* Rendering */
-	void Draw(const StaticObject& object);
-	void DrawFrames(const StaticObject& object, Frame& frame);
-	void DrawIndiced(const StaticObject& object);
-	void DrawIndicedFrames(const StaticObject& object, Frame& frame);
-	void DrawIndiced(const DynamicObject& object, const entity_t& entity);
-	void DrawIndicedFrames(const DynamicObject& object, const entity_t& entity, Frame& frame);
-	void DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos);
-	void DrawStreamingFrames(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, Frame& frame);
+	void Draw(const StaticObject& object, Frame& frame);
+	void DrawIndiced(const StaticObject& object, Frame& frame);
+	void DrawIndiced(const DynamicObject& object, const entity_t& entity, Frame& frame);
+	void DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, Frame& frame);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
-	void AddParticleToDrawListFrames(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
-	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler);
-	void DrawParticleDrawListFrames(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Frame& frame);
+	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Frame& frame);
 
 	/* Utils */
 	void GetDrawAreaSize(int* Width, int* Height);
@@ -330,11 +260,9 @@ private:
 
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;
-	void SetMaterial(const std::string& materialName);
-	void ClearMaterial();
 
-	void SetMaterialFrames(const std::string& name, Frame& frame);
-	void ClearMaterialFrames(Frame& frame);
+	void SetMaterial(const std::string& name, Frame& frame);
+	void ClearMaterial(Frame& frame);
 
 	/* Frames */
 	Frame& GetCurrentFrame();
@@ -359,19 +287,12 @@ private:
 	ComPtr<IDXGIFactory4>  m_dxgiFactory;
 
 	ComPtr<IDXGISwapChain> m_swapChain;
-	ComPtr<ID3D12Fence>	   m_fence;
-	ComPtr<ID3D12Resource> m_swapChainBuffer[QSWAP_CHAIN_BUFFER_COUNT];
-	ComPtr<ID3D12Resource> m_depthStencilBuffer;
 
-	AssertBufferAndView m_swapChainBufferAndViewFrames[QSWAP_CHAIN_BUFFER_COUNT];
+	AssertBufferAndView m_swapChainBuffersAndViews[QSWAP_CHAIN_BUFFER_COUNT];
 
 	ComPtr<ID3D12CommandQueue>		  m_commandQueue;
-	ComPtr<ID3D12CommandAllocator>	  m_commandListAlloc;
-	ComPtr<ID3D12GraphicsCommandList> m_commandList;
 
 	//#DEBUG as soon as frames implemented delete this 
-	ComPtr<ID3D12DescriptorHeap>	  m_rtvHeap;
-	ComPtr<ID3D12DescriptorHeap>	  m_dsvHeap;
 	ComPtr<ID3D12DescriptorHeap>	  m_cbvSrvHeap;
 	ComPtr<ID3D12DescriptorHeap>	  m_samplerHeap;
 
@@ -383,8 +304,6 @@ private:
 		QUPLOAD_MEMORY_BUFFER_HANDLERS_NUM, QCONST_BUFFER_ALIGNMENT> m_uploadMemoryBuffer;
 	HandlerBuffer<QDEFAULT_MEMORY_BUFFER_SIZE, QDEFAULT_MEMORY_BUFFER_HANDLERS_NUM> m_defaultMemoryBuffer;
 	
-	std::vector<BufferHandler> m_streamingObjectsHandlers;
-
 	tagRECT		   m_scissorRect;
 
 	INT	m_currentBackBuffer = 0;
@@ -400,13 +319,7 @@ private:
 
 	UINT m_MSQualityLevels = 0;
 
-	UINT64 m_currentFenceValue = 0;
-
 	std::unordered_map<std::string, Texture> m_textures;
-	// When we upload something on GPU we need to make sure that its ComPtr is alive until 
-	// we finish execution of command list that references this. So I will just put this stuff here
-	// and clear this vector at the end of every frame.
-	std::vector<ComPtr<ID3D12Resource>> m_uploadResources;
 	// If we want to delete resource we can't do this right away cause there is a high chance that this 
 	// resource will still be in use, so we just put it here and delete it later 
 	std::vector<ComPtr<ID3D12Resource>> m_resourcesToDelete;
@@ -423,8 +336,6 @@ private:
 	std::unordered_map<model_t*, DynamicObjectModel> m_dynamicObjectsModels;
 	// Expected to set a size for it during initialization. Don't change size afterward
 	std::vector<DynamicObjectConstBuffer> m_dynamicObjectsConstBuffersPool;
-	// Dynamic objects drawn in this frame. Will be flashed when rendering is finished
-	std::vector<DynamicObject> m_frameDynamicObjects;
 
 	XMFLOAT4X4 m_uiProjectionMat;
 	XMFLOAT4X4 m_uiViewMat;
@@ -437,7 +348,6 @@ private:
 	Camera m_camera;
 
 	std::vector<Material> m_materials;
-	std::string m_currentMaterialName;
 
 	JobSystem m_jobSystem;
 
@@ -445,7 +355,7 @@ private:
 	int m_currentFrameIndex = -1;
 
 	std::atomic<int>	m_fenceValue = 0;
-	ComPtr<ID3D12Fence>	m_fenceFrames;
+	ComPtr<ID3D12Fence>	m_fence;
 
 	int m_frameCounter = 0;
 

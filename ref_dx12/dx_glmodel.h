@@ -237,8 +237,7 @@ typedef struct model_s
 
 void	Mod_Init(void);
 void	Mod_ClearAll(void);
-model_t *Mod_ForName(char *name, qboolean crash);
-model_t *Mod_ForNameFrames(char *name, qboolean crash, Frame& frame);
+model_t *Mod_ForName(char *name, qboolean crash, Frame& frame);
 mleaf_t *Mod_PointInLeaf(float *p, model_t *model);
 byte	*Mod_ClusterPVS(int cluster, model_t *model);
 

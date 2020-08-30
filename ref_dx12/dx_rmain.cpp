@@ -14,12 +14,12 @@ extern "C"
 // Register map as the world
 void DX12_BeginRegistration(char* map)
 {
-	Renderer::Inst().RegisterWorldModelFrames(map);
+	Renderer::Inst().RegisterWorldModel(map);
 }
 
 struct model_s* DX12_RegModel(char* model)
 {
-	return Renderer::Inst().RegisterModelFrames(model);
+	return Renderer::Inst().RegisterModel(model);
 }
 
 struct image_s* DX12_RegSkin(char* skin)
@@ -29,7 +29,7 @@ struct image_s* DX12_RegSkin(char* skin)
 
 struct image_s* DX12_Draw_FindPic(char* name)
 {
-	return reinterpret_cast<image_s*>(Renderer::Inst().RegisterDrawPicFrames(name));
+	return reinterpret_cast<image_s*>(Renderer::Inst().RegisterDrawPic(name));
 }
 
 void DX12_SetSky (char* name, float rotate, vec3_t axis)
@@ -42,7 +42,7 @@ void DX12_EndReg(void)
 
 void DX12_RenderFrame(refdef_t *fd)
 {
-	Renderer::Inst().RenderFrameFrames(*fd);
+	Renderer::Inst().RenderFrame(*fd);
 }
 
 void DX12_Draw_GetPicSize(int *w, int *h, char *name)
@@ -52,7 +52,7 @@ void DX12_Draw_GetPicSize(int *w, int *h, char *name)
 
 void DX12_Draw_Pic(int x, int y, char *name)
 {
-	Renderer::Inst().Draw_PicFrames(x, y, name);
+	Renderer::Inst().Draw_Pic(x, y, name);
 }
 
 void DX12_Draw_StretchPic(int x, int y, int w, int h, char *name)
@@ -60,7 +60,7 @@ void DX12_Draw_StretchPic(int x, int y, int w, int h, char *name)
 
 void DX12_Draw_Char(int x, int y, int c)
 {
-	Renderer::Inst().Draw_CharFrames(x, y, c);
+	Renderer::Inst().Draw_Char(x, y, c);
 }
 
 void DX12_Draw_TileClear(int x, int y, int w, int h, char *name)
@@ -74,7 +74,7 @@ void DX12_Draw_FadeScreen(void)
 
 void DX12_Draw_StretchRaw(int x, int y, int w, int h, int cols, int rows, byte *data)
 {
-	Renderer::Inst().Draw_RawPicFrames(x, y, w, h, cols, rows, reinterpret_cast<std::byte*>(data));
+	Renderer::Inst().Draw_RawPic(x, y, w, h, cols, rows, reinterpret_cast<std::byte*>(data));
 }
 
 qboolean DX12_Init( void *hinstance, void *hWnd )
@@ -92,12 +92,12 @@ void DX12_Shutdown(void)
 
 void DX12_BeginFrame( float camera_separation )
 {
-	Renderer::Inst().BeginFrameFrames();
+	Renderer::Inst().BeginFrame();
 }
 
 void DX12_EndFrame(void)
 {
-	Renderer::Inst().EndFrameFrames();
+	Renderer::Inst().EndFrame();
 }
 
 void DX12_SetPalette(const unsigned char *palette)

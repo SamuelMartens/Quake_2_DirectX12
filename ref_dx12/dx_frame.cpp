@@ -63,7 +63,7 @@ void Frame::Init()
 	
 	commandList->Close();
 
-	depthBufferViewIndex = renderer.dsvHeapFrames->Allocate(depthStencilBuffer);
+	depthBufferViewIndex = renderer.dsvHeap->Allocate(depthStencilBuffer);
 }
 
 void Frame::ResetSyncData()
@@ -81,7 +81,7 @@ Frame::~Frame()
 {
 	if (depthBufferViewIndex != -1)
 	{
-		Renderer::Inst().rtvHeapFrames->Delete(depthBufferViewIndex);
+		Renderer::Inst().rtvHeap->Delete(depthBufferViewIndex);
 	}
 
 	if (syncEvenHandle != INVALID_HANDLE_VALUE)
