@@ -54,9 +54,6 @@
     <ClInclude Include="dx_glmodel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="dx_model.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\qcommon\qfiles.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -117,9 +114,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\win32\q_shwin.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="dx_model.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="dx_camera.cpp">

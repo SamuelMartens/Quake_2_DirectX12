@@ -26,10 +26,10 @@ StaticObject& StaticObject::StaticObject::operator=(StaticObject&& other)
 	textureKey = std::move(other.textureKey);
 	
 	verticesSizeInBytes = other.verticesSizeInBytes;
-	other.verticesSizeInBytes = -1;
+	other.verticesSizeInBytes = Const::INVALID_SIZE;
 
 	indicesSizeInBytes = other.indicesSizeInBytes;
-	other.indicesSizeInBytes = -1;
+	other.indicesSizeInBytes = Const::INVALID_SIZE;
 
 	vertices = other.vertices;
 	other.vertices = BufConst::INVALID_BUFFER_HANDLER;
@@ -111,9 +111,9 @@ DynamicObjectModel& DynamicObjectModel::operator=(DynamicObjectModel&& other)
 	textures = std::move(other.textures);
 
 	headerData = other.headerData;
-	other.headerData.animFrameSizeInBytes = -1;
-	other.headerData.animFrameVertsNum = -1;
-	other.headerData.indicesNum = -1;
+	other.headerData.animFrameSizeInBytes = Const::INVALID_SIZE;
+	other.headerData.animFrameVertsNum = Const::INVALID_SIZE;
+	other.headerData.indicesNum = Const::INVALID_SIZE;
 
 	textureCoords = other.textureCoords;
 	other.textureCoords = BufConst::INVALID_BUFFER_HANDLER;

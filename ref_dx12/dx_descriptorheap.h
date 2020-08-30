@@ -2,22 +2,29 @@
 
 #include <d3d12.h>
 #include <vector>
+#include <variant>
 
 #include "d3dx12.h"
 #include "dx_common.h"
 #include "dx_allocators.h"
 
 
+
 class DescriptorHeap
 {
 public:
+	using Desc = std::variant<
+		D3D12_RENDER_TARGET_VIEW_DESC,
+		D3D12_DEPTH_STENCIL_VIEW_DESC,
+		D3D12_SHADER_RESOURCE_VIEW_DESC>;
+
 	DescriptorHeap(
 		int descriptorsNum,
 		D3D12_DESCRIPTOR_HEAP_TYPE descriptorsType,
 		D3D12_DESCRIPTOR_HEAP_FLAGS flags,
 		ComPtr<ID3D12Device> dev);
 
-	int Allocate(ComPtr<ID3D12Resource> resource);
+	int Allocate(ComPtr<ID3D12Resource> resource, DescriptorHeap::Desc* desc = nullptr);
 	void Delete(int index);
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE GetHandle(int index);
@@ -29,7 +36,7 @@ private:
 	ComPtr<ID3D12Device> device;
 
 	// Constant. Never change
-	int DESCRIPTOR_SIZE = -1;
+	int DESCRIPTOR_SIZE = Const::INVALID_SIZE;
 	const D3D12_DESCRIPTOR_HEAP_TYPE TYPE;
 
 };

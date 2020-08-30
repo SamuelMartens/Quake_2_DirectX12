@@ -37,10 +37,9 @@ public:
 
 	// Owned by frame
 	ComPtr<ID3D12Resource> depthStencilBuffer;
-	int depthBufferViewIndex = -1;
+	int depthBufferViewIndex = Const::INVALID_INDEX;
 	
 	// Utils
-	//#DEBUG shall I make this atomic?
 	bool isInUse = false;
 
 	std::vector<DynamicObject> dynamicObjects;
@@ -49,7 +48,7 @@ public:
 
 	std::string currentMaterial;
 
-	int frameNumber = -1;
+	int frameNumber = Const::INVALID_INDEX;
 
 	// Synchronization 
 	int fenceValue = -1;

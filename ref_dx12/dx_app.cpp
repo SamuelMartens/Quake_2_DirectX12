@@ -16,7 +16,6 @@
 #include "dx_shaderdefinitions.h"
 #include "dx_glmodel.h"
 #include "dx_camera.h"
-#include "dx_model.h"
 #include "dx_diagnostics.h"
 
 #ifdef max
@@ -430,13 +429,19 @@ void Renderer::InitFrames()
 
 void Renderer::CreateDescriptorHeaps()
 {
-	rtvHeap = std::make_unique<DescriptorHeap>(QRTV_DTV_DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, m_device);
-	dsvHeap = std::make_unique<DescriptorHeap>(QRTV_DTV_DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, m_device);
+	rtvHeap = std::make_unique<DescriptorHeap>(QRTV_DTV_DESCRIPTOR_HEAP_SIZE, 
+		D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, m_device);
+
+	dsvHeap = std::make_unique<DescriptorHeap>(QRTV_DTV_DESCRIPTOR_HEAP_SIZE, 
+		D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, m_device);
+
+	cbvSrvHeap = std::make_unique<DescriptorHeap>(QCBV_SRV_DESCRIPTOR_HEAP_SIZE,
+		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, m_device);
 
 	//#DEBUG change this to proper heaps(i.e my wrapper)
 	// Create ShaderResourceView and Constant Resource View heap
 	D3D12_DESCRIPTOR_HEAP_DESC srvCbvHeapDesc;
-	srvCbvHeapDesc.NumDescriptors = QCBV_SRV_DESCRIPTORS_NUM;
+	srvCbvHeapDesc.NumDescriptors = QCBV_SRV_DESCRIPTOR_HEAP_SIZE;
 	srvCbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvCbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	srvCbvHeapDesc.NodeMask = 0;
@@ -773,7 +778,7 @@ void Renderer::ClearMaterial(Frame& frame)
 
 Frame& Renderer::GetCurrentFrame()
 {
-	if (m_currentFrameIndex == -1)
+	if (m_currentFrameIndex == Const::INVALID_INDEX)
 	{
 		auto frameIt = std::find_if(m_frames.begin(), m_frames.end(), [](const Frame& f) 
 		{
@@ -809,8 +814,7 @@ void Renderer::SubmitFrame(Frame& frame)
 	ThrowIfFailed(m_fence->SetEventOnCompletion(frame.fenceValue, frame.syncEvenHandle));
 
 	// Let go current frame
-	//#DEBUG uncomment
-	m_currentFrameIndex = -1;
+	m_currentFrameIndex = Const::INVALID_INDEX;
 }
 
 void Renderer::OpenFrame(Frame& frame) const
@@ -1153,9 +1157,9 @@ void Renderer::UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const
 {
 	assert(args.buffer != nullptr &&
 		args.alignment != -1 &&
-		args.byteSize != -1 &&
+		args.byteSize != Const::INVALID_SIZE &&
 		args.data != nullptr &&
-		args.offset != -1 && "Uninitialized arguments in update upload buff");
+		args.offset != Const::INVALID_OFFSET && "Uninitialized arguments in update upload buff");
 
 	const unsigned int dataSize = args.alignment != 0 ? Utils::Align(args.byteSize, args.alignment) : args.byteSize;
 
@@ -1175,9 +1179,9 @@ void Renderer::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
 {
 	assert(args.buffer != nullptr &&
 		args.alignment != -1 &&
-		args.byteSize != -1 &&
+		args.byteSize != Const::INVALID_SIZE &&
 		args.data != nullptr &&
-		args.offset != -1 &&
+		args.offset != Const::INVALID_OFFSET &&
 		args.frame != nullptr &&
 		"Uninitialized arguments in update default buff");
 
@@ -2401,7 +2405,6 @@ void Renderer::Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int text
 	}
 	else
 	{
-		//#DEBUG uncomment
 		UpdateTexture(rawTexIt->second, reinterpret_cast<std::byte*>(texture.data()), frame);
 	}
 

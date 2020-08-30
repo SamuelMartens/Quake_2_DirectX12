@@ -2,7 +2,6 @@
 
 #include <cassert>
 
-//#DEBUG move buffer allocator here as well
 FlagAllocator::FlagAllocator(const int flagsNum)
 {
 	flags.resize(flagsNum, false);
@@ -25,3 +24,5 @@ void FlagAllocator::Delete(int index)
 
 	flags[index] = false;
 }
+
+

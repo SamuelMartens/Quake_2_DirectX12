@@ -34,7 +34,6 @@
     <ClInclude Include="dx_glmodel.h" />
     <ClInclude Include="dx_jobmultithreading.h" />
     <ClInclude Include="dx_material.h" />
-    <ClInclude Include="dx_model.h" />
     <ClInclude Include="dx_objects.h" />
     <ClInclude Include="dx_local.h" />
     <ClInclude Include="dx_app.h" />
@@ -59,7 +58,6 @@
     <ClCompile Include="dx_glmodel.cpp" />
     <ClCompile Include="dx_jobmultithreading.cpp" />
     <ClCompile Include="dx_material.cpp" />
-    <ClCompile Include="dx_model.cpp" />
     <ClCompile Include="dx_objects.cpp" />
     <ClCompile Include="dx_rmain.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>

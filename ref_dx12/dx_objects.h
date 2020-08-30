@@ -37,8 +37,8 @@ public:
 	BufferHandler vertices = BufConst::INVALID_BUFFER_HANDLER;
 	BufferHandler indices = BufConst::INVALID_BUFFER_HANDLER;
 
-	int verticesSizeInBytes = -1;
-	int indicesSizeInBytes = -1;
+	int verticesSizeInBytes = Const::INVALID_SIZE;
+	int indicesSizeInBytes = Const::INVALID_SIZE;
 
 	XMFLOAT4 position = { 0.0f, 0.0f, 0.0f, 1.0f };
 	XMFLOAT4 scale = { 1.0f, 1.0f, 1.0f, 0.0f };
@@ -59,9 +59,9 @@ public:
 	// Derives from dmdl_t. 
 	struct HeaderData
 	{
-		int animFrameSizeInBytes = -1;
-		int animFrameVertsNum = -1;
-		int indicesNum = -1;
+		int animFrameSizeInBytes = Const::INVALID_SIZE;
+		int animFrameVertsNum = Const::INVALID_SIZE;
+		int indicesNum = Const::INVALID_SIZE;
 	};
 
 	struct AnimFrame

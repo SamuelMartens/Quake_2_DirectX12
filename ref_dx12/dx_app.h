@@ -39,18 +39,18 @@ namespace FArg
 	struct UpdateUploadHeapBuff
 	{
 		ComPtr<ID3D12Resource> buffer;
-		int offset = -1;
+		int offset = Const::INVALID_OFFSET;
 		const void* data = nullptr;
-		int byteSize = -1;
+		int byteSize = Const::INVALID_SIZE;
 		int alignment = -1;
 	};
 
 	struct UpdateDefaultHeapBuff
 	{
 		ComPtr<ID3D12Resource> buffer;
-		int offset = -1;
+		int offset = Const::INVALID_OFFSET;
 		const void* data = nullptr;
-		int byteSize = -1;
+		int byteSize = Const::INVALID_SIZE;
 		int alignment = -1;
 		Frame* frame = nullptr;
 	};
@@ -78,10 +78,10 @@ private:
 	constexpr static bool		 QMSAA_ENABLED = false;
 	constexpr static int		 QMSAA_SAMPLE_COUNT = 4;
 	constexpr static int		 QTRANSPARENT_TABLE_VAL = 255;
-	constexpr static int		 QCBV_SRV_DESCRIPTORS_NUM = 512;
 	constexpr static int		 QCONST_BUFFER_ALIGNMENT = 256;
 	constexpr static int		 QDYNAM_OBJECT_CONST_BUFFER_POOL_SIZE = 512;
 	
+	constexpr static int		 QCBV_SRV_DESCRIPTOR_HEAP_SIZE = 512;
 	constexpr static int		 QRTV_DTV_DESCRIPTOR_HEAP_SIZE = QFRAMES_NUM;
 
 	// 128 MB of upload memory
@@ -170,6 +170,7 @@ public:
 	// Public because it is already wrapped up in class
 	std::unique_ptr<DescriptorHeap>	rtvHeap = nullptr;
 	std::unique_ptr<DescriptorHeap>	dsvHeap = nullptr;
+	std::unique_ptr<DescriptorHeap> cbvSrvHeap = nullptr;
 
 private:
 
@@ -329,7 +330,8 @@ private:
 
 	// Bookkeeping for which descriptors are taken and which aren't. This is very simple,
 	// true means slot is taken.
-	std::array<bool, QCBV_SRV_DESCRIPTORS_NUM> m_cbvSrvRegistry;
+	//#DEBUG remove this
+	std::array<bool, QCBV_SRV_DESCRIPTOR_HEAP_SIZE> m_cbvSrvRegistry;
 
 	// Should I separate UI from game object? Damn, is this NWN speaks in me
 	std::vector<StaticObject> m_staticObjects;
@@ -352,7 +354,7 @@ private:
 	JobSystem m_jobSystem;
 
 	std::array<Frame, QFRAMES_NUM> m_frames;
-	int m_currentFrameIndex = -1;
+	int m_currentFrameIndex = Const::INVALID_INDEX;
 
 	std::atomic<int>	m_fenceValue = 0;
 	ComPtr<ID3D12Fence>	m_fence;

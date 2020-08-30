@@ -26,7 +26,7 @@ DescriptorHeap::DescriptorHeap(int descriptorsNum,
 		IID_PPV_ARGS(heap.GetAddressOf())));
 }
 
-int DescriptorHeap::Allocate(ComPtr<ID3D12Resource> resource)
+int DescriptorHeap::Allocate(ComPtr<ID3D12Resource> resource, DescriptorHeap::Desc* desc)
 {
 	const int allocatedIndex = alloc.Allocate();
 
@@ -35,14 +35,34 @@ int DescriptorHeap::Allocate(ComPtr<ID3D12Resource> resource)
 	switch (TYPE)
 	{
 	case D3D12_DESCRIPTOR_HEAP_TYPE_RTV:
-		device->CreateRenderTargetView(resource.Get(), nullptr, handle);
+	{
+		D3D12_RENDER_TARGET_VIEW_DESC* rtvDesc = (desc == nullptr) ? 
+			nullptr : &std::get<D3D12_RENDER_TARGET_VIEW_DESC>(*desc);
+
+		device->CreateRenderTargetView(resource.Get(), rtvDesc, handle);
 		break;
+	}
 	case D3D12_DESCRIPTOR_HEAP_TYPE_DSV:
-		device->CreateDepthStencilView(resource.Get(), nullptr, handle);
+	{
+		D3D12_DEPTH_STENCIL_VIEW_DESC* dsvDesc = (desc == nullptr) ?
+			nullptr : &std::get<D3D12_DEPTH_STENCIL_VIEW_DESC>(*desc);
+
+		device->CreateDepthStencilView(resource.Get(), dsvDesc, handle);
 		break;
+	}
+	case D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV:
+	{
+		D3D12_SHADER_RESOURCE_VIEW_DESC* cbvSrvDesc = (desc == nullptr) ?
+			nullptr : &std::get<D3D12_SHADER_RESOURCE_VIEW_DESC>(*desc);
+
+		device->CreateShaderResourceView(resource.Get(), cbvSrvDesc, handle);
+		break;
+	}
 	default:
+	{
 		assert(false && "Invalid descriptor heap type");
 		break;
+	}
 	}
 
 	return allocatedIndex;

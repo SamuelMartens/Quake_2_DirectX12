@@ -27,7 +27,7 @@ Frame& Frame::operator=(Frame&& other)
 	other.depthStencilBuffer = nullptr;
 
 	depthBufferViewIndex = other.depthBufferViewIndex;
-	other.depthBufferViewIndex = -1;
+	other.depthBufferViewIndex = Const::INVALID_INDEX;
 
 	dynamicObjects = std::move(other.dynamicObjects);
 	
@@ -47,7 +47,7 @@ Frame& Frame::operator=(Frame&& other)
 	currentMaterial = std::move(other.currentMaterial);
 
 	frameNumber = other.frameNumber;
-	other.frameNumber = -1;
+	other.frameNumber = Const::INVALID_INDEX;
 
 	return *this;
 }
@@ -79,7 +79,7 @@ void Frame::ResetSyncData()
 
 Frame::~Frame()
 {
-	if (depthBufferViewIndex != -1)
+	if (depthBufferViewIndex != Const::INVALID_INDEX)
 	{
 		Renderer::Inst().rtvHeap->Delete(depthBufferViewIndex);
 	}
