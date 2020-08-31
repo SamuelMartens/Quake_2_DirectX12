@@ -17,6 +17,7 @@
 #include "dx_glmodel.h"
 #include "dx_camera.h"
 #include "dx_diagnostics.h"
+#include "dx_infrastructure.h"
 
 #ifdef max
 #undef max
@@ -198,6 +199,11 @@ Renderer& Renderer::Inst()
 void Renderer::Init(WNDPROC WindowProc, HINSTANCE hInstance)
 {
 	InitWin32(WindowProc, hInstance);
+
+	EnableDebugLayer();
+
+	Infr::Inst().Init();
+
 	InitDx();
 
 	Load8To24Table();
@@ -283,12 +289,6 @@ void Renderer::InitDx()
 {
 	// ------ Pre frames init -----
 	// Stuff that doesn't require frames for intialization
-
-	EnableDebugLayer();
-
-	CreateDxgiFactory();
-	CreateDevice();
-
 	SetDebugMessageFilter();
 
 	InitDescriptorSizes();
@@ -343,7 +343,10 @@ void Renderer::SetDebugMessageFilter()
 	}
 
 	ComPtr<ID3D12InfoQueue> infoQueue;
-	ThrowIfFailed(m_device.As(&infoQueue));
+
+	ComPtr<ID3D12Device> device = Infr::Inst().GetDevice();
+
+	ThrowIfFailed(device.As(&infoQueue));
 
 	D3D12_MESSAGE_ID denyId[] =
 	{
@@ -429,14 +432,16 @@ void Renderer::InitFrames()
 
 void Renderer::CreateDescriptorHeaps()
 {
+	ComPtr<ID3D12Device>& device = Infr::Inst().GetDevice();
+
 	rtvHeap = std::make_unique<DescriptorHeap>(QRTV_DTV_DESCRIPTOR_HEAP_SIZE, 
-		D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, m_device);
+		D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, device);
 
 	dsvHeap = std::make_unique<DescriptorHeap>(QRTV_DTV_DESCRIPTOR_HEAP_SIZE, 
-		D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, m_device);
+		D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, device);
 
 	cbvSrvHeap = std::make_unique<DescriptorHeap>(QCBV_SRV_DESCRIPTOR_HEAP_SIZE,
-		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, m_device);
+		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, device);
 
 	// Create sampler heap
 	D3D12_DESCRIPTOR_HEAP_DESC samplerHeapDesc;
@@ -445,7 +450,7 @@ void Renderer::CreateDescriptorHeaps()
 	samplerHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	samplerHeapDesc.NodeMask = 0;
 
-	ThrowIfFailed(m_device->CreateDescriptorHeap(
+	ThrowIfFailed(device->CreateDescriptorHeap(
 		&samplerHeapDesc,
 		IID_PPV_ARGS(m_samplerHeap.GetAddressOf())));
 
@@ -492,7 +497,7 @@ void Renderer::CreateSwapChain()
 	swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 
 	// Note: Swap chain uses queue to perform flush.
-	ThrowIfFailed(m_dxgiFactory->CreateSwapChain(m_commandQueue.Get(),
+	ThrowIfFailed(Infr::Inst().GetFactory()->CreateSwapChain(m_commandQueue.Get(),
 		&swapChainDesc,
 		m_swapChain.GetAddressOf()));
 }
@@ -508,7 +513,7 @@ void Renderer::CheckMSAAQualitySupport()
 	MSQualityLevels.SampleCount = QMSAA_SAMPLE_COUNT;
 	MSQualityLevels.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
 	MSQualityLevels.NumQualityLevels = 0;
-	ThrowIfFailed(m_device->CheckFeatureSupport(
+	ThrowIfFailed(Infr::Inst().GetDevice()->CheckFeatureSupport(
 		D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS,
 		&MSQualityLevels,
 		sizeof(MSQualityLevels)
@@ -520,13 +525,15 @@ void Renderer::CheckMSAAQualitySupport()
 
 void Renderer::CreateCmdListAndCmdListAlloc(ComPtr<ID3D12GraphicsCommandList>& commandList, ComPtr<ID3D12CommandAllocator>& commandListAlloc)
 {
+	ComPtr<ID3D12Device>& device = Infr::Inst().GetDevice();
+
 	// Create command allocator
-	ThrowIfFailed(m_device->CreateCommandAllocator(
+	ThrowIfFailed(device->CreateCommandAllocator(
 		D3D12_COMMAND_LIST_TYPE_DIRECT,
 		IID_PPV_ARGS(&commandListAlloc)));
 
 	// Create command list 
-	ThrowIfFailed(m_device->CreateCommandList(
+	ThrowIfFailed(device->CreateCommandList(
 		0,
 		D3D12_COMMAND_LIST_TYPE_DIRECT,
 		commandListAlloc.Get(),
@@ -541,13 +548,14 @@ void Renderer::CreateCommandQueue()
 
 	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-	ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue)));
+
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue)));
 }
 
 void Renderer::CreateFences(ComPtr<ID3D12Fence>& fence)
 {
 	// Create fence
-	ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)));
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)));
 }
 
 void Renderer::CreateDepthStencilBuffer(ComPtr<ID3D12Resource>& buffer)
@@ -576,7 +584,7 @@ void Renderer::CreateDepthStencilBuffer(ComPtr<ID3D12Resource>& buffer)
 	optimizedClearVal.DepthStencil.Depth = 1.0f;
 	optimizedClearVal.DepthStencil.Stencil = 0;
 
-	ThrowIfFailed(m_device->CreateCommittedResource(
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
 		&depthStencilDesc,
@@ -587,32 +595,18 @@ void Renderer::CreateDepthStencilBuffer(ComPtr<ID3D12Resource>& buffer)
 
 int Renderer::GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType) const
 {
-	return m_device->GetDescriptorHandleIncrementSize(descriptorHeapType);
+	return Infr::Inst().GetDevice()->GetDescriptorHandleIncrementSize(descriptorHeapType);
 }
 
 void Renderer::InitDescriptorSizes()
 {
+	ComPtr<ID3D12Device>& device = Infr::Inst().GetDevice();
+
 	// Get descriptors sizes
-	m_rtvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	m_dsvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-	m_cbvSrbDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	m_samplerDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-}
-
-void Renderer::CreateDevice()
-{
-	// This is super weird. This function internally will throw com exception,
-	// but result will be still fine.
-	ThrowIfFailed(D3D12CreateDevice(
-		nullptr,
-		D3D_FEATURE_LEVEL_11_0,
-		IID_PPV_ARGS(&m_device)
-	));
-}
-
-void Renderer::CreateDxgiFactory()
-{
-	ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&m_dxgiFactory)));
+	m_rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	m_dsvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+	m_cbvSrbDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	m_samplerDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 }
 
 ComPtr<ID3D12RootSignature> Renderer::SerializeAndCreateRootSigFromRootDesc(const CD3DX12_ROOT_SIGNATURE_DESC& rootSigDesc) const
@@ -628,7 +622,7 @@ ComPtr<ID3D12RootSignature> Renderer::SerializeAndCreateRootSigFromRootDesc(cons
 
 	ComPtr<ID3D12RootSignature> resultRootSig;
 
-	ThrowIfFailed(m_device->CreateRootSignature(
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateRootSignature(
 		0,
 		serializedRootSig->GetBufferPointer(),
 		serializedRootSig->GetBufferSize(),
@@ -729,7 +723,7 @@ Material Renderer::CompileMaterial(const MaterialSource& materialSourse) const
 		}
 	}
 
-	ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&materialCompiled.pipelineState)));
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&materialCompiled.pipelineState)));
 
 	materialCompiled.primitiveTopology = materialSourse.primitiveTopology;
 
@@ -854,7 +848,7 @@ void Renderer::CreateTextureSampler()
 	samplerDesc.MipLODBias = 1;
 	samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
 
-	m_device->CreateSampler(&samplerDesc, m_samplerHeap->GetCPUDescriptorHandleForHeapStart());
+	Infr::Inst().GetDevice()->CreateSampler(&samplerDesc, m_samplerHeap->GetCPUDescriptorHandleForHeapStart());
 }
 
 int Renderer::GetMSAASampleCount() const
@@ -998,7 +992,7 @@ void Renderer::CreateGpuTexture(const unsigned int* raw, int width, int height, 
 	textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 
 	// Create destination texture
-	ThrowIfFailed(m_device->CreateCommittedResource(
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
 		&textureDesc,
@@ -1071,7 +1065,7 @@ ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer(const void* data, UINT6
 
 	ComPtr<ID3D12Resource> buffer;
 
-	ThrowIfFailed(m_device->CreateCommittedResource(
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
 		&bufferDesc,
@@ -1122,7 +1116,7 @@ ComPtr<ID3D12Resource> Renderer::CreateUploadHeapBuffer(UINT64 byteSize) const
 	bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 	bufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
-	ThrowIfFailed(m_device->CreateCommittedResource(
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 		D3D12_HEAP_FLAG_NONE,
 		&bufferDesc,

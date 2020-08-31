@@ -200,9 +200,6 @@ private:
 
 	void InitDescriptorSizes();
 
-	void CreateDevice();
-	void CreateDxgiFactory();
-
 	void CreateCompiledMaterials();
 
 	void CreateTextureSampler();
@@ -279,9 +276,6 @@ private:
 	HWND		m_hWindows = nullptr;
 
 	refimport_t m_refImport;
-
-	ComPtr<ID3D12Device>   m_device;
-	ComPtr<IDXGIFactory4>  m_dxgiFactory;
 
 	ComPtr<IDXGISwapChain> m_swapChain;
 
