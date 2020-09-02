@@ -1021,7 +1021,7 @@ void Renderer::CreateGpuTexture(const unsigned int* raw, int width, int height, 
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 
 
-	DescriptorHeap::Desc srvDescription = D3D12_SHADER_RESOURCE_VIEW_DESC{};
+	DescriptorHeap::Desc_t srvDescription = D3D12_SHADER_RESOURCE_VIEW_DESC{};
 	D3D12_SHADER_RESOURCE_VIEW_DESC& srvDescriptionRef = std::get<D3D12_SHADER_RESOURCE_VIEW_DESC>(srvDescription);
 	srvDescriptionRef.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDescriptionRef.Format = textureDesc.Format;
@@ -1769,6 +1769,34 @@ void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int verte
 	frame.commandList->DrawInstanced(vertexBufferSizeInBytes / vertexStrideInBytes, 1, 0, 0);
 }
 
+void Renderer::DrawUI(Frame& frame)
+{
+	SetMaterial(MaterialSource::STATIC_MATERIAL_NAME, frame);
+
+
+	for (const DrawCall_UI_t& dc : frame.uiDrawCalls)
+	{
+		std::visit([&frame, this](auto&& drawCall) 
+		{
+			using T = std::decay_t<decltype(drawCall)>;
+
+			if constexpr (std::is_same_v<T, DrawCall_Char>)
+			{
+				Draw_Char(drawCall.x, drawCall.y, drawCall.num, frame);
+			}
+			else if constexpr (std::is_same_v<T, DrawCall_Pic>)
+			{
+				Draw_Pic(drawCall.x, drawCall.y, drawCall.name.c_str(), frame);
+			}
+			else
+			{
+				static_assert(false && "Invalid class in draw UI");
+			}
+		}
+		, dc);
+	}
+}
+
 void Renderer::GetDrawAreaSize(int* Width, int* Height)
 {
 
@@ -2292,6 +2320,10 @@ void Renderer::BeginFrame()
 void Renderer::EndFrame()
 {
 	Frame& frame = GetCurrentFrame();
+	
+	// Draw UI here because RenderFrame() is not called in some situations (like Main Menu)
+	DrawUI(frame);
+	
 
 	// Indicate current buffer state transition
 	frame.commandList->ResourceBarrier(
@@ -2325,6 +2357,9 @@ void Renderer::EndFrame()
 	// to delete them
 	frame.dynamicObjects.clear();
 	
+	// Remove used draw calls
+	frame.uiDrawCalls.clear();
+
 	// Delete shared resources marked for deletion
 	m_resourcesToDelete.clear();
 }
@@ -2377,12 +2412,8 @@ void Renderer::Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int text
 		XMFLOAT4(x, y, 0.0f, 1.0f), frame);
 }
 
-void Renderer::Draw_Pic(int x, int y, const char* name)
+void Renderer::Draw_Pic(int x, int y, const char* name, Frame& frame)
 {
-	Frame& frame = GetCurrentFrame();
-
-	SetMaterial(MaterialSource::STATIC_MATERIAL_NAME, frame);
-
 	std::array<char, MAX_QPATH> texFullName;
 	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
 
@@ -2402,12 +2433,8 @@ void Renderer::Draw_Pic(int x, int y, const char* name)
 		XMFLOAT4(x, y, 0.0f, 1.0f), frame);
 }
 
-void Renderer::Draw_Char(int x, int y, int num)
+void Renderer::Draw_Char(int x, int y, int num, Frame& frame)
 {
-	Frame& frame = GetCurrentFrame();
-
-	SetMaterial(MaterialSource::STATIC_MATERIAL_NAME, frame);
-
 	num &= 0xFF;
 
 	constexpr int charSize = 8;
@@ -2450,6 +2477,16 @@ void Renderer::Draw_Char(int x, int y, int num)
 		XMFLOAT4(x, y, 0.0f, 1.0f), frame);
 }
 
+
+void Renderer::AddDrawCall_Pic(int x, int y, const char* name)
+{
+	GetCurrentFrame().uiDrawCalls.emplace_back(DrawCall_Pic{ x, y, std::string(name) });
+}
+
+void Renderer::AddDrawCall_Char(int x, int y, int num)
+{
+	GetCurrentFrame().uiDrawCalls.emplace_back(DrawCall_Char{ x, y, num });
+}
 
 // This seems to take 188Kb of memory. Which is not that bad, so I will leave it
 // as it is for now. I believe there is other places to fix memory issues

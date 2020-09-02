@@ -35,6 +35,8 @@ Frame& Frame::operator=(Frame&& other)
 
 	streamingObjectsHandlers = std::move(other.streamingObjectsHandlers);
 
+	uiDrawCalls = std::move(uiDrawCalls);
+
 	isInUse = other.isInUse;
 	other.isInUse = false;
 

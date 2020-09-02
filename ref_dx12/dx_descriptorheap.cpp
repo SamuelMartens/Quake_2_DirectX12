@@ -26,7 +26,7 @@ DescriptorHeap::DescriptorHeap(int descriptorsNum,
 		IID_PPV_ARGS(heap.GetAddressOf())));
 }
 
-int DescriptorHeap::Allocate(ComPtr<ID3D12Resource> resource, DescriptorHeap::Desc* desc)
+int DescriptorHeap::Allocate(ComPtr<ID3D12Resource> resource, DescriptorHeap::Desc_t* desc)
 {
 	const int allocatedIndex = alloc.Allocate();
 

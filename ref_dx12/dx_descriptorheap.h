@@ -13,7 +13,7 @@
 class DescriptorHeap
 {
 public:
-	using Desc = std::variant<
+	using Desc_t = std::variant<
 		D3D12_RENDER_TARGET_VIEW_DESC,
 		D3D12_DEPTH_STENCIL_VIEW_DESC,
 		D3D12_SHADER_RESOURCE_VIEW_DESC>;
@@ -24,7 +24,7 @@ public:
 		D3D12_DESCRIPTOR_HEAP_FLAGS flags,
 		ComPtr<ID3D12Device> dev);
 
-	int Allocate(ComPtr<ID3D12Resource> resource, DescriptorHeap::Desc* desc = nullptr);
+	int Allocate(ComPtr<ID3D12Resource> resource, DescriptorHeap::Desc_t* desc = nullptr);
 	void Delete(int index);
 
 	ID3D12DescriptorHeap* GetHeapResource();

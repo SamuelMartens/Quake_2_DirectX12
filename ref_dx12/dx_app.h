@@ -94,7 +94,7 @@ private:
 	constexpr static char		 QRAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
 	constexpr static char		 QFONT_TEXTURE_NAME[] = "conchars";
 
-	constexpr static bool		 QDEBUG_LAYER_ENABLED = true;
+	constexpr static bool		 QDEBUG_LAYER_ENABLED = false;
 	constexpr static bool		 QDEBUG_MESSAGE_FILTER_ENABLED = true;
 
 public:
@@ -135,8 +135,10 @@ public:
 	void BeginFrame();
 	void EndFrame();
 	void Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data);
-	void Draw_Pic(int x, int y, const char* name);
-	void Draw_Char(int x, int y, int num);
+	void AddDrawCall_Pic(int x, int y, const char* name);
+	void AddDrawCall_Char(int x, int y, int num);
+
+
 	void GetDrawTextureSize(int* x, int* y, const char* name) const;
 	void SetPalette(const unsigned char* palette);
 
@@ -241,6 +243,11 @@ private:
 	void DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, Frame& frame);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
 	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Frame& frame);
+	void Draw_Pic(int x, int y, const char* name, Frame& frame);
+	void Draw_Char(int x, int y, int num, Frame& frame);
+	// More high level functions
+	void DrawUI(Frame& frame);
+
 
 	/* Utils */
 	void GetDrawAreaSize(int* Width, int* Height);

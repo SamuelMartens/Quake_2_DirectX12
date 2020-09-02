@@ -7,6 +7,8 @@
 #include "dx_common.h"
 #include "dx_objects.h"
 #include "dx_buffer.h"
+#include "dx_drawcalls.h"
+
 
 class Frame
 {
@@ -45,6 +47,8 @@ public:
 	std::vector<DynamicObject> dynamicObjects;
 	std::vector<ComPtr<ID3D12Resource>> uploadResources;
 	std::vector<BufferHandler> streamingObjectsHandlers;
+
+	std::vector<DrawCall_UI_t> uiDrawCalls;
 
 	std::string currentMaterial;
 

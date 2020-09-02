@@ -84,6 +84,9 @@
     <ClInclude Include="dx_infrastructure.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="dx_drawcalls.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ref_dx12.def">
@@ -143,15 +146,15 @@
     <ClCompile Include="dx_infrastructure.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="dx_drawcalls.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\vs_PosTex.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\ps_PosTex.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\vs_PosPosTex.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\gs_Particle.hlsl">
@@ -162,6 +165,9 @@
     </FxCompile>
     <FxCompile Include="Shaders\vs_Particle.hlsl">
       <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\vs_PosPosTex.hlsl">
+      <Filter>Source Files</Filter>
     </FxCompile>
   </ItemGroup>
 </Project>
