@@ -21,8 +21,7 @@ public:
 	DescriptorHeap(
 		int descriptorsNum,
 		D3D12_DESCRIPTOR_HEAP_TYPE descriptorsType,
-		D3D12_DESCRIPTOR_HEAP_FLAGS flags,
-		ComPtr<ID3D12Device> dev);
+		D3D12_DESCRIPTOR_HEAP_FLAGS flags);
 
 	int Allocate(ComPtr<ID3D12Resource> resource, DescriptorHeap::Desc_t* desc = nullptr);
 	void Delete(int index);
@@ -36,7 +35,6 @@ private:
 
 	FlagAllocator alloc;
 	ComPtr<ID3D12DescriptorHeap> heap;
-	ComPtr<ID3D12Device> device;
 
 	// Constant. Never change
 	int DESCRIPTOR_SIZE = Const::INVALID_SIZE;

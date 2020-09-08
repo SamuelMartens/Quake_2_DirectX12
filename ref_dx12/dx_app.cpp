@@ -432,16 +432,14 @@ void Renderer::InitFrames()
 
 void Renderer::CreateDescriptorHeaps()
 {
-	ComPtr<ID3D12Device>& device = Infr::Inst().GetDevice();
-
 	rtvHeap = std::make_unique<DescriptorHeap>(QRTV_DTV_DESCRIPTOR_HEAP_SIZE, 
-		D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, device);
+		D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
 
 	dsvHeap = std::make_unique<DescriptorHeap>(QRTV_DTV_DESCRIPTOR_HEAP_SIZE, 
-		D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, device);
+		D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
 
 	cbvSrvHeap = std::make_unique<DescriptorHeap>(QCBV_SRV_DESCRIPTOR_HEAP_SIZE,
-		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, device);
+		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
 
 	// Create sampler heap
 	D3D12_DESCRIPTOR_HEAP_DESC samplerHeapDesc;
@@ -450,7 +448,7 @@ void Renderer::CreateDescriptorHeaps()
 	samplerHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	samplerHeapDesc.NodeMask = 0;
 
-	ThrowIfFailed(device->CreateDescriptorHeap(
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateDescriptorHeap(
 		&samplerHeapDesc,
 		IID_PPV_ARGS(m_samplerHeap.GetAddressOf())));
 
@@ -525,6 +523,7 @@ void Renderer::CheckMSAAQualitySupport()
 
 void Renderer::CreateCmdListAndCmdListAlloc(ComPtr<ID3D12GraphicsCommandList>& commandList, ComPtr<ID3D12CommandAllocator>& commandListAlloc)
 {
+	//#DEBUG remove this as soon as my command list wrapper works
 	ComPtr<ID3D12Device>& device = Infr::Inst().GetDevice();
 
 	// Create command allocator
@@ -2486,6 +2485,21 @@ void Renderer::AddDrawCall_Pic(int x, int y, const char* name)
 void Renderer::AddDrawCall_Char(int x, int y, int num)
 {
 	GetCurrentFrame().uiDrawCalls.emplace_back(DrawCall_Char{ x, y, num });
+}
+
+void Renderer::BeginFrameAsync()
+{
+	Frame& frame = GetCurrentFrame();
+
+	frame.colorBufferAndView = &GetNextSwapChainBufferAndView();
+	frame.frameNumber = m_frameCounter;
+
+	++m_frameCounter;
+}
+
+void Renderer::EndFrameAsync()
+{
+	// All heavy lifting is here
 }
 
 // This seems to take 188Kb of memory. Which is not that bad, so I will leave it

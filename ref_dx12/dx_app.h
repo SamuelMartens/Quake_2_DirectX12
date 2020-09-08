@@ -139,6 +139,9 @@ public:
 	void AddDrawCall_Char(int x, int y, int num);
 
 
+	void BeginFrameAsync();
+	void EndFrameAsync();
+
 	void GetDrawTextureSize(int* x, int* y, const char* name) const;
 	void SetPalette(const unsigned char* palette);
 

@@ -2,16 +2,14 @@
 
 #include "dx_utils.h"
 #include "dx_app.h"
+#include "dx_infrastructure.h"
 
 DescriptorHeap::DescriptorHeap(int descriptorsNum,
 	D3D12_DESCRIPTOR_HEAP_TYPE descriptorsType,
-	D3D12_DESCRIPTOR_HEAP_FLAGS flags,
-	ComPtr<ID3D12Device> dev) :
+	D3D12_DESCRIPTOR_HEAP_FLAGS flags) :
 		alloc(descriptorsNum),
 		TYPE(descriptorsType)
 {
-	device = dev;
-
 	DESCRIPTOR_SIZE = Renderer::Inst().GetDescriptorSize(TYPE);
 
 	D3D12_DESCRIPTOR_HEAP_DESC heapDesc;
@@ -21,7 +19,7 @@ DescriptorHeap::DescriptorHeap(int descriptorsNum,
 	heapDesc.Flags = flags;
 	heapDesc.NodeMask = 0;
 
-	ThrowIfFailed(device->CreateDescriptorHeap(
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateDescriptorHeap(
 		&heapDesc,
 		IID_PPV_ARGS(heap.GetAddressOf())));
 }
@@ -39,7 +37,7 @@ int DescriptorHeap::Allocate(ComPtr<ID3D12Resource> resource, DescriptorHeap::De
 		D3D12_RENDER_TARGET_VIEW_DESC* rtvDesc = (desc == nullptr) ? 
 			nullptr : &std::get<D3D12_RENDER_TARGET_VIEW_DESC>(*desc);
 
-		device->CreateRenderTargetView(resource.Get(), rtvDesc, handle);
+		Infr::Inst().GetDevice()->CreateRenderTargetView(resource.Get(), rtvDesc, handle);
 		break;
 	}
 	case D3D12_DESCRIPTOR_HEAP_TYPE_DSV:
@@ -47,7 +45,7 @@ int DescriptorHeap::Allocate(ComPtr<ID3D12Resource> resource, DescriptorHeap::De
 		D3D12_DEPTH_STENCIL_VIEW_DESC* dsvDesc = (desc == nullptr) ?
 			nullptr : &std::get<D3D12_DEPTH_STENCIL_VIEW_DESC>(*desc);
 
-		device->CreateDepthStencilView(resource.Get(), dsvDesc, handle);
+		Infr::Inst().GetDevice()->CreateDepthStencilView(resource.Get(), dsvDesc, handle);
 		break;
 	}
 	case D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV:
@@ -55,7 +53,7 @@ int DescriptorHeap::Allocate(ComPtr<ID3D12Resource> resource, DescriptorHeap::De
 		D3D12_SHADER_RESOURCE_VIEW_DESC* cbvSrvDesc = (desc == nullptr) ?
 			nullptr : &std::get<D3D12_SHADER_RESOURCE_VIEW_DESC>(*desc);
 
-		device->CreateShaderResourceView(resource.Get(), cbvSrvDesc, handle);
+		Infr::Inst().GetDevice()->CreateShaderResourceView(resource.Get(), cbvSrvDesc, handle);
 		break;
 	}
 	default:
