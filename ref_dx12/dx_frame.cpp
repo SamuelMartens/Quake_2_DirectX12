@@ -29,6 +29,8 @@ Frame& Frame::operator=(Frame&& other)
 	depthBufferViewIndex = other.depthBufferViewIndex;
 	other.depthBufferViewIndex = Const::INVALID_INDEX;
 
+	acquiredCommandListsIndices = std::move(other.acquiredCommandListsIndices);
+
 	dynamicObjects = std::move(other.dynamicObjects);
 	
 	uploadResources = std::move(other.uploadResources);
@@ -50,6 +52,14 @@ Frame& Frame::operator=(Frame&& other)
 
 	frameNumber = other.frameNumber;
 	other.frameNumber = Const::INVALID_INDEX;
+
+	scissorRect = other.scissorRect;
+	
+	camera = other.camera;
+
+	uiProjectionMat = other.uiProjectionMat;
+
+	uiViewMat = other.uiViewMat;
 
 	return *this;
 }

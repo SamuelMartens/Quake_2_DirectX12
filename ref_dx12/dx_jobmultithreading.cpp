@@ -70,3 +70,8 @@ JobQueue& JobSystem::GetJobQueue()
 {
 	return jobQueue;
 }
+
+GraphicsJobContext::GraphicsJobContext(Frame& frameVal, CommandList& commandListVal):
+	frame(frameVal),
+	commandList(commandList)
+{}

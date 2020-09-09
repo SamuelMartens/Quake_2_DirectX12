@@ -28,6 +28,7 @@
 #include "dx_jobmultithreading.h"
 #include "dx_frame.h"
 #include "dx_descriptorheap.h"
+#include "dx_commandlist.h"
 
 extern "C"
 {
@@ -84,6 +85,10 @@ private:
 	constexpr static int		 QCBV_SRV_DESCRIPTOR_HEAP_SIZE = 512;
 	constexpr static int		 QRTV_DTV_DESCRIPTOR_HEAP_SIZE = QFRAMES_NUM;
 
+	constexpr static int		 QCOMMAND_LISTS_PER_FRAME = 6;
+	// Try to avoid to set up any particular number for this, instead change command lists per frame
+	constexpr static int		 QCOMMAND_LISTS_NUM = QCOMMAND_LISTS_PER_FRAME * QFRAMES_NUM;
+
 	// 128 MB of upload memory
 	constexpr static int		 QUPLOAD_MEMORY_BUFFER_SIZE = 128 * 1024 * 1024;
 	constexpr static int		 QUPLOAD_MEMORY_BUFFER_HANDLERS_NUM = 16382;
@@ -123,11 +128,13 @@ public:
 	void DeleteUploadMemoryBuffer(BufferHandler handler);
 	
 	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, Frame& frame);
+	void UpdateStreamingConstantBufferAsync(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, GraphicsJobContext& context);
 	void UpdateStaticObjectConstantBuffer(const StaticObject& obj, Frame& frame);
 	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, Frame& frame);
 	BufferHandler UpdateParticleConstantBuffer(Frame& frame);
 
 	Texture* FindOrCreateTexture(std::string_view textureName, Frame& frame);
+	Texture* FindOrCreateTextureAsync(std::string_view textureName, GraphicsJobContext& context);
 
 	/*--- API functions begin --- */
 
@@ -193,6 +200,8 @@ private:
 
 	void InitFrames();
 
+	void InitCommandListsBuffer();
+
 	void CreateSwapChainBuffersAndViews();
 
 	void CreateDescriptorHeaps();
@@ -218,8 +227,11 @@ private:
 
 	/* Texture */
 	Texture* CreateTextureFromFile(const char* name, Frame& frame);
+	Texture* CreateTextureFromFileAsync(const char* name, GraphicsJobContext& context);
 	void CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Frame& frame, Texture& outTex);
+	void CreateGpuTextureAsync(const unsigned int* raw, int width, int height, int bpp, GraphicsJobContext& context, Texture& outTex);
 	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame);
+	Texture* CreateTextureFromDataAsync(const std::byte* data, int width, int height, int bpp, const char* name, GraphicsJobContext& context);
 	void UpdateTexture(Texture& tex, const std::byte* data, Frame& frame);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
@@ -244,12 +256,15 @@ private:
 	void DrawIndiced(const StaticObject& object, Frame& frame);
 	void DrawIndiced(const DynamicObject& object, const entity_t& entity, Frame& frame);
 	void DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, Frame& frame);
+	void DrawStreamingAsync(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, GraphicsJobContext& context);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
 	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Frame& frame);
 	void Draw_Pic(int x, int y, const char* name, Frame& frame);
+	void Draw_PicAsync(int x, int y, const char* name, GraphicsJobContext& context);
 	void Draw_Char(int x, int y, int num, Frame& frame);
 	// More high level functions
 	void DrawUI(Frame& frame);
+	void DrawUIAsync(GraphicsJobContext& context);
 
 
 	/* Utils */
@@ -260,17 +275,20 @@ private:
 	bool IsVisible(const StaticObject& obj) const;
 	bool IsVisible(const entity_t& entity) const;
 	DynamicObjectConstBuffer& FindDynamicObjConstBuffer();
-
+	void EndFrameJob(GraphicsJobContext& context);
+	void BeginFrameJob(GraphicsJobContext& context);
 
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;
 
 	void SetMaterial(const std::string& name, Frame& frame);
+	void SetMaterialAsync(const std::string& name, CommandList& commandList);
 	void ClearMaterial(Frame& frame);
 
 	/* Frames */
 	Frame& GetCurrentFrame();
 	void SubmitFrame(Frame& frame);
+	void SubmitFrameAsync(Frame& frame);
 	void WaitForFrame(Frame& frame) const;
 
 	// Difference between OpenFrame/CloseFrame and BeginFrame/EndFrame is that first one is more generic,
@@ -279,6 +297,7 @@ private:
 	// ,for example, have buffer to draw to
 	void OpenFrame(Frame& frame) const;
 	void CloseFrame(Frame& frame);
+	void CloseFrameAsync(Frame& frame);
 
 	int GenerateFenceValue();
 	int GetFenceValue() const;
@@ -303,6 +322,8 @@ private:
 		QUPLOAD_MEMORY_BUFFER_HANDLERS_NUM, QCONST_BUFFER_ALIGNMENT> m_uploadMemoryBuffer;
 	HandlerBuffer<QDEFAULT_MEMORY_BUFFER_SIZE, QDEFAULT_MEMORY_BUFFER_HANDLERS_NUM> m_defaultMemoryBuffer;
 	
+	CommandListBuffer<QCOMMAND_LISTS_NUM> m_commandListBuffer;
+
 	tagRECT		   m_scissorRect;
 
 	INT	m_currentBackBuffer = 0;
@@ -331,7 +352,7 @@ private:
 	std::unordered_map<model_t*, DynamicObjectModel> m_dynamicObjectsModels;
 	// Expected to set a size for it during initialization. Don't change size afterward
 	std::vector<DynamicObjectConstBuffer> m_dynamicObjectsConstBuffersPool;
-
+	//#DEBUG make sure this one is not used in async methods
 	XMFLOAT4X4 m_uiProjectionMat;
 	XMFLOAT4X4 m_uiViewMat;
 	// DirectX and OpenGL have different directions for Y axis,

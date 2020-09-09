@@ -27,6 +27,7 @@
     <ClInclude Include="dx_allocators.h" />
     <ClInclude Include="dx_buffer.h" />
     <ClInclude Include="dx_camera.h" />
+    <ClInclude Include="dx_commandlist.h" />
     <ClInclude Include="dx_common.h" />
     <ClInclude Include="dx_descriptorheap.h" />
     <ClInclude Include="dx_diagnostics.h" />
@@ -54,6 +55,7 @@
     <ClCompile Include="dx_app.cpp" />
     <ClCompile Include="dx_buffer.cpp" />
     <ClCompile Include="dx_camera.cpp" />
+    <ClCompile Include="dx_commandlist.cpp" />
     <ClCompile Include="dx_descriptorheap.cpp" />
     <ClCompile Include="dx_diagnostics.cpp" />
     <ClCompile Include="dx_drawcalls.cpp" />

@@ -8,6 +8,11 @@
 #include <condition_variable>
 #include <vector>
 
+#include "dx_frame.h"
+#include "dx_commandlist.h"
+
+// Core job stuff
+
 class Job
 {
 public:
@@ -98,4 +103,14 @@ private:
 	JobQueue jobQueue;
 
 	std::vector<WorkerThread> workerThreads;
+};
+
+// Utilities 
+
+struct GraphicsJobContext
+{
+	GraphicsJobContext(Frame& frameVal, CommandList& commandListVal);
+
+	Frame& frame;
+	CommandList& commandList;
 };

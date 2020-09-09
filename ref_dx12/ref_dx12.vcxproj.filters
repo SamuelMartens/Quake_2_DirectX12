@@ -87,6 +87,9 @@
     <ClInclude Include="dx_drawcalls.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="dx_commandlist.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ref_dx12.def">
@@ -147,6 +150,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="dx_drawcalls.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dx_commandlist.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
