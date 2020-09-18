@@ -1457,6 +1457,9 @@ void Renderer::EndFrameJob(GraphicsJobContext& context)
 
 	context.commandList.Close();
 
+	// Make sure everything else is done
+	context.waitDependancy->Wait();
+
 	CloseFrameAsync(frame);
 
 	PresentAndSwapBuffers(frame);
@@ -3005,23 +3008,43 @@ void Renderer::EndFrameAsync()
 	// Proceed to next frame
 	m_currentFrameIndex = Const::INVALID_INDEX;
 
-	// --- Begin frame job ---
+	// Create contexts
 	const int beginFrameCommandListIndex = m_commandListBuffer.allocator.Allocate();
-	GraphicsJobContext beginFrameCtx(frame, m_commandListBuffer.commandLists[beginFrameCommandListIndex]);
-
+	GraphicsJobContext beginFrameContext(frame, m_commandListBuffer.commandLists[beginFrameCommandListIndex]);
+	
 	frame.acquiredCommandListsIndices.push_back(beginFrameCommandListIndex);
 
+	const int drawUICommandListIndex = m_commandListBuffer.allocator.Allocate();
+	GraphicsJobContext drawUIContext(frame, m_commandListBuffer.commandLists[drawUICommandListIndex]);
+	
+	frame.acquiredCommandListsIndices.push_back(drawUICommandListIndex);
+
+	const int endFrameCommandListIndex = m_commandListBuffer.allocator.Allocate();
+	GraphicsJobContext endFrameContext(frame, m_commandListBuffer.commandLists[endFrameCommandListIndex]);
+	
+	frame.acquiredCommandListsIndices.push_back(endFrameCommandListIndex);
+
+
+	// Set up dependencies
+	
+	endFrameContext.CreateDependencyFrom({
+			&beginFrameContext,
+			&drawUIContext
+		});
+
+
+
+	// --- Begin frame job ---
+
 	m_jobSystem.GetJobQueue().Enqueue(Job(
-		[beginFrameCtx, this] () mutable
+		[beginFrameContext, this] () mutable
 	{
-		BeginFrameJob(beginFrameCtx);
+		BeginFrameJob(beginFrameContext);
+		//#DEBUG shall it be automatic?
+		beginFrameContext.SignalDependecies();
 	}));
 
 	// --- Draw UI job ---
-	const int drawUICommandListIndex = m_commandListBuffer.allocator.Allocate();
-	GraphicsJobContext drawUIContext(frame, m_commandListBuffer.commandLists[drawUICommandListIndex]);
-
-	frame.acquiredCommandListsIndices.push_back(drawUICommandListIndex);
 
 	m_jobSystem.GetJobQueue().Enqueue(Job(
 		[drawUIContext, this] () mutable 
@@ -3031,14 +3054,12 @@ void Renderer::EndFrameAsync()
 		DrawUIAsync(drawUIContext);
 
 		drawUIContext.commandList.Close();
+
+		drawUIContext.SignalDependecies();
 	}));
 
 
 	// --- End frame job ---
-	const int endFrameCommandListIndex = m_commandListBuffer.allocator.Allocate();
-	GraphicsJobContext endFrameContext(frame, m_commandListBuffer.commandLists[endFrameCommandListIndex]);
-
-	frame.acquiredCommandListsIndices.push_back(endFrameCommandListIndex);
 
 	m_jobSystem.GetJobQueue().Enqueue(Job(
 		[endFrameContext, this]() mutable

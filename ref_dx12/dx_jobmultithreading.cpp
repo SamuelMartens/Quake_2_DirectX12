@@ -75,3 +75,55 @@ GraphicsJobContext::GraphicsJobContext(Frame& frameVal, CommandList& commandList
 	frame(frameVal),
 	commandList(commandList)
 {}
+
+void GraphicsJobContext::CreateDependencyFrom(std::vector<GraphicsJobContext*> dependsFromList)
+{
+	assert(dependsFromList.empty() == false && "Trying to create dependency from empty list");
+	assert(waitDependancy == nullptr && "Trying to create dependency to job that already has it");
+
+	waitDependancy = std::make_shared<Semaphore>(dependsFromList.size());
+
+	for (GraphicsJobContext* dependency : dependsFromList)
+	{
+		dependency->signalDependencies.push_back(waitDependancy);
+	}
+	
+}
+
+void GraphicsJobContext::SignalDependecies()
+{
+	for (std::shared_ptr<Semaphore>& dep : signalDependencies)
+	{
+		dep->Signal();
+	}
+}
+
+Semaphore::Semaphore(int waitForValue):
+	waitValue(waitForValue)
+{
+	winSemaphore = CreateSemaphore(NULL, 0, 1, NULL);
+}
+
+Semaphore::~Semaphore()
+{
+	CloseHandle(winSemaphore);
+}
+
+void Semaphore::Signal()
+{
+	assert(waitValue != 0 && "Not initialized semaphore is signaled");
+
+	// Remember, fetch_add() will return old value, that's why -1 
+	if (counter.fetch_add(1) >= waitValue - 1) 
+	{
+		ReleaseSemaphore(winSemaphore, 1, NULL);
+	};
+}
+
+void Semaphore::Wait()
+{
+	if (counter.load() < waitValue)
+	{
+		WaitForSingleObject(winSemaphore, INFINITY);
+	}
+}
