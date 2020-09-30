@@ -192,7 +192,7 @@ private:
 
 	void InitUtils();
 
-	void InitMemory();
+	void InitMemory(GraphicsJobContext& context);
 
 	void InitScissorRect();
 
@@ -237,7 +237,7 @@ private:
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
 
 	/* Buffer */
-	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, Frame& frame);
+	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, GraphicsJobContext& context);
 	ComPtr<ID3D12Resource> CreateUploadHeapBuffer(UINT64 byteSize) const;
 	void UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const;
 	void UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args);
@@ -298,6 +298,7 @@ private:
 	void OpenFrame(Frame& frame) const;
 	void CloseFrame(Frame& frame);
 	void CloseFrameAsync(Frame& frame);
+	void ReleaseFrameResources(Frame& frame);
 
 	int GenerateFenceValue();
 	int GetFenceValue() const;

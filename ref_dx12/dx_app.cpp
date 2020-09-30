@@ -315,13 +315,31 @@ void Renderer::InitDx()
 
 	InitFrames();
 
-	// ------- After frames init ----
+	// ------- After frames init -----
 
 	InitUtils();
 
-	InitMemory();
+	// ------- Open init command list -----
 
-	CloseFrame(GetCurrentFrame());
+	const int initCommandListIndex = m_commandListBuffer.allocator.Allocate();
+	GraphicsJobContext initContext(GetCurrentFrame(), m_commandListBuffer.commandLists[initCommandListIndex]);
+
+	initContext.commandList.Open();
+
+	// -- Steps that require command list --
+
+	InitMemory(initContext);
+
+	// ------- Close and execute init command list -----
+
+	initContext.commandList.Close();
+
+	CloseFrameAsync(initContext.frame);
+
+	ReleaseFrameResources(initContext.frame);
+
+	// We are done with that frame
+	initContext.frame.isInUse = false;
 }
 
 void Renderer::EnableDebugLayer()
@@ -389,12 +407,10 @@ void Renderer::InitUtils()
 	InitScissorRect();
 }
 
-void Renderer::InitMemory()
+void Renderer::InitMemory(GraphicsJobContext& context)
 {
-	Frame& frame = GetCurrentFrame();
-
 	// Create default memory buffer
-	m_defaultMemoryBuffer.allocBuffer.gpuBuffer = CreateDefaultHeapBuffer(nullptr, QDEFAULT_MEMORY_BUFFER_SIZE, frame);
+	m_defaultMemoryBuffer.allocBuffer.gpuBuffer = CreateDefaultHeapBuffer(nullptr, QDEFAULT_MEMORY_BUFFER_SIZE, context);
 	// Create upload memory buffer
 	m_uploadMemoryBuffer.allocBuffer.gpuBuffer = CreateUploadHeapBuffer(QUPLOAD_MEMORY_BUFFER_SIZE);
 }
@@ -868,6 +884,36 @@ void Renderer::CloseFrameAsync(Frame& frame)
 	frame.ResetSyncData();
 }
 
+void Renderer::ReleaseFrameResources(Frame& frame)
+{
+	for (int acquiredCommandListIndex : frame.acquiredCommandListsIndices)
+	{
+		m_commandListBuffer.allocator.Delete(acquiredCommandListIndex);
+	}
+
+	frame.acquiredCommandListsIndices.clear();
+
+	frame.colorBufferAndView = nullptr;
+	frame.frameNumber = -1;
+
+	frame.uploadResources.clear();
+
+	// Streaming drawing stuff
+	for (BufferHandler handler : frame.streamingObjectsHandlers)
+	{
+		m_uploadMemoryBuffer.Delete(handler);
+	}
+
+	frame.streamingObjectsHandlers.clear();
+
+	// We are done with dynamic objects rendering. It's safe
+	// to delete them
+	frame.dynamicObjects.clear();
+
+	// Remove used draw calls
+	frame.uiDrawCalls.clear();
+}
+
 void Renderer::WaitForFrame(Frame& frame) const
 {
 	assert(frame.fenceValue != -1 && frame.syncEvenHandle != INVALID_HANDLE_VALUE &&
@@ -1271,7 +1317,7 @@ Texture* Renderer::CreateTextureFromDataAsync(const std::byte* data, int width, 
 	return &m_textures.insert_or_assign(tex.name, std::move(tex)).first->second;
 }
 
-ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, Frame& frame)
+ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, GraphicsJobContext& context)
 {
 	// Create actual buffer 
 	D3D12_RESOURCE_DESC bufferDesc = {};
@@ -1298,11 +1344,13 @@ ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer(const void* data, UINT6
 		IID_PPV_ARGS(&buffer)
 	));
 
+	ComPtr<ID3D12GraphicsCommandList>& commandList = context.commandList.commandList;
+
 	if (data != nullptr)
 	{
 		// Create upload buffer
 		ComPtr<ID3D12Resource> uploadBuffer = CreateUploadHeapBuffer(byteSize);
-		frame.uploadResources.push_back(uploadBuffer);
+		context.frame.uploadResources.push_back(uploadBuffer);
 
 		// Describe upload resource data 
 		D3D12_SUBRESOURCE_DATA subResourceData = {};
@@ -1310,10 +1358,10 @@ ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer(const void* data, UINT6
 		subResourceData.RowPitch = byteSize;
 		subResourceData.SlicePitch = subResourceData.RowPitch;
 
-		UpdateSubresources(frame.commandList.Get(), buffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
+		UpdateSubresources(commandList.Get(), buffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
 	}
 
-	frame.commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		buffer.Get(),
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		D3D12_RESOURCE_STATE_GENERIC_READ
@@ -1464,27 +1512,7 @@ void Renderer::EndFrameJob(GraphicsJobContext& context)
 
 	PresentAndSwapBuffers(frame);
 
-	frame.acquiredCommandListsIndices.clear();
-
-	frame.colorBufferAndView = nullptr;
-	frame.frameNumber = -1;
-
-	frame.uploadResources.clear();
-
-	// Streaming drawing stuff
-	for (BufferHandler handler : frame.streamingObjectsHandlers)
-	{
-		m_uploadMemoryBuffer.Delete(handler);
-	}
-
-	frame.streamingObjectsHandlers.clear();
-
-	// We are done with dynamic objects rendering. It's safe
-	// to delete them
-	frame.dynamicObjects.clear();
-
-	// Remove used draw calls
-	frame.uiDrawCalls.clear();
+	ReleaseFrameResources(frame);
 
 	// We are done with that frame
 	frame.isInUse = false;
