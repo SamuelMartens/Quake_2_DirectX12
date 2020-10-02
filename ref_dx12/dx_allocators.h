@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <list>
+#include <mutex>
 
 #include "dx_utils.h"
 
@@ -16,6 +17,7 @@ public:
 private:
 	
 	std::vector<bool> flags;
+	std::mutex mutex;
 };
 
 struct Allocation
@@ -43,6 +45,8 @@ public:
 
 	int Allocate(int size)
 	{
+		std::scoped_lock<std::mutex> lock(mutex);
+
 		// Check before existing allocations
 		{
 			const int nextOffset = allocations.empty() ? SIZE : allocations.begin()->offset;
@@ -95,6 +99,8 @@ public:
 
 	void Delete(int offset)
 	{
+		std::scoped_lock<std::mutex> lock(mutex);
+
 		auto it = std::find_if(allocations.begin(), allocations.end(), [offset](const Allocation& alloc)
 		{
 			return offset == alloc.offset;
@@ -111,10 +117,13 @@ public:
 
 	void ClearAll()
 	{
+		std::scoped_lock<std::mutex> lock(mutex);
+
 		allocations.clear();
 	};
 
 private:
 
 	std::list<Allocation> allocations;
+	std::mutex mutex;
 };

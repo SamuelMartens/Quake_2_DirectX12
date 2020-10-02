@@ -7,6 +7,7 @@
 #include <memory>
 #include <cassert>
 #include <algorithm>
+#include <mutex>
 
 #include "dx_common.h"
 #include "dx_allocators.h"
@@ -58,6 +59,8 @@ public:
 
 	BufferHandler Allocate(int size)
 	{
+		std::scoped_lock<std::mutex> lock(mutex);
+
 		if constexpr (ENFORCED_ALIGNMENT != 0)
 		{
 			size = Utils::Align(size, ENFORCED_ALIGNMENT);
@@ -93,6 +96,8 @@ public:
 
 	void Delete(BufferHandler handler)
 	{
+		std::scoped_lock<std::mutex> lock(mutex);
+
 		assert(handler != BufConst::INVALID_BUFFER_HANDLER && "Trying to delete invalid default buffer handler");
 
 		assert(m_handlers[handler] != Const::INVALID_OFFSET);
@@ -107,6 +112,8 @@ public:
 	// keep handler around, ask for offset when you need it.
 	int GetOffset(BufferHandler handler) const
 	{
+		std::scoped_lock<std::mutex> lock(mutex);
+
 		assert(m_handlers[handler] != Const::INVALID_OFFSET);
 		return m_handlers[handler];
 	}
@@ -114,6 +121,9 @@ public:
 	AllocBuffer<BUFFER_SIZE> allocBuffer;
 
 private:
+	//#DEBUG make use of flag allocator and remove this mutex and m_handlers
+	std::mutex mutex;
+	//END
 
 	std::vector<int> m_handlers;
 

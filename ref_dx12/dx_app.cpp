@@ -288,7 +288,7 @@ void Renderer::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 void Renderer::InitDx()
 {
 	// ------ Pre frames init -----
-	// Stuff that doesn't require frames for intialization
+	// Stuff that doesn't require frames for initialization
 	SetDebugMessageFilter();
 
 	InitDescriptorSizes();
@@ -896,15 +896,17 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	frame.colorBufferAndView = nullptr;
 	frame.frameNumber = -1;
 
-	frame.uploadResources.clear();
+	frame.uploadResources.obj.clear();
 
 	// Streaming drawing stuff
-	for (BufferHandler handler : frame.streamingObjectsHandlers)
+	frame.streamingObjectsHandlers.mutex.lock();
+	for (BufferHandler handler : frame.streamingObjectsHandlers.obj)
 	{
 		m_uploadMemoryBuffer.Delete(handler);
 	}
+	frame.streamingObjectsHandlers.obj.clear();
+	frame.streamingObjectsHandlers.mutex.unlock();
 
-	frame.streamingObjectsHandlers.clear();
 
 	// We are done with dynamic objects rendering. It's safe
 	// to delete them
@@ -1077,7 +1079,7 @@ Texture* Renderer::CreateTextureFromFile(const char* name, Frame& frame)
 	return createdTex;
 }
 
-Texture* Renderer::CreateTextureFromFileAsync(const char* name, GraphicsJobContext& context)
+Texture* Renderer::_CreateTextureFromFileAsync(const char* name, GraphicsJobContext& context)
 {
 	if (name == nullptr)
 		return nullptr;
@@ -1162,7 +1164,7 @@ Texture* Renderer::CreateTextureFromFileAsync(const char* name, GraphicsJobConte
 	//	image32 = resampledImage.data();
 	//}
 
-	Texture* createdTex = CreateTextureFromDataAsync(reinterpret_cast<std::byte*>(image32), width, height, bpp, name, context);
+	Texture* createdTex = _CreateTextureFromDataAsync(reinterpret_cast<std::byte*>(image32), width, height, bpp, name, context);
 
 	if (image != nullptr)
 	{
@@ -1232,7 +1234,7 @@ void Renderer::CreateGpuTexture(const unsigned int* raw, int width, int height, 
 	outTex.texViewIndex = cbvSrvHeap->Allocate(outTex.buffer, &srvDescription);
 }
 
-void Renderer::CreateGpuTextureAsync(const unsigned int* raw, int width, int height, int bpp, GraphicsJobContext& context, Texture& outTex)
+void Renderer::_CreateGpuTextureAsync(const unsigned int* raw, int width, int height, int bpp, GraphicsJobContext& context, Texture& outTex)
 {
 	CommandList& commandList = context.commandList;
 
@@ -1261,7 +1263,7 @@ void Renderer::CreateGpuTextureAsync(const unsigned int* raw, int width, int hei
 
 	ComPtr<ID3D12Resource> textureUploadBuffer = CreateUploadHeapBuffer(uploadBufferSize);
 
-	context.frame.uploadResources.push_back(textureUploadBuffer);
+	DO_IN_LOCK(context.frame.uploadResources, push_back(textureUploadBuffer));
 
 	D3D12_SUBRESOURCE_DATA textureData = {};
 	textureData.pData = raw;
@@ -1303,10 +1305,10 @@ Texture* Renderer::CreateTextureFromData(const std::byte* data, int width, int h
 	return &m_textures.insert_or_assign(tex.name, std::move(tex)).first->second;
 }
 
-Texture* Renderer::CreateTextureFromDataAsync(const std::byte* data, int width, int height, int bpp, const char* name, GraphicsJobContext& context)
+Texture* Renderer::_CreateTextureFromDataAsync(const std::byte* data, int width, int height, int bpp, const char* name, GraphicsJobContext& context)
 {
 	Texture tex;
-	CreateGpuTextureAsync(reinterpret_cast<const unsigned int*>(data), width, height, bpp, context, tex);
+	_CreateGpuTextureAsync(reinterpret_cast<const unsigned int*>(data), width, height, bpp, context, tex);
 
 	tex.width = width;
 	tex.height = height;
@@ -1314,7 +1316,7 @@ Texture* Renderer::CreateTextureFromDataAsync(const std::byte* data, int width, 
 
 	tex.name = name;
 
-	return &m_textures.insert_or_assign(tex.name, std::move(tex)).first->second;
+	return &m_textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
 }
 
 ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, GraphicsJobContext& context)
@@ -1516,6 +1518,9 @@ void Renderer::EndFrameJob(GraphicsJobContext& context)
 
 	// We are done with that frame
 	frame.isInUse = false;
+
+	AssertUnlocked(context.frame.streamingObjectsHandlers);
+	AssertUnlocked(context.frame.uploadResources);
 
 	//#DEBUG figure that out. Maybe delete after certain threshold?
 	// Delete shared resources marked for deletion
@@ -2090,20 +2095,21 @@ void Renderer::DrawStreaming(const std::byte* vertices, int verticesSizeInBytes,
 	frame.commandList->DrawInstanced(verticesSizeInBytes / verticesStride, 1, 0, 0);
 }
 
-void Renderer::DrawStreamingAsync(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, GraphicsJobContext& context)
+void Renderer::DrawStreamingAsync_Blocking(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, GraphicsJobContext& context)
 {
 	Frame& frame = context.frame;
 	CommandList& commandList = context.commandList;
 
 	// Allocate and update constant buffer
 	BufferHandler constantBufferHandler = m_uploadMemoryBuffer.Allocate(Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT));
-	frame.streamingObjectsHandlers.push_back(constantBufferHandler);
+	
+	DO_IN_LOCK(frame.streamingObjectsHandlers, push_back(constantBufferHandler));
 
 	UpdateStreamingConstantBufferAsync(pos, { 1.0f, 1.0f, 1.0f, 0.0f }, constantBufferHandler, context);
 
 	// Deal with vertex buffer
 	BufferHandler vertexBufferHandler = m_uploadMemoryBuffer.Allocate(Utils::Align(verticesSizeInBytes, 24));
-	frame.streamingObjectsHandlers.push_back(vertexBufferHandler);
+	DO_IN_LOCK(frame.streamingObjectsHandlers, push_back(vertexBufferHandler));
 
 	FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
 	updateVertexBufferArgs.buffer = m_uploadMemoryBuffer.allocBuffer.gpuBuffer;
@@ -2124,14 +2130,11 @@ void Renderer::DrawStreamingAsync(const std::byte* vertices, int verticesSizeInB
 	// Binding root signature params
 
 	// 1)
-	assert(m_textures.find(texName) != m_textures.end() && "Can't draw, texture is not found.");
-
-	const Texture& texture = m_textures.find(texName)->second;
+	const Texture& texture = *FindTexture_Blocking(texName);
 
 	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);;
 
 	commandList.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
-
 
 	// 2)
 	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
@@ -2610,21 +2613,30 @@ Texture* Renderer::FindOrCreateTexture(std::string_view textureName, Frame& fram
 	return texture;
 }
 
-Texture* Renderer::FindOrCreateTextureAsync(std::string_view textureName, GraphicsJobContext& context)
+Texture* Renderer::FindOrCreateTextureAsync_Blocking(std::string_view textureName, GraphicsJobContext& context)
 {
+	std::scoped_lock<std::mutex> lock(m_textures.mutex);
+	
 	Texture* texture = nullptr;
-	auto texIt = m_textures.find(textureName.data());
+	auto texIt = m_textures.obj.find(textureName.data());
 
-	if (texIt != m_textures.end())
+	if (texIt != m_textures.obj.end())
 	{
 		texture = &texIt->second;
 	}
 	else
 	{
-		texture = CreateTextureFromFileAsync(textureName.data(), context);
+		texture = _CreateTextureFromFileAsync(textureName.data(), context);
 	}
 
 	return texture;
+}
+
+Texture* Renderer::FindTexture_Blocking(std::string_view textureName)
+{
+	std::scoped_lock<std::mutex> lock(m_textures.mutex);
+
+	return &m_textures.obj.find(textureName.data())->second;
 }
 
 void Renderer::ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight)
@@ -2945,7 +2957,7 @@ void Renderer::Draw_PicAsync(int x, int y, const char* name, GraphicsJobContext&
 	std::array<char, MAX_QPATH> texFullName;
 	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
 
-	const Texture& texture = *FindOrCreateTextureAsync(texFullName.data(), context);
+	const Texture& texture = *FindOrCreateTextureAsync_Blocking(texFullName.data(), context);
 
 	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
 	Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
@@ -2954,7 +2966,7 @@ void Renderer::Draw_PicAsync(int x, int y, const char* name, GraphicsJobContext&
 		XMFLOAT2(1.0f, 1.0f),
 		vertices.data());
 
-	DrawStreamingAsync(reinterpret_cast<std::byte*>(vertices.data()),
+	DrawStreamingAsync_Blocking(reinterpret_cast<std::byte*>(vertices.data()),
 		vertices.size() * sizeof(ShDef::Vert::PosTexCoord),
 		sizeof(ShDef::Vert::PosTexCoord),
 		texFullName.data(),

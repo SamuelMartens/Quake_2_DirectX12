@@ -42,6 +42,7 @@
     <ClInclude Include="dx_app.h" />
     <ClInclude Include="dx_shaderdefinitions.h" />
     <ClInclude Include="dx_texture.h" />
+    <ClInclude Include="dx_threadingutils.h" />
     <ClInclude Include="dx_utils.h" />
   </ItemGroup>
   <ItemGroup>
@@ -71,6 +72,7 @@
       </PrecompiledHeaderFile>
     </ClCompile>
     <ClCompile Include="dx_texture.cpp" />
+    <ClCompile Include="dx_threadingutils.cpp" />
     <ClCompile Include="dx_utils.cpp" />
   </ItemGroup>
   <ItemGroup>

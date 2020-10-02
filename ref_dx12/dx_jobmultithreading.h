@@ -9,6 +9,7 @@
 #include <vector>
 #include <atomic>
 #include <memory>
+#include <unordered_map>
 
 #include "dx_frame.h"
 #include "dx_commandlist.h"
@@ -133,7 +134,7 @@ private:
 };
 
 // Utilities 
-
+//#DEBUG move this to utilities
 struct GraphicsJobContext
 {
 	GraphicsJobContext(Frame& frameVal, CommandList& commandListVal);

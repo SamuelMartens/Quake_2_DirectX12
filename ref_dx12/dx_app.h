@@ -26,6 +26,7 @@
 #include "dx_camera.h"
 #include "dx_material.h"
 #include "dx_jobmultithreading.h"
+#include "dx_threadingutils.h"
 #include "dx_frame.h"
 #include "dx_descriptorheap.h"
 #include "dx_commandlist.h"
@@ -134,7 +135,8 @@ public:
 	BufferHandler UpdateParticleConstantBuffer(Frame& frame);
 
 	Texture* FindOrCreateTexture(std::string_view textureName, Frame& frame);
-	Texture* FindOrCreateTextureAsync(std::string_view textureName, GraphicsJobContext& context);
+	Texture* FindOrCreateTextureAsync_Blocking(std::string_view textureName, GraphicsJobContext& context);
+	Texture* FindTexture_Blocking(std::string_view textureName);
 
 	/*--- API functions begin --- */
 
@@ -227,11 +229,11 @@ private:
 
 	/* Texture */
 	Texture* CreateTextureFromFile(const char* name, Frame& frame);
-	Texture* CreateTextureFromFileAsync(const char* name, GraphicsJobContext& context);
+	Texture* _CreateTextureFromFileAsync(const char* name, GraphicsJobContext& context);
 	void CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Frame& frame, Texture& outTex);
-	void CreateGpuTextureAsync(const unsigned int* raw, int width, int height, int bpp, GraphicsJobContext& context, Texture& outTex);
+	void _CreateGpuTextureAsync(const unsigned int* raw, int width, int height, int bpp, GraphicsJobContext& context, Texture& outTex);
 	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame);
-	Texture* CreateTextureFromDataAsync(const std::byte* data, int width, int height, int bpp, const char* name, GraphicsJobContext& context);
+	Texture* _CreateTextureFromDataAsync(const std::byte* data, int width, int height, int bpp, const char* name, GraphicsJobContext& context);
 	void UpdateTexture(Texture& tex, const std::byte* data, Frame& frame);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
@@ -256,7 +258,7 @@ private:
 	void DrawIndiced(const StaticObject& object, Frame& frame);
 	void DrawIndiced(const DynamicObject& object, const entity_t& entity, Frame& frame);
 	void DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, Frame& frame);
-	void DrawStreamingAsync(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, GraphicsJobContext& context);
+	void DrawStreamingAsync_Blocking(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, GraphicsJobContext& context);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
 	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Frame& frame);
 	void Draw_Pic(int x, int y, const char* name, Frame& frame);
@@ -340,7 +342,7 @@ private:
 
 	UINT m_MSQualityLevels = 0;
 
-	std::unordered_map<std::string, Texture> m_textures;
+	LockUnorderedMap_t<std::string, Texture> m_textures;
 	// If we want to delete resource we can't do this right away cause there is a high chance that this 
 	// resource will still be in use, so we just put it here and delete it later 
 	std::vector<ComPtr<ID3D12Resource>> m_resourcesToDelete;

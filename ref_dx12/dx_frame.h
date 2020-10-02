@@ -9,6 +9,7 @@
 #include "dx_buffer.h"
 #include "dx_drawcalls.h"
 #include "dx_camera.h"
+#include "dx_threadingutils.h"
 
 class Frame
 {
@@ -19,8 +20,8 @@ public:
 	Frame(const Frame&) = delete;
 	Frame& operator=(const Frame&) = delete;
 
-	Frame(Frame&& other);
-	Frame& operator=(Frame&& other);
+	Frame(Frame&& other) = delete;
+	Frame& operator=(Frame&& other) = delete;
 
 	~Frame();
 
@@ -47,10 +48,10 @@ public:
 	
 	// Utils
 	bool isInUse = false;
-
+	//#DEBUG move some of required stuff to JobContext, when refactoring
 	std::vector<DynamicObject> dynamicObjects;
-	std::vector<ComPtr<ID3D12Resource>> uploadResources;
-	std::vector<BufferHandler> streamingObjectsHandlers;
+	LockVector_t<ComPtr<ID3D12Resource>> uploadResources;
+	LockVector_t<BufferHandler> streamingObjectsHandlers;
 
 	std::vector<DrawCall_UI_t> uiDrawCalls;
 
