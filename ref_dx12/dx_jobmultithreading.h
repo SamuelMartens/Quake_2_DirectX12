@@ -32,9 +32,10 @@ public:
 
 
 	void Execute();
-
-private:
+	//#DEBUG make private
 	std::function<void()> callback;
+private:
+	
 };
 
 class JobQueue

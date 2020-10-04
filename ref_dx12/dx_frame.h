@@ -3,6 +3,7 @@
 #include <d3d12.h>
 #include <vector>
 #include <string>
+#include <atomic>
 
 #include "dx_common.h"
 #include "dx_objects.h"
@@ -47,7 +48,7 @@ public:
 	std::vector<int> acquiredCommandListsIndices;
 	
 	// Utils
-	bool isInUse = false;
+	std::atomic<bool> isInUse = false;
 	//#DEBUG move some of required stuff to JobContext, when refactoring
 	std::vector<DynamicObject> dynamicObjects;
 	LockVector_t<ComPtr<ID3D12Resource>> uploadResources;

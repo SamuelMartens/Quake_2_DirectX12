@@ -9,6 +9,14 @@ const BufferHandler BufConst::INVALID_BUFFER_HANDLER = std::numeric_limits<Buffe
 
 void AssertBufferAndView::Lock()
 {
+	//#DEBUG
+	if (locked == true)
+	{
+		int i = 0;
+		++i;
+	}
+	//END
+
 	assert(locked == false && "Trying to lock buffer and view twice");
 
 	locked = true;

@@ -100,7 +100,7 @@ private:
 	constexpr static char		 QRAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
 	constexpr static char		 QFONT_TEXTURE_NAME[] = "conchars";
 
-	constexpr static bool		 QDEBUG_LAYER_ENABLED = false;
+	constexpr static bool		 QDEBUG_LAYER_ENABLED = true;
 	constexpr static bool		 QDEBUG_MESSAGE_FILTER_ENABLED = true;
 
 public:
@@ -141,8 +141,6 @@ public:
 	/*--- API functions begin --- */
 
 	void Init(WNDPROC WindowProc, HINSTANCE hInstance);
-	void BeginFrame();
-	void EndFrame();
 	void Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data);
 	void AddDrawCall_Pic(int x, int y, const char* name);
 	void AddDrawCall_Char(int x, int y, int num);
@@ -151,7 +149,7 @@ public:
 	void BeginFrameAsync();
 	void EndFrameAsync();
 
-	void GetDrawTextureSize(int* x, int* y, const char* name) const;
+	void GetDrawTextureSize(int* x, int* y, const char* name);
 	void SetPalette(const unsigned char* palette);
 
 	Texture* RegisterDrawPic(const char* name);
@@ -248,7 +246,6 @@ private:
 	void ShutdownWin32();
 
 	/* Factory functionality */
-	void CreatePictureObject(const char* pictureName, Frame& frame);
 	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model, Frame& frame);
 	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Frame& frame);
 	void DecomposeGLModelNode(const model_t& model, const mnode_t& node, Frame& frame);
@@ -257,7 +254,6 @@ private:
 	void Draw(const StaticObject& object, Frame& frame);
 	void DrawIndiced(const StaticObject& object, Frame& frame);
 	void DrawIndiced(const DynamicObject& object, const entity_t& entity, Frame& frame);
-	void DrawStreaming(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, Frame& frame);
 	void DrawStreamingAsync_Blocking(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, GraphicsJobContext& context);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
 	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Frame& frame);
@@ -298,6 +294,7 @@ private:
 	// and then submit it. BeginFrame/EndFrame on the other hand is directly related to drawing where you
 	// ,for example, have buffer to draw to
 	void OpenFrame(Frame& frame) const;
+	void OpenFrameAsync(Frame& frame) const;
 	void CloseFrame(Frame& frame);
 	void CloseFrameAsync(Frame& frame);
 	void ReleaseFrameResources(Frame& frame);

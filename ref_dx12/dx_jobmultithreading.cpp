@@ -29,7 +29,8 @@ Job JobQueue::Dequeue()
 		conditionalVariable.wait(uniqueLock);
 	}
 
-	Job result = std::move(queue.back());
+	Job result = std::move(queue.front());
+
 	queue.pop();
 
 	return result;
@@ -73,7 +74,7 @@ JobQueue& JobSystem::GetJobQueue()
 
 GraphicsJobContext::GraphicsJobContext(Frame& frameVal, CommandList& commandListVal):
 	frame(frameVal),
-	commandList(commandList)
+	commandList(commandListVal)
 {}
 
 void GraphicsJobContext::CreateDependencyFrom(std::vector<GraphicsJobContext*> dependsFromList)
@@ -124,6 +125,8 @@ void Semaphore::Wait()
 {
 	if (counter.load() < waitValue)
 	{
-		WaitForSingleObject(winSemaphore, INFINITY);
+		auto res = WaitForSingleObject(winSemaphore, INFINITE);
+		
+		assert(res == WAIT_OBJECT_0 && "Semaphore wait ended in unexpected way.");
 	}
 }

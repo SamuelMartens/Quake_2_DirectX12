@@ -19,7 +19,6 @@ void CommandList::Init()
 		commandListAlloc.Get(),
 		nullptr,
 		IID_PPV_ARGS(commandList.GetAddressOf())));
-
 }
 
 void CommandList::Open()

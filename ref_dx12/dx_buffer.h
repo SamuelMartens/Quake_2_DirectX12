@@ -122,7 +122,7 @@ public:
 
 private:
 	//#DEBUG make use of flag allocator and remove this mutex and m_handlers
-	std::mutex mutex;
+	mutable std::mutex mutex;
 	//END
 
 	std::vector<int> m_handlers;
