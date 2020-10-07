@@ -164,6 +164,7 @@ public:
 	/* Utils (for public use) */
 	int GetMSAASampleCount() const;
 	int GetMSAAQuality() const;
+	void GetDrawAreaSize(int* Width, int* Height);
 
 	/* Initialization and creation */
 	void CreateCmdListAndCmdListAlloc(ComPtr<ID3D12GraphicsCommandList>& commandList, ComPtr<ID3D12CommandAllocator>& commandListAlloc);
@@ -195,8 +196,6 @@ private:
 	void InitMemory(GraphicsJobContext& context);
 
 	void InitScissorRect();
-
-	void InitCamera();
 
 	void InitFrames();
 
@@ -266,7 +265,6 @@ private:
 
 
 	/* Utils */
-	void GetDrawAreaSize(int* Width, int* Height);
 	void Load8To24Table();
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
@@ -288,6 +286,7 @@ private:
 	void SubmitFrame(Frame& frame);
 	void SubmitFrameAsync(Frame& frame);
 	void WaitForFrame(Frame& frame) const;
+	void WaitForPrevFrame(Frame& frame) const;
 
 	// Difference between OpenFrame/CloseFrame and BeginFrame/EndFrame is that first one is more generic,
 	// means it supposed to be used for anything where you record command list
@@ -298,6 +297,11 @@ private:
 	void CloseFrame(Frame& frame);
 	void CloseFrameAsync(Frame& frame);
 	void ReleaseFrameResources(Frame& frame);
+
+	// Frame ownership
+	void AcquireCurrentFrame();
+	void DetachCurrentFrame();
+	void ReleaseFrame(Frame& frame);
 
 	int GenerateFenceValue();
 	int GetFenceValue() const;
@@ -360,7 +364,7 @@ private:
 	// had origin in a middle of a screen, while we have it in upper left corner,
 	// so we need to center content to the screen center
 	XMFLOAT4X4 m_yInverseAndCenterMatrix;
-
+	//#DEBUG get rid of this
 	Camera m_camera;
 
 	std::vector<Material> m_materials;

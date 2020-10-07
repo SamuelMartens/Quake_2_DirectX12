@@ -11,6 +11,8 @@ extern "C"
 
 struct Camera
 {
+	void Init();
+
 	void Update(const refdef_t& updateData);
 
 	XMMATRIX GenerateViewMatrix() const;

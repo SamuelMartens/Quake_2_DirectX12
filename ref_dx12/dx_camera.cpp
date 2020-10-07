@@ -1,5 +1,11 @@
 #include "dx_camera.h"
 #include "dx_utils.h"
+#include "dx_app.h"
+
+void Camera::Init()
+{
+	Renderer::Inst().GetDrawAreaSize(&width, &height);
+}
 
 void Camera::Update(const refdef_t& updateData)
 {

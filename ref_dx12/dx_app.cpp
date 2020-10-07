@@ -341,8 +341,8 @@ void Renderer::InitDx()
 	ReleaseFrameResources(initContext.frame);
 
 	// We are done with that frame
-	initContext.frame.isInUse = false;
-	m_currentFrameIndex = Const::INVALID_INDEX;
+	ReleaseFrame(initContext.frame);
+	DetachCurrentFrame();
 }
 
 void Renderer::EnableDebugLayer()
@@ -405,8 +405,6 @@ void Renderer::InitUtils()
 
 	m_jobSystem.Init();
 
-
-	InitCamera();
 	InitScissorRect();
 }
 
@@ -427,18 +425,6 @@ void Renderer::InitScissorRect()
 	//#INFO scissor rectangle needs to be reset, every time command list is reset
 	// Set scissor
 	m_scissorRect = { 0, 0, drawAreaWidth, drawAreaHeight };
-}
-
-void Renderer::InitCamera()
-{
-	int DrawAreaWidth = 0;
-	int DrawAreaHeight = 0;
-
-	GetDrawAreaSize(&DrawAreaWidth, &DrawAreaHeight);
-	// Init viewport
-
-	m_camera.width = DrawAreaWidth;
-	m_camera.height = DrawAreaHeight;
 }
 
 void Renderer::InitFrames()
@@ -804,24 +790,7 @@ Frame& Renderer::GetCurrentFrame()
 {
 	if (m_currentFrameIndex == Const::INVALID_INDEX)
 	{
-		//#DEBUG this is bad. Acquire release frame should be explicit, if it is possible.
-		// Also, is there better way than just manipulating m_currentFrameIndex and isInUse? 
-		// Remember meaning of these things ( maybe I need at at least rename it?)
-		// m_currentFrameIndex - is basically means index of frame that is used by main thread.
-		//						 and also indicates if new frame shall be used
-		// isInUse - is in general means, if any thread is using this frame.
-		auto frameIt = std::find_if(m_frames.begin(), m_frames.end(), [](const Frame& f) 
-		{
-			return f.isInUse == false;
-		});
-
-		//#DEBUG here I should actually wait for some frame to be free.
-		// implement it as soon as I will have a chance
-		assert(frameIt != m_frames.end() && "Can't find free frame");
-
-		OpenFrameAsync(*frameIt);
-
-		m_currentFrameIndex = std::distance(m_frames.begin(), frameIt);
+		AcquireCurrentFrame();
 	}
 
 	return m_frames[m_currentFrameIndex];
@@ -876,26 +845,30 @@ void Renderer::SubmitFrameAsync(Frame& frame)
 void Renderer::OpenFrame(Frame& frame) const
 {
 	assert(false);
-	frame.isInUse = true;
+	//frame.isInUse = true;
 
-	ThrowIfFailed(frame.commandListAlloc->Reset());
-	ThrowIfFailed(frame.commandList->Reset(frame.commandListAlloc.Get(), nullptr));
+	//ThrowIfFailed(frame.commandListAlloc->Reset());
+	//ThrowIfFailed(frame.commandList->Reset(frame.commandListAlloc.Get(), nullptr));
 }
 
 void Renderer::OpenFrameAsync(Frame& frame) const
 {
 	frame.isInUse = true;
+
+	assert(frame.frameFinishedSemaphore == nullptr && "Open frame error. Frame is not cleaned up.");
+
+	frame.frameFinishedSemaphore = std::make_shared<Semaphore>(1);
 }
 
 void Renderer::CloseFrame(Frame& frame)
 {
 	assert(false);
-	SubmitFrame(frame);
-	WaitForFrame(frame);
+	//SubmitFrame(frame);
+	//WaitForFrame(frame);
 
-	frame.isInUse = false;
+	//frame.isInUse = false;
 
-	frame.ResetSyncData();
+	//frame.ResetSyncData();
 }
 
 void Renderer::CloseFrameAsync(Frame& frame)
@@ -916,7 +889,7 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	frame.acquiredCommandListsIndices.clear();
 
 	frame.colorBufferAndView = nullptr;
-	frame.frameNumber = -1;
+	frame.frameNumber = Const::INVALID_INDEX;
 
 	frame.uploadResources.obj.clear();
 
@@ -938,6 +911,82 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	frame.uiDrawCalls.clear();
 }
 
+void Renderer::AcquireCurrentFrame()
+{
+	assert(m_currentFrameIndex == Const::INVALID_INDEX && "Trying to acquire frame, while there is already frame acquired.");
+
+	//#DEBUG this is bad. Acquire release frame should be explicit, if it is possible.
+	// Also, is there better way than just manipulating m_currentFrameIndex and isInUse? 
+	// Remember meaning of these things ( maybe I need at at least rename it?)
+	// m_currentFrameIndex - is basically means index of frame that is used by main thread.
+	//						 and also indicates if new frame shall be used
+	// isInUse - is in general means, if any thread is using this frame.
+	//auto frameIt = std::find_if(m_frames.begin(), m_frames.end(), [](const Frame& f)
+	//{
+	//	return f.isInUse == false;
+	//});
+
+	////#DEBUG here I should actually wait for some frame to be free.
+	//// implement it as soon as I will have a chance
+	//assert(frameIt != m_frames.end() && "Can't find free frame");
+
+	//#DEBUG prototype
+
+	std::vector <std::shared_ptr<Semaphore>> framesFinishedSemaphores;
+
+	// Try to find free frame
+	auto frameIt = m_frames.begin();
+	for (; frameIt != m_frames.end(); ++frameIt)
+	{
+		if (frameIt->isInUse == false)
+		{
+			break;;
+		}
+		//#DEBUG possible race condition when semaphore will be deleted right between isInUse check and adding here
+		// If no free frame is found we will have a list to wait for
+		framesFinishedSemaphores.push_back(frameIt->GetFinishSemaphore());
+	}
+
+	if (framesFinishedSemaphores.empty() == false)
+	{
+		Semaphore::WaitForMultipleAny(framesFinishedSemaphores);
+	}
+
+	// Try again after wait 
+	frameIt = m_frames.begin();
+	for (; frameIt != m_frames.end(); ++frameIt)
+	{
+		if (frameIt->isInUse == false)
+		{
+			break;
+		}
+	}
+
+	assert(frameIt != m_frames.end() && "Can't find free frame");
+
+	//END
+
+	OpenFrameAsync(*frameIt);
+
+	m_currentFrameIndex = std::distance(m_frames.begin(), frameIt);
+}
+
+void Renderer::DetachCurrentFrame()
+{
+	assert(m_currentFrameIndex != Const::INVALID_INDEX && "Trying to detach frame. But there is nothing to detach.");
+
+	m_currentFrameIndex = Const::INVALID_INDEX;
+}
+
+void Renderer::ReleaseFrame(Frame& frame)
+{
+	assert(frame.isInUse == true && "Trying to release frame, that's already released.");
+
+	frame.frameFinishedSemaphore->Signal();
+	frame.frameFinishedSemaphore = nullptr;
+	frame.isInUse = false;
+}
+
 void Renderer::WaitForFrame(Frame& frame) const
 {
 	assert(frame.fenceValue != -1 && frame.syncEvenHandle != INVALID_HANDLE_VALUE &&
@@ -945,7 +994,29 @@ void Renderer::WaitForFrame(Frame& frame) const
 
 	if (m_fence->GetCompletedValue() < frame.fenceValue)
 	{
-		WaitForSingleObject(frame.syncEvenHandle, INFINITE);
+		DWORD res = WaitForSingleObject(frame.syncEvenHandle, INFINITE);
+
+		assert(res == WAIT_OBJECT_0 && "Frame wait ended in unexpected way.");
+	}
+}
+
+void Renderer::WaitForPrevFrame(Frame& frame) const
+{
+	// Find prev frame
+	const auto frameIt = std::find_if(m_frames.cbegin(), m_frames.cend(), 
+		[&frame](const Frame& f)
+	{
+		return f.isInUse == true && f.frameNumber == frame.frameNumber - 1;
+	});
+
+	if (frameIt == m_frames.cend())
+	{
+		return;
+	}
+
+	if (std::shared_ptr<Semaphore> s = frameIt->GetFinishSemaphore())
+	{
+		s->Wait();
 	}
 }
 
@@ -1539,15 +1610,17 @@ void Renderer::EndFrameJob(GraphicsJobContext& context)
 	// Make sure everything else is done
 	context.waitDependancy->Wait();
 
+	// We can't submit command lists attached to render target that is not current back buffer,
+	// so we need to wait until previous frame is done
+	WaitForPrevFrame(context.frame);
+
 	CloseFrameAsync(frame);
 
 	PresentAndSwapBuffers(frame);
 
 	ReleaseFrameResources(frame);
 
-	// We are done with that frame
-	assert(frame.isInUse == true && "Trying to release frame that wasn't acquired.");
-	frame.isInUse = false;
+	ReleaseFrame(frame);
 
 	AssertUnlocked(context.frame.streamingObjectsHandlers);
 	AssertUnlocked(context.frame.uploadResources);
@@ -2878,7 +2951,7 @@ void Renderer::EndFrameAsync()
 	Frame& frame = GetCurrentFrame();
 
 	// Proceed to next frame
-	m_currentFrameIndex = Const::INVALID_INDEX;
+	DetachCurrentFrame();
 
 	// Create contexts
 	const int beginFrameCommandListIndex = m_commandListBuffer.allocator.Allocate();

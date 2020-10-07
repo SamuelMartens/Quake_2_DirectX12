@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <atomic>
+#include <memory>
 
 #include "dx_common.h"
 #include "dx_objects.h"
@@ -11,6 +12,8 @@
 #include "dx_drawcalls.h"
 #include "dx_camera.h"
 #include "dx_threadingutils.h"
+
+class Semaphore;
 
 class Frame
 {
@@ -29,7 +32,7 @@ public:
 	void Init();
 	void ResetSyncData();
 	
-	/* DON'T FORGET TO ADD TO ASSIGN MOVE WHEN ADD NEW MEMBERS */
+	std::shared_ptr<Semaphore> GetFinishSemaphore() const;
 
 	// Rendering related
 	ComPtr<ID3D12GraphicsCommandList> commandList;
@@ -69,7 +72,12 @@ public:
 	XMFLOAT4X4 uiViewMat;
 
 	// Synchronization 
+	
+	// These two values are used in the very end when we call ExecuteCommandList
+	//#DEBUG rename this
 	int fenceValue = -1;
 	HANDLE syncEvenHandle = INVALID_HANDLE_VALUE;
+
+	std::shared_ptr<Semaphore> frameFinishedSemaphore;
 
 };

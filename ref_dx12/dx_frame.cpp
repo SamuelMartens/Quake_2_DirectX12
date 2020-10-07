@@ -2,6 +2,7 @@
 
 #include<cassert>
 
+#include "dx_jobmultithreading.h"
 #include "dx_app.h"
 
 void Frame::Init()
@@ -16,6 +17,8 @@ void Frame::Init()
 	commandList->Close();
 
 	depthBufferViewIndex = renderer.dsvHeap->Allocate(depthStencilBuffer);
+
+	camera.Init();
 }
 
 void Frame::ResetSyncData()
@@ -28,6 +31,11 @@ void Frame::ResetSyncData()
 	syncEvenHandle = INVALID_HANDLE_VALUE;
 
 	fenceValue = -1;
+}
+
+std::shared_ptr<Semaphore> Frame::GetFinishSemaphore() const
+{
+	return frameFinishedSemaphore;
 }
 
 Frame::~Frame()

@@ -123,7 +123,9 @@ public:
 	~Semaphore();
 
 	void Signal();
-	void Wait();
+	void Wait() const;
+
+	static void WaitForMultipleAny(const std::vector<std::shared_ptr<Semaphore>> waitForSemaphores);
 
 private:
 
