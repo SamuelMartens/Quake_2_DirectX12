@@ -273,6 +273,7 @@ private:
 	DynamicObjectConstBuffer& FindDynamicObjConstBuffer();
 	void EndFrameJob(GraphicsJobContext& context);
 	void BeginFrameJob(GraphicsJobContext& context);
+	void DrawUIJob(GraphicsJobContext& context);
 
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;
@@ -280,6 +281,7 @@ private:
 	void SetMaterial(const std::string& name, Frame& frame);
 	void SetMaterialAsync(const std::string& name, CommandList& commandList);
 	void ClearMaterial(Frame& frame);
+	void SetNonMaterialState(GraphicsJobContext& context) const;
 
 	/* Frames */
 	Frame& GetCurrentFrame();

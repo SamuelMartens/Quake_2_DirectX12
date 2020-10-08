@@ -786,6 +786,33 @@ void Renderer::ClearMaterial(Frame& frame)
 	frame.currentMaterial.clear();
 }
 
+void Renderer::SetNonMaterialState(GraphicsJobContext& context) const
+{
+	CommandList& commandList = context.commandList;
+	Frame& frame = context.frame;
+
+	D3D12_VIEWPORT viewport;
+	viewport.TopLeftX = 0;
+	viewport.TopLeftY = 0;
+	viewport.Width = static_cast<float>(frame.camera.width);
+	viewport.Height = static_cast<float>(frame.camera.height);
+	viewport.MinDepth = 0.0f;
+	viewport.MaxDepth = 1.0f;
+
+	commandList.commandList->RSSetViewports(1, &viewport);
+	// Resetting scissor is mandatory 
+	commandList.commandList->RSSetScissorRects(1, &frame.scissorRect);
+
+	D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = rtvHeap->GetHandleCPU(frame.colorBufferAndView->viewIndex);
+	D3D12_CPU_DESCRIPTOR_HANDLE depthTargetView = dsvHeap->GetHandleCPU(frame.depthBufferViewIndex);
+
+	// Specify buffer we are going to render to
+	commandList.commandList->OMSetRenderTargets(1, &renderTargetView, true, &depthTargetView);
+
+	ID3D12DescriptorHeap* descriptorHeaps[] = { cbvSrvHeap->GetHeapResource(), m_samplerHeap.Get() };
+	commandList.commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+}
+
 Frame& Renderer::GetCurrentFrame()
 {
 	if (m_currentFrameIndex == Const::INVALID_INDEX)
@@ -940,7 +967,7 @@ void Renderer::AcquireCurrentFrame()
 	{
 		if (frameIt->isInUse == false)
 		{
-			break;;
+			break;
 		}
 		//#DEBUG possible race condition when semaphore will be deleted right between isInUse check and adding here
 		// If no free frame is found we will have a list to wait for
@@ -1637,18 +1664,6 @@ void Renderer::BeginFrameJob(GraphicsJobContext& context)
 
 	commandList.Open();
 
-	D3D12_VIEWPORT viewport;
-	viewport.TopLeftX = 0;
-	viewport.TopLeftY = 0;
-	viewport.Width = static_cast<float>(frame.camera.width);
-	viewport.Height = static_cast<float>(frame.camera.height);
-	viewport.MinDepth = 0.0f;
-	viewport.MaxDepth = 1.0f;
-
-	commandList.commandList->RSSetViewports(1, &viewport);
-	// Resetting scissor is mandatory 
-	commandList.commandList->RSSetScissorRects(1, &frame.scissorRect);
-
 	// Indicate buffer transition to write state
 	commandList.commandList->ResourceBarrier(
 		1,
@@ -1672,13 +1687,6 @@ void Renderer::BeginFrameJob(GraphicsJobContext& context)
 		0,
 		nullptr);
 
-
-	// Specify buffer we are going to render to
-	commandList.commandList->OMSetRenderTargets(1, &renderTargetView, true, &depthTargetView);
-
-	ID3D12DescriptorHeap* descriptorHeaps[] = { cbvSrvHeap->GetHeapResource(), m_samplerHeap.Get() };
-	commandList.commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
 	// Set some matrices
 	XMMATRIX tempMat = XMMatrixIdentity();
 	XMStoreFloat4x4(&frame.uiViewMat, tempMat);
@@ -1688,6 +1696,17 @@ void Renderer::BeginFrameJob(GraphicsJobContext& context)
 
 
 	commandList.Close();
+}
+
+void Renderer::DrawUIJob(GraphicsJobContext& context)
+{
+	context.commandList.Open();
+
+	SetNonMaterialState(context);
+
+	DrawUIAsync(context);
+
+	context.commandList.Close();
 }
 
 ComPtr<ID3DBlob> Renderer::LoadCompiledShader(const std::string& filename) const
@@ -2994,11 +3013,7 @@ void Renderer::EndFrameAsync()
 	m_jobSystem.GetJobQueue().Enqueue(Job(
 		[drawUIContext, this] () mutable 
 	{
-		drawUIContext.commandList.Open();
-
-		DrawUIAsync(drawUIContext);
-
-		drawUIContext.commandList.Close();
+		DrawUIJob(drawUIContext);
 
 		drawUIContext.SignalDependecies();
 	}));
