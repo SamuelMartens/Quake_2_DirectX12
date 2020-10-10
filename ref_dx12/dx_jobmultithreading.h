@@ -7,12 +7,11 @@
 #include <mutex>
 #include <condition_variable>
 #include <vector>
-#include <atomic>
-#include <memory>
 #include <unordered_map>
 
 #include "dx_frame.h"
 #include "dx_commandlist.h"
+#include "dx_threadingutils.h"
 
 // Core job stuff
 
@@ -30,12 +29,12 @@ public:
 
 	~Job() = default;
 
-
 	void Execute();
-	//#DEBUG make private
-	std::function<void()> callback;
+
 private:
 	
+	std::function<void()> callback;
+
 };
 
 class JobQueue
@@ -109,42 +108,15 @@ private:
 	std::vector<WorkerThread> workerThreads;
 };
 
-class Semaphore
-{
-public:
-	Semaphore(int waitForValue);
 
-	Semaphore(const Semaphore&) = delete;
-	Semaphore& operator=(const Semaphore&) = delete;
-
-	Semaphore(Semaphore&& other) = delete;
-	Semaphore& operator=(Semaphore&& other) = delete;
-
-	~Semaphore();
-
-	void Signal();
-	void Wait() const;
-
-	static void WaitForMultipleAny(const std::vector<std::shared_ptr<Semaphore>> waitForSemaphores);
-
-private:
-
-	const int waitValue = 0;
-
-	std::atomic<int> counter = 0;
-	HANDLE winSemaphore = NULL;
-
-};
 
 // Utilities 
-//#DEBUG move this to utilities
 struct GraphicsJobContext
 {
 	GraphicsJobContext(Frame& frameVal, CommandList& commandListVal);
 
 	void CreateDependencyFrom(std::vector<GraphicsJobContext*> dependsFromList);
-	//#DEBUG damn. This is data structure is it ok it has methods? Probably not
-	void SignalDependecies();
+	void SignalDependencies();
 
 	// This properties represent relationship between jobs that Semaphore implements.
 	// Which is one to many, Which means one job can wait for multiple jobs to be finished,
@@ -155,3 +127,6 @@ struct GraphicsJobContext
 	Frame& frame;
 	CommandList& commandList;
 };
+
+using DependenciesRAIIGuard_t = Utils::RAIIGuard<GraphicsJobContext, 
+	nullptr, &GraphicsJobContext::SignalDependencies>;

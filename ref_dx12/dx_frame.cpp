@@ -24,13 +24,13 @@ void Frame::Init()
 void Frame::ResetSyncData()
 
 {
-	assert(fenceValue != -1 && syncEvenHandle != INVALID_HANDLE_VALUE && 
+	assert(executeCommandListFenceValue != -1 && executeCommandListEvenHandle != INVALID_HANDLE_VALUE && 
 		"Trying to reset frame's sync data. But this data is invalid");
 
-	CloseHandle(syncEvenHandle);
-	syncEvenHandle = INVALID_HANDLE_VALUE;
+	CloseHandle(executeCommandListEvenHandle);
+	executeCommandListEvenHandle = INVALID_HANDLE_VALUE;
 
-	fenceValue = -1;
+	executeCommandListFenceValue = -1;
 }
 
 std::shared_ptr<Semaphore> Frame::GetFinishSemaphore() const
@@ -45,9 +45,9 @@ Frame::~Frame()
 		Renderer::Inst().rtvHeap->Delete(depthBufferViewIndex);
 	}
 
-	if (syncEvenHandle != INVALID_HANDLE_VALUE)
+	if (executeCommandListEvenHandle != INVALID_HANDLE_VALUE)
 	{
-		CloseHandle(syncEvenHandle);
+		CloseHandle(executeCommandListEvenHandle);
 	}
 }
 

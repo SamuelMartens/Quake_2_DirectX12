@@ -48,12 +48,15 @@ WorkerThread::WorkerThread(std::function<void()> callback)
 
 void JobSystem::Init()
 {
-	//#DEBUG should acquire amount of hardware threads here
-	const int workerThreadsNum = 3;
+	// Minus one because, we also have main thread
+	const int workerThreadsNum = std::thread::hardware_concurrency() - 1;
 
 	// --- WORKER THREAD CALLBACK ---
 	std::function<void()> workerThreadCallback = [this]()
 	{
+		// Not gonna set thread affinity for now. Win API documentation recommends to
+		// leave it as it is, so without precise advice I am gonna follow that advice
+
 		while (true)
 		{
 			Job job = GetJobQueue().Dequeue();
@@ -91,66 +94,10 @@ void GraphicsJobContext::CreateDependencyFrom(std::vector<GraphicsJobContext*> d
 	
 }
 
-void GraphicsJobContext::SignalDependecies()
+void GraphicsJobContext::SignalDependencies()
 {
 	for (std::shared_ptr<Semaphore>& dep : signalDependencies)
 	{
 		dep->Signal();
 	}
-}
-
-Semaphore::Semaphore(int waitForValue):
-	waitValue(waitForValue)
-{
-	winSemaphore = CreateSemaphore(NULL, 0, 1, NULL);
-}
-
-Semaphore::~Semaphore()
-{
-	CloseHandle(winSemaphore);
-}
-
-void Semaphore::Signal()
-{
-	assert(waitValue != 0 && "Not initialized semaphore is signaled");
-
-	// Remember, fetch_add() will return old value, that's why -1 
-	if (counter.fetch_add(1) >= waitValue - 1) 
-	{
-		ReleaseSemaphore(winSemaphore, 1, NULL);
-	};
-}
-
-void Semaphore::Wait() const
-{
-	if (counter.load() < waitValue)
-	{
-		DWORD res = WaitForSingleObject(winSemaphore, INFINITE);
-		
-		assert(res == WAIT_OBJECT_0 && "Semaphore wait ended in unexpected way.");
-	}
-}
-
-void Semaphore::WaitForMultipleAny(const std::vector<std::shared_ptr<Semaphore>> waitForSemaphores)
-{
-	assert(waitForSemaphores.empty() == false && "WaitForMultipleAny received empty semaphore list.");
-
-	std::vector<HANDLE> winSemaphores;
-	winSemaphores.reserve(waitForSemaphores.size());
-
-	for (const std::shared_ptr<Semaphore>& s : waitForSemaphores)
-	{
-		assert(s != nullptr && "WaitForMultipleAny received empty pointer");
-
-		// If any of semaphores is ready, we are done
-		if (s->counter.load() >= s->waitValue)
-		{
-			return;
-		}
-
-		winSemaphores.push_back(s->winSemaphore);
-	}
-
-	DWORD res = WaitForMultipleObjects(winSemaphores.size(), winSemaphores.data(), FALSE, INFINITE);
-	assert(res != WAIT_TIMEOUT && res != WAIT_FAILED && "WaitForMultipleAny ended in unexpected way.");
 }

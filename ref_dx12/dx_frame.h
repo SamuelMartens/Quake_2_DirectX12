@@ -74,9 +74,8 @@ public:
 	// Synchronization 
 	
 	// These two values are used in the very end when we call ExecuteCommandList
-	//#DEBUG rename this
-	int fenceValue = -1;
-	HANDLE syncEvenHandle = INVALID_HANDLE_VALUE;
+	int executeCommandListFenceValue = -1;
+	HANDLE executeCommandListEvenHandle = INVALID_HANDLE_VALUE;
 
 	std::shared_ptr<Semaphore> frameFinishedSemaphore;
 

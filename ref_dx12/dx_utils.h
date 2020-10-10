@@ -7,6 +7,7 @@
 #include <comdef.h>
 #include <cstddef>
 #include <vector>
+#include <functional>
 #include <DirectXMath.h>
 
 #include "dx_shaderdefinitions.h"
@@ -73,6 +74,44 @@ namespace Utils
 		int lineNumber;
 	};
 
+	template<typename T>
+	using RAIIGuardFunc_t = void(T::*)();
+
+	template<typename T, RAIIGuardFunc_t<T> onCreate, RAIIGuardFunc_t<T> onDestroy>
+	class RAIIGuard
+	{
+	public:
+
+		explicit RAIIGuard(T& obj) :
+			objRef(obj)
+		{
+			static_assert(onCreate != nullptr || onDestroy != nullptr,
+				"RAIIGuard should have at least one callback");
+
+			if constexpr (onCreate != nullptr)
+			{
+				std::invoke(onCreate, objRef);
+			}
+		};
+
+		RAIIGuard(const RAIIGuard&) = delete;
+		RAIIGuard& operator=(const RAIIGuard&) = delete;
+
+		RAIIGuard(RAIIGuard&&) = delete;
+		RAIIGuard& operator=(RAIIGuard&&) = delete;
+
+		~RAIIGuard()
+		{
+			if constexpr (onDestroy != nullptr)
+			{
+				std::invoke(onDestroy, objRef);
+			}
+		}
+
+	private:
+
+		T& objRef;
+	};
 
 	/* FUNCTIONS */
 

@@ -23,6 +23,12 @@
 #undef max
 #endif
 
+// Order is extremely important. Consider construction/destruction order
+// when adding something
+#define JOB_GUARD( context ) \
+	DependenciesRAIIGuard_t dependenciesGuard(context); \
+	CommandListRAIIGuard_t commandListGuard(context.commandList)
+
 namespace
 {
 	inline void PushBackUvInd(const float* uvInd, std::vector<int>& indices, std::vector<XMFLOAT2>& texCoords)
@@ -321,10 +327,7 @@ void Renderer::InitDx()
 
 	// ------- Open init command list -----
 
-	const int initCommandListIndex = m_commandListBuffer.allocator.Allocate();
-	GraphicsJobContext initContext(GetCurrentFrame(), m_commandListBuffer.commandLists[initCommandListIndex]);
-	//#DEBUG shall I make this automatic in context construction? I can forget to do that
-	initContext.frame.acquiredCommandListsIndices.push_back(initCommandListIndex);
+	GraphicsJobContext initContext = CreateGraphicsJobContext(GetCurrentFrame());
 
 	initContext.commandList.Open();
 
@@ -859,14 +862,14 @@ void Renderer::SubmitFrameAsync(Frame& frame)
 
 	m_commandQueue->ExecuteCommandLists(commandLists.size(), commandLists.data());
 
-	assert(frame.fenceValue == -1 && frame.syncEvenHandle == INVALID_HANDLE_VALUE &&
+	assert(frame.executeCommandListFenceValue == -1 && frame.executeCommandListEvenHandle == INVALID_HANDLE_VALUE &&
 		"Trying to set up sync primitives for frame that already has it");
 
-	frame.fenceValue = GenerateFenceValue();
-	frame.syncEvenHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+	frame.executeCommandListFenceValue = GenerateFenceValue();
+	frame.executeCommandListEvenHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
 
-	m_commandQueue->Signal(m_fence.Get(), frame.fenceValue);
-	ThrowIfFailed(m_fence->SetEventOnCompletion(frame.fenceValue, frame.syncEvenHandle));
+	m_commandQueue->Signal(m_fence.Get(), frame.executeCommandListFenceValue);
+	ThrowIfFailed(m_fence->SetEventOnCompletion(frame.executeCommandListFenceValue, frame.executeCommandListEvenHandle));
 }
 
 void Renderer::OpenFrame(Frame& frame) const
@@ -948,16 +951,6 @@ void Renderer::AcquireCurrentFrame()
 	// m_currentFrameIndex - is basically means index of frame that is used by main thread.
 	//						 and also indicates if new frame shall be used
 	// isInUse - is in general means, if any thread is using this frame.
-	//auto frameIt = std::find_if(m_frames.begin(), m_frames.end(), [](const Frame& f)
-	//{
-	//	return f.isInUse == false;
-	//});
-
-	////#DEBUG here I should actually wait for some frame to be free.
-	//// implement it as soon as I will have a chance
-	//assert(frameIt != m_frames.end() && "Can't find free frame");
-
-	//#DEBUG prototype
 
 	std::vector <std::shared_ptr<Semaphore>> framesFinishedSemaphores;
 
@@ -965,13 +958,16 @@ void Renderer::AcquireCurrentFrame()
 	auto frameIt = m_frames.begin();
 	for (; frameIt != m_frames.end(); ++frameIt)
 	{
+		// It is important to grab that before isInUse check, so we never end up in the situation where semaphore
+		// was deleted right after check, but before we manage to pull it from frameIt
+		std::shared_ptr<Semaphore> frameFinishedSemaphore = frameIt->GetFinishSemaphore();
+
 		if (frameIt->isInUse == false)
 		{
 			break;
 		}
-		//#DEBUG possible race condition when semaphore will be deleted right between isInUse check and adding here
-		// If no free frame is found we will have a list to wait for
-		framesFinishedSemaphores.push_back(frameIt->GetFinishSemaphore());
+		
+		framesFinishedSemaphores.push_back(std::move(frameFinishedSemaphore));
 	}
 
 	if (framesFinishedSemaphores.empty() == false)
@@ -990,8 +986,6 @@ void Renderer::AcquireCurrentFrame()
 	}
 
 	assert(frameIt != m_frames.end() && "Can't find free frame");
-
-	//END
 
 	OpenFrameAsync(*frameIt);
 
@@ -1016,12 +1010,12 @@ void Renderer::ReleaseFrame(Frame& frame)
 
 void Renderer::WaitForFrame(Frame& frame) const
 {
-	assert(frame.fenceValue != -1 && frame.syncEvenHandle != INVALID_HANDLE_VALUE &&
+	assert(frame.executeCommandListFenceValue != -1 && frame.executeCommandListEvenHandle != INVALID_HANDLE_VALUE &&
 		"Trying to wait for frame that has invalid sync primitives.");
 
-	if (m_fence->GetCompletedValue() < frame.fenceValue)
+	if (m_fence->GetCompletedValue() < frame.executeCommandListFenceValue)
 	{
-		DWORD res = WaitForSingleObject(frame.syncEvenHandle, INFINITE);
+		DWORD res = WaitForSingleObject(frame.executeCommandListEvenHandle, INFINITE);
 
 		assert(res == WAIT_OBJECT_0 && "Frame wait ended in unexpected way.");
 	}
@@ -1652,17 +1646,16 @@ void Renderer::EndFrameJob(GraphicsJobContext& context)
 	AssertUnlocked(context.frame.streamingObjectsHandlers);
 	AssertUnlocked(context.frame.uploadResources);
 	
-	//#DEBUG figure that out. Maybe delete after certain threshold?
 	// Delete shared resources marked for deletion
-	//m_resourcesToDelete.clear();
+	DeleteRequestedResources_Blocking();
 }
 
 void Renderer::BeginFrameJob(GraphicsJobContext& context)
 {
+	JOB_GUARD(context);
+
 	CommandList& commandList = context.commandList;
 	Frame& frame = context.frame;
-
-	commandList.Open();
 
 	// Indicate buffer transition to write state
 	commandList.commandList->ResourceBarrier(
@@ -1693,20 +1686,15 @@ void Renderer::BeginFrameJob(GraphicsJobContext& context)
 
 	tempMat = XMMatrixOrthographicRH(frame.camera.width, frame.camera.height, 0.0f, 1.0f);
 	XMStoreFloat4x4(&frame.uiProjectionMat, tempMat);
-
-
-	commandList.Close();
 }
 
 void Renderer::DrawUIJob(GraphicsJobContext& context)
 {
-	context.commandList.Open();
+	JOB_GUARD(context);
 
 	SetNonMaterialState(context);
 
 	DrawUIAsync(context);
-
-	context.commandList.Close();
 }
 
 ComPtr<ID3DBlob> Renderer::LoadCompiledShader(const std::string& filename) const
@@ -1950,6 +1938,14 @@ void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, F
 
 		CreateGraphicalObjectFromGLSurface(*surf, frame);
 	}
+}
+
+GraphicsJobContext Renderer::CreateGraphicsJobContext(Frame& frame)
+{
+	const int commandListIndex = m_commandListBuffer.allocator.Allocate();
+	frame.acquiredCommandListsIndices.push_back(commandListIndex);
+
+	return GraphicsJobContext(frame, m_commandListBuffer.commandLists[commandListIndex]);
 }
 
 void Renderer::Draw(const StaticObject& object, Frame& frame)
@@ -2425,9 +2421,18 @@ bool Renderer::IsVisible(const entity_t& entity) const
 	return lenVector.x < visibilityDist;
 }
 
-void Renderer::DeleteResources(ComPtr<ID3D12Resource> resourceToDelete)
+void Renderer::RequestResourceDeletion_Blocking(ComPtr<ID3D12Resource> resourceToDelete)
 {
-	m_resourcesToDelete.push_back(resourceToDelete);
+	std::scoped_lock<std::mutex> lock(m_resourcesToDelete.mutex);
+
+	m_resourcesToDelete.obj.push_back(resourceToDelete);
+}
+
+void Renderer::DeleteRequestedResources_Blocking()
+{
+	std::scoped_lock<std::mutex> lock(m_resourcesToDelete.mutex);
+
+	m_resourcesToDelete.obj.clear();
 }
 
 void Renderer::DeleteDefaultMemoryBuffer(BufferHandler handler)
@@ -2973,20 +2978,11 @@ void Renderer::EndFrameAsync()
 	DetachCurrentFrame();
 
 	// Create contexts
-	const int beginFrameCommandListIndex = m_commandListBuffer.allocator.Allocate();
-	GraphicsJobContext beginFrameContext(frame, m_commandListBuffer.commandLists[beginFrameCommandListIndex]);
+	GraphicsJobContext beginFrameContext = CreateGraphicsJobContext(frame);
 	
-	frame.acquiredCommandListsIndices.push_back(beginFrameCommandListIndex);
-
-	const int drawUICommandListIndex = m_commandListBuffer.allocator.Allocate();
-	GraphicsJobContext drawUIContext(frame, m_commandListBuffer.commandLists[drawUICommandListIndex]);
+	GraphicsJobContext drawUIContext = CreateGraphicsJobContext(frame);
 	
-	frame.acquiredCommandListsIndices.push_back(drawUICommandListIndex);
-
-	const int endFrameCommandListIndex = m_commandListBuffer.allocator.Allocate();
-	GraphicsJobContext endFrameContext(frame, m_commandListBuffer.commandLists[endFrameCommandListIndex]);
-	
-	frame.acquiredCommandListsIndices.push_back(endFrameCommandListIndex);
+	GraphicsJobContext endFrameContext = CreateGraphicsJobContext(frame);
 
 
 	// Set up dependencies
@@ -2997,15 +2993,12 @@ void Renderer::EndFrameAsync()
 		});
 
 
-
 	// --- Begin frame job ---
 
 	m_jobSystem.GetJobQueue().Enqueue(Job(
 		[beginFrameContext, this] () mutable
 	{
 		BeginFrameJob(beginFrameContext);
-		//#DEBUG shall it be automatic?
-		beginFrameContext.SignalDependecies();
 	}));
 
 	// --- Draw UI job ---
@@ -3014,8 +3007,6 @@ void Renderer::EndFrameAsync()
 		[drawUIContext, this] () mutable 
 	{
 		DrawUIJob(drawUIContext);
-
-		drawUIContext.SignalDependecies();
 	}));
 
 

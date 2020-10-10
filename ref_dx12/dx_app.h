@@ -123,8 +123,9 @@ public:
 	const refimport_t& GetRefImport() const { return m_refImport; };
 	void SetRefImport(refimport_t RefImport) { m_refImport = RefImport; };
 
-	// Buffers management
-	void DeleteResources(ComPtr<ID3D12Resource> resourceToDelete);
+	/*--- Buffers management --- */
+	void RequestResourceDeletion_Blocking(ComPtr<ID3D12Resource> resourceToDelete);
+	void DeleteRequestedResources_Blocking();
 	void DeleteDefaultMemoryBuffer(BufferHandler handler);
 	void DeleteUploadMemoryBuffer(BufferHandler handler);
 	
@@ -248,6 +249,7 @@ private:
 	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model, Frame& frame);
 	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Frame& frame);
 	void DecomposeGLModelNode(const model_t& model, const mnode_t& node, Frame& frame);
+	GraphicsJobContext CreateGraphicsJobContext(Frame& frame);
 
 	/* Rendering */
 	void Draw(const StaticObject& object, Frame& frame);
@@ -271,6 +273,8 @@ private:
 	bool IsVisible(const StaticObject& obj) const;
 	bool IsVisible(const entity_t& entity) const;
 	DynamicObjectConstBuffer& FindDynamicObjConstBuffer();
+
+	/* Job  */
 	void EndFrameJob(GraphicsJobContext& context);
 	void BeginFrameJob(GraphicsJobContext& context);
 	void DrawUIJob(GraphicsJobContext& context);
@@ -348,7 +352,7 @@ private:
 	LockUnorderedMap_t<std::string, Texture> m_textures;
 	// If we want to delete resource we can't do this right away cause there is a high chance that this 
 	// resource will still be in use, so we just put it here and delete it later 
-	std::vector<ComPtr<ID3D12Resource>> m_resourcesToDelete;
+	LockVector_t<ComPtr<ID3D12Resource>> m_resourcesToDelete;
 
 	std::array<unsigned int, 256> m_8To24Table;
 	std::array<unsigned int, 256> m_rawPalette;
@@ -358,7 +362,7 @@ private:
 	std::unordered_map<model_t*, DynamicObjectModel> m_dynamicObjectsModels;
 	// Expected to set a size for it during initialization. Don't change size afterward
 	std::vector<DynamicObjectConstBuffer> m_dynamicObjectsConstBuffersPool;
-	//#DEBUG make sure this one is not used in async methods
+	//#DEBUG delete when not needed those matrices
 	XMFLOAT4X4 m_uiProjectionMat;
 	XMFLOAT4X4 m_uiViewMat;
 	// DirectX and OpenGL have different directions for Y axis,
@@ -366,7 +370,7 @@ private:
 	// had origin in a middle of a screen, while we have it in upper left corner,
 	// so we need to center content to the screen center
 	XMFLOAT4X4 m_yInverseAndCenterMatrix;
-	//#DEBUG get rid of this
+	//#DEBUG delete when not needed
 	Camera m_camera;
 
 	std::vector<Material> m_materials;

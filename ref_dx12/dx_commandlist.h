@@ -5,7 +5,7 @@
 
 #include "dx_common.h"
 #include "dx_allocators.h"
-
+#include "dx_utils.h"
 
 class CommandList
 {
@@ -47,3 +47,5 @@ struct CommandListBuffer
 	std::array<CommandList, SIZE> commandLists;
 	FlagAllocator allocator;
 };
+
+using CommandListRAIIGuard_t = Utils::RAIIGuard<CommandList, &CommandList::Open, &CommandList::Close>;
