@@ -1194,6 +1194,13 @@ Texture* Renderer::CreateTextureFromFile(const char* name, Frame& frame)
 	return createdTex;
 }
 
+Texture* Renderer::CreateTextureFromFileAsync_Blocking(const char* name, GraphicsJobContext& context)
+{
+	std::scoped_lock<std::mutex> lock(m_textures.mutex);
+
+	return _CreateTextureFromFileAsync(name, context);
+}
+
 Texture* Renderer::_CreateTextureFromFileAsync(const char* name, GraphicsJobContext& context)
 {
 	if (name == nullptr)
@@ -1701,7 +1708,33 @@ void Renderer::DrawUIJob(GraphicsJobContext& context)
 
 	SetNonMaterialState(context);
 
-	DrawUIAsync(context);
+	SetMaterialAsync(MaterialSource::STATIC_MATERIAL_NAME, context.commandList);
+
+	for (const DrawCall_UI_t& dc : context.frame.uiDrawCalls)
+	{
+		std::visit([&context, this](auto&& drawCall)
+		{
+			using T = std::decay_t<decltype(drawCall)>;
+
+			if constexpr (std::is_same_v<T, DrawCall_Char>)
+			{
+				Draw_CharAsync(drawCall.x, drawCall.y, drawCall.num, context);
+			}
+			else if constexpr (std::is_same_v<T, DrawCall_Pic>)
+			{
+				Draw_PicAsync(drawCall.x, drawCall.y, drawCall.name.c_str(), context);
+			}
+			else if constexpr (std::is_same_v<T, DrawCall_StretchRaw>)
+			{
+				Draw_RawPicAsync(drawCall, context);
+			}
+			else
+			{
+				static_assert(false, "Invalid class in draw UI");
+			}
+		}
+		, dc);
+	}
 }
 
 ComPtr<ID3DBlob> Renderer::LoadCompiledShader(const std::string& filename) const
@@ -2261,38 +2294,6 @@ void Renderer::DrawUI(Frame& frame)
 	//	}
 	//	, dc);
 	//}
-}
-
-void Renderer::DrawUIAsync(GraphicsJobContext& context)
-{
-	SetMaterialAsync(MaterialSource::STATIC_MATERIAL_NAME, context.commandList);
-
-	for (const DrawCall_UI_t& dc : context.frame.uiDrawCalls)
-	{
-		std::visit([&context, this](auto&& drawCall)
-		{
-			using T = std::decay_t<decltype(drawCall)>;
-
-			if constexpr (std::is_same_v<T, DrawCall_Char>)
-			{
-				//#DEBUG implement
-				//Draw_Char(drawCall.x, drawCall.y, drawCall.num, frame);
-			}
-			else if constexpr (std::is_same_v<T, DrawCall_Pic>)
-			{
-				Draw_PicAsync(drawCall.x, drawCall.y, drawCall.name.c_str(), context);
-			}
-			else if constexpr (std::is_same_v<T, DrawCall_StretchRaw>)
-			{
-				Draw_RawPicAsync(drawCall, context);
-			}
-			else
-			{
-				static_assert(false, "Invalid class in draw UI");
-			}
-		}
-		, dc);
-	}
 }
 
 void Renderer::GetDrawAreaSize(int* Width, int* Height)
@@ -2872,18 +2873,20 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 
 void Renderer::Draw_Pic(int x, int y, const char* name, Frame& frame)
 {
-	std::array<char, MAX_QPATH> texFullName;
-	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
+	//#DEBUG delete when not needed
 
-	const Texture& texture = *FindOrCreateTexture(texFullName.data(), frame);
+	//std::array<char, MAX_QPATH> texFullName;
+	//GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
 
-	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
-	Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
-		XMFLOAT2(texture.width, texture.height),
-		XMFLOAT2(0.0f, 0.0f),
-		XMFLOAT2(1.0f, 1.0f),
-		vertices.data());
-	//#DEBUG adopt async
+	//const Texture& texture = *FindOrCreateTexture(texFullName.data(), frame);
+
+	//std::array<ShDef::Vert::PosTexCoord, 6> vertices;
+	//Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
+	//	XMFLOAT2(texture.width, texture.height),
+	//	XMFLOAT2(0.0f, 0.0f),
+	//	XMFLOAT2(1.0f, 1.0f),
+	//	vertices.data());
+	//
 	//DrawStreaming(reinterpret_cast<std::byte*>(vertices.data()),
 	//	vertices.size() * sizeof(ShDef::Vert::PosTexCoord),
 	//	sizeof(ShDef::Vert::PosTexCoord),
@@ -2955,6 +2958,50 @@ void Renderer::Draw_Char(int x, int y, int num, Frame& frame)
 	//	vertexStride,
 	//	texFullName.data(),
 	//	XMFLOAT4(x, y, 0.0f, 1.0f), frame);
+}
+
+void Renderer::Draw_CharAsync(int x, int y, int num, GraphicsJobContext& context)
+{
+	num &= 0xFF;
+
+	constexpr int charSize = 8;
+
+	if ((num & 127) == 32)
+		return;		// space
+
+	if (y <= -charSize)
+		return;		// totally off screen
+
+	constexpr float texCoordScale = 0.0625f;
+
+	const float uCoord = (num & 15) * texCoordScale;
+	const float vCoord = (num >> 4) * texCoordScale;
+	const float texSize = texCoordScale;
+
+	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
+	Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
+		XMFLOAT2(charSize, charSize),
+		XMFLOAT2(uCoord, vCoord),
+		XMFLOAT2(uCoord + texSize, vCoord + texSize),
+		vertices.data());
+
+	const int vertexStride = sizeof(ShDef::Vert::PosTexCoord);
+
+	std::array<char, MAX_QPATH> texFullName;
+	GetDrawTextureFullname(QFONT_TEXTURE_NAME, texFullName.data(), texFullName.size());
+
+	// Proper place for this is in Init(), but file loading system is not ready, when
+	// init is called for renderer
+	 if(FindTexture_Blocking(texFullName.data()) == nullptr)
+	 {
+		 CreateTextureFromFileAsync_Blocking(texFullName.data(), context);
+	 }
+
+	DrawStreamingAsync_Blocking(reinterpret_cast<std::byte*>(vertices.data()),
+		vertices.size() * vertexStride,
+		vertexStride,
+		texFullName.data(),
+		XMFLOAT4(x, y, 0.0f, 1.0f), context);
 }
 
 void Renderer::Draw_RawPicAsync(const DrawCall_StretchRaw& drawCall, GraphicsJobContext& context)

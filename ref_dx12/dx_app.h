@@ -227,6 +227,7 @@ private:
 
 	/* Texture */
 	Texture* CreateTextureFromFile(const char* name, Frame& frame);
+	Texture* CreateTextureFromFileAsync_Blocking(const char* name, GraphicsJobContext& context);
 	Texture* _CreateTextureFromFileAsync(const char* name, GraphicsJobContext& context);
 	void CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Frame& frame, Texture& outTex);
 	void _CreateGpuTextureAsync(const unsigned int* raw, int width, int height, int bpp, GraphicsJobContext& context, Texture& outTex);
@@ -263,11 +264,10 @@ private:
 	void Draw_Pic(int x, int y, const char* name, Frame& frame);
 	void Draw_PicAsync(int x, int y, const char* name, GraphicsJobContext& context);
 	void Draw_Char(int x, int y, int num, Frame& frame);
+	void Draw_CharAsync(int x, int y, int num, GraphicsJobContext& context);
 	void Draw_RawPicAsync(const DrawCall_StretchRaw& drawCall, GraphicsJobContext& context);
 	// More high level functions
 	void DrawUI(Frame& frame);
-	void DrawUIAsync(GraphicsJobContext& context);
-
 
 	/* Utils */
 	void Load8To24Table();
