@@ -121,12 +121,9 @@ public:
 	AllocBuffer<BUFFER_SIZE> allocBuffer;
 
 private:
-	//#DEBUG make use of flag allocator and remove this mutex and m_handlers
+
 	mutable std::mutex mutex;
-	//END
-
 	std::vector<int> m_handlers;
-
 };
 
 

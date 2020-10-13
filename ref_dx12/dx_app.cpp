@@ -341,7 +341,7 @@ void Renderer::InitDx()
 
 	CloseFrameAsync(initContext.frame);
 
-	ReleaseFrameResources(initContext.frame);
+	ReleaseFrameResources_Blocking(initContext.frame);
 
 	// We are done with that frame
 	ReleaseFrame(initContext.frame);
@@ -909,7 +909,7 @@ void Renderer::CloseFrameAsync(Frame& frame)
 	frame.ResetSyncData();
 }
 
-void Renderer::ReleaseFrameResources(Frame& frame)
+void Renderer::ReleaseFrameResources_Blocking(Frame& frame)
 {
 	for (int acquiredCommandListIndex : frame.acquiredCommandListsIndices)
 	{
@@ -921,7 +921,7 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	frame.colorBufferAndView = nullptr;
 	frame.frameNumber = Const::INVALID_INDEX;
 
-	frame.uploadResources.obj.clear();
+	DO_IN_LOCK(frame.uploadResources, clear());
 
 	// Streaming drawing stuff
 	frame.streamingObjectsHandlers.mutex.lock();
@@ -1437,6 +1437,13 @@ Texture* Renderer::_CreateTextureFromDataAsync(const std::byte* data, int width,
 	return &m_textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
 }
 
+Texture* Renderer::CreateTextureFromDataAsync_Blocking(const std::byte* data, int width, int height, int bpp, const char* name, GraphicsJobContext& context)
+{
+	std::scoped_lock<std::mutex> lock(m_textures.mutex);
+
+	return _CreateTextureFromDataAsync(data, width, height, bpp, name, context);
+}
+
 ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, GraphicsJobContext& context)
 {
 	//#DEBUG delete when not needed
@@ -1639,7 +1646,7 @@ void Renderer::EndFrameJob(GraphicsJobContext& context)
 
 	PresentAndSwapBuffers(frame);
 
-	ReleaseFrameResources(frame);
+	ReleaseFrameResources_Blocking(frame);
 
 	ReleaseFrame(frame);
 
@@ -2229,30 +2236,31 @@ void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int verte
 
 void Renderer::DrawUI(Frame& frame)
 {
-	SetMaterial(MaterialSource::STATIC_MATERIAL_NAME, frame);
+	//#DEBUG delete when not needed
+	//SetMaterial(MaterialSource::STATIC_MATERIAL_NAME, frame);
 
 
-	for (const DrawCall_UI_t& dc : frame.uiDrawCalls)
-	{
-		std::visit([&frame, this](auto&& drawCall) 
-		{
-			using T = std::decay_t<decltype(drawCall)>;
+	//for (const DrawCall_UI_t& dc : frame.uiDrawCalls)
+	//{
+	//	std::visit([&frame, this](auto&& drawCall) 
+	//	{
+	//		using T = std::decay_t<decltype(drawCall)>;
 
-			if constexpr (std::is_same_v<T, DrawCall_Char>)
-			{
-				Draw_Char(drawCall.x, drawCall.y, drawCall.num, frame);
-			}
-			else if constexpr (std::is_same_v<T, DrawCall_Pic>)
-			{
-				Draw_Pic(drawCall.x, drawCall.y, drawCall.name.c_str(), frame);
-			}
-			else
-			{
-				static_assert(false && "Invalid class in draw UI");
-			}
-		}
-		, dc);
-	}
+	//		if constexpr (std::is_same_v<T, DrawCall_Char>)
+	//		{
+	//			Draw_Char(drawCall.x, drawCall.y, drawCall.num, frame);
+	//		}
+	//		else if constexpr (std::is_same_v<T, DrawCall_Pic>)
+	//		{
+	//			Draw_Pic(drawCall.x, drawCall.y, drawCall.name.c_str(), frame);
+	//		}
+	//		else
+	//		{
+	//			static_assert(false && "Invalid class in draw UI");
+	//		}
+	//	}
+	//	, dc);
+	//}
 }
 
 void Renderer::DrawUIAsync(GraphicsJobContext& context)
@@ -2274,9 +2282,13 @@ void Renderer::DrawUIAsync(GraphicsJobContext& context)
 			{
 				Draw_PicAsync(drawCall.x, drawCall.y, drawCall.name.c_str(), context);
 			}
+			else if constexpr (std::is_same_v<T, DrawCall_StretchRaw>)
+			{
+				Draw_RawPicAsync(drawCall, context);
+			}
 			else
 			{
-				static_assert(false && "Invalid class in draw UI");
+				static_assert(false, "Invalid class in draw UI");
 			}
 		}
 		, dc);
@@ -2758,6 +2770,37 @@ void Renderer::UpdateTexture(Texture& tex, const std::byte* data, Frame& frame)
 	//	D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 }
 
+void Renderer::UpdateTextureAsync_Blocking(Texture& tex, const std::byte* data, GraphicsJobContext& context)
+{
+	CommandList& commandList = context.commandList;
+
+	// Count alignment and go for what we need
+	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(tex.buffer.Get(), 0, 1);
+
+	ComPtr<ID3D12Resource> textureUploadBuffer = CreateUploadHeapBuffer(uploadBufferSize);
+
+	DO_IN_LOCK(context.frame.uploadResources, push_back(textureUploadBuffer));
+
+	D3D12_SUBRESOURCE_DATA textureData = {};
+	textureData.pData = data;
+	// Divide by 8 cause bpp is bits per pixel, not bytes
+	textureData.RowPitch = tex.width * tex.bpp / 8;
+	// Not SlicePitch but texture size in our case
+	textureData.SlicePitch = textureData.RowPitch * tex.height;
+
+	commandList.commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		tex.buffer.Get(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_COPY_DEST
+	));
+
+	UpdateSubresources(commandList.commandList.Get(), tex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
+	commandList.commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		tex.buffer.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+}
+
 void Renderer::GetDrawTextureSize(int* x, int* y, const char* name)
 {
 	std::array<char, MAX_QPATH> texFullName;
@@ -2808,53 +2851,23 @@ void Renderer::EndLevelLoading()
 	Mod_FreeAll();
 }
 
-void Renderer::Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data)
+void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data)
 {
-	//#DEBUG delete when not needed
-	//Frame& frame = GetCurrentFrame();
+	DrawCall_StretchRaw drawCall;
+	drawCall.x = x;
+	drawCall.y = y;
+	drawCall.quadWidth = quadWidth;
+	drawCall.quadHeight = quadHeight;
+	drawCall.textureWidth = textureWidth;
+	drawCall.textureHeight = textureHeight;
 
-	//const int texSize = textureWidth * textureHeight;
+	const int textureSize = textureWidth * textureHeight;
 
-	//SetMaterial(MaterialSource::STATIC_MATERIAL_NAME, frame);
+	drawCall.data.resize(textureSize);
 
-	//std::vector<unsigned int> texture(texSize, 0);
+	memcpy(drawCall.data.data(), data, textureSize);
 
-	//for (int i = 0; i < texSize; ++i)
-	//{
-	//	texture[i] = m_rawPalette[std::to_integer<int>(data[i])];
-	//}
-
-	//auto rawTexIt = m_textures.find(QRAW_TEXTURE_NAME);
-	//if (rawTexIt == m_textures.end()
-	//	|| rawTexIt->second.width != textureWidth
-	//	|| rawTexIt->second.height != textureHeight)
-	//{
-	//	constexpr int textureBitsPerPixel = 32;
-	//	CreateTextureFromData(reinterpret_cast<std::byte*>(texture.data()), textureWidth, textureHeight, 
-	//		textureBitsPerPixel, QRAW_TEXTURE_NAME, frame);
-
-	//	rawTexIt = m_textures.find(QRAW_TEXTURE_NAME);
-	//}
-	//else
-	//{
-	//	UpdateTexture(rawTexIt->second, reinterpret_cast<std::byte*>(texture.data()), frame);
-	//}
-
-
-	//std::array<ShDef::Vert::PosTexCoord, 6> vertices;
-	//Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
-	//	XMFLOAT2(quadWidth, quadHeight),
-	//	XMFLOAT2(0.0f, 0.0f),
-	//	XMFLOAT2(1.0f, 1.0f),
-	//	vertices.data());
-
-	//const int vertexStride = sizeof(ShDef::Vert::PosTexCoord);
-
-	//DrawStreaming(reinterpret_cast<std::byte*>(vertices.data()),
-	//	vertices.size()* vertexStride,
-	//	vertexStride,
-	//	QRAW_TEXTURE_NAME,
-	//	XMFLOAT4(x, y, 0.0f, 1.0f), frame);
+	GetCurrentFrame().uiDrawCalls.push_back(std::move(drawCall));
 }
 
 void Renderer::Draw_Pic(int x, int y, const char* name, Frame& frame)
@@ -2942,6 +2955,56 @@ void Renderer::Draw_Char(int x, int y, int num, Frame& frame)
 	//	vertexStride,
 	//	texFullName.data(),
 	//	XMFLOAT4(x, y, 0.0f, 1.0f), frame);
+}
+
+void Renderer::Draw_RawPicAsync(const DrawCall_StretchRaw& drawCall, GraphicsJobContext& context)
+{
+	const int textureWidth = drawCall.textureWidth;
+	const int textureHeight = drawCall.textureHeight;
+	const int textureSize = textureWidth * textureHeight;
+
+	CommandList& commandList = context.commandList;
+
+	SetMaterialAsync(MaterialSource::STATIC_MATERIAL_NAME, commandList);
+
+	std::vector<unsigned int> texture(textureSize, 0);
+
+	for (int i = 0; i < textureSize; ++i)
+	{
+		texture[i] = m_rawPalette[std::to_integer<int>(drawCall.data[i])];
+	}
+
+	Texture* rawTex = FindTexture_Blocking(QRAW_TEXTURE_NAME);
+
+	if (rawTex == nullptr 
+		|| rawTex->width != textureWidth
+		|| rawTex->height != textureHeight)
+	{
+		constexpr int textureBitsPerPixel = 32;
+
+		rawTex = CreateTextureFromDataAsync_Blocking(reinterpret_cast<std::byte*>(texture.data()),
+			textureWidth, textureHeight, textureBitsPerPixel, QRAW_TEXTURE_NAME, context);
+	}
+	else
+	{
+		UpdateTextureAsync_Blocking(*rawTex, reinterpret_cast<std::byte*>(texture.data()), context);
+	}
+
+	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
+	Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
+		XMFLOAT2(drawCall.quadWidth, drawCall.quadHeight),
+		XMFLOAT2(0.0f, 0.0f),
+		XMFLOAT2(1.0f, 1.0f),
+		vertices.data());
+
+	const int vertexStride = sizeof(ShDef::Vert::PosTexCoord);
+
+	DrawStreamingAsync_Blocking(reinterpret_cast<std::byte*>(vertices.data()),
+		vertices.size()* vertexStride,
+		vertexStride,
+		QRAW_TEXTURE_NAME,
+		XMFLOAT4(drawCall.x, drawCall.y, 0.0f, 1.0f),
+		context);
 }
 
 void Renderer::AddDrawCall_Pic(int x, int y, const char* name)

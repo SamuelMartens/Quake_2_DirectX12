@@ -2,6 +2,8 @@
 
 #include <string>
 #include <variant>
+#include <cstddef>
+#include <vector>
 
 struct DrawCall_Pic
 {
@@ -21,4 +23,18 @@ struct DrawCall_Char
 };
 
 
-using DrawCall_UI_t = std::variant<DrawCall_Pic, DrawCall_Char>;
+struct DrawCall_StretchRaw
+{
+	int x = 0;
+	int y = 0;
+
+	int quadWidth = 0;
+	int quadHeight = 0;
+
+	int textureWidth = 0;
+	int textureHeight = 0;
+
+	std::vector<std::byte> data;
+};
+
+using DrawCall_UI_t = std::variant<DrawCall_Pic, DrawCall_Char, DrawCall_StretchRaw>;

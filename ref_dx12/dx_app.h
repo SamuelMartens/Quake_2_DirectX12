@@ -142,7 +142,7 @@ public:
 	/*--- API functions begin --- */
 
 	void Init(WNDPROC WindowProc, HINSTANCE hInstance);
-	void Draw_RawPic(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data);
+	void AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data);
 	void AddDrawCall_Pic(int x, int y, const char* name);
 	void AddDrawCall_Char(int x, int y, int num);
 
@@ -232,7 +232,9 @@ private:
 	void _CreateGpuTextureAsync(const unsigned int* raw, int width, int height, int bpp, GraphicsJobContext& context, Texture& outTex);
 	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame);
 	Texture* _CreateTextureFromDataAsync(const std::byte* data, int width, int height, int bpp, const char* name, GraphicsJobContext& context);
+	Texture* CreateTextureFromDataAsync_Blocking(const std::byte* data, int width, int height, int bpp, const char* name, GraphicsJobContext& context);
 	void UpdateTexture(Texture& tex, const std::byte* data, Frame& frame);
+	void UpdateTextureAsync_Blocking(Texture& tex, const std::byte* data, GraphicsJobContext& context);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
 
@@ -261,6 +263,7 @@ private:
 	void Draw_Pic(int x, int y, const char* name, Frame& frame);
 	void Draw_PicAsync(int x, int y, const char* name, GraphicsJobContext& context);
 	void Draw_Char(int x, int y, int num, Frame& frame);
+	void Draw_RawPicAsync(const DrawCall_StretchRaw& drawCall, GraphicsJobContext& context);
 	// More high level functions
 	void DrawUI(Frame& frame);
 	void DrawUIAsync(GraphicsJobContext& context);
@@ -302,7 +305,7 @@ private:
 	void OpenFrameAsync(Frame& frame) const;
 	void CloseFrame(Frame& frame);
 	void CloseFrameAsync(Frame& frame);
-	void ReleaseFrameResources(Frame& frame);
+	void ReleaseFrameResources_Blocking(Frame& frame);
 
 	// Frame ownership
 	void AcquireCurrentFrame();

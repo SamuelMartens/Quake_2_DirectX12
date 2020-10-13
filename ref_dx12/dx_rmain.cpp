@@ -74,8 +74,7 @@ void DX12_Draw_FadeScreen(void)
 
 void DX12_Draw_StretchRaw(int x, int y, int w, int h, int cols, int rows, byte *data)
 {
-	//#DEBUG implement movie
-	//Renderer::Inst().Draw_RawPic(x, y, w, h, cols, rows, reinterpret_cast<std::byte*>(data));
+	Renderer::Inst().AddDrawCall_RawPic(x, y, w, h, cols, rows, reinterpret_cast<std::byte*>(data));
 }
 
 qboolean DX12_Init( void *hinstance, void *hWnd )

@@ -82,7 +82,6 @@ private:
 	std::thread thread;
 };
 
-//#DEBUG threads affinity?
 class JobSystem
 {
 public:
