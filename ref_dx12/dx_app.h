@@ -54,7 +54,7 @@ namespace FArg
 		const void* data = nullptr;
 		int byteSize = Const::INVALID_SIZE;
 		int alignment = -1;
-		Frame* frame = nullptr;
+		Context* context = nullptr;
 	};
 };
 
@@ -130,13 +130,13 @@ public:
 	void DeleteUploadMemoryBuffer(BufferHandler handler);
 	
 	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, Frame& frame);
-	void UpdateStreamingConstantBufferAsync(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, GraphicsJobContext& context);
-	void UpdateStaticObjectConstantBuffer(const StaticObject& obj, Frame& frame);
+	void UpdateStreamingConstantBufferAsync(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, Context& context);
+	void UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context& context);
 	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, Frame& frame);
 	BufferHandler UpdateParticleConstantBuffer(Frame& frame);
 
 	Texture* FindOrCreateTexture(std::string_view textureName, Frame& frame);
-	Texture* FindOrCreateTextureAsync_Blocking(std::string_view textureName, GraphicsJobContext& context);
+	Texture* FindOrCreateTextureAsync_Blocking(std::string_view textureName, Context& context);
 	Texture* FindTexture_Blocking(std::string_view textureName);
 
 	/*--- API functions begin --- */
@@ -158,6 +158,7 @@ public:
 	void EndLevelLoading();
 	model_s* RegisterModel(const char* name);
 	void RenderFrame(const refdef_t& frameUpdateData);
+	void RenderFrameAsync(const refdef_t& frameUpdateData);
 
 
 	/*--- API functions end --- */
@@ -194,7 +195,7 @@ private:
 
 	void InitUtils();
 
-	void InitMemory(GraphicsJobContext& context);
+	void InitMemory(Context& context);
 
 	void InitScissorRect();
 
@@ -227,45 +228,45 @@ private:
 
 	/* Texture */
 	Texture* CreateTextureFromFile(const char* name, Frame& frame);
-	Texture* CreateTextureFromFileAsync_Blocking(const char* name, GraphicsJobContext& context);
-	Texture* _CreateTextureFromFileAsync(const char* name, GraphicsJobContext& context);
+	Texture* CreateTextureFromFileAsync_Blocking(const char* name, Context& context);
+	Texture* _CreateTextureFromFileAsync(const char* name, Context& context);
 	void CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Frame& frame, Texture& outTex);
-	void _CreateGpuTextureAsync(const unsigned int* raw, int width, int height, int bpp, GraphicsJobContext& context, Texture& outTex);
+	void _CreateGpuTextureAsync(const unsigned int* raw, int width, int height, int bpp, Context& context, Texture& outTex);
 	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame);
-	Texture* _CreateTextureFromDataAsync(const std::byte* data, int width, int height, int bpp, const char* name, GraphicsJobContext& context);
-	Texture* CreateTextureFromDataAsync_Blocking(const std::byte* data, int width, int height, int bpp, const char* name, GraphicsJobContext& context);
+	Texture* _CreateTextureFromDataAsync(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
+	Texture* CreateTextureFromDataAsync_Blocking(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
 	void UpdateTexture(Texture& tex, const std::byte* data, Frame& frame);
-	void UpdateTextureAsync_Blocking(Texture& tex, const std::byte* data, GraphicsJobContext& context);
+	void UpdateTextureAsync_Blocking(Texture& tex, const std::byte* data, Context& context);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
 
 	/* Buffer */
-	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, GraphicsJobContext& context);
+	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer_Blocking(const void* data, UINT64 byteSize, Context& context);
 	ComPtr<ID3D12Resource> CreateUploadHeapBuffer(UINT64 byteSize) const;
 	void UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const;
-	void UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args);
+	void UpdateDefaultHeapBuff_Blocking(FArg::UpdateDefaultHeapBuff& args);
 
 	/* Shutdown and clean up Win32 specific stuff */
 	void ShutdownWin32();
 
 	/* Factory functionality */
 	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model, Frame& frame);
-	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Frame& frame);
-	void DecomposeGLModelNode(const model_t& model, const mnode_t& node, Frame& frame);
-	GraphicsJobContext CreateGraphicsJobContext(Frame& frame);
+	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Context& frame);
+	void DecomposeGLModelNode(const model_t& model, const mnode_t& node, Context& context);
+	Context CreateContext(Frame& frame);
 
 	/* Rendering */
-	void Draw(const StaticObject& object, Frame& frame);
-	void DrawIndiced(const StaticObject& object, Frame& frame);
-	void DrawIndiced(const DynamicObject& object, const entity_t& entity, Frame& frame);
-	void DrawStreamingAsync_Blocking(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, GraphicsJobContext& context);
+	void Draw_Blocking(const StaticObject& object, Context& context);
+	void DrawIndiced_Blocking(const StaticObject& object, Context& context);
+	void DrawIndiced_Blocking(const DynamicObject& object, const entity_t& entity, Frame& frame);
+	void DrawStreamingAsync_Blocking(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, Context& context);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
 	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Frame& frame);
 	void Draw_Pic(int x, int y, const char* name, Frame& frame);
-	void Draw_PicAsync(int x, int y, const char* name, GraphicsJobContext& context);
+	void Draw_PicAsync(int x, int y, const char* name, Context& context);
 	void Draw_Char(int x, int y, int num, Frame& frame);
-	void Draw_CharAsync(int x, int y, int num, GraphicsJobContext& context);
-	void Draw_RawPicAsync(const DrawCall_StretchRaw& drawCall, GraphicsJobContext& context);
+	void Draw_CharAsync(int x, int y, int num, Context& context);
+	void Draw_RawPicAsync(const DrawCall_StretchRaw& drawCall, Context& context);
 	// More high level functions
 	void DrawUI(Frame& frame);
 
@@ -273,14 +274,15 @@ private:
 	void Load8To24Table();
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
-	bool IsVisible(const StaticObject& obj) const;
+	bool IsVisible(const StaticObject& obj, const Camera& camera) const;
 	bool IsVisible(const entity_t& entity) const;
 	DynamicObjectConstBuffer& FindDynamicObjConstBuffer();
 
 	/* Job  */
-	void EndFrameJob(GraphicsJobContext& context);
-	void BeginFrameJob(GraphicsJobContext& context);
-	void DrawUIJob(GraphicsJobContext& context);
+	void EndFrameJob(Context& context);
+	void BeginFrameJob(Context& context);
+	void DrawUIJob(Context& context);
+	void DrawStaticGeometryJob(Context& context);
 
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;
@@ -288,7 +290,7 @@ private:
 	void SetMaterial(const std::string& name, Frame& frame);
 	void SetMaterialAsync(const std::string& name, CommandList& commandList);
 	void ClearMaterial(Frame& frame);
-	void SetNonMaterialState(GraphicsJobContext& context) const;
+	void SetNonMaterialState(Context& context) const;
 
 	/* Frames */
 	Frame& GetCurrentFrame();

@@ -110,11 +110,11 @@ private:
 
 
 // Utilities 
-struct GraphicsJobContext
+struct Context
 {
-	GraphicsJobContext(Frame& frameVal, CommandList& commandListVal);
+	Context(Frame& frameVal, CommandList& commandListVal);
 
-	void CreateDependencyFrom(std::vector<GraphicsJobContext*> dependsFromList);
+	void CreateDependencyFrom(std::vector<Context*> dependsFromList);
 	void SignalDependencies();
 
 	// This properties represent relationship between jobs that Semaphore implements.
@@ -127,5 +127,5 @@ struct GraphicsJobContext
 	CommandList& commandList;
 };
 
-using DependenciesRAIIGuard_t = Utils::RAIIGuard<GraphicsJobContext, 
-	nullptr, &GraphicsJobContext::SignalDependencies>;
+using DependenciesRAIIGuard_t = Utils::RAIIGuard<Context, 
+	nullptr, &Context::SignalDependencies>;

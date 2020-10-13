@@ -75,26 +75,26 @@ JobQueue& JobSystem::GetJobQueue()
 	return jobQueue;
 }
 
-GraphicsJobContext::GraphicsJobContext(Frame& frameVal, CommandList& commandListVal):
+Context::Context(Frame& frameVal, CommandList& commandListVal):
 	frame(frameVal),
 	commandList(commandListVal)
 {}
 
-void GraphicsJobContext::CreateDependencyFrom(std::vector<GraphicsJobContext*> dependsFromList)
+void Context::CreateDependencyFrom(std::vector<Context*> dependsFromList)
 {
 	assert(dependsFromList.empty() == false && "Trying to create dependency from empty list");
 	assert(waitDependancy == nullptr && "Trying to create dependency to job that already has it");
 
 	waitDependancy = std::make_shared<Semaphore>(dependsFromList.size());
 
-	for (GraphicsJobContext* dependency : dependsFromList)
+	for (Context* dependency : dependsFromList)
 	{
 		dependency->signalDependencies.push_back(waitDependancy);
 	}
 	
 }
 
-void GraphicsJobContext::SignalDependencies()
+void Context::SignalDependencies()
 {
 	for (std::shared_ptr<Semaphore>& dep : signalDependencies)
 	{

@@ -8,8 +8,8 @@ model_t	*loadmodel;
 int		modfilelen;
 
 void Mod_LoadSpriteModel(model_t *mod, void *buffer, Frame& frame);
-void Mod_LoadBrushModel(model_t *mod, void *buffer, Frame& frame);
-void Mod_LoadAliasModel(model_t *mod, void *buffer, Frame& frame);
+void Mod_LoadBrushModel(model_t *mod, void *buffer, Context& context);
+void Mod_LoadAliasModel(model_t *mod, void *buffer, Context& context);
 
 byte	mod_novis[MAX_MAP_LEAFS/8];
 
@@ -253,8 +253,9 @@ Loads in a model for the given name
 ==================
 */
 
-model_t * Mod_ForName(char *name, qboolean crash, Frame& frame)
+model_t * Mod_ForName(char *name, qboolean crash, Context& context)
 {
+	//#DEBUG delete when not needed
 	model_t	*mod;
 	unsigned *buf;
 	int		i;
@@ -340,7 +341,7 @@ model_t * Mod_ForName(char *name, qboolean crash, Frame& frame)
 	{
 	case IDALIASHEADER:
 		loadmodel->extradata = Hunk_Begin(0x200000);
-		Mod_LoadAliasModel(mod, buf, frame);
+		Mod_LoadAliasModel(mod, buf, context);
 		break;
 
 	case IDSPRITEHEADER:
@@ -351,7 +352,7 @@ model_t * Mod_ForName(char *name, qboolean crash, Frame& frame)
 
 	case IDBSPHEADER:
 		loadmodel->extradata = Hunk_Begin(0x1000000);
-		Mod_LoadBrushModel(mod, buf, frame);
+		Mod_LoadBrushModel(mod, buf, context);
 		break;
 
 	default:
@@ -555,7 +556,7 @@ Mod_LoadTexinfo
 =================
 */
 
-void Mod_LoadTexinfo(lump_t *l, Frame& frames)
+void Mod_LoadTexinfo(lump_t *l, Context& context)
 {
 	texinfo_t *in;
 	mtexinfo_t *out, *step;
@@ -592,7 +593,7 @@ void Mod_LoadTexinfo(lump_t *l, Frame& frames)
 		char texNameFormat[] = "textures/%s.wal";
 		Com_sprintf(name, sizeof(name), texNameFormat, in->texture);
 
-		out->image = Renderer::Inst().FindOrCreateTexture(name, frames);
+		out->image = Renderer::Inst().FindOrCreateTextureAsync_Blocking(name, context);
 
 		if (!out->image)
 		{
@@ -1018,7 +1019,7 @@ Mod_LoadBrushModel
 =================
 */
 
-void Mod_LoadBrushModel(model_t *mod, void *buffer, Frame& frame)
+void Mod_LoadBrushModel(model_t *mod, void *buffer, Context& context)
 {
 	int			i;
 	dheader_t	*header;
@@ -1059,7 +1060,7 @@ void Mod_LoadBrushModel(model_t *mod, void *buffer, Frame& frame)
 	Mod_LoadSurfedges(&header->lumps[LUMP_SURFEDGES]);
 	Mod_LoadLighting(&header->lumps[LUMP_LIGHTING]);
 	Mod_LoadPlanes(&header->lumps[LUMP_PLANES]);
-	Mod_LoadTexinfo(&header->lumps[LUMP_TEXINFO], frame);
+	Mod_LoadTexinfo(&header->lumps[LUMP_TEXINFO], context);
 	Mod_LoadFaces(&header->lumps[LUMP_FACES]);
 	Mod_LoadMarksurfaces(&header->lumps[LUMP_LEAFFACES]);
 	Mod_LoadVisibility(&header->lumps[LUMP_VISIBILITY]);
@@ -1114,7 +1115,7 @@ Mod_LoadAliasModel
 =================
 */
 
-void Mod_LoadAliasModel(model_t *mod, void *buffer, Frame& frame)
+void Mod_LoadAliasModel(model_t *mod, void *buffer, Context& context)
 {
 	int					i, j;
 	dmdl_t				*pinmodel, *pheader;
@@ -1244,8 +1245,8 @@ void Mod_LoadAliasModel(model_t *mod, void *buffer, Frame& frame)
 		pheader->num_skins*MAX_SKINNAME);
 	for (i = 0; i < pheader->num_skins; i++)
 	{
-		mod->skins[i] = Renderer::Inst().FindOrCreateTexture(
-			(char *)pheader + pheader->ofs_skins + i * MAX_SKINNAME, frame);
+		mod->skins[i] = Renderer::Inst().FindOrCreateTextureAsync_Blocking(
+			(char *)pheader + pheader->ofs_skins + i * MAX_SKINNAME, context);
 	}
 
 	mod->mins[0] = -32;

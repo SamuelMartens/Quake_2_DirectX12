@@ -327,7 +327,7 @@ void Renderer::InitDx()
 
 	// ------- Open init command list -----
 
-	GraphicsJobContext initContext = CreateGraphicsJobContext(GetCurrentFrame());
+	Context initContext = CreateContext(GetCurrentFrame());
 
 	initContext.commandList.Open();
 
@@ -411,10 +411,10 @@ void Renderer::InitUtils()
 	InitScissorRect();
 }
 
-void Renderer::InitMemory(GraphicsJobContext& context)
+void Renderer::InitMemory(Context& context)
 {
 	// Create default memory buffer
-	m_defaultMemoryBuffer.allocBuffer.gpuBuffer = CreateDefaultHeapBuffer(nullptr, QDEFAULT_MEMORY_BUFFER_SIZE, context);
+	m_defaultMemoryBuffer.allocBuffer.gpuBuffer = CreateDefaultHeapBuffer_Blocking(nullptr, QDEFAULT_MEMORY_BUFFER_SIZE, context);
 	// Create upload memory buffer
 	m_uploadMemoryBuffer.allocBuffer.gpuBuffer = CreateUploadHeapBuffer(QUPLOAD_MEMORY_BUFFER_SIZE);
 }
@@ -789,7 +789,7 @@ void Renderer::ClearMaterial(Frame& frame)
 	frame.currentMaterial.clear();
 }
 
-void Renderer::SetNonMaterialState(GraphicsJobContext& context) const
+void Renderer::SetNonMaterialState(Context& context) const
 {
 	CommandList& commandList = context.commandList;
 	Frame& frame = context.frame;
@@ -1194,14 +1194,14 @@ Texture* Renderer::CreateTextureFromFile(const char* name, Frame& frame)
 	return createdTex;
 }
 
-Texture* Renderer::CreateTextureFromFileAsync_Blocking(const char* name, GraphicsJobContext& context)
+Texture* Renderer::CreateTextureFromFileAsync_Blocking(const char* name, Context& context)
 {
 	std::scoped_lock<std::mutex> lock(m_textures.mutex);
 
 	return _CreateTextureFromFileAsync(name, context);
 }
 
-Texture* Renderer::_CreateTextureFromFileAsync(const char* name, GraphicsJobContext& context)
+Texture* Renderer::_CreateTextureFromFileAsync(const char* name, Context& context)
 {
 	if (name == nullptr)
 		return nullptr;
@@ -1357,7 +1357,7 @@ void Renderer::CreateGpuTexture(const unsigned int* raw, int width, int height, 
 	//outTex.texViewIndex = cbvSrvHeap->Allocate(outTex.buffer, &srvDescription);
 }
 
-void Renderer::_CreateGpuTextureAsync(const unsigned int* raw, int width, int height, int bpp, GraphicsJobContext& context, Texture& outTex)
+void Renderer::_CreateGpuTextureAsync(const unsigned int* raw, int width, int height, int bpp, Context& context, Texture& outTex)
 {
 	CommandList& commandList = context.commandList;
 
@@ -1430,7 +1430,7 @@ Texture* Renderer::CreateTextureFromData(const std::byte* data, int width, int h
 	return nullptr;
 }
 
-Texture* Renderer::_CreateTextureFromDataAsync(const std::byte* data, int width, int height, int bpp, const char* name, GraphicsJobContext& context)
+Texture* Renderer::_CreateTextureFromDataAsync(const std::byte* data, int width, int height, int bpp, const char* name, Context& context)
 {
 	Texture tex;
 	_CreateGpuTextureAsync(reinterpret_cast<const unsigned int*>(data), width, height, bpp, context, tex);
@@ -1444,66 +1444,64 @@ Texture* Renderer::_CreateTextureFromDataAsync(const std::byte* data, int width,
 	return &m_textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
 }
 
-Texture* Renderer::CreateTextureFromDataAsync_Blocking(const std::byte* data, int width, int height, int bpp, const char* name, GraphicsJobContext& context)
+Texture* Renderer::CreateTextureFromDataAsync_Blocking(const std::byte* data, int width, int height, int bpp, const char* name, Context& context)
 {
 	std::scoped_lock<std::mutex> lock(m_textures.mutex);
 
 	return _CreateTextureFromDataAsync(data, width, height, bpp, name, context);
 }
 
-ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, GraphicsJobContext& context)
+ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer_Blocking(const void* data, UINT64 byteSize, Context& context)
 {
-	//#DEBUG delete when not needed
-	//// Create actual buffer 
-	//D3D12_RESOURCE_DESC bufferDesc = {};
-	//bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-	//bufferDesc.Alignment = 0;
-	//bufferDesc.Width = byteSize;
-	//bufferDesc.Height = 1;
-	//bufferDesc.DepthOrArraySize = 1;
-	//bufferDesc.MipLevels = 1;
-	//bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
-	//bufferDesc.SampleDesc.Count = 1;
-	//bufferDesc.SampleDesc.Quality = 0;
-	//bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-	//bufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+	// Create actual buffer 
+	D3D12_RESOURCE_DESC bufferDesc = {};
+	bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	bufferDesc.Alignment = 0;
+	bufferDesc.Width = byteSize;
+	bufferDesc.Height = 1;
+	bufferDesc.DepthOrArraySize = 1;
+	bufferDesc.MipLevels = 1;
+	bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
+	bufferDesc.SampleDesc.Count = 1;
+	bufferDesc.SampleDesc.Quality = 0;
+	bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	bufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
-	//ComPtr<ID3D12Resource> buffer;
+	ComPtr<ID3D12Resource> buffer;
 
-	//ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommittedResource(
-	//	&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-	//	D3D12_HEAP_FLAG_NONE,
-	//	&bufferDesc,
-	//	D3D12_RESOURCE_STATE_COPY_DEST,
-	//	nullptr,
-	//	IID_PPV_ARGS(&buffer)
-	//));
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&bufferDesc,
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(&buffer)
+	));
 
-	//ComPtr<ID3D12GraphicsCommandList>& commandList = context.commandList.commandList;
+	ComPtr<ID3D12GraphicsCommandList>& commandList = context.commandList.commandList;
 
-	//if (data != nullptr)
-	//{
-	//	// Create upload buffer
-	//	ComPtr<ID3D12Resource> uploadBuffer = CreateUploadHeapBuffer(byteSize);
-	//	context.frame.uploadResources.push_back(uploadBuffer);
+	if (data != nullptr)
+	{
+		// Create upload buffer
+		ComPtr<ID3D12Resource> uploadBuffer = CreateUploadHeapBuffer(byteSize);
+		DO_IN_LOCK(context.frame.uploadResources, push_back(uploadBuffer));
 
-	//	// Describe upload resource data 
-	//	D3D12_SUBRESOURCE_DATA subResourceData = {};
-	//	subResourceData.pData = data;
-	//	subResourceData.RowPitch = byteSize;
-	//	subResourceData.SlicePitch = subResourceData.RowPitch;
+		// Describe upload resource data 
+		D3D12_SUBRESOURCE_DATA subResourceData = {};
+		subResourceData.pData = data;
+		subResourceData.RowPitch = byteSize;
+		subResourceData.SlicePitch = subResourceData.RowPitch;
 
-	//	UpdateSubresources(commandList.Get(), buffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
-	//}
+		UpdateSubresources(commandList.Get(), buffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
+	}
 
-	//commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-	//	buffer.Get(),
-	//	D3D12_RESOURCE_STATE_COPY_DEST,
-	//	D3D12_RESOURCE_STATE_GENERIC_READ
-	//));
+	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		buffer.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_GENERIC_READ
+	));
 
-	//return buffer;
-	return ComPtr<ID3D12Resource>();
+	return buffer;
 }
 
 ComPtr<ID3D12Resource> Renderer::CreateUploadHeapBuffer(UINT64 byteSize) const
@@ -1538,6 +1536,7 @@ ComPtr<ID3D12Resource> Renderer::CreateUploadHeapBuffer(UINT64 byteSize) const
 
 void Renderer::UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const
 {
+	//#DEBUG thread safe don't worry about this
 	assert(args.buffer != nullptr &&
 		args.alignment != -1 &&
 		args.byteSize != Const::INVALID_SIZE &&
@@ -1558,47 +1557,48 @@ void Renderer::UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const
 	args.buffer->Unmap(0, &mappedRange);
 }
 
-void Renderer::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
+void Renderer::UpdateDefaultHeapBuff_Blocking(FArg::UpdateDefaultHeapBuff& args)
 {
-	//#DEBUG delete when not needed
-	//assert(args.buffer != nullptr &&
-	//	args.alignment != -1 &&
-	//	args.byteSize != Const::INVALID_SIZE &&
-	//	args.data != nullptr &&
-	//	args.offset != Const::INVALID_OFFSET &&
-	//	args.frame != nullptr &&
-	//	"Uninitialized arguments in update default buff");
+	assert(args.buffer != nullptr &&
+		args.alignment != -1 &&
+		args.byteSize != Const::INVALID_SIZE &&
+		args.data != nullptr &&
+		args.offset != Const::INVALID_OFFSET &&
+		args.context != nullptr &&
+		"Uninitialized arguments in update default buff");
 
-	//const unsigned int dataSize = args.alignment != 0 ? Utils::Align(args.byteSize, args.alignment) : args.byteSize;
+	const unsigned int dataSize = args.alignment != 0 ? Utils::Align(args.byteSize, args.alignment) : args.byteSize;
 
+	Frame& frame = args.context->frame;
+	CommandList& commandList = args.context->commandList;
 
-	//// Create upload buffer
-	//ComPtr<ID3D12Resource> uploadBuffer = CreateUploadHeapBuffer(args.byteSize);
-	//args.frame->uploadResources.push_back(uploadBuffer);
+	// Create upload buffer
+	ComPtr<ID3D12Resource> uploadBuffer = CreateUploadHeapBuffer(args.byteSize);
+	DO_IN_LOCK(frame.uploadResources, push_back(uploadBuffer));
 
-	//FArg::UpdateUploadHeapBuff uploadHeapBuffArgs;
-	//uploadHeapBuffArgs.alignment = 0;
-	//uploadHeapBuffArgs.buffer = uploadBuffer;
-	//uploadHeapBuffArgs.byteSize = args.byteSize;
-	//uploadHeapBuffArgs.data = args.data;
-	//uploadHeapBuffArgs.offset = 0;
-	//UpdateUploadHeapBuff(uploadHeapBuffArgs);
+	FArg::UpdateUploadHeapBuff uploadHeapBuffArgs;
+	uploadHeapBuffArgs.alignment = 0;
+	uploadHeapBuffArgs.buffer = uploadBuffer;
+	uploadHeapBuffArgs.byteSize = args.byteSize;
+	uploadHeapBuffArgs.data = args.data;
+	uploadHeapBuffArgs.offset = 0;
+	UpdateUploadHeapBuff(uploadHeapBuffArgs);
 
-	//args.frame->commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-	//	args.buffer.Get(),
-	//	D3D12_RESOURCE_STATE_GENERIC_READ,
-	//	D3D12_RESOURCE_STATE_COPY_DEST
-	//));
+	commandList.commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		args.buffer.Get(),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		D3D12_RESOURCE_STATE_COPY_DEST
+	));
 
-	//// Last argument is intentionally args.byteSize, cause that's how much data we pass to this function
-	//// we don't want to read out of range
-	//args.frame->commandList->CopyBufferRegion(args.buffer.Get(), args.offset, uploadBuffer.Get(), 0, args.byteSize);
+	// Last argument is intentionally args.byteSize, cause that's how much data we pass to this function
+	// we don't want to read out of range
+	commandList.commandList->CopyBufferRegion(args.buffer.Get(), args.offset, uploadBuffer.Get(), 0, args.byteSize);
 
-	//args.frame->commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-	//	args.buffer.Get(),
-	//	D3D12_RESOURCE_STATE_COPY_DEST,
-	//	D3D12_RESOURCE_STATE_GENERIC_READ
-	//));
+	commandList.commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		args.buffer.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_GENERIC_READ
+	));
 }
 
 DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
@@ -1625,7 +1625,7 @@ DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
 	return *resIt;
 }
 
-void Renderer::EndFrameJob(GraphicsJobContext& context)
+void Renderer::EndFrameJob(Context& context)
 {
 	context.commandList.Open();
 
@@ -1664,7 +1664,7 @@ void Renderer::EndFrameJob(GraphicsJobContext& context)
 	DeleteRequestedResources_Blocking();
 }
 
-void Renderer::BeginFrameJob(GraphicsJobContext& context)
+void Renderer::BeginFrameJob(Context& context)
 {
 	JOB_GUARD(context);
 
@@ -1693,6 +1693,13 @@ void Renderer::BeginFrameJob(GraphicsJobContext& context)
 		0,
 		0,
 		nullptr);
+}
+
+void Renderer::DrawUIJob(Context& context)
+{
+	JOB_GUARD(context);
+
+	Frame& frame = context.frame;
 
 	// Set some matrices
 	XMMATRIX tempMat = XMMatrixIdentity();
@@ -1700,11 +1707,6 @@ void Renderer::BeginFrameJob(GraphicsJobContext& context)
 
 	tempMat = XMMatrixOrthographicRH(frame.camera.width, frame.camera.height, 0.0f, 1.0f);
 	XMStoreFloat4x4(&frame.uiProjectionMat, tempMat);
-}
-
-void Renderer::DrawUIJob(GraphicsJobContext& context)
-{
-	JOB_GUARD(context);
 
 	SetNonMaterialState(context);
 
@@ -1737,6 +1739,40 @@ void Renderer::DrawUIJob(GraphicsJobContext& context)
 	}
 }
 
+void Renderer::DrawStaticGeometryJob(Context& context)
+{
+	JOB_GUARD(context);
+
+	CommandList& commandList = context.commandList;
+
+	// Static geometry 
+	Diagnostics::BeginEvent(commandList.commandList.Get(), "Static materials");
+
+	SetNonMaterialState(context);
+	SetMaterialAsync(MaterialSource::STATIC_MATERIAL_NAME, commandList);
+
+	for (const StaticObject& obj : m_staticObjects)
+	{
+		if (IsVisible(obj, context.frame.camera) == false)
+		{
+			continue;
+		}
+
+		UpdateStaticObjectConstantBuffer(obj, context);
+
+		if (obj.indices != BufConst::INVALID_BUFFER_HANDLER)
+		{
+			DrawIndiced_Blocking(obj, context);
+		}
+		else
+		{
+			Draw_Blocking(obj, context);
+		}
+	}
+
+	Diagnostics::EndEvent(commandList.commandList.Get());
+}
+
 ComPtr<ID3DBlob> Renderer::LoadCompiledShader(const std::string& filename) const
 {
 	std::ifstream fin(filename, std::ios::binary);
@@ -1763,121 +1799,122 @@ void Renderer::ShutdownWin32()
 
 DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t* model, Frame& frame)
 {
+	//#DEBUG uncomment and fix
 	DynamicObjectModel object;
 
-	object.name = model->name;
+	//object.name = model->name;
 
-	const dmdl_t* aliasHeader = reinterpret_cast<dmdl_t*>(model->extradata);
-	assert(aliasHeader != nullptr && "Alias header for dynamic object is not found.");
+	//const dmdl_t* aliasHeader = reinterpret_cast<dmdl_t*>(model->extradata);
+	//assert(aliasHeader != nullptr && "Alias header for dynamic object is not found.");
 
-	// Header data
-	object.headerData.animFrameSizeInBytes = aliasHeader->framesize;
+	//// Header data
+	//object.headerData.animFrameSizeInBytes = aliasHeader->framesize;
 
-	// Allocate buffers on CPU, that we will use for transferring our stuff
-	std::vector<int> unnormalizedIndexBuffer;
-	std::vector<XMFLOAT2> unnormalizedTexCoords;
-	// This is just heuristic guess of how much memory we will need.
-	unnormalizedIndexBuffer.reserve(aliasHeader->num_xyz);
-	unnormalizedTexCoords.reserve(aliasHeader->num_xyz);
+	//// Allocate buffers on CPU, that we will use for transferring our stuff
+	//std::vector<int> unnormalizedIndexBuffer;
+	//std::vector<XMFLOAT2> unnormalizedTexCoords;
+	//// This is just heuristic guess of how much memory we will need.
+	//unnormalizedIndexBuffer.reserve(aliasHeader->num_xyz);
+	//unnormalizedTexCoords.reserve(aliasHeader->num_xyz);
 
-	// Get texture coords and indices in one buffer
-	const int* order = reinterpret_cast<const int*>(reinterpret_cast<const byte*>(aliasHeader) + aliasHeader->ofs_glcmds);
-	UnwindDynamicGeomIntoTriangleList(order, unnormalizedIndexBuffer, unnormalizedTexCoords);
+	//// Get texture coords and indices in one buffer
+	//const int* order = reinterpret_cast<const int*>(reinterpret_cast<const byte*>(aliasHeader) + aliasHeader->ofs_glcmds);
+	//UnwindDynamicGeomIntoTriangleList(order, unnormalizedIndexBuffer, unnormalizedTexCoords);
 
-	auto[normalizedIndexBuffer, normalizedTexCoordsBuffer, normalizedVertexIndices] =
-		NormalizedDynamGeomVertTexCoord(unnormalizedIndexBuffer, unnormalizedTexCoords);
+	//auto[normalizedIndexBuffer, normalizedTexCoordsBuffer, normalizedVertexIndices] =
+	//	NormalizedDynamGeomVertTexCoord(unnormalizedIndexBuffer, unnormalizedTexCoords);
 
-	object.headerData.animFrameVertsNum = normalizedVertexIndices.size();
-	object.headerData.indicesNum = normalizedIndexBuffer.size();
+	//object.headerData.animFrameVertsNum = normalizedVertexIndices.size();
+	//object.headerData.indicesNum = normalizedIndexBuffer.size();
 
-	const int verticesNum = aliasHeader->num_frames * object.headerData.animFrameVertsNum;
-	std::vector<XMFLOAT4> vertexBuffer;
-	vertexBuffer.reserve(verticesNum);
+	//const int verticesNum = aliasHeader->num_frames * object.headerData.animFrameVertsNum;
+	//std::vector<XMFLOAT4> vertexBuffer;
+	//vertexBuffer.reserve(verticesNum);
 
-	std::vector<XMFLOAT4> singleFrameVertexBuffer;
-	singleFrameVertexBuffer.reserve(object.headerData.animFrameVertsNum);
+	//std::vector<XMFLOAT4> singleFrameVertexBuffer;
+	//singleFrameVertexBuffer.reserve(object.headerData.animFrameVertsNum);
 
-	// Animation frames data
-	object.animationFrames.reserve(aliasHeader->num_frames);
-	const daliasframe_t* currentFrame = reinterpret_cast<const daliasframe_t*>(
-		(reinterpret_cast<const byte*>(aliasHeader) + aliasHeader->ofs_frames));
+	//// Animation frames data
+	//object.animationFrames.reserve(aliasHeader->num_frames);
+	//const daliasframe_t* currentFrame = reinterpret_cast<const daliasframe_t*>(
+	//	(reinterpret_cast<const byte*>(aliasHeader) + aliasHeader->ofs_frames));
 
-	for (int i = 0; i < aliasHeader->num_frames; ++i)
-	{
-		DynamicObjectModel::AnimFrame& animFrame = object.animationFrames.emplace_back(DynamicObjectModel::AnimFrame());
+	//for (int i = 0; i < aliasHeader->num_frames; ++i)
+	//{
+	//	DynamicObjectModel::AnimFrame& animFrame = object.animationFrames.emplace_back(DynamicObjectModel::AnimFrame());
 
-		animFrame.name = currentFrame->name;
-		animFrame.scale = XMFLOAT4(currentFrame->scale[0], currentFrame->scale[1], currentFrame->scale[2], 0.0f);
-		animFrame.translate = XMFLOAT4(currentFrame->translate[0], currentFrame->translate[1], currentFrame->translate[2], 0.0f);
+	//	animFrame.name = currentFrame->name;
+	//	animFrame.scale = XMFLOAT4(currentFrame->scale[0], currentFrame->scale[1], currentFrame->scale[2], 0.0f);
+	//	animFrame.translate = XMFLOAT4(currentFrame->translate[0], currentFrame->translate[1], currentFrame->translate[2], 0.0f);
 
-		// Fill up one frame vertices (unnormalized)
-		singleFrameVertexBuffer.clear();
-		for (int j = 0; j < aliasHeader->num_xyz; ++j)
-		{
-			const byte* currentVert = currentFrame->verts[j].v;
-			singleFrameVertexBuffer.push_back(XMFLOAT4(
-				currentVert[0],
-				currentVert[1],
-				currentVert[2],
-				1.0f));
-		}
-		AppendNormalizedVertexData(normalizedVertexIndices, singleFrameVertexBuffer, vertexBuffer);
+	//	// Fill up one frame vertices (unnormalized)
+	//	singleFrameVertexBuffer.clear();
+	//	for (int j = 0; j < aliasHeader->num_xyz; ++j)
+	//	{
+	//		const byte* currentVert = currentFrame->verts[j].v;
+	//		singleFrameVertexBuffer.push_back(XMFLOAT4(
+	//			currentVert[0],
+	//			currentVert[1],
+	//			currentVert[2],
+	//			1.0f));
+	//	}
+	//	AppendNormalizedVertexData(normalizedVertexIndices, singleFrameVertexBuffer, vertexBuffer);
 
-		// Get next frame
-		currentFrame = reinterpret_cast<const daliasframe_t*>(
-			(reinterpret_cast<const byte*>(currentFrame) + aliasHeader->framesize));
+	//	// Get next frame
+	//	currentFrame = reinterpret_cast<const daliasframe_t*>(
+	//		(reinterpret_cast<const byte*>(currentFrame) + aliasHeader->framesize));
 
-	}
+	//}
 
-	// Load GPU buffers
-	const int vertexBufferSize = vertexBuffer.size() * sizeof(XMFLOAT4);
-	const int indexBufferSize = normalizedIndexBuffer.size() * sizeof(int);
-	const int texCoordsBufferSize = normalizedTexCoordsBuffer.size() * sizeof(XMFLOAT2);
+	//// Load GPU buffers
+	//const int vertexBufferSize = vertexBuffer.size() * sizeof(XMFLOAT4);
+	//const int indexBufferSize = normalizedIndexBuffer.size() * sizeof(int);
+	//const int texCoordsBufferSize = normalizedTexCoordsBuffer.size() * sizeof(XMFLOAT2);
 
-	object.vertices = m_defaultMemoryBuffer.Allocate(vertexBufferSize);
-	object.indices = m_defaultMemoryBuffer.Allocate(indexBufferSize);
-	object.textureCoords = m_defaultMemoryBuffer.Allocate(texCoordsBufferSize);
+	//object.vertices = m_defaultMemoryBuffer.Allocate(vertexBufferSize);
+	//object.indices = m_defaultMemoryBuffer.Allocate(indexBufferSize);
+	//object.textureCoords = m_defaultMemoryBuffer.Allocate(texCoordsBufferSize);
 
-	// Get vertices in
-	FArg::UpdateDefaultHeapBuff updateArgs;
-	updateArgs.alignment = 0;
-	updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
-	updateArgs.byteSize = vertexBufferSize;
-	updateArgs.data = reinterpret_cast<const void*>(vertexBuffer.data());
-	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.vertices);
-	updateArgs.frame = &frame;
-	UpdateDefaultHeapBuff(updateArgs);
+	//// Get vertices in
+	//FArg::UpdateDefaultHeapBuff updateArgs;
+	//updateArgs.alignment = 0;
+	//updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	//updateArgs.byteSize = vertexBufferSize;
+	//updateArgs.data = reinterpret_cast<const void*>(vertexBuffer.data());
+	//updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.vertices);
+	//updateArgs.frame = &frame;
+	//UpdateDefaultHeapBuff_Blocking(updateArgs);
 
-	// Get indices in
-	updateArgs.alignment = 0;
-	updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
-	updateArgs.byteSize = indexBufferSize;
-	updateArgs.data = reinterpret_cast<const void*>(normalizedIndexBuffer.data());
-	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.indices);
-	updateArgs.frame = &frame;
-	UpdateDefaultHeapBuff(updateArgs);
+	//// Get indices in
+	//updateArgs.alignment = 0;
+	//updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	//updateArgs.byteSize = indexBufferSize;
+	//updateArgs.data = reinterpret_cast<const void*>(normalizedIndexBuffer.data());
+	//updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.indices);
+	//updateArgs.frame = &frame;
+	//UpdateDefaultHeapBuff_Blocking(updateArgs);
 
-	// Get tex coords in
-	updateArgs.alignment = 0;
-	updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
-	updateArgs.byteSize = texCoordsBufferSize;
-	updateArgs.data = reinterpret_cast<const void*>(normalizedTexCoordsBuffer.data());
-	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.textureCoords);
-	updateArgs.frame = &frame;
-	UpdateDefaultHeapBuff(updateArgs);
+	//// Get tex coords in
+	//updateArgs.alignment = 0;
+	//updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	//updateArgs.byteSize = texCoordsBufferSize;
+	//updateArgs.data = reinterpret_cast<const void*>(normalizedTexCoordsBuffer.data());
+	//updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.textureCoords);
+	//updateArgs.frame = &frame;
+	//UpdateDefaultHeapBuff_Blocking(updateArgs);
 
-	// Get textures in
-	object.textures.reserve(aliasHeader->num_skins);
+	//// Get textures in
+	//object.textures.reserve(aliasHeader->num_skins);
 
-	for (int i = 0; i < aliasHeader->num_skins; ++i)
-	{
-		object.textures.push_back(model->skins[i]->name);
-	}
+	//for (int i = 0; i < aliasHeader->num_skins; ++i)
+	//{
+	//	object.textures.push_back(model->skins[i]->name);
+	//}
 
 	return object;
 }
 
-void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Frame& frame)
+void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Context& context)
 {
 	// Fill up vertex buffer
 	std::vector<ShDef::Vert::PosTexCoord> vertices;
@@ -1915,9 +1952,9 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Frame&
 	updateBuffArg.byteSize = obj.verticesSizeInBytes;
 	updateBuffArg.data = vertices.data();
 	updateBuffArg.alignment = 0;
-	updateBuffArg.frame = &frame;
+	updateBuffArg.context = &context;
 
-	UpdateDefaultHeapBuff(updateBuffArg);
+	UpdateDefaultHeapBuff_Blocking(updateBuffArg);
 
 	static uint64_t allocSize = 0;
 	uint64_t size = sizeof(ShDef::Vert::PosTexCoord) * vertices.size();
@@ -1934,9 +1971,9 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Frame&
 	updateBuffArg.byteSize = obj.indicesSizeInBytes;
 	updateBuffArg.data = indices.data();
 	updateBuffArg.alignment = 0;
-	updateBuffArg.frame = &frame;
+	updateBuffArg.context = &context;
 
-	UpdateDefaultHeapBuff(updateBuffArg);
+	UpdateDefaultHeapBuff_Blocking(updateBuffArg);
 
 	const unsigned int PictureObjectConstSize = Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT);
 
@@ -1953,7 +1990,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Frame&
 	obj.GenerateBoundingBox(verticesPos);
 }
 
-void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, Frame& frame)
+void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, Context& context)
 {
 	// Looks like if leaf return, leafs don't contain any geom
 	if (node.contents != -1)
@@ -1962,8 +1999,8 @@ void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, F
 	}
 
 	// This is intermediate node, keep going for a leafs
-	DecomposeGLModelNode(model, *node.children[0], frame);
-	DecomposeGLModelNode(model, *node.children[1], frame);
+	DecomposeGLModelNode(model, *node.children[0], context);
+	DecomposeGLModelNode(model, *node.children[1], context);
 
 	// Each surface inside node represents stand alone object with its own texture
 
@@ -1976,103 +2013,105 @@ void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, F
 	{
 		assert(surf != nullptr && "Error during graphical objects generation");
 
-		CreateGraphicalObjectFromGLSurface(*surf, frame);
+		CreateGraphicalObjectFromGLSurface(*surf, context);
 	}
 }
 
-GraphicsJobContext Renderer::CreateGraphicsJobContext(Frame& frame)
+Context Renderer::CreateContext(Frame& frame)
 {
 	const int commandListIndex = m_commandListBuffer.allocator.Allocate();
 	frame.acquiredCommandListsIndices.push_back(commandListIndex);
 
-	return GraphicsJobContext(frame, m_commandListBuffer.commandLists[commandListIndex]);
+	return Context(frame, m_commandListBuffer.commandLists[commandListIndex]);
 }
 
-void Renderer::Draw(const StaticObject& object, Frame& frame)
+void Renderer::Draw_Blocking(const StaticObject& object, Context& context)
 {
-	//#DEBUG delete when not needed
-	//// Set vertex buffer
-	//D3D12_VERTEX_BUFFER_VIEW vertBuffView;
-	//vertBuffView.BufferLocation = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + m_defaultMemoryBuffer.GetOffset(object.vertices);
-	//vertBuffView.StrideInBytes = sizeof(ShDef::Vert::PosTexCoord);
-	//vertBuffView.SizeInBytes = object.verticesSizeInBytes;
+	CommandList& commandList = context.commandList;
 
-	//frame.commandList->IASetVertexBuffers(0, 1, &vertBuffView);
+	// Set vertex buffer
+	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
+	vertBuffView.BufferLocation = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + m_defaultMemoryBuffer.GetOffset(object.vertices);
+	vertBuffView.StrideInBytes = sizeof(ShDef::Vert::PosTexCoord);
+	vertBuffView.SizeInBytes = object.verticesSizeInBytes;
 
-	//// Binding root signature params
+	commandList.commandList->IASetVertexBuffers(0, 1, &vertBuffView);
 
-	//// 1)
-	//const Texture& texture = m_textures.find(object.textureKey)->second;
+	// Binding root signature params
 
-	//CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);
+	// 1)
+	const Texture& texture = *FindTexture_Blocking(object.textureKey);
 
-	//frame.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
+	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);
+
+	commandList.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
 
 
-	//// 2)
-	//CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
-	//samplerHandle.Offset(texture.samplerInd, m_samplerDescriptorSize);
+	// 2)
+	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
+	samplerHandle.Offset(texture.samplerInd, m_samplerDescriptorSize);
 
-	//frame.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
+	commandList.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
 
-	//// 3)
-	//D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
-	//cbAddress += m_uploadMemoryBuffer.GetOffset(object.constantBufferHandler);
+	// 3)
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+	cbAddress += m_uploadMemoryBuffer.GetOffset(object.constantBufferHandler);
 
-	//frame.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
+	commandList.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
 
-	//// Finally, draw
-	//frame.commandList->DrawInstanced(vertBuffView.SizeInBytes / vertBuffView.StrideInBytes, 1, 0, 0);
+	// Finally, draw
+	commandList.commandList->DrawInstanced(vertBuffView.SizeInBytes / vertBuffView.StrideInBytes, 1, 0, 0);
 }
 
-void Renderer::DrawIndiced(const StaticObject& object, Frame& frame)
+void Renderer::DrawIndiced_Blocking(const StaticObject& object, Context& context)
 {
-	//#DEBUG delete when not needed
-	//assert(object.indices != BufConst::INVALID_BUFFER_HANDLER && "Trying to draw indexed object without index buffer");
+	assert(object.indices != BufConst::INVALID_BUFFER_HANDLER && "Trying to draw indexed object without index buffer");
 
-	//// Set vertex buffer
-	//D3D12_VERTEX_BUFFER_VIEW vertBuffView;
-	//vertBuffView.BufferLocation = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + m_defaultMemoryBuffer.GetOffset(object.vertices);
-	//vertBuffView.StrideInBytes = sizeof(ShDef::Vert::PosTexCoord);
-	//vertBuffView.SizeInBytes = object.verticesSizeInBytes;
+	CommandList& commandList = context.commandList;
 
-	//frame.commandList->IASetVertexBuffers(0, 1, &vertBuffView);
+	// Set vertex buffer
+	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
+	vertBuffView.BufferLocation = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + m_defaultMemoryBuffer.GetOffset(object.vertices);
+	vertBuffView.StrideInBytes = sizeof(ShDef::Vert::PosTexCoord);
+	vertBuffView.SizeInBytes = object.verticesSizeInBytes;
 
-	//// Set index buffer
-	//D3D12_INDEX_BUFFER_VIEW indexBufferView;
-	//indexBufferView.BufferLocation = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + m_defaultMemoryBuffer.GetOffset(object.indices);
-	//indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-	//indexBufferView.SizeInBytes = object.indicesSizeInBytes;
+	commandList.commandList->IASetVertexBuffers(0, 1, &vertBuffView);
 
-	//frame.commandList->IASetIndexBuffer(&indexBufferView);
+	// Set index buffer
+	D3D12_INDEX_BUFFER_VIEW indexBufferView;
+	indexBufferView.BufferLocation = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + m_defaultMemoryBuffer.GetOffset(object.indices);
+	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+	indexBufferView.SizeInBytes = object.indicesSizeInBytes;
+
+	commandList.commandList->IASetIndexBuffer(&indexBufferView);
 
 
-	//// Binding root signature params
+	// Binding root signature params
 
-	//// 1)
-	//const Texture& texture = m_textures.find(object.textureKey)->second;
+	// 1)
+	const Texture& texture = *FindTexture_Blocking(object.textureKey);
 
-	//CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);;
 
-	//frame.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
+	commandList.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
 
-	//// 2)
-	//CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
-	//samplerHandle.Offset(texture.samplerInd, m_samplerDescriptorSize);
+	// 2)
+	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
+	samplerHandle.Offset(texture.samplerInd, m_samplerDescriptorSize);
 
-	//frame.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
+	commandList.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
 
-	//// 3)
-	//D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
-	//cbAddress += m_uploadMemoryBuffer.GetOffset(object.constantBufferHandler);
+	// 3)
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+	cbAddress += m_uploadMemoryBuffer.GetOffset(object.constantBufferHandler);
 
-	//frame.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
+	commandList.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
 
-	//// Finally, draw
-	//frame.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
+	// Finally, draw
+	commandList.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
 }
 
-void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, Frame& frame)
+void Renderer::DrawIndiced_Blocking(const DynamicObject& object, const entity_t& entity, Frame& frame)
 {
 	//#DEBUG delete when not needed
 	//const DynamicObjectModel& model = *object.model;
@@ -2164,7 +2203,7 @@ void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, 
 	//frame.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
 }
 
-void Renderer::DrawStreamingAsync_Blocking(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, GraphicsJobContext& context)
+void Renderer::DrawStreamingAsync_Blocking(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, Context& context)
 {
 	Frame& frame = context.frame;
 	CommandList& commandList = context.commandList;
@@ -2399,7 +2438,7 @@ void Renderer::FindImageScaledSizes(int width, int height, int& scaledWidth, int
 	min(scaledHeight, maxSize);
 }
 
-bool Renderer::IsVisible(const StaticObject& obj) const
+bool Renderer::IsVisible(const StaticObject& obj, const Camera& camera) const
 {
 	const static XMFLOAT4 divVector = XMFLOAT4(2.0f, 2.0f, 2.0f, 1.0f);
 	const static FXMVECTOR sseDivVect = XMLoadFloat4(&divVector);
@@ -2409,7 +2448,7 @@ bool Renderer::IsVisible(const StaticObject& obj) const
 	FXMVECTOR sseBoundingBoxCenter = 
 		XMVectorDivide(XMVectorAdd(sseBoundindBoxMax, sseBoundindBoxMin), sseDivVect);
 
-	FXMVECTOR sseCameraPos = XMLoadFloat4(&m_camera.position);
+	FXMVECTOR sseCameraPos = XMLoadFloat4(&camera.position);
 
 	XMFLOAT4 lenVector;
 	XMStoreFloat4(&lenVector, XMVector4Length(XMVectorSubtract(sseCameraPos, sseBoundingBoxCenter)));
@@ -2493,7 +2532,7 @@ void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, 
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-void Renderer::UpdateStreamingConstantBufferAsync(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, GraphicsJobContext& context)
+void Renderer::UpdateStreamingConstantBufferAsync(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, Context& context)
 {
 	assert(handler != BufConst::INVALID_BUFFER_HANDLER &&
 		"Can't update constant buffer, invalid offset.");
@@ -2529,11 +2568,13 @@ void Renderer::UpdateStreamingConstantBufferAsync(XMFLOAT4 position, XMFLOAT4 sc
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, Frame& frame)
+void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context& context)
 {
+	const Camera& camera = context.frame.camera;
+	
 	XMMATRIX sseMvpMat = obj.GenerateModelMat() *
-		m_camera.GenerateViewMatrix() *
-		m_camera.GenerateProjectionMatrix();
+		camera.GenerateViewMatrix() *
+		camera.GenerateProjectionMatrix();
 
 	XMFLOAT4X4 mvpMat;
 	XMStoreFloat4x4(&mvpMat, sseMvpMat);
@@ -2655,7 +2696,7 @@ Texture* Renderer::FindOrCreateTexture(std::string_view textureName, Frame& fram
 	return nullptr;
 }
 
-Texture* Renderer::FindOrCreateTextureAsync_Blocking(std::string_view textureName, GraphicsJobContext& context)
+Texture* Renderer::FindOrCreateTextureAsync_Blocking(std::string_view textureName, Context& context)
 {
 	std::scoped_lock<std::mutex> lock(m_textures.mutex);
 	
@@ -2771,7 +2812,7 @@ void Renderer::UpdateTexture(Texture& tex, const std::byte* data, Frame& frame)
 	//	D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 }
 
-void Renderer::UpdateTextureAsync_Blocking(Texture& tex, const std::byte* data, GraphicsJobContext& context)
+void Renderer::UpdateTextureAsync_Blocking(Texture& tex, const std::byte* data, Context& context)
 {
 	CommandList& commandList = context.commandList;
 
@@ -2894,7 +2935,7 @@ void Renderer::Draw_Pic(int x, int y, const char* name, Frame& frame)
 	//	XMFLOAT4(x, y, 0.0f, 1.0f), frame);
 }
 
-void Renderer::Draw_PicAsync(int x, int y, const char* name, GraphicsJobContext& context)
+void Renderer::Draw_PicAsync(int x, int y, const char* name, Context& context)
 {
 	std::array<char, MAX_QPATH> texFullName;
 	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
@@ -2960,7 +3001,7 @@ void Renderer::Draw_Char(int x, int y, int num, Frame& frame)
 	//	XMFLOAT4(x, y, 0.0f, 1.0f), frame);
 }
 
-void Renderer::Draw_CharAsync(int x, int y, int num, GraphicsJobContext& context)
+void Renderer::Draw_CharAsync(int x, int y, int num, Context& context)
 {
 	num &= 0xFF;
 
@@ -3004,7 +3045,7 @@ void Renderer::Draw_CharAsync(int x, int y, int num, GraphicsJobContext& context
 		XMFLOAT4(x, y, 0.0f, 1.0f), context);
 }
 
-void Renderer::Draw_RawPicAsync(const DrawCall_StretchRaw& drawCall, GraphicsJobContext& context)
+void Renderer::Draw_RawPicAsync(const DrawCall_StretchRaw& drawCall, Context& context)
 {
 	const int textureWidth = drawCall.textureWidth;
 	const int textureHeight = drawCall.textureHeight;
@@ -3088,17 +3129,21 @@ void Renderer::EndFrameAsync()
 	DetachCurrentFrame();
 
 	// Create contexts
-	GraphicsJobContext beginFrameContext = CreateGraphicsJobContext(frame);
+	// NOTE: creation order is the order in which command Lists will be submitted.
+	Context beginFrameContext = CreateContext(frame);
+
+	Context drawStaticObjectsContext = CreateContext(frame);
+
+	Context drawUIContext = CreateContext(frame);
 	
-	GraphicsJobContext drawUIContext = CreateGraphicsJobContext(frame);
-	
-	GraphicsJobContext endFrameContext = CreateGraphicsJobContext(frame);
+	Context endFrameContext = CreateContext(frame);
 
 
 	// Set up dependencies
 	
 	endFrameContext.CreateDependencyFrom({
 			&beginFrameContext,
+			&drawStaticObjectsContext,
 			&drawUIContext
 		});
 
@@ -3111,6 +3156,15 @@ void Renderer::EndFrameAsync()
 		BeginFrameJob(beginFrameContext);
 	}));
 
+	// --- Draw static objects job ---
+	
+	//#DEBUG uncomment
+	m_jobSystem.GetJobQueue().Enqueue(Job(
+		[drawStaticObjectsContext, this]() mutable
+	{
+		DrawStaticGeometryJob(drawStaticObjectsContext);
+	}));
+	
 	// --- Draw UI job ---
 
 	m_jobSystem.GetJobQueue().Enqueue(Job(
@@ -3118,7 +3172,6 @@ void Renderer::EndFrameAsync()
 	{
 		DrawUIJob(drawUIContext);
 	}));
-
 
 	// --- End frame job ---
 
@@ -3157,6 +3210,9 @@ void Renderer::RegisterWorldModel(const char* model)
 	// as part of this system. Maybe I should leave it as it is and just use old system?
 	Frame& frame = GetCurrentFrame();
 
+	Context context = CreateContext(frame);
+	context.commandList.Open();
+
 	char fullName[MAX_QPATH];
 	Utils::Sprintf(fullName, sizeof(fullName), "maps/%s.bsp", model);
 
@@ -3170,101 +3226,113 @@ void Renderer::RegisterWorldModel(const char* model)
 	}
 
 	// Create new world model
-	model_t* mapModel = Mod_ForName(fullName, qTrue, frame);
+	//#DEBUG THHHHHIIIS
+	model_t* mapModel = Mod_ForName(fullName, qTrue, context);
 
 	// Legacy from quake 2 model handling system
 	r_worldmodel = mapModel;
 
-	DecomposeGLModelNode(*mapModel, *mapModel->nodes, frame);
+	DecomposeGLModelNode(*mapModel, *mapModel->nodes, context);
+
+	// Submit frame
+	context.commandList.Close();
+	CloseFrameAsync(context.frame);
+
+	ReleaseFrameResources_Blocking(frame);
+
+	ReleaseFrame(frame);
+	DetachCurrentFrame();
 }
 
 model_s* Renderer::RegisterModel(const char* name)
 {
-	std::string modelName = name;
+	//#DEBUG uncomment and fix
+	return NULL;
+	//std::string modelName = name;
 
-	Frame& frame = GetCurrentFrame();
-	
-	model_t* mod = Mod_ForName(modelName.data(), qFalse, frame);
+	//Frame& frame = GetCurrentFrame();
+	//
+	//model_t* mod = Mod_ForName(modelName.data(), qFalse, frame);
 
-	if (mod)
-	{
+	//if (mod)
+	//{
 
-		switch (mod->type)
-		{
-		case mod_sprite:
-		{
-			//#TODO implement sprites 
-			//dsprite_t* sprites = reinterpret_cast<dsprite_t *>(mod->extradata);
-			//for (int i = 0; i < sprites->numframes; ++i)
-			//{
-			//	mod->skins[i] = FindOrCreateTexture(sprites->frames[i].name);
-			//}
+	//	switch (mod->type)
+	//	{
+	//	case mod_sprite:
+	//	{
+	//		//#TODO implement sprites 
+	//		//dsprite_t* sprites = reinterpret_cast<dsprite_t *>(mod->extradata);
+	//		//for (int i = 0; i < sprites->numframes; ++i)
+	//		//{
+	//		//	mod->skins[i] = FindOrCreateTexture(sprites->frames[i].name);
+	//		//}
 
-			//m_dynamicGraphicalObjects[mod] = CreateDynamicGraphicObjectFromGLModel(mod);
+	//		//m_dynamicGraphicalObjects[mod] = CreateDynamicGraphicObjectFromGLModel(mod);
 
-			// Remove after sprites implemented
-			Mod_Free(mod);
-			mod = NULL;
-			break;
-		}
-		case mod_alias:
-		{
-			dmdl_t* pheader = reinterpret_cast<dmdl_t*>(mod->extradata);
-			for (int i = 0; i < pheader->num_skins; ++i)
-			{
-				char* imageName = reinterpret_cast<char*>(pheader) + pheader->ofs_skins + i * MAX_SKINNAME;
-				mod->skins[i] = FindOrCreateTexture(imageName, frame);
-			}
+	//		// Remove after sprites implemented
+	//		Mod_Free(mod);
+	//		mod = NULL;
+	//		break;
+	//	}
+	//	case mod_alias:
+	//	{
+	//		dmdl_t* pheader = reinterpret_cast<dmdl_t*>(mod->extradata);
+	//		for (int i = 0; i < pheader->num_skins; ++i)
+	//		{
+	//			char* imageName = reinterpret_cast<char*>(pheader) + pheader->ofs_skins + i * MAX_SKINNAME;
+	//			mod->skins[i] = FindOrCreateTexture(imageName, frame);
+	//		}
 
-			m_dynamicObjectsModels[mod] = CreateDynamicGraphicObjectFromGLModel(mod, frame);
+	//		m_dynamicObjectsModels[mod] = CreateDynamicGraphicObjectFromGLModel(mod, frame);
 
-			break;
-		}
-		case mod_brush:
-		{
-			//#TODO implement brush
-			mod = NULL;
-			break;
-		}
-		default:
-			break;
-		}
-	}
+	//		break;
+	//	}
+	//	case mod_brush:
+	//	{
+	//		//#TODO implement brush
+	//		mod = NULL;
+	//		break;
+	//	}
+	//	default:
+	//		break;
+	//	}
+	//}
 
-	return mod;
+	//return mod;
 }
 
 void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 {
+	//#DEBUG remove this function
 	Frame& frame = GetCurrentFrame();
 
 	m_camera.Update(frameUpdateData);
-
 	// Static geometry 
-	Diagnostics::BeginEvent(frame.commandList.Get(), "Static materials");
+	//Diagnostics::BeginEvent(frame.commandList.Get(), "Static materials");
 
-	SetMaterial(MaterialSource::STATIC_MATERIAL_NAME, frame);
+	//SetMaterial(MaterialSource::STATIC_MATERIAL_NAME, frame);
 
-	for (const StaticObject& obj : m_staticObjects)
-	{
-		if (IsVisible(obj) == false)
-		{
-			continue;
-		}
+	//for (const StaticObject& obj : m_staticObjects)
+	//{
+	//	if (IsVisible(obj) == false)
+	//	{
+	//		continue;
+	//	}
 
-		UpdateStaticObjectConstantBuffer(obj, frame);
+	//	UpdateStaticObjectConstantBuffer(obj, frame);
 
-		if (obj.indices != BufConst::INVALID_BUFFER_HANDLER)
-		{
-			DrawIndiced(obj, frame);
-		}
-		else
-		{
-			Draw(obj, frame);
-		}
-	}
+	//	if (obj.indices != BufConst::INVALID_BUFFER_HANDLER)
+	//	{
+	//		DrawIndiced_Blocking(obj, frame);
+	//	}
+	//	else
+	//	{
+	//		Draw_Blocking(obj, frame);
+	//	}
+	//}
 
-	Diagnostics::EndEvent(frame.commandList.Get());
+	//Diagnostics::EndEvent(frame.commandList.Get());
 
 	// Dynamic geometry
 	Diagnostics::BeginEvent(frame.commandList.Get(), "Dynamic materials");
@@ -3294,7 +3362,7 @@ void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 		DynamicObject& object = frame.dynamicObjects.emplace_back(DynamicObject(&model, &constBuffer));
 
 		UpdateDynamicObjectConstantBuffer(object, entity, frame);
-		DrawIndiced(object, entity, frame);
+		DrawIndiced_Blocking(object, entity, frame);
 	}
 
 	Diagnostics::EndEvent(frame.commandList.Get());
@@ -3331,4 +3399,11 @@ void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 	}
 
 	Diagnostics::EndEvent(frame.commandList.Get());
+}
+
+void Renderer::RenderFrameAsync(const refdef_t& frameUpdateData)
+{
+	Frame& frame = GetCurrentFrame();
+
+	frame.camera.Update(frameUpdateData);
 }

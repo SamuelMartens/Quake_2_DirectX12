@@ -14,7 +14,9 @@ extern "C"
 
 
 #include "dx_texture.h"
+//#DEBUG remove frame include
 #include "dx_frame.h"
+#include "dx_jobmultithreading.h"
 
 /*
 ==============================================================================
@@ -237,7 +239,7 @@ typedef struct model_s
 
 void	Mod_Init(void);
 void	Mod_ClearAll(void);
-model_t *Mod_ForName(char *name, qboolean crash, Frame& frame);
+model_t *Mod_ForName(char *name, qboolean crash, Context& context);
 mleaf_t *Mod_PointInLeaf(float *p, model_t *model);
 byte	*Mod_ClusterPVS(int cluster, model_t *model);
 

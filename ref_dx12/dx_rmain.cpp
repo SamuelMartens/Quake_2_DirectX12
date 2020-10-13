@@ -42,7 +42,7 @@ void DX12_EndReg(void)
 
 void DX12_RenderFrame(refdef_t *fd)
 {
-	Renderer::Inst().RenderFrame(*fd);
+	Renderer::Inst().RenderFrameAsync(*fd);
 }
 
 void DX12_Draw_GetPicSize(int *w, int *h, char *name)
