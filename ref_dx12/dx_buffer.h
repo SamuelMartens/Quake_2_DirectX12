@@ -20,6 +20,11 @@ namespace BufConst
 	extern const BufferHandler INVALID_BUFFER_HANDLER;
 };
 
+struct BufferPiece
+{
+	BufferHandler handler = BufConst::INVALID_BUFFER_HANDLER;
+	int offset = Const::INVALID_OFFSET;
+};
 
 template<int SIZE>
 struct AllocBuffer

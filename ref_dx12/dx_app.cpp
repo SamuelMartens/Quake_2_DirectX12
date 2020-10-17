@@ -293,6 +293,8 @@ void Renderer::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 
 void Renderer::InitDx()
 {
+	Logs::Log(Logs::Category::Generic, "Dx init started");
+
 	// ------ Pre frames init -----
 	// Stuff that doesn't require frames for initialization
 	SetDebugMessageFilter();
@@ -346,6 +348,8 @@ void Renderer::InitDx()
 	// We are done with that frame
 	ReleaseFrame(initContext.frame);
 	DetachCurrentFrame();
+
+	Logs::Log(Logs::Category::Generic, "Dx Init finished");
 }
 
 void Renderer::EnableDebugLayer()
@@ -870,6 +874,8 @@ void Renderer::SubmitFrameAsync(Frame& frame)
 
 	m_commandQueue->Signal(m_fence.Get(), frame.executeCommandListFenceValue);
 	ThrowIfFailed(m_fence->SetEventOnCompletion(frame.executeCommandListFenceValue, frame.executeCommandListEvenHandle));
+
+	Logs::Logf(Logs::Category::FrameSubmission, "Frame with frameNumber %d submitted", frame.frameNumber);
 }
 
 void Renderer::OpenFrame(Frame& frame) const
@@ -911,6 +917,8 @@ void Renderer::CloseFrameAsync(Frame& frame)
 
 void Renderer::ReleaseFrameResources_Blocking(Frame& frame)
 {
+	Logs::Logf(Logs::Category::FrameSubmission, "Frame with frameNumber %d releases resources", frame.frameNumber);
+
 	for (int acquiredCommandListIndex : frame.acquiredCommandListsIndices)
 	{
 		m_commandListBuffer.allocator.Delete(acquiredCommandListIndex);
@@ -964,7 +972,12 @@ void Renderer::AcquireCurrentFrame()
 
 		if (frameIt->isInUse == false)
 		{
-			break;
+			OpenFrameAsync(*frameIt);
+			m_currentFrameIndex = std::distance(m_frames.begin(), frameIt);
+
+			Logs::Logf(Logs::Category::FrameSubmission, "Frame with index %d acquired", m_currentFrameIndex);
+
+			return;
 		}
 		
 		framesFinishedSemaphores.push_back(std::move(frameFinishedSemaphore));
@@ -988,13 +1001,16 @@ void Renderer::AcquireCurrentFrame()
 	assert(frameIt != m_frames.end() && "Can't find free frame");
 
 	OpenFrameAsync(*frameIt);
-
 	m_currentFrameIndex = std::distance(m_frames.begin(), frameIt);
+
+	Logs::Logf(Logs::Category::FrameSubmission, "Frame with index %d acquired", m_currentFrameIndex);
 }
 
 void Renderer::DetachCurrentFrame()
 {
 	assert(m_currentFrameIndex != Const::INVALID_INDEX && "Trying to detach frame. But there is nothing to detach.");
+
+	Logs::Logf(Logs::Category::FrameSubmission, "Frame with index %d and frameNumber %d detached", m_currentFrameIndex, m_frames[m_currentFrameIndex].frameNumber);
 
 	m_currentFrameIndex = Const::INVALID_INDEX;
 }
@@ -1006,6 +1022,8 @@ void Renderer::ReleaseFrame(Frame& frame)
 	frame.frameFinishedSemaphore->Signal();
 	frame.frameFinishedSemaphore = nullptr;
 	frame.isInUse = false;
+
+	Logs::Log(Logs::Category::FrameSubmission, "Frame released");
 }
 
 void Renderer::WaitForFrame(Frame& frame) const
@@ -1432,6 +1450,8 @@ Texture* Renderer::CreateTextureFromData(const std::byte* data, int width, int h
 
 Texture* Renderer::_CreateTextureFromDataAsync(const std::byte* data, int width, int height, int bpp, const char* name, Context& context)
 {
+	Logs::Logf(Logs::Category::Textures, "Create texture %s", name);
+
 	Texture tex;
 	_CreateGpuTextureAsync(reinterpret_cast<const unsigned int*>(data), width, height, bpp, context, tex);
 
@@ -1666,6 +1686,8 @@ void Renderer::EndFrameJob(Context& context)
 
 void Renderer::BeginFrameJob(Context& context)
 {
+	Logs::Log(Logs::Category::Job, "BeginFrame job started");
+
 	JOB_GUARD(context);
 
 	CommandList& commandList = context.commandList;
@@ -1693,13 +1715,38 @@ void Renderer::BeginFrameJob(Context& context)
 		0,
 		0,
 		nullptr);
+
+	Logs::Log(Logs::Category::Job, "BeginFrame job ended");
 }
 
 void Renderer::DrawUIJob(Context& context)
 {
 	JOB_GUARD(context);
 
+	Logs::Log(Logs::Category::Job, "DrawUI job started");
+
+	if (context.frame.uiDrawCalls.empty())
+	{
+		Logs::Log(Logs::Category::Job, "DrawUI job started. No draw calls");
+		return;
+	}
+
 	Frame& frame = context.frame;
+	
+	// This is ugly :( I use this for both Constant buffer and Vertex buffer. As a result,
+	// both should be aligned for constant buffers.
+	const int perDrawCallMemoryRequired = Utils::Align(
+		Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT) + 
+		6 * sizeof(ShDef::Vert::PosTexCoord),
+		QCONST_BUFFER_ALIGNMENT);
+
+	// Calculate amount of memory required for all draw calls
+	const int requiredMemoryAlloc = context.frame.uiDrawCalls.size() * perDrawCallMemoryRequired;
+
+	BufferHandler memoryBufferHandle = m_uploadMemoryBuffer.Allocate(requiredMemoryAlloc);
+	DO_IN_LOCK(frame.streamingObjectsHandlers, push_back(memoryBufferHandle));
+
+	BufferPiece currentBufferPiece = {memoryBufferHandle, 0};
 
 	// Set some matrices
 	XMMATRIX tempMat = XMMatrixIdentity();
@@ -1714,21 +1761,21 @@ void Renderer::DrawUIJob(Context& context)
 
 	for (const DrawCall_UI_t& dc : context.frame.uiDrawCalls)
 	{
-		std::visit([&context, this](auto&& drawCall)
+		std::visit([&context, &currentBufferPiece, this](auto&& drawCall)
 		{
 			using T = std::decay_t<decltype(drawCall)>;
 
 			if constexpr (std::is_same_v<T, DrawCall_Char>)
 			{
-				Draw_CharAsync(drawCall.x, drawCall.y, drawCall.num, context);
+				Draw_CharAsync(drawCall.x, drawCall.y, drawCall.num, currentBufferPiece, context);
 			}
 			else if constexpr (std::is_same_v<T, DrawCall_Pic>)
 			{
-				Draw_PicAsync(drawCall.x, drawCall.y, drawCall.name.c_str(), context);
+				Draw_PicAsync(drawCall.x, drawCall.y, drawCall.name.c_str(), currentBufferPiece, context);
 			}
 			else if constexpr (std::is_same_v<T, DrawCall_StretchRaw>)
 			{
-				Draw_RawPicAsync(drawCall, context);
+				Draw_RawPicAsync(drawCall, currentBufferPiece, context);
 			}
 			else
 			{
@@ -1736,11 +1783,18 @@ void Renderer::DrawUIJob(Context& context)
 			}
 		}
 		, dc);
+
+		currentBufferPiece.offset += perDrawCallMemoryRequired;
+
 	}
+
+	Logs::Log(Logs::Category::Job, "DrawUI job ended");
 }
 
 void Renderer::DrawStaticGeometryJob(Context& context)
 {
+	Logs::Log(Logs::Category::Job, "Static job started");
+
 	JOB_GUARD(context);
 
 	CommandList& commandList = context.commandList;
@@ -1771,6 +1825,8 @@ void Renderer::DrawStaticGeometryJob(Context& context)
 	}
 
 	Diagnostics::EndEvent(commandList.commandList.Get());
+
+	Logs::Log(Logs::Category::Job, "Static job ended");
 }
 
 ComPtr<ID3DBlob> Renderer::LoadCompiledShader(const std::string& filename) const
@@ -2203,42 +2259,46 @@ void Renderer::DrawIndiced_Blocking(const DynamicObject& object, const entity_t&
 	//frame.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
 }
 
-void Renderer::DrawStreamingAsync_Blocking(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, Context& context)
+void Renderer::DrawStreamingAsync_Blocking(const FArg::DrawStreaming& args)
 {
-	Frame& frame = context.frame;
-	CommandList& commandList = context.commandList;
+	assert(args.vertices != nullptr &&
+		args.verticesSizeInBytes != Const::INVALID_SIZE &&
+		args.verticesStride != -1 &&
+		args.texName != nullptr &&
+		args.pos != nullptr &&
+		args.bufferPiece != nullptr &&
+		args.context != nullptr &&
+		"DrawStrwaming args are not initialized");
 
-	// Allocate and update constant buffer
-	BufferHandler constantBufferHandler = m_uploadMemoryBuffer.Allocate(Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT));
-	
-	DO_IN_LOCK(frame.streamingObjectsHandlers, push_back(constantBufferHandler));
+	Frame& frame = args.context->frame;
+	CommandList& commandList = args.context->commandList;
 
-	UpdateStreamingConstantBufferAsync(pos, { 1.0f, 1.0f, 1.0f, 0.0f }, constantBufferHandler, context);
+	UpdateStreamingConstantBufferAsync(*args.pos, { 1.0f, 1.0f, 1.0f, 0.0f }, *args.bufferPiece, *args.context);
 
-	// Deal with vertex buffer
-	BufferHandler vertexBufferHandler = m_uploadMemoryBuffer.Allocate(Utils::Align(verticesSizeInBytes, 24));
-	DO_IN_LOCK(frame.streamingObjectsHandlers, push_back(vertexBufferHandler));
+	const int vertexBufferOffset = m_uploadMemoryBuffer.GetOffset(args.bufferPiece->handler) +
+		args.bufferPiece->offset +
+		Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT);
 
 	FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
 	updateVertexBufferArgs.buffer = m_uploadMemoryBuffer.allocBuffer.gpuBuffer;
-	updateVertexBufferArgs.offset = m_uploadMemoryBuffer.GetOffset(vertexBufferHandler);
-	updateVertexBufferArgs.data = vertices;
-	updateVertexBufferArgs.byteSize = verticesSizeInBytes;
+	updateVertexBufferArgs.offset = vertexBufferOffset;
+	updateVertexBufferArgs.data = args.vertices;
+	updateVertexBufferArgs.byteSize = args.verticesSizeInBytes;
 	updateVertexBufferArgs.alignment = 0;
 
 	UpdateUploadHeapBuff(updateVertexBufferArgs);
 
 	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
-	vertBuffView.BufferLocation = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + m_uploadMemoryBuffer.GetOffset(vertexBufferHandler);
-	vertBuffView.StrideInBytes = verticesStride;
-	vertBuffView.SizeInBytes = verticesSizeInBytes;
+	vertBuffView.BufferLocation = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + vertexBufferOffset;
+	vertBuffView.StrideInBytes = args.verticesStride;
+	vertBuffView.SizeInBytes = args.verticesSizeInBytes;
 
 	commandList.commandList->IASetVertexBuffers(0, 1, &vertBuffView);
 
 	// Binding root signature params
 
 	// 1)
-	const Texture& texture = *FindTexture_Blocking(texName);
+	const Texture& texture = *FindTexture_Blocking(args.texName);
 
 	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);;
 
@@ -2253,12 +2313,13 @@ void Renderer::DrawStreamingAsync_Blocking(const std::byte* vertices, int vertic
 	// 3)
 	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
 
-	cbAddress += m_uploadMemoryBuffer.GetOffset(constantBufferHandler);
+	cbAddress += m_uploadMemoryBuffer.GetOffset(args.bufferPiece->handler) +
+		args.bufferPiece->offset;
 
 	commandList.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
 
 
-	commandList.commandList->DrawInstanced(verticesSizeInBytes / verticesStride, 1, 0, 0);
+	commandList.commandList->DrawInstanced(args.verticesSizeInBytes / args.verticesStride, 1, 0, 0);
 }
 
 void Renderer::AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset)
@@ -2532,9 +2593,10 @@ void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, 
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-void Renderer::UpdateStreamingConstantBufferAsync(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, Context& context)
+void Renderer::UpdateStreamingConstantBufferAsync(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, Context& context)
 {
-	assert(handler != BufConst::INVALID_BUFFER_HANDLER &&
+	assert(bufferPiece.handler != BufConst::INVALID_BUFFER_HANDLER &&
+		bufferPiece.offset != Const::INVALID_OFFSET &&
 		"Can't update constant buffer, invalid offset.");
 
 	// Update transformation mat
@@ -2560,7 +2622,7 @@ void Renderer::UpdateStreamingConstantBufferAsync(XMFLOAT4 position, XMFLOAT4 sc
 
 	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
 	updateConstBufferArgs.buffer = m_uploadMemoryBuffer.allocBuffer.gpuBuffer;
-	updateConstBufferArgs.offset = m_uploadMemoryBuffer.GetOffset(handler);
+	updateConstBufferArgs.offset = m_uploadMemoryBuffer.GetOffset(bufferPiece.handler) + bufferPiece.offset;
 	updateConstBufferArgs.data = &transMat;
 	updateConstBufferArgs.byteSize = sizeof(transMat);
 	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
@@ -2814,6 +2876,8 @@ void Renderer::UpdateTexture(Texture& tex, const std::byte* data, Frame& frame)
 
 void Renderer::UpdateTextureAsync_Blocking(Texture& tex, const std::byte* data, Context& context)
 {
+	Logs::Logf(Logs::Category::Textures, "Update Texture with name %s", tex.name.c_str());
+
 	CommandList& commandList = context.commandList;
 
 	// Count alignment and go for what we need
@@ -2890,6 +2954,7 @@ void Renderer::SetPalette(const unsigned char* palette)
 
 void Renderer::EndLevelLoading()
 {
+	m_staticModelRegContext->frame.GetFinishSemaphore()->Wait();
 	Mod_FreeAll();
 }
 
@@ -2935,7 +3000,7 @@ void Renderer::Draw_Pic(int x, int y, const char* name, Frame& frame)
 	//	XMFLOAT4(x, y, 0.0f, 1.0f), frame);
 }
 
-void Renderer::Draw_PicAsync(int x, int y, const char* name, Context& context)
+void Renderer::Draw_PicAsync(int x, int y, const char* name, const BufferPiece& bufferPiece, Context& context)
 {
 	std::array<char, MAX_QPATH> texFullName;
 	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
@@ -2949,11 +3014,19 @@ void Renderer::Draw_PicAsync(int x, int y, const char* name, Context& context)
 		XMFLOAT2(1.0f, 1.0f),
 		vertices.data());
 
-	DrawStreamingAsync_Blocking(reinterpret_cast<std::byte*>(vertices.data()),
-		vertices.size() * sizeof(ShDef::Vert::PosTexCoord),
-		sizeof(ShDef::Vert::PosTexCoord),
-		texFullName.data(),
-		XMFLOAT4(x, y, 0.0f, 1.0f), context);
+	FArg::DrawStreaming drawArgs;
+
+	XMFLOAT4 pos = XMFLOAT4(x, y, 0.0f, 1.0f);
+
+	drawArgs.vertices = reinterpret_cast<std::byte*>(vertices.data());
+	drawArgs.verticesSizeInBytes = vertices.size() * sizeof(ShDef::Vert::PosTexCoord);
+	drawArgs.verticesStride = sizeof(ShDef::Vert::PosTexCoord);
+	drawArgs.texName = texFullName.data();
+	drawArgs.pos = &pos;
+	drawArgs.bufferPiece = &bufferPiece;
+	drawArgs.context = &context;
+
+	DrawStreamingAsync_Blocking(drawArgs);
 }
 
 void Renderer::Draw_Char(int x, int y, int num, Frame& frame)
@@ -3001,7 +3074,7 @@ void Renderer::Draw_Char(int x, int y, int num, Frame& frame)
 	//	XMFLOAT4(x, y, 0.0f, 1.0f), frame);
 }
 
-void Renderer::Draw_CharAsync(int x, int y, int num, Context& context)
+void Renderer::Draw_CharAsync(int x, int y, int num, const BufferPiece& bufferPiece, Context& context)
 {
 	num &= 0xFF;
 
@@ -3038,14 +3111,22 @@ void Renderer::Draw_CharAsync(int x, int y, int num, Context& context)
 		 CreateTextureFromFileAsync_Blocking(texFullName.data(), context);
 	 }
 
-	DrawStreamingAsync_Blocking(reinterpret_cast<std::byte*>(vertices.data()),
-		vertices.size() * vertexStride,
-		vertexStride,
-		texFullName.data(),
-		XMFLOAT4(x, y, 0.0f, 1.0f), context);
+	 FArg::DrawStreaming drawArgs;
+
+	 XMFLOAT4 pos = XMFLOAT4(x, y, 0.0f, 1.0f);
+
+	 drawArgs.vertices = reinterpret_cast<std::byte*>(vertices.data());
+	 drawArgs.verticesSizeInBytes = vertices.size() * vertexStride;
+	 drawArgs.verticesStride = vertexStride;
+	 drawArgs.texName = texFullName.data();
+	 drawArgs.pos = &pos;
+	 drawArgs.bufferPiece = &bufferPiece;
+	 drawArgs.context = &context;
+	
+	 DrawStreamingAsync_Blocking(drawArgs);
 }
 
-void Renderer::Draw_RawPicAsync(const DrawCall_StretchRaw& drawCall, Context& context)
+void Renderer::Draw_RawPicAsync(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, Context& context)
 {
 	const int textureWidth = drawCall.textureWidth;
 	const int textureHeight = drawCall.textureHeight;
@@ -3069,7 +3150,6 @@ void Renderer::Draw_RawPicAsync(const DrawCall_StretchRaw& drawCall, Context& co
 		|| rawTex->height != textureHeight)
 	{
 		constexpr int textureBitsPerPixel = 32;
-
 		rawTex = CreateTextureFromDataAsync_Blocking(reinterpret_cast<std::byte*>(texture.data()),
 			textureWidth, textureHeight, textureBitsPerPixel, QRAW_TEXTURE_NAME, context);
 	}
@@ -3087,12 +3167,19 @@ void Renderer::Draw_RawPicAsync(const DrawCall_StretchRaw& drawCall, Context& co
 
 	const int vertexStride = sizeof(ShDef::Vert::PosTexCoord);
 
-	DrawStreamingAsync_Blocking(reinterpret_cast<std::byte*>(vertices.data()),
-		vertices.size()* vertexStride,
-		vertexStride,
-		QRAW_TEXTURE_NAME,
-		XMFLOAT4(drawCall.x, drawCall.y, 0.0f, 1.0f),
-		context);
+	FArg::DrawStreaming drawArgs;
+
+	XMFLOAT4 pos = XMFLOAT4(drawCall.x, drawCall.y, 0.0f, 1.0f);
+
+	drawArgs.vertices = reinterpret_cast<std::byte*>(vertices.data());
+	drawArgs.verticesSizeInBytes = vertices.size() * vertexStride;
+	drawArgs.verticesStride = vertexStride;
+	drawArgs.texName = QRAW_TEXTURE_NAME;
+	drawArgs.pos = &pos;
+	drawArgs.bufferPiece = &bufferPiece;
+	drawArgs.context = &context;
+
+	DrawStreamingAsync_Blocking(drawArgs);
 }
 
 void Renderer::AddDrawCall_Pic(int x, int y, const char* name)
@@ -3148,9 +3235,11 @@ void Renderer::EndFrameAsync()
 		});
 
 
+	JobQueue& jobQueue = m_jobSystem.GetJobQueue();
+
 	// --- Begin frame job ---
 
-	m_jobSystem.GetJobQueue().Enqueue(Job(
+	jobQueue.Enqueue(Job(
 		[beginFrameContext, this] () mutable
 	{
 		BeginFrameJob(beginFrameContext);
@@ -3159,7 +3248,7 @@ void Renderer::EndFrameAsync()
 	// --- Draw static objects job ---
 	
 	//#DEBUG uncomment
-	m_jobSystem.GetJobQueue().Enqueue(Job(
+	jobQueue.Enqueue(Job(
 		[drawStaticObjectsContext, this]() mutable
 	{
 		DrawStaticGeometryJob(drawStaticObjectsContext);
@@ -3167,7 +3256,7 @@ void Renderer::EndFrameAsync()
 	
 	// --- Draw UI job ---
 
-	m_jobSystem.GetJobQueue().Enqueue(Job(
+	jobQueue.Enqueue(Job(
 		[drawUIContext, this] () mutable 
 	{
 		DrawUIJob(drawUIContext);
@@ -3175,7 +3264,7 @@ void Renderer::EndFrameAsync()
 
 	// --- End frame job ---
 
-	m_jobSystem.GetJobQueue().Enqueue(Job(
+	jobQueue.Enqueue(Job(
 		[endFrameContext, this]() mutable
 	{
 		EndFrameJob(endFrameContext);
@@ -3211,6 +3300,8 @@ void Renderer::RegisterWorldModel(const char* model)
 	Frame& frame = GetCurrentFrame();
 
 	Context context = CreateContext(frame);
+	m_staticModelRegContext = std::make_unique<Context>(context);
+
 	context.commandList.Open();
 
 	char fullName[MAX_QPATH];
@@ -3226,7 +3317,6 @@ void Renderer::RegisterWorldModel(const char* model)
 	}
 
 	// Create new world model
-	//#DEBUG THHHHHIIIS
 	model_t* mapModel = Mod_ForName(fullName, qTrue, context);
 
 	// Legacy from quake 2 model handling system
@@ -3236,12 +3326,30 @@ void Renderer::RegisterWorldModel(const char* model)
 
 	// Submit frame
 	context.commandList.Close();
-	CloseFrameAsync(context.frame);
-
-	ReleaseFrameResources_Blocking(frame);
-
-	ReleaseFrame(frame);
 	DetachCurrentFrame();
+
+	m_jobSystem.GetJobQueue().Enqueue(Job(
+		[context, this] () mutable 
+	{
+		Frame& frame = context.frame;
+
+		//#DEBUG all dependencies is this frame finished!
+		// does some dynamic models share stuff with static model? 
+		// If yes I will have a problem, if no, I am golden
+		CloseFrameAsync(frame);
+
+		ReleaseFrameResources_Blocking(frame);
+
+		ReleaseFrame(frame);
+
+	}));
+}
+
+void Renderer::StartLevelLoading(const char* mapName)
+{
+	RegisterWorldModel(mapName);
+
+	m_dynamicModelRegContext = std::make_unique<Context>(CreateContext(GetCurrentFrame()));
 }
 
 model_s* Renderer::RegisterModel(const char* name)

@@ -14,7 +14,7 @@ extern "C"
 // Register map as the world
 void DX12_BeginRegistration(char* map)
 {
-	Renderer::Inst().RegisterWorldModel(map);
+	Renderer::Inst().StartLevelLoading(map);
 }
 
 struct model_s* DX12_RegModel(char* model)

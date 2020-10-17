@@ -1,5 +1,13 @@
 #include "dx_threadingutils.h"
 
+#include "dx_diagnostics.h"
+
+#ifdef _DEBUG
+	#define SEMAPHORE_TIME_OUT 10000
+#else
+	#define SEMAPHORE_TIME_OUT INFINITE
+#endif
+
 Semaphore::Semaphore(int waitForValue) :
 	waitValue(waitForValue)
 {
@@ -15,25 +23,38 @@ void Semaphore::Signal()
 {
 	assert(waitValue != 0 && "Not initialized semaphore is signaled");
 
+	Logs::Logf(Logs::Category::Synchronization, "Semaphore signaled, handle %x", reinterpret_cast<unsigned>(winSemaphore));
+
 	// Remember, fetch_add() will return old value, that's why -1 
 	if (counter.fetch_add(1) >= waitValue - 1)
 	{
 		ReleaseSemaphore(winSemaphore, 1, NULL);
+
+		Logs::Logf(Logs::Category::Synchronization, "Semaphore released, handle %x", reinterpret_cast<unsigned>(winSemaphore));
 	};
 }
 
 void Semaphore::Wait() const
 {
+	Logs::Logf(Logs::Category::Synchronization, "Semaphore wait entered, handle %x", reinterpret_cast<unsigned>(winSemaphore));
+
 	if (counter.load() < waitValue)
 	{
-		DWORD res = WaitForSingleObject(winSemaphore, INFINITE);
-
+		DWORD res = WaitForSingleObject(winSemaphore, SEMAPHORE_TIME_OUT);
+		// Restore signaled state, since Wait() will change semaphore value
+		ReleaseSemaphore(winSemaphore, 1, NULL);
+		
 		assert(res == WAIT_OBJECT_0 && "Semaphore wait ended in unexpected way.");
+
 	}
+
+	Logs::Logf(Logs::Category::Synchronization, "Semaphore wait finished, handle %x", reinterpret_cast<unsigned>(winSemaphore));
 }
 
 void Semaphore::WaitForMultipleAny(const std::vector<std::shared_ptr<Semaphore>> waitForSemaphores)
 {
+	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait entered");
+
 	assert(waitForSemaphores.empty() == false && "WaitForMultipleAny received empty semaphore list.");
 
 	std::vector<HANDLE> winSemaphores;
@@ -46,12 +67,21 @@ void Semaphore::WaitForMultipleAny(const std::vector<std::shared_ptr<Semaphore>>
 		// If any of semaphores is ready, we are done
 		if (s->counter.load() >= s->waitValue)
 		{
+			Logs::Logf(Logs::Category::Synchronization, "Semaphore multi wait finished");
+
 			return;
 		}
 
 		winSemaphores.push_back(s->winSemaphore);
 	}
 
-	DWORD res = WaitForMultipleObjects(winSemaphores.size(), winSemaphores.data(), FALSE, INFINITE);
-	assert(res != WAIT_TIMEOUT && res != WAIT_FAILED && "WaitForMultipleAny ended in unexpected way.");
+	DWORD res = WaitForMultipleObjects(winSemaphores.size(), winSemaphores.data(), FALSE, SEMAPHORE_TIME_OUT);
+	assert(res >= WAIT_OBJECT_0 && res < WAIT_OBJECT_0 + waitForSemaphores.size()
+		&& "WaitForMultipleAny ended in unexpected way.");
+	
+	// Restore signaled state, since Wait() will change semaphore value
+	ReleaseSemaphore(winSemaphores[res - WAIT_OBJECT_0], 1, NULL);
+
+	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait finished, handle %x", reinterpret_cast<unsigned>(winSemaphores[res - WAIT_OBJECT_0]));
+
 }

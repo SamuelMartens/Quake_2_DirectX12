@@ -56,6 +56,17 @@ namespace FArg
 		int alignment = -1;
 		Context* context = nullptr;
 	};
+
+	struct DrawStreaming
+	{
+		const std::byte* vertices = nullptr;
+		int verticesSizeInBytes = -1;
+		int verticesStride = -1;
+		const char* texName = nullptr;
+		const XMFLOAT4* pos;
+		const BufferPiece* bufferPiece;
+		Context* context;
+	};
 };
 
 
@@ -130,7 +141,7 @@ public:
 	void DeleteUploadMemoryBuffer(BufferHandler handler);
 	
 	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, Frame& frame);
-	void UpdateStreamingConstantBufferAsync(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, Context& context);
+	void UpdateStreamingConstantBufferAsync(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, Context& context);
 	void UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context& context);
 	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, Frame& frame);
 	BufferHandler UpdateParticleConstantBuffer(Frame& frame);
@@ -155,6 +166,7 @@ public:
 
 	Texture* RegisterDrawPic(const char* name);
 	void RegisterWorldModel(const char* model);
+	void StartLevelLoading(const char* map);
 	void EndLevelLoading();
 	model_s* RegisterModel(const char* name);
 	void RenderFrame(const refdef_t& frameUpdateData);
@@ -259,14 +271,14 @@ private:
 	void Draw_Blocking(const StaticObject& object, Context& context);
 	void DrawIndiced_Blocking(const StaticObject& object, Context& context);
 	void DrawIndiced_Blocking(const DynamicObject& object, const entity_t& entity, Frame& frame);
-	void DrawStreamingAsync_Blocking(const std::byte* vertices, int verticesSizeInBytes, int verticesStride, const char* texName, const XMFLOAT4& pos, Context& context);
+	void DrawStreamingAsync_Blocking(const FArg::DrawStreaming& args);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
 	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Frame& frame);
 	void Draw_Pic(int x, int y, const char* name, Frame& frame);
-	void Draw_PicAsync(int x, int y, const char* name, Context& context);
+	void Draw_PicAsync(int x, int y, const char* name, const BufferPiece& bufferPiece, Context& context);
 	void Draw_Char(int x, int y, int num, Frame& frame);
-	void Draw_CharAsync(int x, int y, int num, Context& context);
-	void Draw_RawPicAsync(const DrawCall_StretchRaw& drawCall, Context& context);
+	void Draw_CharAsync(int x, int y, int num, const BufferPiece& bufferPiece, Context& context);
+	void Draw_RawPicAsync(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, Context& context);
 	// More high level functions
 	void DrawUI(Frame& frame);
 
@@ -390,4 +402,8 @@ private:
 
 	int m_frameCounter = 0;
 
+
+	/* Level registration data */
+	std::unique_ptr<Context> m_staticModelRegContext;
+	std::unique_ptr<Context> m_dynamicModelRegContext;
 };

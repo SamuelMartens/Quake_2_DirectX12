@@ -112,6 +112,7 @@ private:
 // Utilities 
 struct Context
 {
+	/* SHOULD BE SAFE TO COPY */
 	Context(Frame& frameVal, CommandList& commandListVal);
 
 	void CreateDependencyFrom(std::vector<Context*> dependsFromList);
