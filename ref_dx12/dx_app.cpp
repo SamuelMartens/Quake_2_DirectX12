@@ -408,7 +408,7 @@ void Renderer::InitUtils()
 	std::fill(m_rawPalette.begin(), m_rawPalette.end(), 0);
 
 	// Init dynamic objects constant buffers pool
-	m_dynamicObjectsConstBuffersPool.resize(QDYNAM_OBJECT_CONST_BUFFER_POOL_SIZE);
+	m_dynamicObjectsConstBuffersPool.obj.resize(QDYNAM_OBJECT_CONST_BUFFER_POOL_SIZE);
 
 	m_jobSystem.Init();
 
@@ -944,6 +944,8 @@ void Renderer::ReleaseFrameResources_Blocking(Frame& frame)
 	// We are done with dynamic objects rendering. It's safe
 	// to delete them
 	frame.dynamicObjects.clear();
+
+	frame.entitiesToDraw.clear();
 
 	// Remove used draw calls
 	frame.uiDrawCalls.clear();
@@ -1621,15 +1623,17 @@ void Renderer::UpdateDefaultHeapBuff_Blocking(FArg::UpdateDefaultHeapBuff& args)
 	));
 }
 
-DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
+DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer_Blocking()
 {
-	auto resIt = std::find_if(m_dynamicObjectsConstBuffersPool.begin(), m_dynamicObjectsConstBuffersPool.end(), 
+	m_dynamicObjectsConstBuffersPool.mutex.lock();
+	auto resIt = std::find_if(m_dynamicObjectsConstBuffersPool.obj.begin(), m_dynamicObjectsConstBuffersPool.obj.end(), 
 		[](const DynamicObjectConstBuffer& buff) 
 	{
 		return buff.isInUse == false;
 	});
+	m_dynamicObjectsConstBuffersPool.mutex.unlock();
 
-	assert(resIt != m_dynamicObjectsConstBuffersPool.end() && "Can't find free dynamic object const buffer");
+	assert(resIt != m_dynamicObjectsConstBuffersPool.obj.end() && "Can't find free dynamic object const buffer");
 
 
 	if (resIt->constantBufferHandler == BufConst::INVALID_BUFFER_HANDLER)
@@ -1793,9 +1797,9 @@ void Renderer::DrawUIJob(Context& context)
 
 void Renderer::DrawStaticGeometryJob(Context& context)
 {
-	Logs::Log(Logs::Category::Job, "Static job started");
-
 	JOB_GUARD(context);
+
+	Logs::Log(Logs::Category::Job, "Static job started");
 
 	CommandList& commandList = context.commandList;
 
@@ -1829,6 +1833,53 @@ void Renderer::DrawStaticGeometryJob(Context& context)
 	Logs::Log(Logs::Category::Job, "Static job ended");
 }
 
+void Renderer::DrawDynamicGeometryJob(Context& context)
+{
+	JOB_GUARD(context);
+
+	Logs::Log(Logs::Category::Job, "Dynamic job started");
+
+	CommandList& commandList = context.commandList;
+	Frame& frame = context.frame;
+	const std::vector<entity_t>& entitiesToDraw = context.frame.entitiesToDraw;
+
+	// Dynamic geometry
+	Diagnostics::BeginEvent(commandList.commandList.Get(), "Dynamic materials");
+
+	SetNonMaterialState(context);
+	SetMaterialAsync(MaterialSource::DYNAMIC_MATERIAL_NAME, commandList);
+
+	for (int i = 0; i < entitiesToDraw.size(); ++i)
+	{
+		const entity_t& entity = (entitiesToDraw[i]);
+
+		if (entity.model == nullptr ||
+			entity.flags  & (RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE | RF_SHELL_DOUBLE | RF_SHELL_HALF_DAM) ||
+			IsVisible(entity) == false)
+		{
+			continue;
+		}
+		
+		assert(m_dynamicObjectsModels.find(entity.model) != m_dynamicObjectsModels.end()
+			&& "Cannot render dynamic graphical object. Such model is not found");
+
+
+		DynamicObjectModel& model = m_dynamicObjectsModels[entity.model];
+		DynamicObjectConstBuffer& constBuffer = FindDynamicObjConstBuffer_Blocking();
+
+		// Const buffer should be a separate component, because if we don't do this different entities
+		// will use the same model, but with different transformation
+		DynamicObject& object = frame.dynamicObjects.emplace_back(DynamicObject(&model, &constBuffer));
+
+		UpdateDynamicObjectConstantBuffer(object, entity, context);
+		DrawIndiced_Blocking(object, entity, context);
+	}
+
+	Diagnostics::EndEvent(commandList.commandList.Get());
+
+	Logs::Log(Logs::Category::Job, "Dynamic job ended");
+}
+
 ComPtr<ID3DBlob> Renderer::LoadCompiledShader(const std::string& filename) const
 {
 	std::ifstream fin(filename, std::ios::binary);
@@ -1853,119 +1904,118 @@ void Renderer::ShutdownWin32()
 	m_hWindows = NULL;
 }
 
-DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t* model, Frame& frame)
+DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t* model, Context& context)
 {
-	//#DEBUG uncomment and fix
 	DynamicObjectModel object;
 
-	//object.name = model->name;
+	object.name = model->name;
 
-	//const dmdl_t* aliasHeader = reinterpret_cast<dmdl_t*>(model->extradata);
-	//assert(aliasHeader != nullptr && "Alias header for dynamic object is not found.");
+	const dmdl_t* aliasHeader = reinterpret_cast<dmdl_t*>(model->extradata);
+	assert(aliasHeader != nullptr && "Alias header for dynamic object is not found.");
 
-	//// Header data
-	//object.headerData.animFrameSizeInBytes = aliasHeader->framesize;
+	// Header data
+	object.headerData.animFrameSizeInBytes = aliasHeader->framesize;
 
-	//// Allocate buffers on CPU, that we will use for transferring our stuff
-	//std::vector<int> unnormalizedIndexBuffer;
-	//std::vector<XMFLOAT2> unnormalizedTexCoords;
-	//// This is just heuristic guess of how much memory we will need.
-	//unnormalizedIndexBuffer.reserve(aliasHeader->num_xyz);
-	//unnormalizedTexCoords.reserve(aliasHeader->num_xyz);
+	// Allocate buffers on CPU, that we will use for transferring our stuff
+	std::vector<int> unnormalizedIndexBuffer;
+	std::vector<XMFLOAT2> unnormalizedTexCoords;
+	// This is just heuristic guess of how much memory we will need.
+	unnormalizedIndexBuffer.reserve(aliasHeader->num_xyz);
+	unnormalizedTexCoords.reserve(aliasHeader->num_xyz);
 
-	//// Get texture coords and indices in one buffer
-	//const int* order = reinterpret_cast<const int*>(reinterpret_cast<const byte*>(aliasHeader) + aliasHeader->ofs_glcmds);
-	//UnwindDynamicGeomIntoTriangleList(order, unnormalizedIndexBuffer, unnormalizedTexCoords);
+	// Get texture coords and indices in one buffer
+	const int* order = reinterpret_cast<const int*>(reinterpret_cast<const byte*>(aliasHeader) + aliasHeader->ofs_glcmds);
+	UnwindDynamicGeomIntoTriangleList(order, unnormalizedIndexBuffer, unnormalizedTexCoords);
 
-	//auto[normalizedIndexBuffer, normalizedTexCoordsBuffer, normalizedVertexIndices] =
-	//	NormalizedDynamGeomVertTexCoord(unnormalizedIndexBuffer, unnormalizedTexCoords);
+	auto[normalizedIndexBuffer, normalizedTexCoordsBuffer, normalizedVertexIndices] =
+		NormalizedDynamGeomVertTexCoord(unnormalizedIndexBuffer, unnormalizedTexCoords);
 
-	//object.headerData.animFrameVertsNum = normalizedVertexIndices.size();
-	//object.headerData.indicesNum = normalizedIndexBuffer.size();
+	object.headerData.animFrameVertsNum = normalizedVertexIndices.size();
+	object.headerData.indicesNum = normalizedIndexBuffer.size();
 
-	//const int verticesNum = aliasHeader->num_frames * object.headerData.animFrameVertsNum;
-	//std::vector<XMFLOAT4> vertexBuffer;
-	//vertexBuffer.reserve(verticesNum);
+	const int verticesNum = aliasHeader->num_frames * object.headerData.animFrameVertsNum;
+	std::vector<XMFLOAT4> vertexBuffer;
+	vertexBuffer.reserve(verticesNum);
 
-	//std::vector<XMFLOAT4> singleFrameVertexBuffer;
-	//singleFrameVertexBuffer.reserve(object.headerData.animFrameVertsNum);
+	std::vector<XMFLOAT4> singleFrameVertexBuffer;
+	singleFrameVertexBuffer.reserve(object.headerData.animFrameVertsNum);
 
-	//// Animation frames data
-	//object.animationFrames.reserve(aliasHeader->num_frames);
-	//const daliasframe_t* currentFrame = reinterpret_cast<const daliasframe_t*>(
-	//	(reinterpret_cast<const byte*>(aliasHeader) + aliasHeader->ofs_frames));
+	// Animation frames data
+	object.animationFrames.reserve(aliasHeader->num_frames);
+	const daliasframe_t* currentFrame = reinterpret_cast<const daliasframe_t*>(
+		(reinterpret_cast<const byte*>(aliasHeader) + aliasHeader->ofs_frames));
 
-	//for (int i = 0; i < aliasHeader->num_frames; ++i)
-	//{
-	//	DynamicObjectModel::AnimFrame& animFrame = object.animationFrames.emplace_back(DynamicObjectModel::AnimFrame());
+	for (int i = 0; i < aliasHeader->num_frames; ++i)
+	{
+		DynamicObjectModel::AnimFrame& animFrame = object.animationFrames.emplace_back(DynamicObjectModel::AnimFrame());
 
-	//	animFrame.name = currentFrame->name;
-	//	animFrame.scale = XMFLOAT4(currentFrame->scale[0], currentFrame->scale[1], currentFrame->scale[2], 0.0f);
-	//	animFrame.translate = XMFLOAT4(currentFrame->translate[0], currentFrame->translate[1], currentFrame->translate[2], 0.0f);
+		animFrame.name = currentFrame->name;
+		animFrame.scale = XMFLOAT4(currentFrame->scale[0], currentFrame->scale[1], currentFrame->scale[2], 0.0f);
+		animFrame.translate = XMFLOAT4(currentFrame->translate[0], currentFrame->translate[1], currentFrame->translate[2], 0.0f);
 
-	//	// Fill up one frame vertices (unnormalized)
-	//	singleFrameVertexBuffer.clear();
-	//	for (int j = 0; j < aliasHeader->num_xyz; ++j)
-	//	{
-	//		const byte* currentVert = currentFrame->verts[j].v;
-	//		singleFrameVertexBuffer.push_back(XMFLOAT4(
-	//			currentVert[0],
-	//			currentVert[1],
-	//			currentVert[2],
-	//			1.0f));
-	//	}
-	//	AppendNormalizedVertexData(normalizedVertexIndices, singleFrameVertexBuffer, vertexBuffer);
+		// Fill up one frame vertices (unnormalized)
+		singleFrameVertexBuffer.clear();
+		for (int j = 0; j < aliasHeader->num_xyz; ++j)
+		{
+			const byte* currentVert = currentFrame->verts[j].v;
+			singleFrameVertexBuffer.push_back(XMFLOAT4(
+				currentVert[0],
+				currentVert[1],
+				currentVert[2],
+				1.0f));
+		}
+		AppendNormalizedVertexData(normalizedVertexIndices, singleFrameVertexBuffer, vertexBuffer);
 
-	//	// Get next frame
-	//	currentFrame = reinterpret_cast<const daliasframe_t*>(
-	//		(reinterpret_cast<const byte*>(currentFrame) + aliasHeader->framesize));
+		// Get next frame
+		currentFrame = reinterpret_cast<const daliasframe_t*>(
+			(reinterpret_cast<const byte*>(currentFrame) + aliasHeader->framesize));
 
-	//}
+	}
 
-	//// Load GPU buffers
-	//const int vertexBufferSize = vertexBuffer.size() * sizeof(XMFLOAT4);
-	//const int indexBufferSize = normalizedIndexBuffer.size() * sizeof(int);
-	//const int texCoordsBufferSize = normalizedTexCoordsBuffer.size() * sizeof(XMFLOAT2);
+	// Load GPU buffers
+	const int vertexBufferSize = vertexBuffer.size() * sizeof(XMFLOAT4);
+	const int indexBufferSize = normalizedIndexBuffer.size() * sizeof(int);
+	const int texCoordsBufferSize = normalizedTexCoordsBuffer.size() * sizeof(XMFLOAT2);
 
-	//object.vertices = m_defaultMemoryBuffer.Allocate(vertexBufferSize);
-	//object.indices = m_defaultMemoryBuffer.Allocate(indexBufferSize);
-	//object.textureCoords = m_defaultMemoryBuffer.Allocate(texCoordsBufferSize);
+	object.vertices = m_defaultMemoryBuffer.Allocate(vertexBufferSize);
+	object.indices = m_defaultMemoryBuffer.Allocate(indexBufferSize);
+	object.textureCoords = m_defaultMemoryBuffer.Allocate(texCoordsBufferSize);
 
-	//// Get vertices in
-	//FArg::UpdateDefaultHeapBuff updateArgs;
-	//updateArgs.alignment = 0;
-	//updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
-	//updateArgs.byteSize = vertexBufferSize;
-	//updateArgs.data = reinterpret_cast<const void*>(vertexBuffer.data());
-	//updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.vertices);
-	//updateArgs.frame = &frame;
-	//UpdateDefaultHeapBuff_Blocking(updateArgs);
+	// Get vertices in
+	FArg::UpdateDefaultHeapBuff updateArgs;
+	updateArgs.alignment = 0;
+	updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	updateArgs.byteSize = vertexBufferSize;
+	updateArgs.data = reinterpret_cast<const void*>(vertexBuffer.data());
+	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.vertices);
+	updateArgs.context = &context;
+	UpdateDefaultHeapBuff_Blocking(updateArgs);
 
-	//// Get indices in
-	//updateArgs.alignment = 0;
-	//updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
-	//updateArgs.byteSize = indexBufferSize;
-	//updateArgs.data = reinterpret_cast<const void*>(normalizedIndexBuffer.data());
-	//updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.indices);
-	//updateArgs.frame = &frame;
-	//UpdateDefaultHeapBuff_Blocking(updateArgs);
+	// Get indices in
+	updateArgs.alignment = 0;
+	updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	updateArgs.byteSize = indexBufferSize;
+	updateArgs.data = reinterpret_cast<const void*>(normalizedIndexBuffer.data());
+	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.indices);
+	updateArgs.context = &context;
+	UpdateDefaultHeapBuff_Blocking(updateArgs);
 
-	//// Get tex coords in
-	//updateArgs.alignment = 0;
-	//updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
-	//updateArgs.byteSize = texCoordsBufferSize;
-	//updateArgs.data = reinterpret_cast<const void*>(normalizedTexCoordsBuffer.data());
-	//updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.textureCoords);
-	//updateArgs.frame = &frame;
-	//UpdateDefaultHeapBuff_Blocking(updateArgs);
+	// Get tex coords in
+	updateArgs.alignment = 0;
+	updateArgs.buffer = m_defaultMemoryBuffer.allocBuffer.gpuBuffer;
+	updateArgs.byteSize = texCoordsBufferSize;
+	updateArgs.data = reinterpret_cast<const void*>(normalizedTexCoordsBuffer.data());
+	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.textureCoords);
+	updateArgs.context = &context;
+	UpdateDefaultHeapBuff_Blocking(updateArgs);
 
-	//// Get textures in
-	//object.textures.reserve(aliasHeader->num_skins);
+	// Get textures in
+	object.textures.reserve(aliasHeader->num_skins);
 
-	//for (int i = 0; i < aliasHeader->num_skins; ++i)
-	//{
-	//	object.textures.push_back(model->skins[i]->name);
-	//}
+	for (int i = 0; i < aliasHeader->num_skins; ++i)
+	{
+		object.textures.push_back(model->skins[i]->name);
+	}
 
 	return object;
 }
@@ -2167,96 +2217,97 @@ void Renderer::DrawIndiced_Blocking(const StaticObject& object, Context& context
 	commandList.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
 }
 
-void Renderer::DrawIndiced_Blocking(const DynamicObject& object, const entity_t& entity, Frame& frame)
+void Renderer::DrawIndiced_Blocking(const DynamicObject& object, const entity_t& entity, Context& context)
 {
-	//#DEBUG delete when not needed
-	//const DynamicObjectModel& model = *object.model;
-	//const DynamicObjectConstBuffer& constBuffer = *object.constBuffer;
+	CommandList& commandList = context.commandList;
 
-	//// Set vertex buffer views
-	//const int vertexBufferStart = m_defaultMemoryBuffer.GetOffset(model.vertices);
-	//const D3D12_GPU_VIRTUAL_ADDRESS defaultMemBuffVirtAddress = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+	const DynamicObjectModel& model = *object.model;
+	const DynamicObjectConstBuffer& constBuffer = *object.constBuffer;
 
-	//constexpr int vertexSize = sizeof(XMFLOAT4);
-	//const int frameSize = vertexSize * model.headerData.animFrameVertsNum;
+	// Set vertex buffer views
+	const int vertexBufferStart = m_defaultMemoryBuffer.GetOffset(model.vertices);
+	const D3D12_GPU_VIRTUAL_ADDRESS defaultMemBuffVirtAddress = m_defaultMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
 
-	//D3D12_VERTEX_BUFFER_VIEW vertexBufferViews[3];
+	constexpr int vertexSize = sizeof(XMFLOAT4);
+	const int frameSize = vertexSize * model.headerData.animFrameVertsNum;
 
-
-	//// Position0
-	//vertexBufferViews[0].BufferLocation = defaultMemBuffVirtAddress +
-	//	vertexBufferStart + frameSize * entity.oldframe;
-	//vertexBufferViews[0].StrideInBytes = vertexSize;
-	//vertexBufferViews[0].SizeInBytes = frameSize;
-
-	//// Position1
-	//vertexBufferViews[1].BufferLocation = defaultMemBuffVirtAddress +
-	//	vertexBufferStart + frameSize * entity.frame;
-	//vertexBufferViews[1].StrideInBytes = vertexSize;
-	//vertexBufferViews[1].SizeInBytes = frameSize;
-
-	//// TexCoord
-	//constexpr int texCoordStrideSize = sizeof(XMFLOAT2);
-
-	//vertexBufferViews[2].BufferLocation = defaultMemBuffVirtAddress +
-	//	m_defaultMemoryBuffer.GetOffset(model.textureCoords);
-	//vertexBufferViews[2].StrideInBytes = texCoordStrideSize;
-	//vertexBufferViews[2].SizeInBytes = texCoordStrideSize * model.headerData.animFrameVertsNum;
-
-	//frame.commandList->IASetVertexBuffers(0, _countof(vertexBufferViews), vertexBufferViews);
+	D3D12_VERTEX_BUFFER_VIEW vertexBufferViews[3];
 
 
-	//// Set index buffer
-	//D3D12_INDEX_BUFFER_VIEW indexBufferView;
-	//indexBufferView.BufferLocation = defaultMemBuffVirtAddress +
-	//	m_defaultMemoryBuffer.GetOffset(model.indices);
-	//indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-	//indexBufferView.SizeInBytes = model.headerData.indicesNum * sizeof(uint32_t);
+	// Position0
+	vertexBufferViews[0].BufferLocation = defaultMemBuffVirtAddress +
+		vertexBufferStart + frameSize * entity.oldframe;
+	vertexBufferViews[0].StrideInBytes = vertexSize;
+	vertexBufferViews[0].SizeInBytes = frameSize;
 
-	//frame.commandList->IASetIndexBuffer(&indexBufferView);
+	// Position1
+	vertexBufferViews[1].BufferLocation = defaultMemBuffVirtAddress +
+		vertexBufferStart + frameSize * entity.frame;
+	vertexBufferViews[1].StrideInBytes = vertexSize;
+	vertexBufferViews[1].SizeInBytes = frameSize;
 
-	//// Pick texture
-	//assert(entity.skin == nullptr && "Custom skin. I am not prepared for this");
+	// TexCoord
+	constexpr int texCoordStrideSize = sizeof(XMFLOAT2);
 
-	//auto texIt = m_textures.end();
+	vertexBufferViews[2].BufferLocation = defaultMemBuffVirtAddress +
+		m_defaultMemoryBuffer.GetOffset(model.textureCoords);
+	vertexBufferViews[2].StrideInBytes = texCoordStrideSize;
+	vertexBufferViews[2].SizeInBytes = texCoordStrideSize * model.headerData.animFrameVertsNum;
 
-	//if (entity.skinnum >= MAX_MD2SKINS)
-	//{
-	//	texIt = m_textures.find(model.textures[0]);
-	//}
-	//else
-	//{
-	//	texIt = m_textures.find(model.textures[entity.skinnum]);
+	commandList.commandList->IASetVertexBuffers(0, _countof(vertexBufferViews), vertexBufferViews);
 
-	//	if (texIt == m_textures.end())
-	//	{
-	//		texIt = m_textures.find(model.textures[0]);
-	//	}
-	//}
 
-	//assert(texIt != m_textures.end() && "Not texture found for dynamic object rendering. Implement fall back");
+	// Set index buffer
+	D3D12_INDEX_BUFFER_VIEW indexBufferView;
+	indexBufferView.BufferLocation = defaultMemBuffVirtAddress +
+		m_defaultMemoryBuffer.GetOffset(model.indices);
+	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+	indexBufferView.SizeInBytes = model.headerData.indicesNum * sizeof(uint32_t);
+	
+	commandList.commandList->IASetIndexBuffer(&indexBufferView);
 
-	//// Binding root signature params
+	// Pick texture
+	assert(entity.skin == nullptr && "Custom skin. I am not prepared for this");
 
-	//// 1)
-	//CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texIt->second.texViewIndex);;
+	Texture* tex = nullptr;
 
-	//frame.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
+	if (entity.skinnum >= MAX_MD2SKINS)
+	{
+		tex = FindTexture_Blocking(model.textures[0]);
+	}
+	else
+	{
+		tex = FindTexture_Blocking(model.textures[entity.skinnum]);
 
-	//// 2)
-	//CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
-	//samplerHandle.Offset(texIt->second.samplerInd, m_samplerDescriptorSize);
+		if (tex == nullptr)
+		{
+			tex = FindTexture_Blocking(model.textures[0]);
+		}
+	}
 
-	//frame.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
+	assert(tex != nullptr && "Not texture found for dynamic object rendering. Implement fall back");
 
-	//// 3)
-	//D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
-	//cbAddress += m_uploadMemoryBuffer.GetOffset(constBuffer.constantBufferHandler);
+	// Binding root signature params
 
-	//frame.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
+	// 1)
+	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(tex->texViewIndex);;
 
-	//// Finally, draw
-	//frame.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
+	commandList.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
+
+	// 2)
+	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
+	samplerHandle.Offset(tex->samplerInd, m_samplerDescriptorSize);
+
+	commandList.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
+
+	// 3)
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+	cbAddress += m_uploadMemoryBuffer.GetOffset(constBuffer.constantBufferHandler);
+
+	commandList.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
+
+	// Finally, draw
+	commandList.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
 }
 
 void Renderer::DrawStreamingAsync_Blocking(const FArg::DrawStreaming& args)
@@ -2652,12 +2703,14 @@ void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, Frame& frame)
+void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, Context& context)
 {
+	const Camera& camera = context.frame.camera;
+
 	// Calculate transformation matrix
 	XMMATRIX sseMvpMat = DynamicObjectModel::GenerateModelMat(entity) *
-		m_camera.GenerateViewMatrix() *
-		m_camera.GenerateProjectionMatrix();
+		camera.GenerateViewMatrix() *
+		camera.GenerateProjectionMatrix();
 
 	XMFLOAT4X4 mvpMat;
 	XMStoreFloat4x4(&mvpMat, sseMvpMat);
@@ -2954,7 +3007,25 @@ void Renderer::SetPalette(const unsigned char* palette)
 
 void Renderer::EndLevelLoading()
 {
-	m_staticModelRegContext->frame.GetFinishSemaphore()->Wait();
+	Frame& frame = m_dynamicModelRegContext->frame;
+
+	m_dynamicModelRegContext->commandList.Close();
+	CloseFrameAsync(frame);
+
+	DetachCurrentFrame();
+	ReleaseFrameResources_Blocking(frame);
+
+	ReleaseFrame(frame);
+
+	if (std::shared_ptr<Semaphore> staticModelRegSemaphore = m_staticModelRegContext->frame.GetFinishSemaphore())
+	{
+		staticModelRegSemaphore->Wait();
+	}
+
+
+	m_staticModelRegContext = nullptr;
+	m_dynamicModelRegContext = nullptr;
+
 	Mod_FreeAll();
 }
 
@@ -3220,6 +3291,8 @@ void Renderer::EndFrameAsync()
 	Context beginFrameContext = CreateContext(frame);
 
 	Context drawStaticObjectsContext = CreateContext(frame);
+	
+	Context drawDynamicObjectsContext = CreateContext(frame);
 
 	Context drawUIContext = CreateContext(frame);
 	
@@ -3231,6 +3304,7 @@ void Renderer::EndFrameAsync()
 	endFrameContext.CreateDependencyFrom({
 			&beginFrameContext,
 			&drawStaticObjectsContext,
+			&drawDynamicObjectsContext,
 			&drawUIContext
 		});
 
@@ -3247,11 +3321,18 @@ void Renderer::EndFrameAsync()
 
 	// --- Draw static objects job ---
 	
-	//#DEBUG uncomment
 	jobQueue.Enqueue(Job(
 		[drawStaticObjectsContext, this]() mutable
 	{
 		DrawStaticGeometryJob(drawStaticObjectsContext);
+	}));
+
+	// --- Draw dynamic objects job ---
+
+	jobQueue.Enqueue(Job(
+		[drawDynamicObjectsContext, this]() mutable
+	{
+		DrawDynamicGeometryJob(drawDynamicObjectsContext);
 	}));
 	
 	// --- Draw UI job ---
@@ -3345,69 +3426,68 @@ void Renderer::RegisterWorldModel(const char* model)
 	}));
 }
 
-void Renderer::StartLevelLoading(const char* mapName)
+void Renderer::BeginLevelLoading(const char* mapName)
 {
 	RegisterWorldModel(mapName);
 
 	m_dynamicModelRegContext = std::make_unique<Context>(CreateContext(GetCurrentFrame()));
+	m_dynamicModelRegContext->commandList.Open();
 }
 
 model_s* Renderer::RegisterModel(const char* name)
 {
-	//#DEBUG uncomment and fix
-	return NULL;
-	//std::string modelName = name;
+	std::string modelName = name;
 
-	//Frame& frame = GetCurrentFrame();
-	//
-	//model_t* mod = Mod_ForName(modelName.data(), qFalse, frame);
+	Frame& frame = m_dynamicModelRegContext->frame;
+	
+	model_t* mod = Mod_ForName(modelName.data(), qFalse, *m_dynamicModelRegContext);
 
-	//if (mod)
-	//{
+	if (mod)
+	{
 
-	//	switch (mod->type)
-	//	{
-	//	case mod_sprite:
-	//	{
-	//		//#TODO implement sprites 
-	//		//dsprite_t* sprites = reinterpret_cast<dsprite_t *>(mod->extradata);
-	//		//for (int i = 0; i < sprites->numframes; ++i)
-	//		//{
-	//		//	mod->skins[i] = FindOrCreateTexture(sprites->frames[i].name);
-	//		//}
+		switch (mod->type)
+		{
+		case mod_sprite:
+		{
+			//#TODO implement sprites 
+			//dsprite_t* sprites = reinterpret_cast<dsprite_t *>(mod->extradata);
+			//for (int i = 0; i < sprites->numframes; ++i)
+			//{
+			//	mod->skins[i] = FindOrCreateTexture(sprites->frames[i].name);
+			//}
 
-	//		//m_dynamicGraphicalObjects[mod] = CreateDynamicGraphicObjectFromGLModel(mod);
+			//m_dynamicGraphicalObjects[mod] = CreateDynamicGraphicObjectFromGLModel(mod);
 
-	//		// Remove after sprites implemented
-	//		Mod_Free(mod);
-	//		mod = NULL;
-	//		break;
-	//	}
-	//	case mod_alias:
-	//	{
-	//		dmdl_t* pheader = reinterpret_cast<dmdl_t*>(mod->extradata);
-	//		for (int i = 0; i < pheader->num_skins; ++i)
-	//		{
-	//			char* imageName = reinterpret_cast<char*>(pheader) + pheader->ofs_skins + i * MAX_SKINNAME;
-	//			mod->skins[i] = FindOrCreateTexture(imageName, frame);
-	//		}
+			// Remove after sprites implemented
+			Mod_Free(mod);
+			mod = NULL;
+			break;
+		}
+		case mod_alias:
+		{
+			dmdl_t* pheader = reinterpret_cast<dmdl_t*>(mod->extradata);
+			for (int i = 0; i < pheader->num_skins; ++i)
+			{
+				char* imageName = reinterpret_cast<char*>(pheader) + pheader->ofs_skins + i * MAX_SKINNAME;
+				mod->skins[i] = FindOrCreateTextureAsync_Blocking(imageName, *m_dynamicModelRegContext);
+			}
 
-	//		m_dynamicObjectsModels[mod] = CreateDynamicGraphicObjectFromGLModel(mod, frame);
+			m_dynamicObjectsModels[mod] = CreateDynamicGraphicObjectFromGLModel(mod, *m_dynamicModelRegContext);
 
-	//		break;
-	//	}
-	//	case mod_brush:
-	//	{
-	//		//#TODO implement brush
-	//		mod = NULL;
-	//		break;
-	//	}
-	//	default:
-	//		break;
-	//	}
-	//}
+			break;
+		}
+		case mod_brush:
+		{
+			//#TODO implement brush
+			mod = NULL;
+			break;
+		}
+		default:
+			break;
+		}
+	}
 
-	//return mod;
+	return mod;
 }
 
 void Renderer::RenderFrame(const refdef_t& frameUpdateData)
@@ -3443,40 +3523,40 @@ void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 	//Diagnostics::EndEvent(frame.commandList.Get());
 
 	// Dynamic geometry
-	Diagnostics::BeginEvent(frame.commandList.Get(), "Dynamic materials");
+	//Diagnostics::BeginEvent(frame.commandList.Get(), "Dynamic materials");
 
-	SetMaterial(MaterialSource::DYNAMIC_MATERIAL_NAME, frame);
+	//SetMaterial(MaterialSource::DYNAMIC_MATERIAL_NAME, frame);
 
-	for (int i = 0; i < frameUpdateData.num_entities; ++i)
-	{
-		const entity_t& entity = (frameUpdateData.entities[i]);
+	//for (int i = 0; i < frameUpdateData.num_entities; ++i)
+	//{
+	//	const entity_t& entity = (frameUpdateData.entities[i]);
 
-		if (entity.model == nullptr ||
-			entity.flags  & (RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE | RF_SHELL_DOUBLE | RF_SHELL_HALF_DAM) ||
-			IsVisible(entity) == false)
-		{
-			continue;
-		}
+	//	if (entity.model == nullptr ||
+	//		entity.flags  & (RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE | RF_SHELL_DOUBLE | RF_SHELL_HALF_DAM) ||
+	//		IsVisible(entity) == false)
+	//	{
+	//		continue;
+	//	}
 
-		assert(m_dynamicObjectsModels.find(entity.model) != m_dynamicObjectsModels.end()
-			&& "Cannot render dynamic graphical object. Such model is not found");
+	//	assert(m_dynamicObjectsModels.find(entity.model) != m_dynamicObjectsModels.end()
+	//		&& "Cannot render dynamic graphical object. Such model is not found");
 
 
-		DynamicObjectModel& model = m_dynamicObjectsModels[entity.model];
-		DynamicObjectConstBuffer& constBuffer = FindDynamicObjConstBuffer();
+	//	DynamicObjectModel& model = m_dynamicObjectsModels[entity.model];
+	//	DynamicObjectConstBuffer& constBuffer = FindDynamicObjConstBuffer_Blocking();
 
-		// Const buffer should be a separate component, because if we don't do this different enities
-		// will use the same model, but with different transformation
-		DynamicObject& object = frame.dynamicObjects.emplace_back(DynamicObject(&model, &constBuffer));
+	//	// Const buffer should be a separate component, because if we don't do this different enities
+	//	// will use the same model, but with different transformation
+	//	DynamicObject& object = frame.dynamicObjects.emplace_back(DynamicObject(&model, &constBuffer));
 
-		UpdateDynamicObjectConstantBuffer(object, entity, frame);
-		DrawIndiced_Blocking(object, entity, frame);
-	}
+	//	UpdateDynamicObjectConstantBuffer(object, entity, frame);
+	//	DrawIndiced_Blocking(object, entity, frame);
+	//}
 
-	Diagnostics::EndEvent(frame.commandList.Get());
+	//Diagnostics::EndEvent(frame.commandList.Get());
 
-	// Particles
-	Diagnostics::BeginEvent(frame.commandList.Get(), "Particles");
+	//// Particles
+	//Diagnostics::BeginEvent(frame.commandList.Get(), "Particles");
 
 	if (frameUpdateData.num_particles > 0)
 	{
@@ -3508,10 +3588,14 @@ void Renderer::RenderFrame(const refdef_t& frameUpdateData)
 
 	Diagnostics::EndEvent(frame.commandList.Get());
 }
-
-void Renderer::RenderFrameAsync(const refdef_t& frameUpdateData)
+//#DEBUG rename it ot something appropriate
+void Renderer::RenderFrameAsync(const refdef_t& updateData)
 {
 	Frame& frame = GetCurrentFrame();
 
-	frame.camera.Update(frameUpdateData);
+	frame.camera.Update(updateData);
+	
+	frame.entitiesToDraw.resize(updateData.num_entities);
+
+	memcpy(frame.entitiesToDraw.data(), updateData.entities, sizeof(entity_t) * updateData.num_entities);
 }

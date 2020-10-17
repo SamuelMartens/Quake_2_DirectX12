@@ -85,9 +85,8 @@ class Renderer
 private:
 	Renderer();
 
-
-	constexpr static int		 QFRAMES_NUM = 2;
-	constexpr static int		 QSWAP_CHAIN_BUFFER_COUNT = 2;
+	constexpr static int		 QFRAMES_NUM = 3;
+	constexpr static int		 QSWAP_CHAIN_BUFFER_COUNT = QFRAMES_NUM;
 	constexpr static bool		 QMSAA_ENABLED = false;
 	constexpr static int		 QMSAA_SAMPLE_COUNT = 4;
 	constexpr static int		 QTRANSPARENT_TABLE_VAL = 255;
@@ -143,7 +142,7 @@ public:
 	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, Frame& frame);
 	void UpdateStreamingConstantBufferAsync(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, Context& context);
 	void UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context& context);
-	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, Frame& frame);
+	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, Context& context);
 	BufferHandler UpdateParticleConstantBuffer(Frame& frame);
 
 	Texture* FindOrCreateTexture(std::string_view textureName, Frame& frame);
@@ -166,11 +165,11 @@ public:
 
 	Texture* RegisterDrawPic(const char* name);
 	void RegisterWorldModel(const char* model);
-	void StartLevelLoading(const char* map);
+	void BeginLevelLoading(const char* map);
 	void EndLevelLoading();
 	model_s* RegisterModel(const char* name);
 	void RenderFrame(const refdef_t& frameUpdateData);
-	void RenderFrameAsync(const refdef_t& frameUpdateData);
+	void RenderFrameAsync(const refdef_t& updateData);
 
 
 	/*--- API functions end --- */
@@ -262,7 +261,7 @@ private:
 	void ShutdownWin32();
 
 	/* Factory functionality */
-	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model, Frame& frame);
+	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model, Context& context);
 	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Context& frame);
 	void DecomposeGLModelNode(const model_t& model, const mnode_t& node, Context& context);
 	Context CreateContext(Frame& frame);
@@ -270,7 +269,7 @@ private:
 	/* Rendering */
 	void Draw_Blocking(const StaticObject& object, Context& context);
 	void DrawIndiced_Blocking(const StaticObject& object, Context& context);
-	void DrawIndiced_Blocking(const DynamicObject& object, const entity_t& entity, Frame& frame);
+	void DrawIndiced_Blocking(const DynamicObject& object, const entity_t& entity, Context& context);
 	void DrawStreamingAsync_Blocking(const FArg::DrawStreaming& args);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
 	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Frame& frame);
@@ -288,13 +287,14 @@ private:
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
 	bool IsVisible(const StaticObject& obj, const Camera& camera) const;
 	bool IsVisible(const entity_t& entity) const;
-	DynamicObjectConstBuffer& FindDynamicObjConstBuffer();
+	DynamicObjectConstBuffer& FindDynamicObjConstBuffer_Blocking();
 
 	/* Job  */
 	void EndFrameJob(Context& context);
 	void BeginFrameJob(Context& context);
 	void DrawUIJob(Context& context);
 	void DrawStaticGeometryJob(Context& context);
+	void DrawDynamicGeometryJob(Context& context);
 
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;
@@ -378,7 +378,7 @@ private:
 	std::vector<StaticObject> m_staticObjects;
 	std::unordered_map<model_t*, DynamicObjectModel> m_dynamicObjectsModels;
 	// Expected to set a size for it during initialization. Don't change size afterward
-	std::vector<DynamicObjectConstBuffer> m_dynamicObjectsConstBuffersPool;
+	LockVector_t<DynamicObjectConstBuffer> m_dynamicObjectsConstBuffersPool;
 	//#DEBUG delete when not needed those matrices
 	XMFLOAT4X4 m_uiProjectionMat;
 	XMFLOAT4X4 m_uiViewMat;

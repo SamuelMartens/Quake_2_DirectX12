@@ -51,6 +51,8 @@ public:
 	std::vector<int> acquiredCommandListsIndices;
 	
 	// Utils
+	std::vector<entity_t> entitiesToDraw;
+
 	std::atomic<bool> isInUse = false;
 	//#DEBUG move some of required stuff to JobContext, when refactoring
 	std::vector<DynamicObject> dynamicObjects;
