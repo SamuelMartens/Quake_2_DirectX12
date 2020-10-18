@@ -52,6 +52,7 @@ public:
 	
 	// Utils
 	std::vector<entity_t> entitiesToDraw;
+	std::vector<particle_t> particlesToDraw;
 
 	std::atomic<bool> isInUse = false;
 	//#DEBUG move some of required stuff to JobContext, when refactoring

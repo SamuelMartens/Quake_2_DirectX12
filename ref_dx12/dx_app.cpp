@@ -946,6 +946,7 @@ void Renderer::ReleaseFrameResources_Blocking(Frame& frame)
 	frame.dynamicObjects.clear();
 
 	frame.entitiesToDraw.clear();
+	frame.particlesToDraw.clear();
 
 	// Remove used draw calls
 	frame.uiDrawCalls.clear();
@@ -1880,6 +1881,49 @@ void Renderer::DrawDynamicGeometryJob(Context& context)
 	Logs::Log(Logs::Category::Job, "Dynamic job ended");
 }
 
+void Renderer::DrawParticleJob(Context& context)
+{
+	JOB_GUARD(context);
+
+	Logs::Log(Logs::Category::Job, "Particle job started");
+
+	CommandList& commandList = context.commandList;
+	const std::vector<particle_t>& particlesToDraw = context.frame.particlesToDraw;
+
+	Diagnostics::BeginEvent(commandList.commandList.Get(), "Particles");
+
+	if (particlesToDraw.empty() == false)
+	{
+		SetNonMaterialState(context);
+		SetMaterialAsync(MaterialSource::PARTICLE_MATERIAL_NAME, commandList);
+
+		// Particles share the same constant buffer, so we only need to update it once
+		const BufferHandler particleConstantBufferHandler = UpdateParticleConstantBuffer_Blocking(context);
+
+		// Preallocate vertex buffer for particles
+		constexpr int singleParticleSize = sizeof(ShDef::Vert::PosCol);
+		const int vertexBufferSize = singleParticleSize * particlesToDraw.size();
+		const BufferHandler particleVertexBufferHandler = m_uploadMemoryBuffer.Allocate(vertexBufferSize);
+		DO_IN_LOCK(context.frame.streamingObjectsHandlers, push_back(particleVertexBufferHandler));
+
+		assert(particleVertexBufferHandler != BufConst::INVALID_BUFFER_HANDLER && "Failed to allocate particle vertex buffer");
+
+		// Gather all particles, and do one draw call for everything at once
+		for (int i = 0, currentVertexBufferOffset = 0; i < particlesToDraw.size(); ++i)
+		{
+			AddParticleToDrawList(particlesToDraw[i], particleVertexBufferHandler, currentVertexBufferOffset);
+
+			currentVertexBufferOffset += singleParticleSize;
+		}
+
+		DrawParticleDrawList(particleVertexBufferHandler, vertexBufferSize, particleConstantBufferHandler, context);
+	}
+
+	Diagnostics::EndEvent(commandList.commandList.Get());
+
+	Logs::Log(Logs::Category::Job, "Particle job ended");
+}
+
 ComPtr<ID3DBlob> Renderer::LoadCompiledShader(const std::string& filename) const
 {
 	std::ifstream fin(filename, std::ios::binary);
@@ -2324,7 +2368,7 @@ void Renderer::DrawStreamingAsync_Blocking(const FArg::DrawStreaming& args)
 	Frame& frame = args.context->frame;
 	CommandList& commandList = args.context->commandList;
 
-	UpdateStreamingConstantBufferAsync(*args.pos, { 1.0f, 1.0f, 1.0f, 0.0f }, *args.bufferPiece, *args.context);
+	UpdateStreamingConstantBuffer(*args.pos, { 1.0f, 1.0f, 1.0f, 0.0f }, *args.bufferPiece, *args.context);
 
 	const int vertexBufferOffset = m_uploadMemoryBuffer.GetOffset(args.bufferPiece->handler) +
 		args.bufferPiece->offset +
@@ -2394,8 +2438,9 @@ void Renderer::AddParticleToDrawList(const particle_t& particle, BufferHandler v
 	UpdateUploadHeapBuff(updateVertexBufferArgs);
 }
 
-void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Frame& frame)
+void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Context& context)
 {
+	CommandList& commandList = context.commandList;
 	constexpr int vertexStrideInBytes = sizeof(ShDef::Vert::PosCol);
 
 	D3D12_VERTEX_BUFFER_VIEW vertBufferView;
@@ -2404,7 +2449,7 @@ void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int verte
 	vertBufferView.StrideInBytes = vertexStrideInBytes;
 	vertBufferView.SizeInBytes = vertexBufferSizeInBytes;
 
-	frame.commandList->IASetVertexBuffers(0, 1, &vertBufferView);
+	commandList.commandList->IASetVertexBuffers(0, 1, &vertBufferView);
 
 	// Binding root signature params
 
@@ -2412,10 +2457,10 @@ void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int verte
 	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
 	cbAddress += m_uploadMemoryBuffer.GetOffset(constBufferHandler);
 
-	frame.commandList->SetGraphicsRootConstantBufferView(0, cbAddress);
+	commandList.commandList->SetGraphicsRootConstantBufferView(0, cbAddress);
 
 	// Draw
-	frame.commandList->DrawInstanced(vertexBufferSizeInBytes / vertexStrideInBytes, 1, 0, 0);
+	commandList.commandList->DrawInstanced(vertexBufferSizeInBytes / vertexStrideInBytes, 1, 0, 0);
 }
 
 void Renderer::DrawUI(Frame& frame)
@@ -2609,42 +2654,7 @@ void Renderer::DeleteUploadMemoryBuffer(BufferHandler handler)
 	m_uploadMemoryBuffer.Delete(handler);
 }
 
-void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, Frame& frame)
-{
-	assert(handler != BufConst::INVALID_BUFFER_HANDLER &&
-		"Can't update constant buffer, invalid offset.");
-
-	// Update transformation mat
-	ShDef::ConstBuff::TransMat transMat;
-	XMMATRIX modelMat = XMMatrixScaling(scale.x, scale.y, scale.z);
-
-	modelMat = modelMat * XMMatrixTranslation(
-		position.x,
-		position.y,
-		position.z
-	);
-
-
-	XMMATRIX sseViewMat = XMLoadFloat4x4(&m_uiViewMat);
-	XMMATRIX sseProjMat = XMLoadFloat4x4(&m_uiProjectionMat);
-	XMMATRIX sseYInverseAndCenterMat = XMLoadFloat4x4(&m_yInverseAndCenterMatrix);
-
-	XMMATRIX sseMvpMat = modelMat * sseYInverseAndCenterMat * sseViewMat * sseProjMat;
-
-
-	XMStoreFloat4x4(&transMat.transformationMat, sseMvpMat);
-
-	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	updateConstBufferArgs.buffer = m_uploadMemoryBuffer.allocBuffer.gpuBuffer;
-	updateConstBufferArgs.offset = m_uploadMemoryBuffer.GetOffset(handler);
-	updateConstBufferArgs.data = &transMat;
-	updateConstBufferArgs.byteSize = sizeof(transMat);
-	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
-	// Update our constant buffer
-	UpdateUploadHeapBuff(updateConstBufferArgs);
-}
-
-void Renderer::UpdateStreamingConstantBufferAsync(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, Context& context)
+void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, Context& context)
 {
 	assert(bufferPiece.handler != BufConst::INVALID_BUFFER_HANDLER &&
 		bufferPiece.offset != Const::INVALID_OFFSET &&
@@ -2752,57 +2762,57 @@ void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entit
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-BufferHandler Renderer::UpdateParticleConstantBuffer(Frame& frame)
+BufferHandler Renderer::UpdateParticleConstantBuffer_Blocking(Context& context)
 {
-	//#DEBUG delete when not needed
-	//constexpr int updateDataSize = sizeof(ShDef::ConstBuff::CameraDataTransMat);
+	const Camera& camera = context.frame.camera;
 
-	//const BufferHandler constantBufferHandler = m_uploadMemoryBuffer.Allocate(Utils::Align(updateDataSize, QCONST_BUFFER_ALIGNMENT));
-	//frame.streamingObjectsHandlers.push_back(constantBufferHandler);
+	constexpr int updateDataSize = sizeof(ShDef::ConstBuff::CameraDataTransMat);
 
-	//assert(constantBufferHandler != BufConst::INVALID_BUFFER_HANDLER && "Can't update particle const buffer");
+	const BufferHandler constantBufferHandler = m_uploadMemoryBuffer.Allocate(Utils::Align(updateDataSize, QCONST_BUFFER_ALIGNMENT));
+	DO_IN_LOCK(context.frame.streamingObjectsHandlers, push_back(constantBufferHandler));
 
-	//XMFLOAT4X4 mvpMat;
+	assert(constantBufferHandler != BufConst::INVALID_BUFFER_HANDLER && "Can't update particle const buffer");
 
-	//XMStoreFloat4x4(&mvpMat, m_camera.GenerateViewMatrix() * m_camera.GenerateProjectionMatrix());
+	XMFLOAT4X4 mvpMat;
 
-	//auto[yaw, pitch, roll] = m_camera.GetBasis();
+	XMStoreFloat4x4(&mvpMat, camera.GenerateViewMatrix() * camera.GenerateProjectionMatrix());
 
-	//std::array<std::byte, updateDataSize> updateData;
+	auto[yaw, pitch, roll] = camera.GetBasis();
 
-	//std::byte* updateDataPtr = updateData.data();
+	std::array<std::byte, updateDataSize> updateData;
 
-	//int cpySize = sizeof(XMFLOAT4X4);
-	//memcpy(updateDataPtr, &mvpMat, cpySize);
-	//updateDataPtr += cpySize;
+	std::byte* updateDataPtr = updateData.data();
 
-	//cpySize = sizeof(XMFLOAT4);
-	//memcpy(updateDataPtr, &yaw, cpySize);
-	//updateDataPtr += cpySize;
+	int cpySize = sizeof(XMFLOAT4X4);
+	memcpy(updateDataPtr, &mvpMat, cpySize);
+	updateDataPtr += cpySize;
 
-	//cpySize = sizeof(XMFLOAT4);
-	//memcpy(updateDataPtr, &pitch, cpySize);
-	//updateDataPtr += cpySize;
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &yaw, cpySize);
+	updateDataPtr += cpySize;
 
-	//cpySize = sizeof(XMFLOAT4);
-	//memcpy(updateDataPtr, &roll, cpySize);
-	//updateDataPtr += cpySize;
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &pitch, cpySize);
+	updateDataPtr += cpySize;
 
-	//cpySize = sizeof(XMFLOAT4);
-	//memcpy(updateDataPtr, &m_camera.position, cpySize);
-	//updateDataPtr += cpySize;
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &roll, cpySize);
+	updateDataPtr += cpySize;
 
-	//FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	//updateConstBufferArgs.buffer = m_uploadMemoryBuffer.allocBuffer.gpuBuffer;
-	//updateConstBufferArgs.offset = m_uploadMemoryBuffer.GetOffset(constantBufferHandler);
-	//updateConstBufferArgs.data = updateData.data();
-	//updateConstBufferArgs.byteSize = updateDataSize;
-	//updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
+	cpySize = sizeof(XMFLOAT4);
+	memcpy(updateDataPtr, &camera.position, cpySize);
+	updateDataPtr += cpySize;
 
-	//UpdateUploadHeapBuff(updateConstBufferArgs);
+	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
+	updateConstBufferArgs.buffer = m_uploadMemoryBuffer.allocBuffer.gpuBuffer;
+	updateConstBufferArgs.offset = m_uploadMemoryBuffer.GetOffset(constantBufferHandler);
+	updateConstBufferArgs.data = updateData.data();
+	updateConstBufferArgs.byteSize = updateDataSize;
+	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
 
-	//return constantBufferHandler;
-	return BufConst::INVALID_BUFFER_HANDLER;
+	UpdateUploadHeapBuff(updateConstBufferArgs);
+
+	return constantBufferHandler;
 }
 
 Texture* Renderer::FindOrCreateTexture(std::string_view textureName, Frame& frame)
@@ -3294,6 +3304,8 @@ void Renderer::EndFrameAsync()
 	
 	Context drawDynamicObjectsContext = CreateContext(frame);
 
+	Context drawParticlesContext = CreateContext(frame);
+
 	Context drawUIContext = CreateContext(frame);
 	
 	Context endFrameContext = CreateContext(frame);
@@ -3305,6 +3317,7 @@ void Renderer::EndFrameAsync()
 			&beginFrameContext,
 			&drawStaticObjectsContext,
 			&drawDynamicObjectsContext,
+			&drawParticlesContext,
 			&drawUIContext
 		});
 
@@ -3333,6 +3346,14 @@ void Renderer::EndFrameAsync()
 		[drawDynamicObjectsContext, this]() mutable
 	{
 		DrawDynamicGeometryJob(drawDynamicObjectsContext);
+	}));
+
+	// --- Draw particles job ---
+
+	jobQueue.Enqueue(Job(
+		[drawParticlesContext, this]() mutable
+	{
+		DrawParticleJob(drawParticlesContext);
 	}));
 	
 	// --- Draw UI job ---
@@ -3412,6 +3433,8 @@ void Renderer::RegisterWorldModel(const char* model)
 	m_jobSystem.GetJobQueue().Enqueue(Job(
 		[context, this] () mutable 
 	{
+		Logs::Log(Logs::Category::Job, "Register world model job started");
+
 		Frame& frame = context.frame;
 
 		//#DEBUG all dependencies is this frame finished!
@@ -3423,6 +3446,7 @@ void Renderer::RegisterWorldModel(const char* model)
 
 		ReleaseFrame(frame);
 
+		Logs::Log(Logs::Category::Job, "Register world model job ended");
 	}));
 }
 
@@ -3596,6 +3620,8 @@ void Renderer::RenderFrameAsync(const refdef_t& updateData)
 	frame.camera.Update(updateData);
 	
 	frame.entitiesToDraw.resize(updateData.num_entities);
-
 	memcpy(frame.entitiesToDraw.data(), updateData.entities, sizeof(entity_t) * updateData.num_entities);
+
+	frame.particlesToDraw.resize(updateData.num_particles);
+	memcpy(frame.particlesToDraw.data(), updateData.particles, sizeof(particle_t) * updateData.num_particles);
 }

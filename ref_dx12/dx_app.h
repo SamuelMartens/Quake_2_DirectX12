@@ -139,11 +139,10 @@ public:
 	void DeleteDefaultMemoryBuffer(BufferHandler handler);
 	void DeleteUploadMemoryBuffer(BufferHandler handler);
 	
-	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferHandler handler, Frame& frame);
-	void UpdateStreamingConstantBufferAsync(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, Context& context);
+	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, Context& context);
 	void UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context& context);
 	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, Context& context);
-	BufferHandler UpdateParticleConstantBuffer(Frame& frame);
+	BufferHandler UpdateParticleConstantBuffer_Blocking(Context& context);
 
 	Texture* FindOrCreateTexture(std::string_view textureName, Frame& frame);
 	Texture* FindOrCreateTextureAsync_Blocking(std::string_view textureName, Context& context);
@@ -272,7 +271,7 @@ private:
 	void DrawIndiced_Blocking(const DynamicObject& object, const entity_t& entity, Context& context);
 	void DrawStreamingAsync_Blocking(const FArg::DrawStreaming& args);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
-	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Frame& frame);
+	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Context& context);
 	void Draw_Pic(int x, int y, const char* name, Frame& frame);
 	void Draw_PicAsync(int x, int y, const char* name, const BufferPiece& bufferPiece, Context& context);
 	void Draw_Char(int x, int y, int num, Frame& frame);
@@ -295,6 +294,7 @@ private:
 	void DrawUIJob(Context& context);
 	void DrawStaticGeometryJob(Context& context);
 	void DrawDynamicGeometryJob(Context& context);
+	void DrawParticleJob(Context& context);
 
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;
