@@ -42,7 +42,7 @@ void DX12_EndReg(void)
 
 void DX12_RenderFrame(refdef_t *fd)
 {
-	Renderer::Inst().RenderFrameAsync(*fd);
+	Renderer::Inst().UpdateFrame(*fd);
 }
 
 void DX12_Draw_GetPicSize(int *w, int *h, char *name)
@@ -92,12 +92,12 @@ void DX12_Shutdown(void)
 
 void DX12_BeginFrame( float camera_separation )
 {
-	Renderer::Inst().BeginFrameAsync();
+	Renderer::Inst().BeginFrame();
 }
 
 void DX12_EndFrame(void)
 {
-	Renderer::Inst().EndFrameAsync();
+	Renderer::Inst().EndFrame();
 }
 
 void DX12_SetPalette(const unsigned char *palette)

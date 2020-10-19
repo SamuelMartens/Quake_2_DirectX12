@@ -14,8 +14,6 @@ extern "C"
 
 
 #include "dx_texture.h"
-//#DEBUG remove frame include
-#include "dx_frame.h"
 #include "dx_jobmultithreading.h"
 
 /*

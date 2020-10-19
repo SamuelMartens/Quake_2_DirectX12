@@ -96,7 +96,7 @@ private:
 	constexpr static int		 QCBV_SRV_DESCRIPTOR_HEAP_SIZE = 512;
 	constexpr static int		 QRTV_DTV_DESCRIPTOR_HEAP_SIZE = QFRAMES_NUM;
 
-	constexpr static int		 QCOMMAND_LISTS_PER_FRAME = 6;
+	constexpr static int		 QCOMMAND_LISTS_PER_FRAME = 7;
 	// Try to avoid to set up any particular number for this, instead change command lists per frame
 	constexpr static int		 QCOMMAND_LISTS_NUM = QCOMMAND_LISTS_PER_FRAME * QFRAMES_NUM;
 
@@ -110,7 +110,7 @@ private:
 	constexpr static char		 QRAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
 	constexpr static char		 QFONT_TEXTURE_NAME[] = "conchars";
 
-	constexpr static bool		 QDEBUG_LAYER_ENABLED = true;
+	constexpr static bool		 QDEBUG_LAYER_ENABLED = false;
 	constexpr static bool		 QDEBUG_MESSAGE_FILTER_ENABLED = true;
 
 public:
@@ -144,8 +144,7 @@ public:
 	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, Context& context);
 	BufferHandler UpdateParticleConstantBuffer_Blocking(Context& context);
 
-	Texture* FindOrCreateTexture(std::string_view textureName, Frame& frame);
-	Texture* FindOrCreateTextureAsync_Blocking(std::string_view textureName, Context& context);
+	Texture* FindOrCreateTexture_Blocking(std::string_view textureName, Context& context);
 	Texture* FindTexture_Blocking(std::string_view textureName);
 
 	/*--- API functions begin --- */
@@ -156,8 +155,8 @@ public:
 	void AddDrawCall_Char(int x, int y, int num);
 
 
-	void BeginFrameAsync();
-	void EndFrameAsync();
+	void BeginFrame();
+	void EndFrame();
 
 	void GetDrawTextureSize(int* x, int* y, const char* name);
 	void SetPalette(const unsigned char* palette);
@@ -167,8 +166,7 @@ public:
 	void BeginLevelLoading(const char* map);
 	void EndLevelLoading();
 	model_s* RegisterModel(const char* name);
-	void RenderFrame(const refdef_t& frameUpdateData);
-	void RenderFrameAsync(const refdef_t& updateData);
+	void UpdateFrame(const refdef_t& updateData);
 
 
 	/*--- API functions end --- */
@@ -179,12 +177,9 @@ public:
 	void GetDrawAreaSize(int* Width, int* Height);
 
 	/* Initialization and creation */
-	void CreateCmdListAndCmdListAlloc(ComPtr<ID3D12GraphicsCommandList>& commandList, ComPtr<ID3D12CommandAllocator>& commandListAlloc);
 	void CreateFences(ComPtr<ID3D12Fence>& fence);
 	void CreateDepthStencilBuffer(ComPtr<ID3D12Resource>& buffer);
 	int  GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType) const;
-
-
 
 public:
 
@@ -237,16 +232,13 @@ private:
 	void PresentAndSwapBuffers(Frame& frame);
 
 	/* Texture */
-	Texture* CreateTextureFromFile(const char* name, Frame& frame);
-	Texture* CreateTextureFromFileAsync_Blocking(const char* name, Context& context);
-	Texture* _CreateTextureFromFileAsync(const char* name, Context& context);
-	void CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Frame& frame, Texture& outTex);
-	void _CreateGpuTextureAsync(const unsigned int* raw, int width, int height, int bpp, Context& context, Texture& outTex);
-	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame);
-	Texture* _CreateTextureFromDataAsync(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
-	Texture* CreateTextureFromDataAsync_Blocking(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
-	void UpdateTexture(Texture& tex, const std::byte* data, Frame& frame);
-	void UpdateTextureAsync_Blocking(Texture& tex, const std::byte* data, Context& context);
+	Texture* CreateTextureFromFileDeferred_Blocking(const char* name, Frame& frame);
+	Texture* CreateTextureFromFile_Blocking(const char* name, Context& context);
+	Texture* CreateTextureFromData_Blocking(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
+	Texture* _CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
+	Texture* _CreateTextureFromFile(const char* name, Context& context);
+	void _CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Context& context, Texture& outTex);
+	void UpdateTexture_Blocking(Texture& tex, const std::byte* data, Context& context);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
 
@@ -269,23 +261,19 @@ private:
 	void Draw_Blocking(const StaticObject& object, Context& context);
 	void DrawIndiced_Blocking(const StaticObject& object, Context& context);
 	void DrawIndiced_Blocking(const DynamicObject& object, const entity_t& entity, Context& context);
-	void DrawStreamingAsync_Blocking(const FArg::DrawStreaming& args);
+	void DrawStreaming_Blocking(const FArg::DrawStreaming& args);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
 	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Context& context);
-	void Draw_Pic(int x, int y, const char* name, Frame& frame);
-	void Draw_PicAsync(int x, int y, const char* name, const BufferPiece& bufferPiece, Context& context);
-	void Draw_Char(int x, int y, int num, Frame& frame);
-	void Draw_CharAsync(int x, int y, int num, const BufferPiece& bufferPiece, Context& context);
-	void Draw_RawPicAsync(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, Context& context);
-	// More high level functions
-	void DrawUI(Frame& frame);
+	void Draw_Pic(int x, int y, const char* name, const BufferPiece& bufferPiece, Context& context);
+	void Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, Context& context);
+	void Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, Context& context);
 
 	/* Utils */
 	void Load8To24Table();
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
 	bool IsVisible(const StaticObject& obj, const Camera& camera) const;
-	bool IsVisible(const entity_t& entity) const;
+	bool IsVisible(const entity_t& entity, const Camera& camera) const;
 	DynamicObjectConstBuffer& FindDynamicObjConstBuffer_Blocking();
 
 	/* Job  */
@@ -295,19 +283,18 @@ private:
 	void DrawStaticGeometryJob(Context& context);
 	void DrawDynamicGeometryJob(Context& context);
 	void DrawParticleJob(Context& context);
+	void CreateDeferredTextures_Blocking(Context& context);
+
 
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;
 
-	void SetMaterial(const std::string& name, Frame& frame);
 	void SetMaterialAsync(const std::string& name, CommandList& commandList);
-	void ClearMaterial(Frame& frame);
 	void SetNonMaterialState(Context& context) const;
 
 	/* Frames */
 	Frame& GetCurrentFrame();
 	void SubmitFrame(Frame& frame);
-	void SubmitFrameAsync(Frame& frame);
 	void WaitForFrame(Frame& frame) const;
 	void WaitForPrevFrame(Frame& frame) const;
 
@@ -316,9 +303,7 @@ private:
 	// and then submit it. BeginFrame/EndFrame on the other hand is directly related to drawing where you
 	// ,for example, have buffer to draw to
 	void OpenFrame(Frame& frame) const;
-	void OpenFrameAsync(Frame& frame) const;
 	void CloseFrame(Frame& frame);
-	void CloseFrameAsync(Frame& frame);
 	void ReleaseFrameResources_Blocking(Frame& frame);
 
 	// Frame ownership
@@ -379,16 +364,12 @@ private:
 	std::unordered_map<model_t*, DynamicObjectModel> m_dynamicObjectsModels;
 	// Expected to set a size for it during initialization. Don't change size afterward
 	LockVector_t<DynamicObjectConstBuffer> m_dynamicObjectsConstBuffersPool;
-	//#DEBUG delete when not needed those matrices
-	XMFLOAT4X4 m_uiProjectionMat;
-	XMFLOAT4X4 m_uiViewMat;
+
 	// DirectX and OpenGL have different directions for Y axis,
 	// this matrix is required to fix this. Also apparently original Quake 2
 	// had origin in a middle of a screen, while we have it in upper left corner,
 	// so we need to center content to the screen center
 	XMFLOAT4X4 m_yInverseAndCenterMatrix;
-	//#DEBUG delete when not needed
-	Camera m_camera;
 
 	std::vector<Material> m_materials;
 

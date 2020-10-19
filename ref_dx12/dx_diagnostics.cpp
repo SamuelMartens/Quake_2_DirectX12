@@ -42,9 +42,9 @@ namespace Logs
 	{
 		true, // Generic,
 		false, // Synchronization,
-		true, // FrameSubmission,
+		false, // FrameSubmission,
 		true,  // Textures, 
-		true   // Job
+		false   // Job
 	};
 }
 

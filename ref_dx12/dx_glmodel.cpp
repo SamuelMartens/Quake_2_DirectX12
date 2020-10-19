@@ -7,7 +7,7 @@
 model_t	*loadmodel;
 int		modfilelen;
 
-void Mod_LoadSpriteModel(model_t *mod, void *buffer, Frame& frame);
+void Mod_LoadSpriteModel(model_t *mod, void *buffer, Context& context);
 void Mod_LoadBrushModel(model_t *mod, void *buffer, Context& context);
 void Mod_LoadAliasModel(model_t *mod, void *buffer, Context& context);
 
@@ -255,7 +255,6 @@ Loads in a model for the given name
 
 model_t * Mod_ForName(char *name, qboolean crash, Context& context)
 {
-	//#DEBUG delete when not needed
 	model_t	*mod;
 	unsigned *buf;
 	int		i;
@@ -593,7 +592,7 @@ void Mod_LoadTexinfo(lump_t *l, Context& context)
 		char texNameFormat[] = "textures/%s.wal";
 		Com_sprintf(name, sizeof(name), texNameFormat, in->texture);
 
-		out->image = Renderer::Inst().FindOrCreateTextureAsync_Blocking(name, context);
+		out->image = Renderer::Inst().FindOrCreateTexture_Blocking(name, context);
 
 		if (!out->image)
 		{
@@ -1245,7 +1244,7 @@ void Mod_LoadAliasModel(model_t *mod, void *buffer, Context& context)
 		pheader->num_skins*MAX_SKINNAME);
 	for (i = 0; i < pheader->num_skins; i++)
 	{
-		mod->skins[i] = Renderer::Inst().FindOrCreateTextureAsync_Blocking(
+		mod->skins[i] = Renderer::Inst().FindOrCreateTexture_Blocking(
 			(char *)pheader + pheader->ofs_skins + i * MAX_SKINNAME, context);
 	}
 
@@ -1271,7 +1270,7 @@ Mod_LoadSpriteModel
 =================
 */
 
-void Mod_LoadSpriteModel(model_t *mod, void *buffer, Frame& frame)
+void Mod_LoadSpriteModel(model_t *mod, void *buffer, Context& context)
 {
 	dsprite_t	*sprin, *sprout;
 	int			i;
@@ -1308,7 +1307,7 @@ void Mod_LoadSpriteModel(model_t *mod, void *buffer, Frame& frame)
 		sprout->frames[i].origin_y = LittleLong(sprin->frames[i].origin_y);
 		memcpy(sprout->frames[i].name, sprin->frames[i].name, MAX_SKINNAME);
 
-		mod->skins[i] = Renderer::Inst().FindOrCreateTexture(sprout->frames[i].name, frame);
+		mod->skins[i] = Renderer::Inst().FindOrCreateTexture_Blocking(sprout->frames[i].name, context);
 	}
 
 	mod->type = mod_sprite;

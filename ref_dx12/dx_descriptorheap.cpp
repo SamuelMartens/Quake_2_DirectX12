@@ -26,7 +26,6 @@ DescriptorHeap::DescriptorHeap(int descriptorsNum,
 
 int DescriptorHeap::Allocate(ComPtr<ID3D12Resource> resource, DescriptorHeap::Desc_t* desc)
 {
-	//#DEBUG should be fine without lock?
 	const int allocatedIndex = alloc.Allocate();
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE handle = GetHandleCPU(allocatedIndex);

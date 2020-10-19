@@ -12,6 +12,7 @@
 #include "dx_drawcalls.h"
 #include "dx_camera.h"
 #include "dx_threadingutils.h"
+#include "dx_texture.h"
 
 class Semaphore;
 
@@ -33,10 +34,6 @@ public:
 	void ResetSyncData();
 	
 	std::shared_ptr<Semaphore> GetFinishSemaphore() const;
-
-	// Rendering related
-	ComPtr<ID3D12GraphicsCommandList> commandList;
-	ComPtr<ID3D12CommandAllocator> commandListAlloc;
 	
 	// Used for rendering. Receive on frame beginning
 	// Released on the frame end
@@ -55,22 +52,18 @@ public:
 	std::vector<particle_t> particlesToDraw;
 
 	std::atomic<bool> isInUse = false;
-	//#DEBUG move some of required stuff to JobContext, when refactoring
 	std::vector<DynamicObject> dynamicObjects;
 	LockVector_t<ComPtr<ID3D12Resource>> uploadResources;
 	LockVector_t<BufferHandler> streamingObjectsHandlers;
 
 	std::vector<DrawCall_UI_t> uiDrawCalls;
-
-	std::string currentMaterial;
+	
+	std::vector<Texture*> deferredTextures;
 
 	int frameNumber = Const::INVALID_INDEX;
 
 	tagRECT scissorRect;
-	//#DEBUG don't forget to update it in render frame dude!
 	Camera camera;
-	//#DEBUG so much stuff has to be cleaned up
-	// don't forget to delete it later
 	XMFLOAT4X4 uiProjectionMat;
 	XMFLOAT4X4 uiViewMat;
 

@@ -10,12 +10,8 @@ void Frame::Init()
 
 	Renderer& renderer = Renderer::Inst();
 
-	renderer.CreateCmdListAndCmdListAlloc(commandList, commandListAlloc);
-
 	renderer.CreateDepthStencilBuffer(depthStencilBuffer);
 	
-	commandList->Close();
-
 	depthBufferViewIndex = renderer.dsvHeap->Allocate(depthStencilBuffer);
 
 	camera.Init();
