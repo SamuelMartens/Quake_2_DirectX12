@@ -27,17 +27,7 @@ using LockUnorderedMap_t = LockObject<std::unordered_map<kT, vT>>;
 	object.obj.action;				\
 	object.mutex.unlock()
 	
-
-template<typename T>
-void AssertUnlocked(LockObject<T>& obj) 
-{
-#ifdef _DEBUG
-	// Note according to documentation of try_lock() "This function is allowed to fail spuriously". 
-	assert(obj.mutex.try_lock() == true && "Oops. This mutex should be unlocked at this point.");
-	obj.mutex.unlock();
-#endif
-};
-
+#define ASSERT_MAIN_THREAD ThreadingUtils::AssertMainThread()
 
 class Semaphore
 {
@@ -65,3 +55,23 @@ private:
 	HANDLE winSemaphore = NULL;
 
 };
+
+namespace ThreadingUtils
+{
+	void Init();
+
+	std::thread::id GetMainThreadId();
+
+	void AssertMainThread();
+
+	template<typename T>
+	void AssertUnlocked(LockObject<T>& obj)
+	{
+#ifdef _DEBUG
+		// Note according to documentation of try_lock() "This function is allowed to fail spuriously". 
+		assert(obj.mutex.try_lock() == true && "Oops. This mutex should be unlocked at this point.");
+		obj.mutex.unlock();
+#endif
+	};
+
+}

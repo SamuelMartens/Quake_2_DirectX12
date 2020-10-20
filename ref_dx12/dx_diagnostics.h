@@ -54,8 +54,8 @@ namespace Logs
 	};
 
 	static constexpr int BUFFER_SIZE = 65536;
-	extern std::array<Event, BUFFER_SIZE> eventsBuffer;
-	extern  std::atomic<int> pos;
+	extern std::array<Event, BUFFER_SIZE> gEventsBuffer;
+	extern  std::atomic<int> gPos;
 
 	constexpr const char* CategoryToString(Category category)
 	{

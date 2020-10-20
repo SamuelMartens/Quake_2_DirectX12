@@ -110,7 +110,7 @@ private:
 	constexpr static char		 QRAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
 	constexpr static char		 QFONT_TEXTURE_NAME[] = "conchars";
 
-	constexpr static bool		 QDEBUG_LAYER_ENABLED = false;
+	constexpr static bool		 QDEBUG_LAYER_ENABLED = true;
 	constexpr static bool		 QDEBUG_MESSAGE_FILTER_ENABLED = true;
 
 public:
@@ -238,6 +238,7 @@ private:
 	Texture* _CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
 	Texture* _CreateTextureFromFile(const char* name, Context& context);
 	void _CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Context& context, Texture& outTex);
+	void CreateDeferredTextures_Blocking(Context& context);
 	void UpdateTexture_Blocking(Texture& tex, const std::byte* data, Context& context);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
@@ -283,8 +284,6 @@ private:
 	void DrawStaticGeometryJob(Context& context);
 	void DrawDynamicGeometryJob(Context& context);
 	void DrawParticleJob(Context& context);
-	void CreateDeferredTextures_Blocking(Context& context);
-
 
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;
@@ -382,7 +381,6 @@ private:
 	ComPtr<ID3D12Fence>	m_fence;
 
 	int m_frameCounter = 0;
-
 
 	/* Level registration data */
 	std::unique_ptr<Context> m_staticModelRegContext;

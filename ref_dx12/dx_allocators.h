@@ -54,6 +54,8 @@ public:
 			if (nextOffset >= size)
 			{
 				allocations.push_front({ 0, size });
+				ValidateAllocations();
+				return 0;
 			}
 		}
 
@@ -69,7 +71,8 @@ public:
 				const int currAllocEnd = currAllocIt->offset + currAllocIt->size;
 				if (nextAllocIt->offset - currAllocEnd >= size)
 				{
-					allocations.insert(currAllocIt, { currAllocEnd, size });
+					allocations.insert(nextAllocIt, { currAllocEnd, size });
+					ValidateAllocations();
 					return currAllocEnd;
 				}
 			}
@@ -86,6 +89,7 @@ public:
 				if (SIZE - lastAllocEnd >= size)
 				{
 					allocations.push_back({ lastAllocEnd, size });
+					ValidateAllocations();
 					return lastAllocEnd;
 				}
 			}
@@ -108,10 +112,11 @@ public:
 
 		if (it == allocations.end())
 		{
-			assert(false && "Trying to delete memory that was allocated.");
+			assert(false && "Trying to delete memory that wasn't allocated.");
 			return;
 		}
 
+		ValidateAllocations();
 		allocations.erase(it);
 	};
 
@@ -123,6 +128,32 @@ public:
 	};
 
 private:
+
+	constexpr static bool isValidateAllocations = false;
+
+	void ValidateAllocations() const
+	{
+		if constexpr (isValidateAllocations == true)
+		{
+			int prevOffset = -1;
+			int prevSize = -1;
+			for (auto it = allocations.cbegin(); it != allocations.cend(); ++it)
+			{
+				assert(it->offset > prevOffset);
+				assert(it->offset != Const::INVALID_OFFSET);
+				assert(it->size != Const::INVALID_SIZE);
+				assert(it->offset + it->size < SIZE);
+
+				if (prevOffset != -1)
+				{
+					assert(prevOffset + prevSize <= it->offset);
+				}
+
+				prevOffset = it->offset;
+				prevSize = it->size;
+			}
+		}
+	}
 
 	std::list<Allocation> allocations;
 	std::mutex mutex;

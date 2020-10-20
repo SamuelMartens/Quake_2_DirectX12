@@ -32,8 +32,8 @@ void Diagnostics::EndEvent(ID3D12GraphicsCommandList* commandList)
 
 namespace Logs
 {
-	std::array<Event, BUFFER_SIZE> eventsBuffer;
-	std::atomic<int> pos = 0;
+	std::array<Event, BUFFER_SIZE> gEventsBuffer;
+	std::atomic<int> gPos = 0;
 
 	constexpr bool enableLogs = false;
 	constexpr bool printToConsole = true;
@@ -41,10 +41,10 @@ namespace Logs
 	constexpr bool CategoryEnabled[static_cast<int>(Category::_Count)] =
 	{
 		true, // Generic,
-		false, // Synchronization,
-		false, // FrameSubmission,
-		true,  // Textures, 
-		false   // Job
+		true, // Synchronization,
+		true, // FrameSubmission,
+		false,  // Textures, 
+		true   // Job
 	};
 }
 
@@ -71,10 +71,10 @@ void Logs::Log(Category category, std::string_view message)
 	{
 		if (CategoryEnabled[static_cast<int>(category)] == true)
 		{
-			int index = pos.fetch_add(1);
+			int index = gPos.fetch_add(1);
 			index = index & (BUFFER_SIZE - 1); // Wrap the buffer size
 
-			Event& event = eventsBuffer[index];
+			Event& event = gEventsBuffer[index];
 
 			event.category = category;
 			event.message = message;

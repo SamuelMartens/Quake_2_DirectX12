@@ -409,6 +409,8 @@ void Renderer::InitUtils()
 	m_jobSystem.Init();
 
 	InitScissorRect();
+
+	ThreadingUtils::Init();
 }
 
 void Renderer::InitMemory(Context& context)
@@ -773,6 +775,8 @@ void Renderer::SetNonMaterialState(Context& context) const
 
 Frame& Renderer::GetCurrentFrame()
 {
+	ASSERT_MAIN_THREAD;
+
 	if (m_currentFrameIndex == Const::INVALID_INDEX)
 	{
 		AcquireCurrentFrame();
@@ -792,7 +796,7 @@ void Renderer::SubmitFrame(Frame& frame)
 		const int commandListIndex = frame.acquiredCommandListsIndices[i];
 		commandLists[i] = m_commandListBuffer.commandLists[commandListIndex].commandList.Get();
 	}
-
+	
 	m_commandQueue->ExecuteCommandLists(commandLists.size(), commandLists.data());
 
 	assert(frame.executeCommandListFenceValue == -1 && frame.executeCommandListEvenHandle == INVALID_HANDLE_VALUE &&
@@ -865,6 +869,8 @@ void Renderer::ReleaseFrameResources_Blocking(Frame& frame)
 
 void Renderer::AcquireCurrentFrame()
 {
+	ASSERT_MAIN_THREAD;
+
 	assert(m_currentFrameIndex == Const::INVALID_INDEX && "Trying to acquire frame, while there is already frame acquired.");
 
 	//#TODO this is bad. Acquire release frame should be explicit, if it is possible.
@@ -922,6 +928,8 @@ void Renderer::AcquireCurrentFrame()
 
 void Renderer::DetachCurrentFrame()
 {
+	ASSERT_MAIN_THREAD;
+
 	assert(m_currentFrameIndex != Const::INVALID_INDEX && "Trying to detach frame. But there is nothing to detach.");
 
 	Logs::Logf(Logs::Category::FrameSubmission, "Frame with index %d and frameNumber %d detached", m_currentFrameIndex, m_frames[m_currentFrameIndex].frameNumber);
@@ -1324,7 +1332,7 @@ void Renderer::UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const
 	// that CPU will never try to read from this memory
 	D3D12_RANGE mappedRange = { 0, 0 };
 
-	args.buffer->Map(0, &mappedRange, reinterpret_cast<void**>(&mappedMemory));
+	ThrowIfFailed(args.buffer->Map(0, &mappedRange, reinterpret_cast<void**>(&mappedMemory)));
 
 	memcpy(mappedMemory + args.offset, args.data, dataSize);
 
@@ -1403,6 +1411,8 @@ DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer_Blocking()
 
 void Renderer::EndFrameJob(Context& context)
 {
+	Logs::Logf(Logs::Category::Job, "EndFrame job started frame %d", context.frame.frameNumber);
+
 	context.commandList.Open();
 
 	Frame& frame = context.frame;
@@ -1433,16 +1443,18 @@ void Renderer::EndFrameJob(Context& context)
 
 	ReleaseFrame(frame);
 
-	AssertUnlocked(context.frame.streamingObjectsHandlers);
-	AssertUnlocked(context.frame.uploadResources);
+	ThreadingUtils::AssertUnlocked(context.frame.streamingObjectsHandlers);
+	ThreadingUtils::AssertUnlocked(context.frame.uploadResources);
 	
 	// Delete shared resources marked for deletion
 	DeleteRequestedResources_Blocking();
+
+	Logs::Log(Logs::Category::Job, "EndFrame job ended");
 }
 
 void Renderer::BeginFrameJob(Context& context)
 {
-	Logs::Log(Logs::Category::Job, "BeginFrame job started");
+	Logs::Logf(Logs::Category::Job, "BeginFrame job started frame %d", context.frame.frameNumber);
 
 	JOB_GUARD(context);
 
@@ -1472,23 +1484,21 @@ void Renderer::BeginFrameJob(Context& context)
 		0,
 		nullptr);
 
-	Logs::Log(Logs::Category::Job, "BeginFrame job ended");
+	Logs::Logf(Logs::Category::Job, "BeginFrame job ended frame %d", frame.frameNumber);
 }
 
 void Renderer::DrawUIJob(Context& context)
 {
 	JOB_GUARD(context);
+	Logs::Logf(Logs::Category::Job, "DrawUI job started frame %d", context.frame.frameNumber);
 
-	Logs::Log(Logs::Category::Job, "DrawUI job started");
+	Frame& frame = context.frame;
 
-	if (context.frame.uiDrawCalls.empty())
+	if (frame.uiDrawCalls.empty())
 	{
 		Logs::Log(Logs::Category::Job, "DrawUI job started. No draw calls");
 		return;
 	}
-
-	Frame& frame = context.frame;
-	
 	// This is ugly :( I use this for both Constant buffer and Vertex buffer. As a result,
 	// both should be aligned for constant buffers.
 	const int perDrawCallMemoryRequired = Utils::Align(
@@ -1510,6 +1520,8 @@ void Renderer::DrawUIJob(Context& context)
 
 	tempMat = XMMatrixOrthographicRH(frame.camera.width, frame.camera.height, 0.0f, 1.0f);
 	XMStoreFloat4x4(&frame.uiProjectionMat, tempMat);
+
+	Diagnostics::BeginEvent(context.commandList.commandList.Get(), "UI drawing");
 
 	SetNonMaterialState(context);
 
@@ -1544,14 +1556,16 @@ void Renderer::DrawUIJob(Context& context)
 
 	}
 
-	Logs::Log(Logs::Category::Job, "DrawUI job ended");
+	Diagnostics::EndEvent(context.commandList.commandList.Get());
+
+	Logs::Logf(Logs::Category::Job, "DrawUI job ended frame %d", frame.frameNumber);
 }
 
 void Renderer::DrawStaticGeometryJob(Context& context)
 {
 	JOB_GUARD(context);
 
-	Logs::Log(Logs::Category::Job, "Static job started");
+	Logs::Logf(Logs::Category::Job, "Static job started frame %d", context.frame.frameNumber);
 
 	CommandList& commandList = context.commandList;
 
@@ -1582,14 +1596,14 @@ void Renderer::DrawStaticGeometryJob(Context& context)
 
 	Diagnostics::EndEvent(commandList.commandList.Get());
 
-	Logs::Log(Logs::Category::Job, "Static job ended");
+	Logs::Logf(Logs::Category::Job, "Static job ended frame %d", context.frame.frameNumber);
 }
 
 void Renderer::DrawDynamicGeometryJob(Context& context)
 {
 	JOB_GUARD(context);
 
-	Logs::Log(Logs::Category::Job, "Dynamic job started");
+	Logs::Logf(Logs::Category::Job, "Dynamic job started frame %d", context.frame.frameNumber);
 
 	CommandList& commandList = context.commandList;
 	Frame& frame = context.frame;
@@ -1629,14 +1643,14 @@ void Renderer::DrawDynamicGeometryJob(Context& context)
 
 	Diagnostics::EndEvent(commandList.commandList.Get());
 
-	Logs::Log(Logs::Category::Job, "Dynamic job ended");
+	Logs::Logf(Logs::Category::Job, "Dynamic job ended frame %d", context.frame.frameNumber);
 }
 
 void Renderer::DrawParticleJob(Context& context)
 {
 	JOB_GUARD(context);
 
-	Logs::Log(Logs::Category::Job, "Particle job started");
+	Logs::Logf(Logs::Category::Job, "Particle job started frame %d", context.frame.frameNumber);
 
 	CommandList& commandList = context.commandList;
 	const std::vector<particle_t>& particlesToDraw = context.frame.particlesToDraw;
@@ -1672,7 +1686,7 @@ void Renderer::DrawParticleJob(Context& context)
 
 	Diagnostics::EndEvent(commandList.commandList.Get());
 
-	Logs::Log(Logs::Category::Job, "Particle job ended");
+	Logs::Logf(Logs::Category::Job, "Particle job ended frame %d", context.frame.frameNumber);
 }
 
 void Renderer::CreateDeferredTextures_Blocking(Context& context)
@@ -1932,6 +1946,8 @@ void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, C
 
 Context Renderer::CreateContext(Frame& frame)
 {
+	ASSERT_MAIN_THREAD;
+
 	const int commandListIndex = m_commandListBuffer.allocator.Allocate();
 	frame.acquiredCommandListsIndices.push_back(commandListIndex);
 
@@ -2719,6 +2735,8 @@ void Renderer::SetPalette(const unsigned char* palette)
 
 void Renderer::EndLevelLoading()
 {
+	//#DEBUG MAKE MAIN THREAD ASSERT!
+	// MAKE PROPER ACQUIRE!
 	Logs::Log(Logs::Category::Generic, "API: End level loading");
 
 	Frame& frame = m_dynamicModelRegContext->frame;
@@ -2730,7 +2748,6 @@ void Renderer::EndLevelLoading()
 	
 	CloseFrame(frame);
 
-	DetachCurrentFrame();
 	ReleaseFrameResources_Blocking(frame);
 
 	ReleaseFrame(frame);
@@ -3114,6 +3131,8 @@ void Renderer::BeginLevelLoading(const char* mapName)
 
 	m_dynamicModelRegContext = std::make_unique<Context>(CreateContext(GetCurrentFrame()));
 	m_dynamicModelRegContext->commandList.Open();
+
+	DetachCurrentFrame();
 }
 
 model_s* Renderer::RegisterModel(const char* name)

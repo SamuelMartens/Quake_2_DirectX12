@@ -2,6 +2,11 @@
 #include "dx_utils.h"
 #include "dx_app.h"
 
+#ifdef max
+#undef max
+#endif  
+
+
 void Camera::Init()
 {
 	Renderer::Inst().GetDrawAreaSize(&width, &height);
@@ -57,7 +62,8 @@ XMMATRIX Camera::GenerateProjectionMatrix() const
 {
 	constexpr int zNear = 4;
 	constexpr int zFar = 4096;
-	return XMMatrixPerspectiveFovRH(XMConvertToRadians(fov.y), width / height, zNear, zFar);
+	
+	return XMMatrixPerspectiveFovRH(XMConvertToRadians(std::max(fov.y, 1.0f)), width / height, zNear, zFar);
 }
 
 

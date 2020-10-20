@@ -8,6 +8,11 @@
 	#define SEMAPHORE_TIME_OUT INFINITE
 #endif
 
+namespace
+{
+	std::thread::id gMainThreadId;
+}
+
 Semaphore::Semaphore(int waitForValue) :
 	waitValue(waitForValue)
 {
@@ -40,12 +45,13 @@ void Semaphore::Wait() const
 
 	if (counter.load() < waitValue)
 	{
+		LONG prevVal = -1;
 		DWORD res = WaitForSingleObject(winSemaphore, SEMAPHORE_TIME_OUT);
 		// Restore signaled state, since Wait() will change semaphore value
-		ReleaseSemaphore(winSemaphore, 1, NULL);
+		ReleaseSemaphore(winSemaphore, 1, &prevVal);
 		
 		assert(res == WAIT_OBJECT_0 && "Semaphore wait ended in unexpected way.");
-
+		assert(prevVal == 0 && "Prev val assert");
 	}
 
 	Logs::Logf(Logs::Category::Synchronization, "Semaphore wait finished, handle %x", reinterpret_cast<unsigned>(winSemaphore));
@@ -74,14 +80,30 @@ void Semaphore::WaitForMultipleAny(const std::vector<std::shared_ptr<Semaphore>>
 
 		winSemaphores.push_back(s->winSemaphore);
 	}
-
+	LONG prevVal = -1;
 	DWORD res = WaitForMultipleObjects(winSemaphores.size(), winSemaphores.data(), FALSE, SEMAPHORE_TIME_OUT);
 	assert(res >= WAIT_OBJECT_0 && res < WAIT_OBJECT_0 + waitForSemaphores.size()
 		&& "WaitForMultipleAny ended in unexpected way.");
 	
 	// Restore signaled state, since Wait() will change semaphore value
-	ReleaseSemaphore(winSemaphores[res - WAIT_OBJECT_0], 1, NULL);
+	ReleaseSemaphore(winSemaphores[res - WAIT_OBJECT_0], 1, &prevVal);
+	assert(prevVal == 0 && "Multiple prev val is not equal to 0");
 
 	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait finished, handle %x", reinterpret_cast<unsigned>(winSemaphores[res - WAIT_OBJECT_0]));
 
+}
+
+void ThreadingUtils::Init()
+{
+	gMainThreadId = std::this_thread::get_id();
+}
+
+std::thread::id ThreadingUtils::GetMainThreadId()
+{
+	return gMainThreadId;
+}
+
+void ThreadingUtils::AssertMainThread()
+{
+	assert(std::this_thread::get_id() == gMainThreadId && "This supposed to be executed in main thread only.");
 }
