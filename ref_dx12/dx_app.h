@@ -110,7 +110,7 @@ private:
 	constexpr static char		 QRAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
 	constexpr static char		 QFONT_TEXTURE_NAME[] = "conchars";
 
-	constexpr static bool		 QDEBUG_LAYER_ENABLED = true;
+	constexpr static bool		 QDEBUG_LAYER_ENABLED = false;
 	constexpr static bool		 QDEBUG_MESSAGE_FILTER_ENABLED = true;
 
 public:
@@ -292,7 +292,6 @@ private:
 	void SetNonMaterialState(Context& context) const;
 
 	/* Frames */
-	Frame& GetCurrentFrame();
 	void SubmitFrame(Frame& frame);
 	void WaitForFrame(Frame& frame) const;
 	void WaitForPrevFrame(Frame& frame) const;
@@ -306,6 +305,7 @@ private:
 	void ReleaseFrameResources_Blocking(Frame& frame);
 
 	// Frame ownership
+	Frame& GetCurrentFrame();
 	void AcquireCurrentFrame();
 	void DetachCurrentFrame();
 	void ReleaseFrame(Frame& frame);

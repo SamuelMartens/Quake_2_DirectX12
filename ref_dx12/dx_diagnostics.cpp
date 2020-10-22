@@ -35,23 +35,23 @@ namespace Logs
 	std::array<Event, BUFFER_SIZE> gEventsBuffer;
 	std::atomic<int> gPos = 0;
 
-	constexpr bool enableLogs = false;
-	constexpr bool printToConsole = true;
+	constexpr bool gEnableLogs = true;
+	constexpr bool gPrintToConsole = true;
 
 	constexpr bool CategoryEnabled[static_cast<int>(Category::_Count)] =
 	{
 		true, // Generic,
-		true, // Synchronization,
+		false, // Synchronization,
 		true, // FrameSubmission,
 		false,  // Textures, 
-		true   // Job
+		false   // Job
 	};
 }
 
 
 void Logs::Logf(Category category, const char* fmt, ...)
 {
-	if constexpr (enableLogs == true)
+	if constexpr (gEnableLogs == true)
 	{
 		char buffer[1024];
 
@@ -67,7 +67,7 @@ void Logs::Logf(Category category, const char* fmt, ...)
 
 void Logs::Log(Category category, std::string_view message)
 {
-	if constexpr (enableLogs == true)
+	if constexpr (gEnableLogs == true)
 	{
 		if (CategoryEnabled[static_cast<int>(category)] == true)
 		{
@@ -81,7 +81,7 @@ void Logs::Log(Category category, std::string_view message)
 
 			event.threadId = std::this_thread::get_id();
 
-			if constexpr (printToConsole == true)
+			if constexpr (gPrintToConsole == true)
 			{
 				Utils::VSCon_Printf("LOG %s: %s \n", CategoryToString(category), event.message.c_str());
 			}

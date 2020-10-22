@@ -324,7 +324,7 @@ void Renderer::InitDx()
 	InitUtils();
 
 	// ------- Open init command list -----
-
+	AcquireCurrentFrame();
 	Context initContext = CreateContext(GetCurrentFrame());
 
 	initContext.commandList.Open();
@@ -776,11 +776,7 @@ void Renderer::SetNonMaterialState(Context& context) const
 Frame& Renderer::GetCurrentFrame()
 {
 	ASSERT_MAIN_THREAD;
-
-	if (m_currentFrameIndex == Const::INVALID_INDEX)
-	{
-		AcquireCurrentFrame();
-	}
+	assert(m_currentFrameIndex != Const::INVALID_INDEX && "Trying to get current frame which is invalid");
 
 	return m_frames[m_currentFrameIndex];
 }
@@ -2735,8 +2731,6 @@ void Renderer::SetPalette(const unsigned char* palette)
 
 void Renderer::EndLevelLoading()
 {
-	//#DEBUG MAKE MAIN THREAD ASSERT!
-	// MAKE PROPER ACQUIRE!
 	Logs::Log(Logs::Category::Generic, "API: End level loading");
 
 	Frame& frame = m_dynamicModelRegContext->frame;
@@ -2942,6 +2936,7 @@ void Renderer::BeginFrame()
 {
 	Logs::Log(Logs::Category::Generic, "API: Begin frame");
 
+	AcquireCurrentFrame();
 	Frame& frame = GetCurrentFrame();
 
 	assert(frame.isInUse == true && "Trying to begin frame, but didn't mark it as used.");
@@ -3057,7 +3052,9 @@ Texture* Renderer::RegisterDrawPic(const char* name)
 {
 	Logs::Logf(Logs::Category::Generic, "API: Register draw pic %s", name);
 
-	Frame& frame = GetCurrentFrame();
+	// If dynamic model registration context exists, then we are in the middle of the level loading. At this point
+	// current frame is most likely invalid
+	Frame& frame = m_dynamicModelRegContext != nullptr ? m_dynamicModelRegContext->frame : GetCurrentFrame();
 
 	std::array<char, MAX_QPATH> texFullName;
 	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
@@ -3075,6 +3072,7 @@ void Renderer::RegisterWorldModel(const char* model)
 	// model, so you don't load it twice). Currently it doesn't make sense to do anything
 	// with this, because I will have other models in game and I want to handle world model 
 	// as part of this system. Maybe I should leave it as it is and just use old system?
+	AcquireCurrentFrame();
 	Frame& frame = GetCurrentFrame();
 
 	Context context = CreateContext(frame);
@@ -3129,7 +3127,10 @@ void Renderer::BeginLevelLoading(const char* mapName)
 
 	RegisterWorldModel(mapName);
 
-	m_dynamicModelRegContext = std::make_unique<Context>(CreateContext(GetCurrentFrame()));
+	AcquireCurrentFrame();
+	Frame& frame = GetCurrentFrame();
+
+	m_dynamicModelRegContext = std::make_unique<Context>(CreateContext(frame));
 	m_dynamicModelRegContext->commandList.Open();
 
 	DetachCurrentFrame();
