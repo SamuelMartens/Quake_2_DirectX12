@@ -339,7 +339,7 @@ void Renderer::InitDx()
 
 	CloseFrame(initContext.frame);
 
-	ReleaseFrameResources_Blocking(initContext.frame);
+	ReleaseFrameResources(initContext.frame);
 
 	// We are done with that frame
 	ReleaseFrame(initContext.frame);
@@ -416,7 +416,7 @@ void Renderer::InitUtils()
 void Renderer::InitMemory(Context& context)
 {
 	// Create default memory buffer
-	m_defaultMemoryBuffer.allocBuffer.gpuBuffer = CreateDefaultHeapBuffer_Blocking(nullptr, QDEFAULT_MEMORY_BUFFER_SIZE, context);
+	m_defaultMemoryBuffer.allocBuffer.gpuBuffer = CreateDefaultHeapBuffer(nullptr, QDEFAULT_MEMORY_BUFFER_SIZE, context);
 	// Create upload memory buffer
 	m_uploadMemoryBuffer.allocBuffer.gpuBuffer = CreateUploadHeapBuffer(QUPLOAD_MEMORY_BUFFER_SIZE);
 }
@@ -809,11 +809,7 @@ void Renderer::SubmitFrame(Frame& frame)
 
 void Renderer::OpenFrame(Frame& frame) const
 {
-	frame.isInUse = true;
-
-	assert(frame.frameFinishedSemaphore == nullptr && "Open frame error. Frame is not cleaned up.");
-
-	frame.frameFinishedSemaphore = std::make_shared<Semaphore>(1);
+	frame.Acquire();
 }
 
 void Renderer::CloseFrame(Frame& frame)
@@ -824,7 +820,7 @@ void Renderer::CloseFrame(Frame& frame)
 	frame.ResetSyncData();
 }
 
-void Renderer::ReleaseFrameResources_Blocking(Frame& frame)
+void Renderer::ReleaseFrameResources(Frame& frame)
 {
 	Logs::Logf(Logs::Category::FrameSubmission, "Frame with frameNumber %d releases resources", frame.frameNumber);
 
@@ -885,8 +881,8 @@ void Renderer::AcquireCurrentFrame()
 		// It is important to grab that before isInUse check, so we never end up in the situation where semaphore
 		// was deleted right after check, but before we manage to pull it from frameIt
 		std::shared_ptr<Semaphore> frameFinishedSemaphore = frameIt->GetFinishSemaphore();
-
-		if (frameIt->isInUse == false)
+		
+		if (frameIt->GetIsInUse() == false)
 		{
 			OpenFrame(*frameIt);
 			m_currentFrameIndex = std::distance(m_frames.begin(), frameIt);
@@ -908,7 +904,7 @@ void Renderer::AcquireCurrentFrame()
 	frameIt = m_frames.begin();
 	for (; frameIt != m_frames.end(); ++frameIt)
 	{
-		if (frameIt->isInUse == false)
+		if (frameIt->GetIsInUse() == false)
 		{
 			break;
 		}
@@ -935,11 +931,7 @@ void Renderer::DetachCurrentFrame()
 
 void Renderer::ReleaseFrame(Frame& frame)
 {
-	assert(frame.isInUse == true && "Trying to release frame, that's already released.");
-
-	frame.frameFinishedSemaphore->Signal();
-	frame.frameFinishedSemaphore = nullptr;
-	frame.isInUse = false;
+	frame.Release();
 
 	Logs::Log(Logs::Category::FrameSubmission, "Frame released");
 }
@@ -963,7 +955,7 @@ void Renderer::WaitForPrevFrame(Frame& frame) const
 	const auto frameIt = std::find_if(m_frames.cbegin(), m_frames.cend(), 
 		[&frame](const Frame& f)
 	{
-		return f.isInUse == true && f.frameNumber == frame.frameNumber - 1;
+		return f.GetIsInUse() == true && f.frameNumber == frame.frameNumber - 1;
 	});
 
 	if (frameIt == m_frames.cend())
@@ -1030,7 +1022,7 @@ void Renderer::PresentAndSwapBuffers(Frame& frame)
 
 }
 
-Texture* Renderer::CreateTextureFromFileDeferred_Blocking(const char* name, Frame& frame)
+Texture* Renderer::CreateTextureFromFileDeferred(const char* name, Frame& frame)
 {
 	std::scoped_lock<std::mutex> lock(m_textures.mutex);
 
@@ -1043,7 +1035,7 @@ Texture* Renderer::CreateTextureFromFileDeferred_Blocking(const char* name, Fram
 	return result;
 }
 
-Texture* Renderer::CreateTextureFromFile_Blocking(const char* name, Context& context)
+Texture* Renderer::CreateTextureFromFile(const char* name, Context& context)
 {
 	std::scoped_lock<std::mutex> lock(m_textures.mutex);
 
@@ -1223,14 +1215,14 @@ Texture* Renderer::_CreateTextureFromData(const std::byte* data, int width, int 
 	return &m_textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
 }
 
-Texture* Renderer::CreateTextureFromData_Blocking(const std::byte* data, int width, int height, int bpp, const char* name, Context& context)
+Texture* Renderer::CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context)
 {
 	std::scoped_lock<std::mutex> lock(m_textures.mutex);
 
 	return _CreateTextureFromData(data, width, height, bpp, name, context);
 }
 
-ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer_Blocking(const void* data, UINT64 byteSize, Context& context)
+ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, Context& context)
 {
 	// Create actual buffer 
 	D3D12_RESOURCE_DESC bufferDesc = {};
@@ -1335,7 +1327,7 @@ void Renderer::UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const
 	args.buffer->Unmap(0, &mappedRange);
 }
 
-void Renderer::UpdateDefaultHeapBuff_Blocking(FArg::UpdateDefaultHeapBuff& args)
+void Renderer::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
 {
 	assert(args.buffer != nullptr &&
 		args.alignment != -1 &&
@@ -1379,7 +1371,7 @@ void Renderer::UpdateDefaultHeapBuff_Blocking(FArg::UpdateDefaultHeapBuff& args)
 	));
 }
 
-DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer_Blocking()
+DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
 {
 	m_dynamicObjectsConstBuffersPool.mutex.lock();
 	auto resIt = std::find_if(m_dynamicObjectsConstBuffersPool.obj.begin(), m_dynamicObjectsConstBuffersPool.obj.end(), 
@@ -1435,7 +1427,7 @@ void Renderer::EndFrameJob(Context& context)
 
 	PresentAndSwapBuffers(frame);
 
-	ReleaseFrameResources_Blocking(frame);
+	ReleaseFrameResources(frame);
 
 	ReleaseFrame(frame);
 
@@ -1443,7 +1435,7 @@ void Renderer::EndFrameJob(Context& context)
 	ThreadingUtils::AssertUnlocked(context.frame.uploadResources);
 	
 	// Delete shared resources marked for deletion
-	DeleteRequestedResources_Blocking();
+	DeleteRequestedResources();
 
 	Logs::Log(Logs::Category::Job, "EndFrame job ended");
 }
@@ -1582,11 +1574,11 @@ void Renderer::DrawStaticGeometryJob(Context& context)
 
 		if (obj.indices != BufConst::INVALID_BUFFER_HANDLER)
 		{
-			DrawIndiced_Blocking(obj, context);
+			DrawIndiced(obj, context);
 		}
 		else
 		{
-			Draw_Blocking(obj, context);
+			Draw(obj, context);
 		}
 	}
 
@@ -1627,14 +1619,14 @@ void Renderer::DrawDynamicGeometryJob(Context& context)
 
 
 		DynamicObjectModel& model = m_dynamicObjectsModels[entity.model];
-		DynamicObjectConstBuffer& constBuffer = FindDynamicObjConstBuffer_Blocking();
+		DynamicObjectConstBuffer& constBuffer = FindDynamicObjConstBuffer();
 
 		// Const buffer should be a separate component, because if we don't do this different entities
 		// will use the same model, but with different transformation
 		DynamicObject& object = frame.dynamicObjects.emplace_back(DynamicObject(&model, &constBuffer));
 
 		UpdateDynamicObjectConstantBuffer(object, entity, context);
-		DrawIndiced_Blocking(object, entity, context);
+		DrawIndiced(object, entity, context);
 	}
 
 	Diagnostics::EndEvent(commandList.commandList.Get());
@@ -1659,7 +1651,7 @@ void Renderer::DrawParticleJob(Context& context)
 		SetMaterialAsync(MaterialSource::PARTICLE_MATERIAL_NAME, commandList);
 
 		// Particles share the same constant buffer, so we only need to update it once
-		const BufferHandler particleConstantBufferHandler = UpdateParticleConstantBuffer_Blocking(context);
+		const BufferHandler particleConstantBufferHandler = UpdateParticleConstantBuffer(context);
 
 		// Preallocate vertex buffer for particles
 		constexpr int singleParticleSize = sizeof(ShDef::Vert::PosCol);
@@ -1685,7 +1677,7 @@ void Renderer::DrawParticleJob(Context& context)
 	Logs::Logf(Logs::Category::Job, "Particle job ended frame %d", context.frame.frameNumber);
 }
 
-void Renderer::CreateDeferredTextures_Blocking(Context& context)
+void Renderer::CreateDeferredTextures(Context& context)
 {
 	CommandListRAIIGuard_t commandListGuard(context.commandList);
 
@@ -1806,7 +1798,7 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	updateArgs.data = reinterpret_cast<const void*>(vertexBuffer.data());
 	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.vertices);
 	updateArgs.context = &context;
-	UpdateDefaultHeapBuff_Blocking(updateArgs);
+	UpdateDefaultHeapBuff(updateArgs);
 
 	// Get indices in
 	updateArgs.alignment = 0;
@@ -1815,7 +1807,7 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	updateArgs.data = reinterpret_cast<const void*>(normalizedIndexBuffer.data());
 	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.indices);
 	updateArgs.context = &context;
-	UpdateDefaultHeapBuff_Blocking(updateArgs);
+	UpdateDefaultHeapBuff(updateArgs);
 
 	// Get tex coords in
 	updateArgs.alignment = 0;
@@ -1824,7 +1816,7 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	updateArgs.data = reinterpret_cast<const void*>(normalizedTexCoordsBuffer.data());
 	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.textureCoords);
 	updateArgs.context = &context;
-	UpdateDefaultHeapBuff_Blocking(updateArgs);
+	UpdateDefaultHeapBuff(updateArgs);
 
 	// Get textures in
 	object.textures.reserve(aliasHeader->num_skins);
@@ -1877,7 +1869,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Contex
 	updateBuffArg.alignment = 0;
 	updateBuffArg.context = &context;
 
-	UpdateDefaultHeapBuff_Blocking(updateBuffArg);
+	UpdateDefaultHeapBuff(updateBuffArg);
 
 	static uint64_t allocSize = 0;
 	uint64_t size = sizeof(ShDef::Vert::PosTexCoord) * vertices.size();
@@ -1896,7 +1888,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Contex
 	updateBuffArg.alignment = 0;
 	updateBuffArg.context = &context;
 
-	UpdateDefaultHeapBuff_Blocking(updateBuffArg);
+	UpdateDefaultHeapBuff(updateBuffArg);
 
 	const unsigned int PictureObjectConstSize = Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT);
 
@@ -1950,7 +1942,7 @@ Context Renderer::CreateContext(Frame& frame)
 	return Context(frame, m_commandListBuffer.commandLists[commandListIndex]);
 }
 
-void Renderer::Draw_Blocking(const StaticObject& object, Context& context)
+void Renderer::Draw(const StaticObject& object, Context& context)
 {
 	CommandList& commandList = context.commandList;
 
@@ -1965,7 +1957,7 @@ void Renderer::Draw_Blocking(const StaticObject& object, Context& context)
 	// Binding root signature params
 
 	// 1)
-	const Texture& texture = *FindTexture_Blocking(object.textureKey);
+	const Texture& texture = *FindTexture(object.textureKey);
 
 	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);
 
@@ -1988,7 +1980,7 @@ void Renderer::Draw_Blocking(const StaticObject& object, Context& context)
 	commandList.commandList->DrawInstanced(vertBuffView.SizeInBytes / vertBuffView.StrideInBytes, 1, 0, 0);
 }
 
-void Renderer::DrawIndiced_Blocking(const StaticObject& object, Context& context)
+void Renderer::DrawIndiced(const StaticObject& object, Context& context)
 {
 	assert(object.indices != BufConst::INVALID_BUFFER_HANDLER && "Trying to draw indexed object without index buffer");
 
@@ -2014,7 +2006,7 @@ void Renderer::DrawIndiced_Blocking(const StaticObject& object, Context& context
 	// Binding root signature params
 
 	// 1)
-	const Texture& texture = *FindTexture_Blocking(object.textureKey);
+	const Texture& texture = *FindTexture(object.textureKey);
 
 	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);;
 
@@ -2036,7 +2028,7 @@ void Renderer::DrawIndiced_Blocking(const StaticObject& object, Context& context
 	commandList.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
 }
 
-void Renderer::DrawIndiced_Blocking(const DynamicObject& object, const entity_t& entity, Context& context)
+void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, Context& context)
 {
 	CommandList& commandList = context.commandList;
 
@@ -2092,15 +2084,15 @@ void Renderer::DrawIndiced_Blocking(const DynamicObject& object, const entity_t&
 
 	if (entity.skinnum >= MAX_MD2SKINS)
 	{
-		tex = FindTexture_Blocking(model.textures[0]);
+		tex = FindTexture(model.textures[0]);
 	}
 	else
 	{
-		tex = FindTexture_Blocking(model.textures[entity.skinnum]);
+		tex = FindTexture(model.textures[entity.skinnum]);
 
 		if (tex == nullptr)
 		{
-			tex = FindTexture_Blocking(model.textures[0]);
+			tex = FindTexture(model.textures[0]);
 		}
 	}
 
@@ -2129,7 +2121,7 @@ void Renderer::DrawIndiced_Blocking(const DynamicObject& object, const entity_t&
 	commandList.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
 }
 
-void Renderer::DrawStreaming_Blocking(const FArg::DrawStreaming& args)
+void Renderer::DrawStreaming(const FArg::DrawStreaming& args)
 {
 	assert(args.vertices != nullptr &&
 		args.verticesSizeInBytes != Const::INVALID_SIZE &&
@@ -2168,7 +2160,7 @@ void Renderer::DrawStreaming_Blocking(const FArg::DrawStreaming& args)
 	// Binding root signature params
 
 	// 1)
-	const Texture& texture = *FindTexture_Blocking(args.texName);
+	const Texture& texture = *FindTexture(args.texName);
 
 	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);;
 
@@ -2376,14 +2368,14 @@ bool Renderer::IsVisible(const entity_t& entity, const Camera& camera) const
 	return lenVector.x < visibilityDist;
 }
 
-void Renderer::RequestResourceDeletion_Blocking(ComPtr<ID3D12Resource> resourceToDelete)
+void Renderer::RequestResourceDeletion(ComPtr<ID3D12Resource> resourceToDelete)
 {
 	std::scoped_lock<std::mutex> lock(m_resourcesToDelete.mutex);
 
 	m_resourcesToDelete.obj.push_back(resourceToDelete);
 }
 
-void Renderer::DeleteRequestedResources_Blocking()
+void Renderer::DeleteRequestedResources()
 {
 	std::scoped_lock<std::mutex> lock(m_resourcesToDelete.mutex);
 
@@ -2508,7 +2500,7 @@ void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entit
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-BufferHandler Renderer::UpdateParticleConstantBuffer_Blocking(Context& context)
+BufferHandler Renderer::UpdateParticleConstantBuffer(Context& context)
 {
 	const Camera& camera = context.frame.camera;
 
@@ -2561,7 +2553,7 @@ BufferHandler Renderer::UpdateParticleConstantBuffer_Blocking(Context& context)
 	return constantBufferHandler;
 }
 
-Texture* Renderer::FindOrCreateTexture_Blocking(std::string_view textureName, Context& context)
+Texture* Renderer::FindOrCreateTexture(std::string_view textureName, Context& context)
 {
 	std::scoped_lock<std::mutex> lock(m_textures.mutex);
 	
@@ -2580,7 +2572,7 @@ Texture* Renderer::FindOrCreateTexture_Blocking(std::string_view textureName, Co
 	return texture;
 }
 
-Texture* Renderer::FindTexture_Blocking(std::string_view textureName)
+Texture* Renderer::FindTexture(std::string_view textureName)
 {
 	std::scoped_lock<std::mutex> lock(m_textures.mutex);
 
@@ -2647,7 +2639,7 @@ void Renderer::GetDrawTextureFullname(const char* name, char* dest, int destSize
 	}
 }
 
-void Renderer::UpdateTexture_Blocking(Texture& tex, const std::byte* data, Context& context)
+void Renderer::UpdateTexture(Texture& tex, const std::byte* data, Context& context)
 {
 	Logs::Logf(Logs::Category::Textures, "Update Texture with name %s", tex.name.c_str());
 
@@ -2687,7 +2679,7 @@ void Renderer::GetDrawTextureSize(int* x, int* y, const char* name)
 	std::array<char, MAX_QPATH> texFullName;
 	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
 
-	const Texture* tex = FindTexture_Blocking(texFullName.data());
+	const Texture* tex = FindTexture(texFullName.data());
 
 	if (tex != nullptr)
 	{
@@ -2738,11 +2730,11 @@ void Renderer::EndLevelLoading()
 	m_dynamicModelRegContext->commandList.Close();
 	
 	Context createDeferredTextureContext = CreateContext(frame);
-	CreateDeferredTextures_Blocking(createDeferredTextureContext);
+	CreateDeferredTextures(createDeferredTextureContext);
 	
 	CloseFrame(frame);
 
-	ReleaseFrameResources_Blocking(frame);
+	ReleaseFrameResources(frame);
 
 	ReleaseFrame(frame);
 
@@ -2786,7 +2778,7 @@ void Renderer::Draw_Pic(int x, int y, const char* name, const BufferPiece& buffe
 	std::array<char, MAX_QPATH> texFullName;
 	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
 
-	const Texture& texture = *FindOrCreateTexture_Blocking(texFullName.data(), context);
+	const Texture& texture = *FindOrCreateTexture(texFullName.data(), context);
 
 	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
 	Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
@@ -2807,7 +2799,7 @@ void Renderer::Draw_Pic(int x, int y, const char* name, const BufferPiece& buffe
 	drawArgs.bufferPiece = &bufferPiece;
 	drawArgs.context = &context;
 
-	DrawStreaming_Blocking(drawArgs);
+	DrawStreaming(drawArgs);
 }
 
 void Renderer::Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, Context& context)
@@ -2842,9 +2834,9 @@ void Renderer::Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, 
 
 	// Proper place for this is in Init(), but file loading system is not ready, when
 	// init is called for renderer
-	 if(FindTexture_Blocking(texFullName.data()) == nullptr)
+	 if(FindTexture(texFullName.data()) == nullptr)
 	 {
-		 CreateTextureFromFile_Blocking(texFullName.data(), context);
+		 CreateTextureFromFile(texFullName.data(), context);
 	 }
 
 	 FArg::DrawStreaming drawArgs;
@@ -2859,7 +2851,7 @@ void Renderer::Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, 
 	 drawArgs.bufferPiece = &bufferPiece;
 	 drawArgs.context = &context;
 	
-	 DrawStreaming_Blocking(drawArgs);
+	 DrawStreaming(drawArgs);
 }
 
 void Renderer::Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, Context& context)
@@ -2879,19 +2871,19 @@ void Renderer::Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiec
 		texture[i] = m_rawPalette[std::to_integer<int>(drawCall.data[i])];
 	}
 
-	Texture* rawTex = FindTexture_Blocking(QRAW_TEXTURE_NAME);
+	Texture* rawTex = FindTexture(QRAW_TEXTURE_NAME);
 
 	if (rawTex == nullptr 
 		|| rawTex->width != textureWidth
 		|| rawTex->height != textureHeight)
 	{
 		constexpr int textureBitsPerPixel = 32;
-		rawTex = CreateTextureFromData_Blocking(reinterpret_cast<std::byte*>(texture.data()),
+		rawTex = CreateTextureFromData(reinterpret_cast<std::byte*>(texture.data()),
 			textureWidth, textureHeight, textureBitsPerPixel, QRAW_TEXTURE_NAME, context);
 	}
 	else
 	{
-		UpdateTexture_Blocking(*rawTex, reinterpret_cast<std::byte*>(texture.data()), context);
+		UpdateTexture(*rawTex, reinterpret_cast<std::byte*>(texture.data()), context);
 	}
 
 	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
@@ -2915,7 +2907,7 @@ void Renderer::Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiec
 	drawArgs.bufferPiece = &bufferPiece;
 	drawArgs.context = &context;
 
-	DrawStreaming_Blocking(drawArgs);
+	DrawStreaming(drawArgs);
 }
 
 void Renderer::AddDrawCall_Pic(int x, int y, const char* name)
@@ -2939,8 +2931,6 @@ void Renderer::BeginFrame()
 	AcquireCurrentFrame();
 	Frame& frame = GetCurrentFrame();
 
-	assert(frame.isInUse == true && "Trying to begin frame, but didn't mark it as used.");
-
 	frame.colorBufferAndView = &GetNextSwapChainBufferAndView();
 	frame.scissorRect = m_scissorRect;
 
@@ -2960,7 +2950,7 @@ void Renderer::EndFrame()
 	if (frame.deferredTextures.empty() == false)
 	{
 		Context createDeferredTextureContext = CreateContext(frame);
-		CreateDeferredTextures_Blocking(createDeferredTextureContext);
+		CreateDeferredTextures(createDeferredTextureContext);
 	}
 
 	// Proceed to next frame
@@ -3059,7 +3049,7 @@ Texture* Renderer::RegisterDrawPic(const char* name)
 	std::array<char, MAX_QPATH> texFullName;
 	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
 
-	Texture* newTex = CreateTextureFromFileDeferred_Blocking(texFullName.data(), frame);
+	Texture* newTex = CreateTextureFromFileDeferred(texFullName.data(), frame);
 
 	return newTex;
 }
@@ -3113,7 +3103,7 @@ void Renderer::RegisterWorldModel(const char* model)
 
 		CloseFrame(frame);
 
-		ReleaseFrameResources_Blocking(frame);
+		ReleaseFrameResources(frame);
 
 		ReleaseFrame(frame);
 
@@ -3173,7 +3163,7 @@ model_s* Renderer::RegisterModel(const char* name)
 			for (int i = 0; i < pheader->num_skins; ++i)
 			{
 				char* imageName = reinterpret_cast<char*>(pheader) + pheader->ofs_skins + i * MAX_SKINNAME;
-				mod->skins[i] = FindOrCreateTexture_Blocking(imageName, *m_dynamicModelRegContext);
+				mod->skins[i] = FindOrCreateTexture(imageName, *m_dynamicModelRegContext);
 			}
 
 			m_dynamicObjectsModels[mod] = CreateDynamicGraphicObjectFromGLModel(mod, *m_dynamicModelRegContext);

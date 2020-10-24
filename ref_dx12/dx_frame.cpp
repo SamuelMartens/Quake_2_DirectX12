@@ -34,6 +34,34 @@ std::shared_ptr<Semaphore> Frame::GetFinishSemaphore() const
 	return frameFinishedSemaphore;
 }
 
+void Frame::Acquire()
+{
+	std::scoped_lock<std::mutex> lock(ownershipMutex);
+
+	assert(frameFinishedSemaphore == nullptr && "Open frame error. Frame is not cleaned up.");
+	assert(isInUse == false && "Trying to acquire frame that is still in use");
+
+	isInUse = true;
+	frameFinishedSemaphore = std::make_shared<Semaphore>(1);
+}
+
+void Frame::Release()
+{
+	std::scoped_lock<std::mutex> lock(ownershipMutex);
+
+	assert(isInUse == true && "Trying to release frame, that's already released.");
+
+	frameFinishedSemaphore->Signal();
+	frameFinishedSemaphore = nullptr;
+	isInUse = false;
+}
+
+bool Frame::GetIsInUse() const
+{
+	std::scoped_lock<std::mutex> lock(ownershipMutex);
+	return isInUse;
+}
+
 Frame::~Frame()
 {
 	if (depthBufferViewIndex != Const::INVALID_INDEX)

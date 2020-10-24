@@ -110,7 +110,7 @@ private:
 	constexpr static char		 QRAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
 	constexpr static char		 QFONT_TEXTURE_NAME[] = "conchars";
 
-	constexpr static bool		 QDEBUG_LAYER_ENABLED = false;
+	constexpr static bool		 QDEBUG_LAYER_ENABLED = true;
 	constexpr static bool		 QDEBUG_MESSAGE_FILTER_ENABLED = true;
 
 public:
@@ -134,18 +134,18 @@ public:
 	void SetRefImport(refimport_t RefImport) { m_refImport = RefImport; };
 
 	/*--- Buffers management --- */
-	void RequestResourceDeletion_Blocking(ComPtr<ID3D12Resource> resourceToDelete);
-	void DeleteRequestedResources_Blocking();
+	void RequestResourceDeletion(ComPtr<ID3D12Resource> resourceToDelete);
+	void DeleteRequestedResources();
 	void DeleteDefaultMemoryBuffer(BufferHandler handler);
 	void DeleteUploadMemoryBuffer(BufferHandler handler);
 	
 	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, Context& context);
 	void UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context& context);
 	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, Context& context);
-	BufferHandler UpdateParticleConstantBuffer_Blocking(Context& context);
+	BufferHandler UpdateParticleConstantBuffer(Context& context);
 
-	Texture* FindOrCreateTexture_Blocking(std::string_view textureName, Context& context);
-	Texture* FindTexture_Blocking(std::string_view textureName);
+	Texture* FindOrCreateTexture(std::string_view textureName, Context& context);
+	Texture* FindTexture(std::string_view textureName);
 
 	/*--- API functions begin --- */
 
@@ -232,22 +232,22 @@ private:
 	void PresentAndSwapBuffers(Frame& frame);
 
 	/* Texture */
-	Texture* CreateTextureFromFileDeferred_Blocking(const char* name, Frame& frame);
-	Texture* CreateTextureFromFile_Blocking(const char* name, Context& context);
-	Texture* CreateTextureFromData_Blocking(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
+	Texture* CreateTextureFromFileDeferred(const char* name, Frame& frame);
+	Texture* CreateTextureFromFile(const char* name, Context& context);
+	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
 	Texture* _CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
 	Texture* _CreateTextureFromFile(const char* name, Context& context);
 	void _CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Context& context, Texture& outTex);
-	void CreateDeferredTextures_Blocking(Context& context);
-	void UpdateTexture_Blocking(Texture& tex, const std::byte* data, Context& context);
+	void CreateDeferredTextures(Context& context);
+	void UpdateTexture(Texture& tex, const std::byte* data, Context& context);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
 
 	/* Buffer */
-	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer_Blocking(const void* data, UINT64 byteSize, Context& context);
+	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, Context& context);
 	ComPtr<ID3D12Resource> CreateUploadHeapBuffer(UINT64 byteSize) const;
 	void UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const;
-	void UpdateDefaultHeapBuff_Blocking(FArg::UpdateDefaultHeapBuff& args);
+	void UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args);
 
 	/* Shutdown and clean up Win32 specific stuff */
 	void ShutdownWin32();
@@ -259,10 +259,10 @@ private:
 	Context CreateContext(Frame& frame);
 
 	/* Rendering */
-	void Draw_Blocking(const StaticObject& object, Context& context);
-	void DrawIndiced_Blocking(const StaticObject& object, Context& context);
-	void DrawIndiced_Blocking(const DynamicObject& object, const entity_t& entity, Context& context);
-	void DrawStreaming_Blocking(const FArg::DrawStreaming& args);
+	void Draw(const StaticObject& object, Context& context);
+	void DrawIndiced(const StaticObject& object, Context& context);
+	void DrawIndiced(const DynamicObject& object, const entity_t& entity, Context& context);
+	void DrawStreaming(const FArg::DrawStreaming& args);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
 	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Context& context);
 	void Draw_Pic(int x, int y, const char* name, const BufferPiece& bufferPiece, Context& context);
@@ -275,7 +275,7 @@ private:
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
 	bool IsVisible(const StaticObject& obj, const Camera& camera) const;
 	bool IsVisible(const entity_t& entity, const Camera& camera) const;
-	DynamicObjectConstBuffer& FindDynamicObjConstBuffer_Blocking();
+	DynamicObjectConstBuffer& FindDynamicObjConstBuffer();
 
 	/* Job  */
 	void EndFrameJob(Context& context);
@@ -302,7 +302,7 @@ private:
 	// ,for example, have buffer to draw to
 	void OpenFrame(Frame& frame) const;
 	void CloseFrame(Frame& frame);
-	void ReleaseFrameResources_Blocking(Frame& frame);
+	void ReleaseFrameResources(Frame& frame);
 
 	// Frame ownership
 	Frame& GetCurrentFrame();

@@ -38,5 +38,5 @@ Texture::~Texture()
 
 	// This is a bit lame cause, resource might actually not be deleted, if 
 	// some other texture owns it.
-	Renderer::Inst().RequestResourceDeletion_Blocking(buffer);
+	Renderer::Inst().RequestResourceDeletion(buffer);
 }

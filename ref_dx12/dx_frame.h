@@ -3,7 +3,6 @@
 #include <d3d12.h>
 #include <vector>
 #include <string>
-#include <atomic>
 #include <memory>
 
 #include "dx_common.h"
@@ -34,6 +33,10 @@ public:
 	void ResetSyncData();
 	
 	std::shared_ptr<Semaphore> GetFinishSemaphore() const;
+
+	void Acquire();
+	void Release();
+	bool GetIsInUse() const;
 	
 	// Used for rendering. Receive on frame beginning
 	// Released on the frame end
@@ -51,7 +54,6 @@ public:
 	std::vector<entity_t> entitiesToDraw;
 	std::vector<particle_t> particlesToDraw;
 
-	std::atomic<bool> isInUse = false;
 	std::vector<DynamicObject> dynamicObjects;
 	LockVector_t<ComPtr<ID3D12Resource>> uploadResources;
 	LockVector_t<BufferHandler> streamingObjectsHandlers;
@@ -73,6 +75,12 @@ public:
 	int executeCommandListFenceValue = -1;
 	HANDLE executeCommandListEvenHandle = INVALID_HANDLE_VALUE;
 
+
+private:
+
 	std::shared_ptr<Semaphore> frameFinishedSemaphore;
+
+	mutable std::mutex ownershipMutex;
+	bool isInUse = false;
 
 };
