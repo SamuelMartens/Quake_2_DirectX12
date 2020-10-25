@@ -417,8 +417,11 @@ void Renderer::InitMemory(Context& context)
 {
 	// Create default memory buffer
 	m_defaultMemoryBuffer.allocBuffer.gpuBuffer = CreateDefaultHeapBuffer(nullptr, QDEFAULT_MEMORY_BUFFER_SIZE, context);
+	Diagnostics::SetResourceName(m_defaultMemoryBuffer.allocBuffer.gpuBuffer.Get(), "DefaultMemoryHeap");
+
 	// Create upload memory buffer
 	m_uploadMemoryBuffer.allocBuffer.gpuBuffer = CreateUploadHeapBuffer(QUPLOAD_MEMORY_BUFFER_SIZE);
+	Diagnostics::SetResourceName(m_uploadMemoryBuffer.allocBuffer.gpuBuffer.Get(), "UploadMemoryHeap");
 }
 
 void Renderer::InitScissorRect()
@@ -853,7 +856,7 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	frame.entitiesToDraw.clear();
 	frame.particlesToDraw.clear();
 
-	frame.deferredTextures.clear();
+	frame.texCreationRequests.clear();
 
 	// Remove used draw calls
 	frame.uiDrawCalls.clear();
@@ -1030,7 +1033,9 @@ Texture* Renderer::CreateTextureFromFileDeferred(const char* name, Frame& frame)
 	tex.name = name;
 
 	Texture* result = &m_textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
-	frame.deferredTextures.push_back(result);
+
+	TexCreationRequest_FromFile texRequest(*result);
+	frame.texCreationRequests.push_back(std::move(texRequest));
 
 	return result;
 }
@@ -1040,6 +1045,29 @@ Texture* Renderer::CreateTextureFromFile(const char* name, Context& context)
 	std::scoped_lock<std::mutex> lock(m_textures.mutex);
 
 	return _CreateTextureFromFile(name, context);
+}
+
+Texture* Renderer::CreateTextureFromDataDeferred(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame)
+{
+	std::scoped_lock<std::mutex> lock(m_textures.mutex);
+
+	Texture tex;
+	tex.name = name;
+	tex.width = width;
+	tex.height = height;
+	tex.bpp = bpp;
+
+	Texture* result = &m_textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
+
+	TexCreationRequest_FromData texRequest(*result);
+	const int texSize = width * height * bpp / 8;
+
+	texRequest.data.resize(texSize);
+	memcpy(texRequest.data.data(), data, texSize);
+
+	frame.texCreationRequests.push_back(std::move(texRequest));
+
+	return result;
 }
 
 Texture* Renderer::_CreateTextureFromFile(const char* name, Context& context)
@@ -1170,6 +1198,7 @@ void Renderer::_CreateGpuTexture(const unsigned int* raw, int width, int height,
 	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(outTex.buffer.Get(), 0, 1);
 
 	ComPtr<ID3D12Resource> textureUploadBuffer = CreateUploadHeapBuffer(uploadBufferSize);
+	Diagnostics::SetResourceNameWithAutoId(textureUploadBuffer.Get(), "TextureUploadBuffer_CreateTexture");
 
 	DO_IN_LOCK(context.frame.uploadResources, push_back(textureUploadBuffer));
 
@@ -1211,6 +1240,8 @@ Texture* Renderer::_CreateTextureFromData(const std::byte* data, int width, int 
 	tex.bpp = bpp;
 
 	tex.name = name;
+
+	Diagnostics::SetResourceName(tex.buffer.Get(), tex.name);
 
 	return &m_textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
 }
@@ -1255,6 +1286,8 @@ ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer(const void* data, UINT6
 	{
 		// Create upload buffer
 		ComPtr<ID3D12Resource> uploadBuffer = CreateUploadHeapBuffer(byteSize);
+		Diagnostics::SetResourceNameWithAutoId(uploadBuffer.Get(), "UploadBuffer_CreateDefaultHeap");
+
 		DO_IN_LOCK(context.frame.uploadResources, push_back(uploadBuffer));
 
 		// Describe upload resource data 
@@ -1344,6 +1377,8 @@ void Renderer::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
 
 	// Create upload buffer
 	ComPtr<ID3D12Resource> uploadBuffer = CreateUploadHeapBuffer(args.byteSize);
+	Diagnostics::SetResourceNameWithAutoId(uploadBuffer.Get(), "UploadBuffer_UpdateDefaultHeap");
+
 	DO_IN_LOCK(frame.uploadResources, push_back(uploadBuffer));
 
 	FArg::UpdateUploadHeapBuff uploadHeapBuffArgs;
@@ -1683,9 +1718,42 @@ void Renderer::CreateDeferredTextures(Context& context)
 
 	std::scoped_lock<std::mutex> lock(m_textures.mutex);
 
-	for (const Texture* tex : context.frame.deferredTextures)
+	for (const TextureCreationRequest_t& tr : context.frame.texCreationRequests)
 	{
-		_CreateTextureFromFile(tex->name.c_str(), context);
+		std::visit([&context, this](auto&& texRequest) 
+		{
+			using T = std::decay_t<decltype(texRequest)>;
+
+			if constexpr (std::is_same_v<T, TexCreationRequest_FromFile>)
+			{
+				std::string name = texRequest.texture.name;
+				_CreateTextureFromFile(name.c_str(), context);
+			}
+			else if constexpr (std::is_same_v<T, TexCreationRequest_FromData>)
+			{
+				// Get tex actual color
+				const int textureSize = texRequest.texture.width * texRequest.texture.height;
+				std::vector<unsigned int> texture(textureSize, 0);
+				for (int i = 0; i < textureSize; ++i)
+				{
+					texture[i] = m_rawPalette[std::to_integer<int>(texRequest.data[i])];
+				}
+
+				std::string name = texRequest.texture.name;
+				_CreateTextureFromData(
+					reinterpret_cast<std::byte*>(texture.data()),
+					texRequest.texture.width,
+					texRequest.texture.height,
+					texRequest.texture.bpp,
+					name.c_str(),
+					context);
+			}
+			else
+			{
+				static_assert(false, "Invalid class in Deferred Tex creation");
+			}
+		}
+		, tr);
 	}
 }
 
@@ -2649,6 +2717,7 @@ void Renderer::UpdateTexture(Texture& tex, const std::byte* data, Context& conte
 	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(tex.buffer.Get(), 0, 1);
 
 	ComPtr<ID3D12Resource> textureUploadBuffer = CreateUploadHeapBuffer(uploadBufferSize);
+	Diagnostics::SetResourceNameWithAutoId(textureUploadBuffer.Get(), "TextureUploadBuffer_UpdateTexture");
 
 	DO_IN_LOCK(context.frame.uploadResources, push_back(textureUploadBuffer));
 
@@ -2761,14 +2830,28 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 	drawCall.y = y;
 	drawCall.quadWidth = quadWidth;
 	drawCall.quadHeight = quadHeight;
-	drawCall.textureWidth = textureWidth;
-	drawCall.textureHeight = textureHeight;
+	
+	// To enforce order of texture create/update, this check must be done in main thread,
+	// so worker threads can run independently
+	Texture* rawTex = FindTexture(QRAW_TEXTURE_NAME);
 
-	const int textureSize = textureWidth * textureHeight;
+	if (rawTex == nullptr 
+		|| rawTex->width != textureWidth
+		|| rawTex->height != textureHeight)
+	{
+		constexpr int textureBitsPerPixel = 32;
+		rawTex = CreateTextureFromDataDeferred(data,
+			textureWidth, textureHeight, textureBitsPerPixel, QRAW_TEXTURE_NAME, GetCurrentFrame());
+	}
+	else
+	{
+		drawCall.textureWidth = textureWidth;
+		drawCall.textureHeight = textureHeight;
 
-	drawCall.data.resize(textureSize);
-
-	memcpy(drawCall.data.data(), data, textureSize);
+		const int textureSize = textureWidth * textureHeight;
+		drawCall.data.resize(textureSize);
+		memcpy(drawCall.data.data(), data, textureSize);
+	}
 
 	GetCurrentFrame().uiDrawCalls.push_back(std::move(drawCall));
 }
@@ -2856,33 +2939,22 @@ void Renderer::Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, 
 
 void Renderer::Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, Context& context)
 {
-	const int textureWidth = drawCall.textureWidth;
-	const int textureHeight = drawCall.textureHeight;
-	const int textureSize = textureWidth * textureHeight;
-
-	CommandList& commandList = context.commandList;
-
-	SetMaterialAsync(MaterialSource::STATIC_MATERIAL_NAME, commandList);
-
-	std::vector<unsigned int> texture(textureSize, 0);
-
-	for (int i = 0; i < textureSize; ++i)
+	// If there is no data, then texture is requested to be created for this frame. So no need to update
+	if (drawCall.data.empty() == false)
 	{
-		texture[i] = m_rawPalette[std::to_integer<int>(drawCall.data[i])];
-	}
+		const int textureSize = drawCall.textureWidth * drawCall.textureHeight;
 
-	Texture* rawTex = FindTexture(QRAW_TEXTURE_NAME);
+		CommandList& commandList = context.commandList;
 
-	if (rawTex == nullptr 
-		|| rawTex->width != textureWidth
-		|| rawTex->height != textureHeight)
-	{
-		constexpr int textureBitsPerPixel = 32;
-		rawTex = CreateTextureFromData(reinterpret_cast<std::byte*>(texture.data()),
-			textureWidth, textureHeight, textureBitsPerPixel, QRAW_TEXTURE_NAME, context);
-	}
-	else
-	{
+		std::vector<unsigned int> texture(textureSize, 0);
+		for (int i = 0; i < textureSize; ++i)
+		{
+			texture[i] = m_rawPalette[std::to_integer<int>(drawCall.data[i])];
+		}
+
+		Texture* rawTex = FindTexture(QRAW_TEXTURE_NAME);
+		assert(rawTex != nullptr && "Draw_RawPic texture doesn't exist");
+
 		UpdateTexture(*rawTex, reinterpret_cast<std::byte*>(texture.data()), context);
 	}
 
@@ -2947,7 +3019,7 @@ void Renderer::EndFrame()
 
 	Frame& frame = GetCurrentFrame();
 
-	if (frame.deferredTextures.empty() == false)
+	if (frame.texCreationRequests.empty() == false)
 	{
 		Context createDeferredTextureContext = CreateContext(frame);
 		CreateDeferredTextures(createDeferredTextureContext);

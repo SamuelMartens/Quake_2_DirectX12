@@ -31,6 +31,19 @@ void Utils::VSCon_Printf(const char *msg, ...)
 }
 
 
+std::wstring Utils::StringToWideString(const std::string& s)
+{
+	// Taken from https://stackoverflow.com/a/27296/5008539
+	int len = 0;
+	int slength = (int)s.length() + 1;
+	len = MultiByteToWideChar(CP_ACP, 0, s.c_str(), slength, 0, 0);
+	wchar_t* buf = new wchar_t[len];
+	MultiByteToWideChar(CP_ACP, 0, s.c_str(), slength, buf, len);
+	std::wstring r(buf);
+	delete[] buf;
+	return r;
+}
+
 #ifndef GAME_HARD_LINKED
 // this is only here so the functions in q_shared.c and q_shwin.c can link
 void Sys_Error(char *error, ...)

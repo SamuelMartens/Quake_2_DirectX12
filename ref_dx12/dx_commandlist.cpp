@@ -2,6 +2,7 @@
 
 #include "dx_app.h"
 #include "dx_infrastructure.h"
+#include "dx_diagnostics.h"
 
 void CommandList::Init()
 {
@@ -12,6 +13,8 @@ void CommandList::Init()
 		D3D12_COMMAND_LIST_TYPE_DIRECT,
 		IID_PPV_ARGS(&commandListAlloc)));
 
+	Diagnostics::SetResourceNameWithAutoId(commandListAlloc.Get(), "CmdAlloc");
+
 	// Create command list 
 	ThrowIfFailed(device->CreateCommandList(
 		0,
@@ -19,6 +22,8 @@ void CommandList::Init()
 		commandListAlloc.Get(),
 		nullptr,
 		IID_PPV_ARGS(commandList.GetAddressOf())));
+
+	Diagnostics::SetResourceNameWithAutoId(commandList.Get(), "CmdList");
 }
 
 void CommandList::Open()

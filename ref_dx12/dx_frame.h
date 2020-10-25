@@ -60,7 +60,7 @@ public:
 
 	std::vector<DrawCall_UI_t> uiDrawCalls;
 	
-	std::vector<Texture*> deferredTextures;
+	std::vector<TextureCreationRequest_t> texCreationRequests;
 
 	int frameNumber = Const::INVALID_INDEX;
 

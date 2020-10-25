@@ -234,6 +234,7 @@ private:
 	/* Texture */
 	Texture* CreateTextureFromFileDeferred(const char* name, Frame& frame);
 	Texture* CreateTextureFromFile(const char* name, Context& context);
+	Texture* CreateTextureFromDataDeferred(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame);
 	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
 	Texture* _CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
 	Texture* _CreateTextureFromFile(const char* name, Context& context);

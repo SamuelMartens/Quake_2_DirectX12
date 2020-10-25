@@ -30,6 +30,26 @@ void Diagnostics::EndEvent(ID3D12GraphicsCommandList* commandList)
 }
 
 
+void Diagnostics::SetResourceName(ID3D12Object* resource, const std::string& name)
+{
+	if constexpr (ENABLE_DX_RESOURCE_NAMING == true)
+	{
+		assert(resource != nullptr && "SetResourceNameReceived invalid resource");
+
+		resource->SetName(Utils::StringToWideString(name).c_str());
+	}
+}
+
+void Diagnostics::SetResourceNameWithAutoId(ID3D12Object* resource, const std::string& name)
+{
+	if constexpr (ENABLE_DX_RESOURCE_NAMING == true)
+	{
+		static std::atomic<uint64_t> uniqueId = 0;
+
+		SetResourceName(resource, name + std::to_string(uniqueId.fetch_add(1)));
+	}
+}
+
 namespace Logs
 {
 	std::array<Event, BUFFER_SIZE> gEventsBuffer;
@@ -41,10 +61,10 @@ namespace Logs
 	constexpr bool CategoryEnabled[static_cast<int>(Category::_Count)] =
 	{
 		true, // Generic,
-		false, // Synchronization,
+		true, // Synchronization,
 		true, // FrameSubmission,
-		false,  // Textures, 
-		false   // Job
+		true,  // Textures, 
+		true   // Job
 	};
 }
 

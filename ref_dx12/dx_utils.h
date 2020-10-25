@@ -118,6 +118,8 @@ namespace Utils
 	void Sprintf(char* dest, int size, const char* fmt, ...);
 	void VSCon_Printf(const char *msg, ...);
 
+	std::wstring StringToWideString(const std::string& s);
+
 	unsigned int Align(unsigned int size, unsigned int alignment);
 
 	// All those Load functions are just wrappers around Quake 2 GL implementation of loads

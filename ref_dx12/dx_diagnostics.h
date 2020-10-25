@@ -10,6 +10,12 @@
 
 namespace Diagnostics
 {
+#ifdef _DEBUG
+	constexpr bool ENABLE_DX_RESOURCE_NAMING = true;
+#else
+	constexpr bool ENABLE_DX_RESOURCE_NAMING = false;
+#endif // _DEBUG
+
 	/*
 		PIX doesn't work for x32 applications so does its event library. So here I am
 		directly using Command List event methods.
@@ -19,7 +25,8 @@ namespace Diagnostics
 
 	void EndEvent(ID3D12GraphicsCommandList* commandList);
 
-	
+	void SetResourceName(ID3D12Object* resource, const std::string& name);
+	void SetResourceNameWithAutoId(ID3D12Object* resource, const std::string& name);
 }
 
 // Idea from https://preshing.com/20120522/lightweight-in-memory-logging/
@@ -53,7 +60,8 @@ namespace Logs
 		Category category = Category::Generic;
 	};
 
-	static constexpr int BUFFER_SIZE = 65536;
+	constexpr int BUFFER_SIZE = 65536;
+
 	extern std::array<Event, BUFFER_SIZE> gEventsBuffer;
 	extern  std::atomic<int> gPos;
 

@@ -3,6 +3,8 @@
 #include <d3d12.h>
 #include <memory>
 #include <string>
+#include <variant>
+#include <vector>
 
 #include "d3dx12.h"
 #include "dx_common.h"
@@ -35,3 +37,25 @@ public:
 	int bpp = 0;
 
 };
+
+
+struct TexCreationRequest_FromFile
+{
+	explicit TexCreationRequest_FromFile(Texture& val) :
+		texture(val)
+	{}
+
+	Texture& texture;
+};
+
+struct TexCreationRequest_FromData
+{
+	explicit TexCreationRequest_FromData(Texture& val) :
+		texture(val)
+	{}
+
+	Texture& texture;
+	std::vector<std::byte> data;
+};
+
+using TextureCreationRequest_t = std::variant<TexCreationRequest_FromData, TexCreationRequest_FromFile>;
