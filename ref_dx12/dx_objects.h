@@ -5,13 +5,32 @@
 #include <memory>
 #include <vector>
 #include <tuple>
+#include <array>
 
 #include "dx_common.h"
 #include "dx_buffer.h"
+#include "dx_settings.h"
 
 extern "C" 
 {
 	#include "../client/ref.h"
+};
+
+class FrameStaticObject
+{
+public:
+
+	FrameStaticObject() = default;
+
+	FrameStaticObject(const FrameStaticObject&) = delete;
+	FrameStaticObject& operator=(const FrameStaticObject&) = delete;
+
+	FrameStaticObject(FrameStaticObject&& other);
+	FrameStaticObject& operator=(FrameStaticObject&& other);
+
+	~FrameStaticObject();
+
+	BufferHandler constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
 };
 
 class StaticObject
@@ -29,6 +48,8 @@ public:
 	StaticObject(StaticObject&& other);
 	StaticObject& operator=(StaticObject&& other);
 
+	~StaticObject();
+
 	void GenerateBoundingBox(const std::vector<XMFLOAT4>& vertices);
 	XMMATRIX GenerateModelMat() const;
 
@@ -43,13 +64,11 @@ public:
 	XMFLOAT4 position = { 0.0f, 0.0f, 0.0f, 1.0f };
 	XMFLOAT4 scale = { 1.0f, 1.0f, 1.0f, 0.0f };
 
-	BufferHandler constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
-
 	// Bounding box
 	XMFLOAT4 bbMax = { 0.0f, 0.0f, 0.0f, 1.0f };
 	XMFLOAT4 bbMin = { 0.0f, 0.0f, 0.0f, 1.0f };;
 
-	~StaticObject();
+	std::array<FrameStaticObject, Settings::FRAMES_NUM> frameData;
 };
 
 class DynamicObjectModel

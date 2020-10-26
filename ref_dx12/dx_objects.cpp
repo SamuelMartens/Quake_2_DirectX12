@@ -38,11 +38,12 @@ StaticObject& StaticObject::StaticObject::operator=(StaticObject&& other)
 	other.indices = BufConst::INVALID_BUFFER_HANDLER;
 
 	position = other.position;
-	constantBufferHandler = other.constantBufferHandler;
+	other.position = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
+
+	frameData = std::move(other.frameData);
+
 	bbMin = std::move(other.bbMin);
 	bbMax = std::move(other.bbMax);
-
-	other.constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
 
 	return *this;
 }
@@ -81,11 +82,6 @@ XMMATRIX StaticObject::GenerateModelMat() const
 
 StaticObject::~StaticObject()
 {
-	if (constantBufferHandler != BufConst::INVALID_BUFFER_HANDLER)
-	{
-		Renderer::Inst().DeleteUploadMemoryBuffer(constantBufferHandler);
-	}
-
 	if (vertices != BufConst::INVALID_BUFFER_HANDLER)
 	{
 		Renderer::Inst().DeleteDefaultMemoryBuffer(vertices);
@@ -100,7 +96,6 @@ StaticObject::~StaticObject()
 DynamicObjectModel::DynamicObjectModel(DynamicObjectModel&& other)
 {
 	*this = std::move(other);
-	
 }
 
 DynamicObjectModel& DynamicObjectModel::operator=(DynamicObjectModel&& other)
@@ -261,5 +256,28 @@ DynamicObject::~DynamicObject()
 	if (constBuffer != nullptr)
 	{
 		constBuffer->isInUse = false;
+	}
+}
+
+FrameStaticObject::FrameStaticObject(FrameStaticObject&& other)
+{
+	*this = std::move(other);
+}
+
+FrameStaticObject& FrameStaticObject::operator=(FrameStaticObject&& other)
+{
+	PREVENT_SELF_MOVE_ASSIGN;
+
+	constantBufferHandler = other.constantBufferHandler;
+	other.constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
+
+	return *this;
+}
+
+FrameStaticObject::~FrameStaticObject()
+{
+	if (constantBufferHandler != BufConst::INVALID_BUFFER_HANDLER)
+	{
+		Renderer::Inst().DeleteUploadMemoryBuffer(constantBufferHandler);
 	}
 }

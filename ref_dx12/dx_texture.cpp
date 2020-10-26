@@ -12,6 +12,8 @@ Texture& Texture::operator=(Texture&& other)
 	PREVENT_SELF_MOVE_ASSIGN;
 
 	buffer = other.buffer;
+
+	Renderer::Inst().RequestResourceDeletion(other.buffer);
 	other.buffer = nullptr;
 
 	texViewIndex = other.texViewIndex;

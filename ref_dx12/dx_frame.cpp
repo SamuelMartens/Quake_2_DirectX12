@@ -5,10 +5,11 @@
 #include "dx_jobmultithreading.h"
 #include "dx_app.h"
 
-void Frame::Init()
+void Frame::Init(int arrayIndexVal)
 {
-
 	Renderer& renderer = Renderer::Inst();
+
+	arrayIndex = arrayIndexVal;
 
 	renderer.CreateDepthStencilBuffer(depthStencilBuffer);
 	
@@ -60,6 +61,12 @@ bool Frame::GetIsInUse() const
 {
 	std::scoped_lock<std::mutex> lock(ownershipMutex);
 	return isInUse;
+}
+
+int Frame::GetArrayIndex() const
+{
+	assert(arrayIndex != Const::INVALID_INDEX && "Trying to get frame index. But it is invalid");
+	return arrayIndex;
 }
 
 Frame::~Frame()

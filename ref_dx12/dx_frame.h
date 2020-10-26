@@ -29,7 +29,7 @@ public:
 
 	~Frame();
 
-	void Init();
+	void Init(int arrayIndexVal);
 	void ResetSyncData();
 	
 	std::shared_ptr<Semaphore> GetFinishSemaphore() const;
@@ -37,6 +37,7 @@ public:
 	void Acquire();
 	void Release();
 	bool GetIsInUse() const;
+	int GetArrayIndex() const;
 	
 	// Used for rendering. Receive on frame beginning
 	// Released on the frame end
@@ -83,4 +84,5 @@ private:
 	mutable std::mutex ownershipMutex;
 	bool isInUse = false;
 
+	int arrayIndex = Const::INVALID_INDEX;
 };

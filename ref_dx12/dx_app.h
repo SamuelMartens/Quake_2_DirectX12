@@ -85,40 +85,6 @@ class Renderer
 private:
 	Renderer();
 
-	constexpr static int		 QFRAMES_NUM = 3;
-	constexpr static int		 QSWAP_CHAIN_BUFFER_COUNT = QFRAMES_NUM;
-	constexpr static bool		 QMSAA_ENABLED = false;
-	constexpr static int		 QMSAA_SAMPLE_COUNT = 4;
-	constexpr static int		 QTRANSPARENT_TABLE_VAL = 255;
-	constexpr static int		 QCONST_BUFFER_ALIGNMENT = 256;
-	constexpr static int		 QDYNAM_OBJECT_CONST_BUFFER_POOL_SIZE = 512;
-	
-	constexpr static int		 QCBV_SRV_DESCRIPTOR_HEAP_SIZE = 512;
-	constexpr static int		 QRTV_DTV_DESCRIPTOR_HEAP_SIZE = QFRAMES_NUM;
-
-	constexpr static int		 QCOMMAND_LISTS_PER_FRAME = 7;
-	// Try to avoid to set up any particular number for this, instead change command lists per frame
-	constexpr static int		 QCOMMAND_LISTS_NUM = QCOMMAND_LISTS_PER_FRAME * QFRAMES_NUM;
-
-	// 128 MB of upload memory
-	constexpr static int		 QUPLOAD_MEMORY_BUFFER_SIZE = 128 * 1024 * 1024;
-	constexpr static int		 QUPLOAD_MEMORY_BUFFER_HANDLERS_NUM = 16382;
-	// 256 MB of default memory
-	constexpr static int		 QDEFAULT_MEMORY_BUFFER_SIZE = 256 * 1024 * 1024;
-	constexpr static int		 QDEFAULT_MEMORY_BUFFER_HANDLERS_NUM = 16382;
-
-	constexpr static char		 QRAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
-	constexpr static char		 QFONT_TEXTURE_NAME[] = "conchars";
-
-	constexpr static bool		 QDEBUG_LAYER_ENABLED = true;
-	constexpr static bool		 QDEBUG_MESSAGE_FILTER_ENABLED = true;
-
-public:
-
-	constexpr static DXGI_FORMAT QBACK_BUFFER_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
-	constexpr static DXGI_FORMAT QDEPTH_STENCIL_FORMAT = DXGI_FORMAT_D24_UNORM_S8_UINT;
-
-
 public:
 
 	Renderer(const Renderer&) = delete;
@@ -320,7 +286,7 @@ private:
 
 	ComPtr<IDXGISwapChain> m_swapChain;
 
-	AssertBufferAndView m_swapChainBuffersAndViews[QSWAP_CHAIN_BUFFER_COUNT];
+	AssertBufferAndView m_swapChainBuffersAndViews[Settings::SWAP_CHAIN_BUFFER_COUNT];
 
 	ComPtr<ID3D12CommandQueue>		  m_commandQueue;
 	
@@ -330,11 +296,12 @@ private:
 	// I don't want to create separate buffer just for constant buffers, because that would increase complexity
 	// without real need to do this. I still try to explicitly indicate places where I actually need alignment
 	// in case I would decide to refactor this into separate buffer
-	HandlerBuffer<QUPLOAD_MEMORY_BUFFER_SIZE, 
-		QUPLOAD_MEMORY_BUFFER_HANDLERS_NUM, QCONST_BUFFER_ALIGNMENT> m_uploadMemoryBuffer;
-	HandlerBuffer<QDEFAULT_MEMORY_BUFFER_SIZE, QDEFAULT_MEMORY_BUFFER_HANDLERS_NUM> m_defaultMemoryBuffer;
+	HandlerBuffer<Settings::UPLOAD_MEMORY_BUFFER_SIZE, 
+		Settings::UPLOAD_MEMORY_BUFFER_HANDLERS_NUM, 
+		Settings::CONST_BUFFER_ALIGNMENT> m_uploadMemoryBuffer;
+	HandlerBuffer<Settings::DEFAULT_MEMORY_BUFFER_SIZE, Settings::DEFAULT_MEMORY_BUFFER_HANDLERS_NUM> m_defaultMemoryBuffer;
 	
-	CommandListBuffer<QCOMMAND_LISTS_NUM> m_commandListBuffer;
+	CommandListBuffer<Settings::COMMAND_LISTS_NUM> m_commandListBuffer;
 
 	tagRECT		   m_scissorRect;
 
@@ -375,7 +342,7 @@ private:
 
 	JobSystem m_jobSystem;
 
-	std::array<Frame, QFRAMES_NUM> m_frames;
+	std::array<Frame, Settings::FRAMES_NUM> m_frames;
 	int m_currentFrameIndex = Const::INVALID_INDEX;
 
 	std::atomic<int>	m_fenceValue = 0;

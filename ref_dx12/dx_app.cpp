@@ -18,6 +18,7 @@
 #include "dx_camera.h"
 #include "dx_diagnostics.h"
 #include "dx_infrastructure.h"
+#include "dx_settings.h"
 
 #ifdef max
 #undef max
@@ -350,7 +351,7 @@ void Renderer::InitDx()
 
 void Renderer::EnableDebugLayer()
 {
-	if (QDEBUG_LAYER_ENABLED == false)
+	if (Settings::DEBUG_LAYER_ENABLED == false)
 	{
 		return;
 	}
@@ -363,7 +364,7 @@ void Renderer::EnableDebugLayer()
 
 void Renderer::SetDebugMessageFilter()
 {
-	if (!QDEBUG_LAYER_ENABLED || !QDEBUG_MESSAGE_FILTER_ENABLED)
+	if (!Settings::DEBUG_LAYER_ENABLED || !Settings::DEBUG_MESSAGE_FILTER_ENABLED)
 	{
 		return;
 	}
@@ -404,7 +405,7 @@ void Renderer::InitUtils()
 	std::fill(m_rawPalette.begin(), m_rawPalette.end(), 0);
 
 	// Init dynamic objects constant buffers pool
-	m_dynamicObjectsConstBuffersPool.obj.resize(QDYNAM_OBJECT_CONST_BUFFER_POOL_SIZE);
+	m_dynamicObjectsConstBuffersPool.obj.resize(Settings::DYNAM_OBJECT_CONST_BUFFER_POOL_SIZE);
 
 	m_jobSystem.Init();
 
@@ -416,11 +417,11 @@ void Renderer::InitUtils()
 void Renderer::InitMemory(Context& context)
 {
 	// Create default memory buffer
-	m_defaultMemoryBuffer.allocBuffer.gpuBuffer = CreateDefaultHeapBuffer(nullptr, QDEFAULT_MEMORY_BUFFER_SIZE, context);
+	m_defaultMemoryBuffer.allocBuffer.gpuBuffer = CreateDefaultHeapBuffer(nullptr, Settings::DEFAULT_MEMORY_BUFFER_SIZE, context);
 	Diagnostics::SetResourceName(m_defaultMemoryBuffer.allocBuffer.gpuBuffer.Get(), "DefaultMemoryHeap");
 
 	// Create upload memory buffer
-	m_uploadMemoryBuffer.allocBuffer.gpuBuffer = CreateUploadHeapBuffer(QUPLOAD_MEMORY_BUFFER_SIZE);
+	m_uploadMemoryBuffer.allocBuffer.gpuBuffer = CreateUploadHeapBuffer(Settings::UPLOAD_MEMORY_BUFFER_SIZE);
 	Diagnostics::SetResourceName(m_uploadMemoryBuffer.allocBuffer.gpuBuffer.Get(), "UploadMemoryHeap");
 }
 
@@ -437,11 +438,11 @@ void Renderer::InitScissorRect()
 
 void Renderer::InitFrames()
 {
-	assert(QSWAP_CHAIN_BUFFER_COUNT == QFRAMES_NUM && "Swap chain buffer count shall be equal to frames num");
+	assert(Settings::SWAP_CHAIN_BUFFER_COUNT == Settings::FRAMES_NUM && "Swap chain buffer count shall be equal to frames num");
 
-	for (int i = 0; i < QFRAMES_NUM; ++i)
+	for (int i = 0; i < Settings::FRAMES_NUM; ++i)
 	{
-		m_frames[i].Init();
+		m_frames[i].Init(i);
 	}
 }
 
@@ -457,13 +458,13 @@ void Renderer::InitCommandListsBuffer()
 
 void Renderer::CreateDescriptorHeaps()
 {
-	rtvHeap = std::make_unique<DescriptorHeap>(QRTV_DTV_DESCRIPTOR_HEAP_SIZE, 
+	rtvHeap = std::make_unique<DescriptorHeap>(Settings::RTV_DTV_DESCRIPTOR_HEAP_SIZE, 
 		D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
 
-	dsvHeap = std::make_unique<DescriptorHeap>(QRTV_DTV_DESCRIPTOR_HEAP_SIZE, 
+	dsvHeap = std::make_unique<DescriptorHeap>(Settings::RTV_DTV_DESCRIPTOR_HEAP_SIZE, 
 		D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
 
-	cbvSrvHeap = std::make_unique<DescriptorHeap>(QCBV_SRV_DESCRIPTOR_HEAP_SIZE,
+	cbvSrvHeap = std::make_unique<DescriptorHeap>(Settings::CBV_SRV_DESCRIPTOR_HEAP_SIZE,
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
 
 	// Create sampler heap
@@ -481,7 +482,7 @@ void Renderer::CreateDescriptorHeaps()
 
 void Renderer::CreateSwapChainBuffersAndViews()
 {
-	for (int i = 0; i < QSWAP_CHAIN_BUFFER_COUNT; ++i)
+	for (int i = 0; i < Settings::SWAP_CHAIN_BUFFER_COUNT; ++i)
 	{
 		AssertBufferAndView& buffView = m_swapChainBuffersAndViews[i];
 
@@ -507,13 +508,13 @@ void Renderer::CreateSwapChain()
 	swapChainDesc.BufferDesc.Height = drawAreaHeight;
 	swapChainDesc.BufferDesc.RefreshRate.Numerator = 60;
 	swapChainDesc.BufferDesc.RefreshRate.Denominator = 1;
-	swapChainDesc.BufferDesc.Format = QBACK_BUFFER_FORMAT;
+	swapChainDesc.BufferDesc.Format = Settings::BACK_BUFFER_FORMAT;
 	swapChainDesc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
 	swapChainDesc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
 	swapChainDesc.SampleDesc.Count = GetMSAASampleCount();
 	swapChainDesc.SampleDesc.Quality = GetMSAAQuality();
 	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapChainDesc.BufferCount = QSWAP_CHAIN_BUFFER_COUNT;
+	swapChainDesc.BufferCount = Settings::SWAP_CHAIN_BUFFER_COUNT;
 	swapChainDesc.OutputWindow = m_hWindows;
 	swapChainDesc.Windowed = true;
 	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
@@ -527,13 +528,13 @@ void Renderer::CreateSwapChain()
 
 void Renderer::CheckMSAAQualitySupport()
 {
-	if (QMSAA_ENABLED == false)
+	if (Settings::MSAA_ENABLED == false)
 		return;
 
 	// Check 4X MSAA Quality Support
 	D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS MSQualityLevels;
-	MSQualityLevels.Format = QBACK_BUFFER_FORMAT;
-	MSQualityLevels.SampleCount = QMSAA_SAMPLE_COUNT;
+	MSQualityLevels.Format = Settings::BACK_BUFFER_FORMAT;
+	MSQualityLevels.SampleCount = Settings::MSAA_SAMPLE_COUNT;
 	MSQualityLevels.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
 	MSQualityLevels.NumQualityLevels = 0;
 	ThrowIfFailed(Infr::Inst().GetDevice()->CheckFeatureSupport(
@@ -578,14 +579,14 @@ void Renderer::CreateDepthStencilBuffer(ComPtr<ID3D12Resource>& buffer)
 	depthStencilDesc.Height = DrawAreaHeight;
 	depthStencilDesc.DepthOrArraySize = 1;
 	depthStencilDesc.MipLevels = 1;
-	depthStencilDesc.Format = QDEPTH_STENCIL_FORMAT;
+	depthStencilDesc.Format = Settings::DEPTH_STENCIL_FORMAT;
 	depthStencilDesc.SampleDesc.Count = GetMSAASampleCount();
 	depthStencilDesc.SampleDesc.Quality = GetMSAAQuality();
 	depthStencilDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 	depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
 	D3D12_CLEAR_VALUE optimizedClearVal;
-	optimizedClearVal.Format = QDEPTH_STENCIL_FORMAT;
+	optimizedClearVal.Format = Settings::DEPTH_STENCIL_FORMAT;
 	optimizedClearVal.DepthStencil.Depth = 1.0f;
 	optimizedClearVal.DepthStencil.Stencil = 0;
 
@@ -999,18 +1000,18 @@ void Renderer::CreateTextureSampler()
 
 int Renderer::GetMSAASampleCount() const
 {
-	return QMSAA_ENABLED ? QMSAA_SAMPLE_COUNT : 1;
+	return Settings::MSAA_ENABLED ? Settings::MSAA_SAMPLE_COUNT : 1;
 }
 
 int Renderer::GetMSAAQuality() const
 {
-	return QMSAA_ENABLED ? (m_MSQualityLevels - 1) : 0;
+	return Settings::MSAA_ENABLED ? (m_MSQualityLevels - 1) : 0;
 }
 
 AssertBufferAndView& Renderer::GetNextSwapChainBufferAndView()
 {
 	AssertBufferAndView& buffAndView = m_swapChainBuffersAndViews[m_currentBackBuffer];
-	m_currentBackBuffer = (m_currentBackBuffer + 1) % QSWAP_CHAIN_BUFFER_COUNT;
+	m_currentBackBuffer = (m_currentBackBuffer + 1) % Settings::SWAP_CHAIN_BUFFER_COUNT;
 
 	buffAndView.Lock();
 
@@ -1424,7 +1425,7 @@ DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
 		// This buffer doesn't have any memory allocated. Do it now
 		// Allocate constant buffer
 		static const unsigned int DynamicObjectConstSize =
-			Utils::Align(sizeof(ShDef::ConstBuff::AnimInterpTranstMap), QCONST_BUFFER_ALIGNMENT);
+			Utils::Align(sizeof(ShDef::ConstBuff::AnimInterpTranstMap), Settings::CONST_BUFFER_ALIGNMENT);
 
 		resIt->constantBufferHandler = m_uploadMemoryBuffer.Allocate(DynamicObjectConstSize);
 	}
@@ -1525,9 +1526,9 @@ void Renderer::DrawUIJob(Context& context)
 	// This is ugly :( I use this for both Constant buffer and Vertex buffer. As a result,
 	// both should be aligned for constant buffers.
 	const int perDrawCallMemoryRequired = Utils::Align(
-		Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT) + 
+		Utils::Align(sizeof(ShDef::ConstBuff::TransMat), Settings::CONST_BUFFER_ALIGNMENT) + 
 		6 * sizeof(ShDef::Vert::PosTexCoord),
-		QCONST_BUFFER_ALIGNMENT);
+		Settings::CONST_BUFFER_ALIGNMENT);
 
 	// Calculate amount of memory required for all draw calls
 	const int requiredMemoryAlloc = context.frame.uiDrawCalls.size() * perDrawCallMemoryRequired;
@@ -1958,9 +1959,14 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Contex
 
 	UpdateDefaultHeapBuff(updateBuffArg);
 
-	const unsigned int PictureObjectConstSize = Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT);
+	const unsigned int PictureObjectConstSize = Utils::Align(sizeof(ShDef::ConstBuff::TransMat), 
+		Settings::CONST_BUFFER_ALIGNMENT);
 
-	obj.constantBufferHandler = m_uploadMemoryBuffer.Allocate(PictureObjectConstSize);
+	// Init frame data
+	for (int i = 0; i < obj.frameData.size(); ++i)
+	{
+		obj.frameData[i].constantBufferHandler = m_uploadMemoryBuffer.Allocate(PictureObjectConstSize);
+	}
 
 	std::vector<XMFLOAT4> verticesPos;
 	verticesPos.reserve(vertices.size());
@@ -2039,8 +2045,9 @@ void Renderer::Draw(const StaticObject& object, Context& context)
 	commandList.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
 
 	// 3)
+	BufferHandler constBufferHandler = object.frameData[context.frame.GetArrayIndex()].constantBufferHandler;
 	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
-	cbAddress += m_uploadMemoryBuffer.GetOffset(object.constantBufferHandler);
+	cbAddress += m_uploadMemoryBuffer.GetOffset(constBufferHandler);
 
 	commandList.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
 
@@ -2087,8 +2094,9 @@ void Renderer::DrawIndiced(const StaticObject& object, Context& context)
 	commandList.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
 
 	// 3)
+	BufferHandler constBufferHandler = object.frameData[context.frame.GetArrayIndex()].constantBufferHandler;
 	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
-	cbAddress += m_uploadMemoryBuffer.GetOffset(object.constantBufferHandler);
+	cbAddress += m_uploadMemoryBuffer.GetOffset(constBufferHandler);
 
 	commandList.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
 
@@ -2207,7 +2215,7 @@ void Renderer::DrawStreaming(const FArg::DrawStreaming& args)
 
 	const int vertexBufferOffset = m_uploadMemoryBuffer.GetOffset(args.bufferPiece->handler) +
 		args.bufferPiece->offset +
-		Utils::Align(sizeof(ShDef::ConstBuff::TransMat), QCONST_BUFFER_ALIGNMENT);
+		Utils::Align(sizeof(ShDef::ConstBuff::TransMat), Settings::CONST_BUFFER_ALIGNMENT);
 
 	FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
 	updateVertexBufferArgs.buffer = m_uploadMemoryBuffer.allocBuffer.gpuBuffer;
@@ -2354,29 +2362,29 @@ void Renderer::ImageBpp8To32(const std::byte* data, int width, int height, unsig
 
 		out[i] = m_8To24Table[p];
 
-		if (p != QTRANSPARENT_TABLE_VAL)
+		if (p != Settings::TRANSPARENT_TABLE_VAL)
 		{
 			continue;
 		}
 
 		// Transparent pixel stays transparent, but with proper color to blend
 		// no bleeding!		
-		if (i > width && static_cast<int>(data[i - width]) != QTRANSPARENT_TABLE_VAL)
+		if (i > width && static_cast<int>(data[i - width]) != Settings::TRANSPARENT_TABLE_VAL)
 		{
 			// if this is not first row and pixel above has value, pick it
 			p = static_cast<int>(data[i - width]);
 		}
-		else if (i < size - width && static_cast<int>(data[i + width]) != QTRANSPARENT_TABLE_VAL)
+		else if (i < size - width && static_cast<int>(data[i + width]) != Settings::TRANSPARENT_TABLE_VAL)
 		{
 			// if this is not last row and pixel below has value, pick it
 			p = static_cast<int>(data[i + width]);
 		}
-		else if (i > 0 && static_cast<int>(data[i - 1]) != QTRANSPARENT_TABLE_VAL)
+		else if (i > 0 && static_cast<int>(data[i - 1]) != Settings::TRANSPARENT_TABLE_VAL)
 		{
 			// if pixel on left has value pick it
 			p = static_cast<int>(data[i - 1]);
 		}
-		else if (i < size - 1 && static_cast<int>(data[i + 1]) != QTRANSPARENT_TABLE_VAL)
+		else if (i < size - 1 && static_cast<int>(data[i + 1]) != Settings::TRANSPARENT_TABLE_VAL)
 		{
 			// if pixel on right has value pick it
 			p = static_cast<int>(data[i + 1]);
@@ -2492,7 +2500,7 @@ void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, 
 	updateConstBufferArgs.offset = m_uploadMemoryBuffer.GetOffset(bufferPiece.handler) + bufferPiece.offset;
 	updateConstBufferArgs.data = &transMat;
 	updateConstBufferArgs.byteSize = sizeof(transMat);
-	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
+	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
 	// Update our constant buffer
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 }
@@ -2508,13 +2516,14 @@ void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context
 	XMFLOAT4X4 mvpMat;
 	XMStoreFloat4x4(&mvpMat, sseMvpMat);
 
+	BufferHandler constBufferHandler = obj.frameData[context.frame.GetArrayIndex()].constantBufferHandler;
 
 	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
 	updateConstBufferArgs.buffer = m_uploadMemoryBuffer.allocBuffer.gpuBuffer;
-	updateConstBufferArgs.offset = m_uploadMemoryBuffer.GetOffset(obj.constantBufferHandler);
+	updateConstBufferArgs.offset = m_uploadMemoryBuffer.GetOffset(constBufferHandler);
 	updateConstBufferArgs.data = &mvpMat;
 	updateConstBufferArgs.byteSize = sizeof(mvpMat);
-	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
+	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
 
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 }
@@ -2563,7 +2572,7 @@ void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entit
 	updateConstBufferArgs.offset = m_uploadMemoryBuffer.GetOffset(obj.constBuffer->constantBufferHandler);
 	updateConstBufferArgs.data = updateData.data();
 	updateConstBufferArgs.byteSize = updateDataSize;
-	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
+	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
 
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 }
@@ -2574,7 +2583,8 @@ BufferHandler Renderer::UpdateParticleConstantBuffer(Context& context)
 
 	constexpr int updateDataSize = sizeof(ShDef::ConstBuff::CameraDataTransMat);
 
-	const BufferHandler constantBufferHandler = m_uploadMemoryBuffer.Allocate(Utils::Align(updateDataSize, QCONST_BUFFER_ALIGNMENT));
+	const BufferHandler constantBufferHandler = m_uploadMemoryBuffer.Allocate(Utils::Align(updateDataSize, 
+		Settings::CONST_BUFFER_ALIGNMENT));
 	DO_IN_LOCK(context.frame.streamingObjectsHandlers, push_back(constantBufferHandler));
 
 	assert(constantBufferHandler != BufConst::INVALID_BUFFER_HANDLER && "Can't update particle const buffer");
@@ -2614,7 +2624,7 @@ BufferHandler Renderer::UpdateParticleConstantBuffer(Context& context)
 	updateConstBufferArgs.offset = m_uploadMemoryBuffer.GetOffset(constantBufferHandler);
 	updateConstBufferArgs.data = updateData.data();
 	updateConstBufferArgs.byteSize = updateDataSize;
-	updateConstBufferArgs.alignment = QCONST_BUFFER_ALIGNMENT;
+	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
 
 	UpdateUploadHeapBuff(updateConstBufferArgs);
 
@@ -2833,7 +2843,7 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 	
 	// To enforce order of texture create/update, this check must be done in main thread,
 	// so worker threads can run independently
-	Texture* rawTex = FindTexture(QRAW_TEXTURE_NAME);
+	Texture* rawTex = FindTexture(Texture::RAW_TEXTURE_NAME);
 
 	if (rawTex == nullptr 
 		|| rawTex->width != textureWidth
@@ -2841,7 +2851,7 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 	{
 		constexpr int textureBitsPerPixel = 32;
 		rawTex = CreateTextureFromDataDeferred(data,
-			textureWidth, textureHeight, textureBitsPerPixel, QRAW_TEXTURE_NAME, GetCurrentFrame());
+			textureWidth, textureHeight, textureBitsPerPixel, Texture::RAW_TEXTURE_NAME, GetCurrentFrame());
 	}
 	else
 	{
@@ -2913,7 +2923,7 @@ void Renderer::Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, 
 	const int vertexStride = sizeof(ShDef::Vert::PosTexCoord);
 
 	std::array<char, MAX_QPATH> texFullName;
-	GetDrawTextureFullname(QFONT_TEXTURE_NAME, texFullName.data(), texFullName.size());
+	GetDrawTextureFullname(Texture::FONT_TEXTURE_NAME, texFullName.data(), texFullName.size());
 
 	// Proper place for this is in Init(), but file loading system is not ready, when
 	// init is called for renderer
@@ -2952,7 +2962,7 @@ void Renderer::Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiec
 			texture[i] = m_rawPalette[std::to_integer<int>(drawCall.data[i])];
 		}
 
-		Texture* rawTex = FindTexture(QRAW_TEXTURE_NAME);
+		Texture* rawTex = FindTexture(Texture::RAW_TEXTURE_NAME);
 		assert(rawTex != nullptr && "Draw_RawPic texture doesn't exist");
 
 		UpdateTexture(*rawTex, reinterpret_cast<std::byte*>(texture.data()), context);
@@ -2974,7 +2984,7 @@ void Renderer::Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiec
 	drawArgs.vertices = reinterpret_cast<std::byte*>(vertices.data());
 	drawArgs.verticesSizeInBytes = vertices.size() * vertexStride;
 	drawArgs.verticesStride = vertexStride;
-	drawArgs.texName = QRAW_TEXTURE_NAME;
+	drawArgs.texName = Texture::RAW_TEXTURE_NAME;
 	drawArgs.pos = &pos;
 	drawArgs.bufferPiece = &bufferPiece;
 	drawArgs.context = &context;

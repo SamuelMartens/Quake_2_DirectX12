@@ -19,10 +19,10 @@ std::vector<MaterialSource> MaterialSource::ConstructSourceMaterials()
 	defaultPsoDesc.SampleMask = UINT_MAX;
 	defaultPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	defaultPsoDesc.NumRenderTargets = 1;
-	defaultPsoDesc.RTVFormats[0] = Renderer::QBACK_BUFFER_FORMAT;
+	defaultPsoDesc.RTVFormats[0] = Settings::BACK_BUFFER_FORMAT;
 	defaultPsoDesc.SampleDesc.Count = Renderer::Inst().GetMSAASampleCount();
 	defaultPsoDesc.SampleDesc.Quality = Renderer::Inst().GetMSAAQuality();
-	defaultPsoDesc.DSVFormat = Renderer::QDEPTH_STENCIL_FORMAT;
+	defaultPsoDesc.DSVFormat = Settings::DEPTH_STENCIL_FORMAT;
 
 
 	// STATIC GEOM material -------------------

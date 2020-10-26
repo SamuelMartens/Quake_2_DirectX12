@@ -14,6 +14,11 @@ class Texture
 {
 public:
 
+	constexpr static char	RAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
+	constexpr static char	FONT_TEXTURE_NAME[] = "conchars";
+
+public:
+
 	Texture() = default;
 
 	Texture(const Texture&) = delete;

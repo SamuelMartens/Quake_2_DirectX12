@@ -1,7 +1,6 @@
 #pragma once
 
 #include <vector>
-#include <list>
 #include <mutex>
 
 #include "dx_utils.h"
@@ -31,8 +30,6 @@ class BufferAllocator
 {
 public:
 
-
-
 	BufferAllocator() = default;
 
 	BufferAllocator(const BufferAllocator&) = delete;
@@ -53,7 +50,7 @@ public:
 
 			if (nextOffset >= size)
 			{
-				allocations.push_front({ 0, size });
+				allocations.insert( allocations.begin(),{ 0, size });
 				ValidateAllocations();
 				return 0;
 			}
@@ -135,6 +132,16 @@ private:
 	{
 		if constexpr (isValidateAllocations == true)
 		{
+			constexpr int period = 60;
+			static int count = 0;
+
+			count++;
+
+			if (count % period != 0)
+			{
+				return;
+			}
+
 			int prevOffset = -1;
 			int prevSize = -1;
 			for (auto it = allocations.cbegin(); it != allocations.cend(); ++it)
@@ -154,7 +161,7 @@ private:
 			}
 		}
 	}
-
-	std::list<Allocation> allocations;
+	
+	std::vector<Allocation> allocations;
 	std::mutex mutex;
 };

@@ -71,28 +71,15 @@ public:
 			size = Utils::Align(size, ENFORCED_ALIGNMENT);
 		}
 
-
-		BufferHandler handler = BufConst::INVALID_BUFFER_HANDLER;
 		// Find free handler slot
-		for (BufferHandler currentH = 0; currentH < HANDLERS_NUM; ++currentH)
+		auto handlerIt = std::find_if(m_handlers.begin(), m_handlers.end(), [](BufferHandler h) 
 		{
-			if (m_handlers[currentH] == Const::INVALID_OFFSET)
-			{
-				handler = currentH;
-				break;
-			}
-		}
+			return h == Const::INVALID_OFFSET;
+		});
 
-#ifdef _DEBUG
+		assert(handlerIt != m_handlers.end() && "Can't find free handler during allocation");
 
-		if (handler == BufConst::INVALID_BUFFER_HANDLER)
-		{
-			int freeHandlersLeft = std::count(m_handlers.begin(), m_handlers.end(), Const::INVALID_OFFSET);
-			Utils::VSCon_Printf("Free handlers left: %d \n", freeHandlersLeft);
-
-			assert(false && "Can't find free handler during allocation");
-		}
-#endif
+		const BufferHandler handler = std::distance(m_handlers.begin(), handlerIt);
 
 		m_handlers[handler] = allocBuffer.allocator.Allocate(size);
 
