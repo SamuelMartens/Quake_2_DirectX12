@@ -219,7 +219,7 @@ DynamicObjectConstBuffer& DynamicObjectConstBuffer::operator=(DynamicObjectConst
 	constantBufferHandler = other.constantBufferHandler;
 	other.constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
 
-	isInUse = other.isInUse;
+	isInUse.store(other.isInUse.load());
 	other.isInUse = false;
 
 	return *this;
@@ -255,6 +255,7 @@ DynamicObject::~DynamicObject()
 {
 	if (constBuffer != nullptr)
 	{
+		assert(constBuffer->isInUse == true && "Trying to release const buffer, that was already released");
 		constBuffer->isInUse = false;
 	}
 }

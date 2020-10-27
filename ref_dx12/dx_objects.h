@@ -6,6 +6,7 @@
 #include <vector>
 #include <tuple>
 #include <array>
+#include <atomic>
 
 #include "dx_common.h"
 #include "dx_buffer.h"
@@ -140,7 +141,7 @@ public:
 	~DynamicObjectConstBuffer();
 
 	BufferHandler constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
-	bool isInUse = false;
+	std::atomic<bool> isInUse = false;
 };
 
 // Temporary object. Should exist only for one draw call
@@ -151,8 +152,7 @@ struct DynamicObject
 		constBuffer(newConstBuffer)
 	{
 		assert(constBuffer != nullptr && "Dynamic object cannot be created with null const buffer");
-
-		constBuffer->isInUse = true;
+		assert(constBuffer->isInUse == true && "Const buffer must be allocated when dynamic object is created");
 	};
 
 	DynamicObject(const DynamicObject&) = delete;

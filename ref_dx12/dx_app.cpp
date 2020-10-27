@@ -1415,9 +1415,11 @@ DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
 	{
 		return buff.isInUse == false;
 	});
-	m_dynamicObjectsConstBuffersPool.mutex.unlock();
 
 	assert(resIt != m_dynamicObjectsConstBuffersPool.obj.end() && "Can't find free dynamic object const buffer");
+	resIt->isInUse = true;
+	
+	m_dynamicObjectsConstBuffersPool.mutex.unlock();
 
 
 	if (resIt->constantBufferHandler == BufConst::INVALID_BUFFER_HANDLER)
