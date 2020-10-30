@@ -1435,6 +1435,38 @@ DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
 	return *resIt;
 }
 
+std::vector<int> Renderer::BuildObjectsInFrustumList(const Camera& camera, const std::vector<StaticObjectCulling>& objCulling) const
+{
+	const auto [cameraBBMin, cameraBBMax] = camera.GetAABBInWorldSpace();
+
+	const FXMVECTOR sseCameraBBMin = XMLoadFloat4(&cameraBBMin);
+	const FXMVECTOR sseCameraBBMax = XMLoadFloat4(&cameraBBMax);
+
+	std::size_t currentIndex = 0;
+
+	std::vector<int> res;
+	// Just heuristic 
+	res.reserve(objCulling.size() / 2);
+
+	std::for_each(objCulling.cbegin(), objCulling.cend(), 
+		[sseCameraBBMin, 
+		sseCameraBBMax,
+		&currentIndex,
+		&res](const StaticObjectCulling& objCulling) 
+	{
+		if (XMVector4LessOrEqual(XMLoadFloat4(&objCulling.bbMin), sseCameraBBMax) &&
+			XMVector4GreaterOrEqual(XMLoadFloat4(&objCulling.bbMax), sseCameraBBMin))
+		{
+			res.push_back(currentIndex);
+		}
+	
+		++currentIndex;
+	});
+
+	res.shrink_to_fit();
+	return res;
+}
+
 void Renderer::EndFrameJob(Context& context)
 {
 	Logs::Logf(Logs::Category::Job, "EndFrame job started frame %d", context.frame.frameNumber);
@@ -1600,13 +1632,12 @@ void Renderer::DrawStaticGeometryJob(Context& context)
 
 	SetNonMaterialState(context);
 	SetMaterialAsync(MaterialSource::STATIC_MATERIAL_NAME, commandList);
+	
+	std::vector<int> visibleStaticObj = BuildObjectsInFrustumList(context.frame.camera, m_staticObjectsCulling);
 
-	for (const StaticObject& obj : m_staticObjects)
+	for (int i = 0; i < visibleStaticObj.size(); ++i)
 	{
-		if (IsVisible(obj, context.frame.camera) == false)
-		{
-			continue;
-		}
+		const StaticObject& obj = m_staticObjects[visibleStaticObj[i]];
 
 		UpdateStaticObjectConstantBuffer(obj, context);
 
@@ -1926,6 +1957,8 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Contex
 	}
 
 	StaticObject& obj = m_staticObjects.emplace_back(StaticObject());
+	StaticObjectCulling& objCulling = m_staticObjectsCulling.emplace_back();
+
 	// Set the texture name
 	obj.textureKey = surf.texinfo->image->name;
 
@@ -1978,7 +2011,11 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Contex
 		verticesPos.push_back(vertex.position);
 	}
 
-	obj.GenerateBoundingBox(verticesPos);
+	const auto [bbMin, bbMax] = obj.GenerateBoundingBox(verticesPos);
+	
+	objCulling.bbMin = bbMin;
+	objCulling.bbMax = bbMax;
+
 }
 
 void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, Context& context)
@@ -2411,28 +2448,6 @@ void Renderer::FindImageScaledSizes(int width, int height, int& scaledWidth, int
 	min(scaledHeight, maxSize);
 }
 
-bool Renderer::IsVisible(const StaticObject& obj, const Camera& camera) const
-{
-	const static XMFLOAT4 divVector = XMFLOAT4(2.0f, 2.0f, 2.0f, 1.0f);
-	const static FXMVECTOR sseDivVect = XMLoadFloat4(&divVector);
-
-	FXMVECTOR sseBoundindBoxMin = XMLoadFloat4(&obj.bbMin);
-	FXMVECTOR sseBoundindBoxMax = XMLoadFloat4(&obj.bbMax);
-	FXMVECTOR sseBoundingBoxCenter = 
-		XMVectorDivide(XMVectorAdd(sseBoundindBoxMax, sseBoundindBoxMin), sseDivVect);
-
-	FXMVECTOR sseCameraPos = XMLoadFloat4(&camera.position);
-
-	XMFLOAT4 lenVector;
-	XMStoreFloat4(&lenVector, XMVector4Length(XMVectorSubtract(sseCameraPos, sseBoundingBoxCenter)));
-
-	const float distance = lenVector.x;
-
-	constexpr float visibilityDist = 400.0f;
-
-	return distance < visibilityDist;
-}
-
 bool Renderer::IsVisible(const entity_t& entity, const Camera& camera) const
 {
 	FXMVECTOR sseEntityPos = XMLoadFloat4(&XMFLOAT4(entity.origin[0], entity.origin[1], entity.origin[2], 1.0f));
@@ -2511,8 +2526,7 @@ void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context
 {
 	const Camera& camera = context.frame.camera;
 	
-	XMMATRIX sseMvpMat = obj.GenerateModelMat() *
-		camera.GenerateViewMatrix() *
+	XMMATRIX sseMvpMat = camera.GenerateViewMatrix() *
 		camera.GenerateProjectionMatrix();
 
 	XMFLOAT4X4 mvpMat;

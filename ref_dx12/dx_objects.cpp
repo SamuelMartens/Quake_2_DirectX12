@@ -37,47 +37,33 @@ StaticObject& StaticObject::StaticObject::operator=(StaticObject&& other)
 	indices = other.indices;
 	other.indices = BufConst::INVALID_BUFFER_HANDLER;
 
-	position = other.position;
-	other.position = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
-
 	frameData = std::move(other.frameData);
-
-	bbMin = std::move(other.bbMin);
-	bbMax = std::move(other.bbMax);
 
 	return *this;
 }
 
-void StaticObject::GenerateBoundingBox(const std::vector<XMFLOAT4>& vertices)
+std::tuple<XMFLOAT4, XMFLOAT4> StaticObject::GenerateBoundingBox(const std::vector<XMFLOAT4>& vertices) const
 {
 	constexpr float minFloat = std::numeric_limits<float>::min();
 	constexpr float maxFloat = std::numeric_limits<float>::max();
 
-	bbMax = XMFLOAT4( minFloat, minFloat, minFloat, 1.0f );
-	bbMin = XMFLOAT4( maxFloat, maxFloat, maxFloat, 1.0f );
-
+	XMVECTOR sseBBMin = XMVectorSet( maxFloat, maxFloat, maxFloat, 1.0f );
+	XMVECTOR sseBBMax = XMVectorSet( minFloat, minFloat, minFloat, 1.0f );
+	
 	for (const XMFLOAT4& vertex : vertices)
 	{
-		bbMax.x = std::max(bbMax.x, vertex.x);
-		bbMax.y = std::max(bbMax.y, vertex.y);
-		bbMax.z = std::max(bbMax.z, vertex.z);
+		const FXMVECTOR sseVertex = XMLoadFloat4(&vertex);
 
-		bbMin.x = std::min(bbMin.x, vertex.x);
-		bbMin.y = std::min(bbMin.y, vertex.y);
-		bbMin.z = std::min(bbMin.z, vertex.z);
+		sseBBMin = XMVectorMin(sseVertex, sseBBMin);
+		sseBBMax = XMVectorMax(sseVertex, sseBBMax);
 	}
-}
 
-XMMATRIX StaticObject::GenerateModelMat() const
-{
-	XMMATRIX modelMat = XMMatrixScaling(scale.x, scale.y, scale.z);
-	modelMat = modelMat * XMMatrixTranslation(
-		position.x,
-		position.y,
-		position.z
-	);
+	XMFLOAT4 bbMin, bbMax;
 
-	return modelMat;
+	XMStoreFloat4(&bbMin, sseBBMin);
+	XMStoreFloat4(&bbMax, sseBBMax);
+
+	return std::make_tuple(bbMin, bbMax);
 }
 
 StaticObject::~StaticObject()
@@ -260,12 +246,12 @@ DynamicObject::~DynamicObject()
 	}
 }
 
-FrameStaticObject::FrameStaticObject(FrameStaticObject&& other)
+StaticObjectFrameData::StaticObjectFrameData(StaticObjectFrameData&& other)
 {
 	*this = std::move(other);
 }
 
-FrameStaticObject& FrameStaticObject::operator=(FrameStaticObject&& other)
+StaticObjectFrameData& StaticObjectFrameData::operator=(StaticObjectFrameData&& other)
 {
 	PREVENT_SELF_MOVE_ASSIGN;
 
@@ -275,7 +261,7 @@ FrameStaticObject& FrameStaticObject::operator=(FrameStaticObject&& other)
 	return *this;
 }
 
-FrameStaticObject::~FrameStaticObject()
+StaticObjectFrameData::~StaticObjectFrameData()
 {
 	if (constantBufferHandler != BufConst::INVALID_BUFFER_HANDLER)
 	{

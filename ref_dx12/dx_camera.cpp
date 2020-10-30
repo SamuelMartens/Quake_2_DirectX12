@@ -2,9 +2,16 @@
 #include "dx_utils.h"
 #include "dx_app.h"
 
+#include <limits>
+
 #ifdef max
 #undef max
 #endif  
+
+#ifdef min
+#undef min
+#endif  
+
 
 
 void Camera::Init()
@@ -85,4 +92,49 @@ std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> Camera::GetBasis() const
 	yaw.w = pitch.w = roll.w = 0.0f;
 
 	return std::make_tuple(yaw, pitch, roll);
+}
+
+std::tuple<XMFLOAT4, XMFLOAT4> Camera::GetAABBInWorldSpace() const
+{
+	std::array<XMVECTOR, 8> frustum = 
+	{
+		XMVectorSet(-1.0f, -1.0f, 0.0f, 1.0f ),
+		XMVectorSet(-1.0f,  1.0f, 0.0f, 1.0f),
+		XMVectorSet(1.0f,  1.0f, 0.0f, 1.0f),
+		XMVectorSet(1.0f, -1.0f, 0.0f, 1.0f),
+		XMVectorSet(-1.0f, -1.0f, 1.0f, 1.0f),
+		XMVectorSet(-1.0f,  1.0f, 1.0f, 1.0f),
+		XMVectorSet(1.0f,  1.0f, 1.0f, 1.0f),
+		XMVectorSet(1.0f, -1.0f, 1.0f, 1.0f)
+	};
+
+	XMVECTOR sseCameraTransformDeterminant;
+	const XMMATRIX sseCameraInvTransform = XMMatrixInverse(&sseCameraTransformDeterminant,
+		XMMatrixMultiply(GenerateViewMatrix(), GenerateProjectionMatrix()));
+
+	assert(XMVectorGetX(sseCameraTransformDeterminant) != 0.0f && "Camera transform inv can't be found. Determinant is zero");
+
+	constexpr float MIN_FLOAT = std::numeric_limits<float>::min();
+	constexpr float MAX_FLOAT = std::numeric_limits<float>::max();
+
+	XMVECTOR sseBBMin = XMVectorSet(MAX_FLOAT, MAX_FLOAT, MAX_FLOAT, 1.0f);
+	XMVECTOR sseBBMax = XMVectorSet(MIN_FLOAT, MIN_FLOAT, MIN_FLOAT, 1.0f);
+
+	std::for_each(frustum.cbegin(), frustum.cend(),
+		[&sseBBMin, &sseBBMax, sseCameraInvTransform](const XMVECTOR& fPoint) 
+	{
+		XMVECTOR sseFPointInWorldSpace = XMVector4Transform(fPoint, sseCameraInvTransform);
+		const float w = XMVectorGetW(sseFPointInWorldSpace);
+
+		sseFPointInWorldSpace = XMVectorDivide(sseFPointInWorldSpace, XMVectorSet(w, w, w, w));
+
+		sseBBMin = XMVectorMin(sseBBMin, sseFPointInWorldSpace);
+		sseBBMax = XMVectorMax(sseBBMax, sseFPointInWorldSpace);
+	});
+
+	XMFLOAT4 bbMin, bbMax;
+	XMStoreFloat4(&bbMin, sseBBMin);
+	XMStoreFloat4(&bbMax, sseBBMax);
+
+	return std::make_tuple(bbMin, bbMax);
 }

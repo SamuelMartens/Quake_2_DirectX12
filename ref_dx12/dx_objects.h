@@ -17,21 +17,28 @@ extern "C"
 	#include "../client/ref.h"
 };
 
-class FrameStaticObject
+class StaticObjectFrameData
 {
 public:
 
-	FrameStaticObject() = default;
+	StaticObjectFrameData() = default;
 
-	FrameStaticObject(const FrameStaticObject&) = delete;
-	FrameStaticObject& operator=(const FrameStaticObject&) = delete;
+	StaticObjectFrameData(const StaticObjectFrameData&) = delete;
+	StaticObjectFrameData& operator=(const StaticObjectFrameData&) = delete;
 
-	FrameStaticObject(FrameStaticObject&& other);
-	FrameStaticObject& operator=(FrameStaticObject&& other);
+	StaticObjectFrameData(StaticObjectFrameData&& other);
+	StaticObjectFrameData& operator=(StaticObjectFrameData&& other);
 
-	~FrameStaticObject();
+	~StaticObjectFrameData();
 
 	BufferHandler constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
+};
+
+struct StaticObjectCulling
+{
+	// Bounding box, in WORLD space
+	XMFLOAT4 bbMax = { 0.0f, 0.0f, 0.0f, 1.0f };
+	XMFLOAT4 bbMin = { 0.0f, 0.0f, 0.0f, 1.0f };
 };
 
 class StaticObject
@@ -50,9 +57,8 @@ public:
 	StaticObject& operator=(StaticObject&& other);
 
 	~StaticObject();
-
-	void GenerateBoundingBox(const std::vector<XMFLOAT4>& vertices);
-	XMMATRIX GenerateModelMat() const;
+	// min, max
+	std::tuple<XMFLOAT4, XMFLOAT4> GenerateBoundingBox(const std::vector<XMFLOAT4>& vertices) const;
 
 	std::string textureKey;
 	
@@ -62,14 +68,7 @@ public:
 	int verticesSizeInBytes = Const::INVALID_SIZE;
 	int indicesSizeInBytes = Const::INVALID_SIZE;
 
-	XMFLOAT4 position = { 0.0f, 0.0f, 0.0f, 1.0f };
-	XMFLOAT4 scale = { 1.0f, 1.0f, 1.0f, 0.0f };
-
-	// Bounding box
-	XMFLOAT4 bbMax = { 0.0f, 0.0f, 0.0f, 1.0f };
-	XMFLOAT4 bbMin = { 0.0f, 0.0f, 0.0f, 1.0f };;
-
-	std::array<FrameStaticObject, Settings::FRAMES_NUM> frameData;
+	std::array<StaticObjectFrameData, Settings::FRAMES_NUM> frameData;
 };
 
 class DynamicObjectModel

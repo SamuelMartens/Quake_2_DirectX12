@@ -240,9 +240,9 @@ private:
 	void Load8To24Table();
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
-	bool IsVisible(const StaticObject& obj, const Camera& camera) const;
 	bool IsVisible(const entity_t& entity, const Camera& camera) const;
 	DynamicObjectConstBuffer& FindDynamicObjConstBuffer();
+	std::vector<int> BuildObjectsInFrustumList(const Camera& camera, const std::vector<StaticObjectCulling>& objCulling) const;
 
 	/* Job  */
 	void EndFrameJob(Context& context);
@@ -328,6 +328,8 @@ private:
 
 	// Should I separate UI from game object? Damn, is this NWN speaks in me
 	std::vector<StaticObject> m_staticObjects;
+	std::vector<StaticObjectCulling> m_staticObjectsCulling;
+
 	std::unordered_map<model_t*, DynamicObjectModel> m_dynamicObjectsModels;
 	// Expected to set a size for it during initialization. Don't change size afterward
 	LockVector_t<DynamicObjectConstBuffer> m_dynamicObjectsConstBuffersPool;
