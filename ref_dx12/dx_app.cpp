@@ -1435,12 +1435,12 @@ DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
 	return *resIt;
 }
 
-std::vector<int> Renderer::BuildObjectsInFrustumList(const Camera& camera, const std::vector<StaticObjectCulling>& objCulling) const
+std::vector<int> Renderer::BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const
 {
-	const auto [cameraBBMin, cameraBBMax] = camera.GetAABBInWorldSpace();
+	Utils::AABB cameraAABB = camera.GetAABB();
 
-	const FXMVECTOR sseCameraBBMin = XMLoadFloat4(&cameraBBMin);
-	const FXMVECTOR sseCameraBBMax = XMLoadFloat4(&cameraBBMax);
+	const FXMVECTOR sseCameraBBMin = XMLoadFloat4(&cameraAABB.bbMin);
+	const FXMVECTOR sseCameraBBMax = XMLoadFloat4(&cameraAABB.bbMax);
 
 	std::size_t currentIndex = 0;
 
@@ -1452,7 +1452,7 @@ std::vector<int> Renderer::BuildObjectsInFrustumList(const Camera& camera, const
 		[sseCameraBBMin, 
 		sseCameraBBMax,
 		&currentIndex,
-		&res](const StaticObjectCulling& objCulling) 
+		&res](const Utils::AABB& objCulling) 
 	{
 		if (XMVector4LessOrEqual(XMLoadFloat4(&objCulling.bbMin), sseCameraBBMax) &&
 			XMVector4GreaterOrEqual(XMLoadFloat4(&objCulling.bbMax), sseCameraBBMin))
@@ -1633,7 +1633,7 @@ void Renderer::DrawStaticGeometryJob(Context& context)
 	SetNonMaterialState(context);
 	SetMaterialAsync(MaterialSource::STATIC_MATERIAL_NAME, commandList);
 	
-	std::vector<int> visibleStaticObj = BuildObjectsInFrustumList(context.frame.camera, m_staticObjectsCulling);
+	std::vector<int> visibleStaticObj = BuildObjectsInFrustumList(context.frame.camera, m_staticObjectsAABB);
 
 	for (int i = 0; i < visibleStaticObj.size(); ++i)
 	{
@@ -1957,7 +1957,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Contex
 	}
 
 	StaticObject& obj = m_staticObjects.emplace_back(StaticObject());
-	StaticObjectCulling& objCulling = m_staticObjectsCulling.emplace_back();
+	Utils::AABB& objCulling = m_staticObjectsAABB.emplace_back();
 
 	// Set the texture name
 	obj.textureKey = surf.texinfo->image->name;
@@ -2011,7 +2011,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Contex
 		verticesPos.push_back(vertex.position);
 	}
 
-	const auto [bbMin, bbMax] = obj.GenerateBoundingBox(verticesPos);
+	const auto [bbMin, bbMax] = obj.GenerateAABB(verticesPos);
 	
 	objCulling.bbMin = bbMin;
 	objCulling.bbMax = bbMax;
@@ -2450,15 +2450,33 @@ void Renderer::FindImageScaledSizes(int width, int height, int& scaledWidth, int
 
 bool Renderer::IsVisible(const entity_t& entity, const Camera& camera) const
 {
-	FXMVECTOR sseEntityPos = XMLoadFloat4(&XMFLOAT4(entity.origin[0], entity.origin[1], entity.origin[2], 1.0f));
-	FXMVECTOR sseCameraPos = XMLoadFloat4(&camera.position);
-	
-	XMFLOAT4 lenVector;
-	XMStoreFloat4(&lenVector, XMVector4Length(XMVectorSubtract(sseCameraPos, sseEntityPos)));
+	const FXMVECTOR sseEntityPos = XMLoadFloat4(&XMFLOAT4(entity.origin[0], entity.origin[1], entity.origin[2], 1.0f));
+	const FXMVECTOR sseCameraToEntity = XMVectorSubtract(sseEntityPos, XMLoadFloat4(&camera.position));
+	const float dist = XMVectorGetX(XMVector4Length(sseCameraToEntity));
 
-	constexpr float visibilityDist = 400.0f;
-	
-	return lenVector.x < visibilityDist;
+	constexpr float closeVisibilityDist = 100.0f;
+	constexpr float farVisibilityDist = 800.0f;
+
+	if (dist < closeVisibilityDist)
+	{
+		// When objects are too close field of view culling doesn't really work. Object origin might be behind
+		// but object might be seen just fine
+		return true;
+	}
+	else if (dist < farVisibilityDist)
+	{
+		const auto[yaw, pitch, roll] = camera.GetBasis();
+
+		const float dot = XMVectorGetX(XMVector4Dot(XMLoadFloat4(&roll), XMVector4Normalize(sseCameraToEntity)));
+		// Adding this extension coefficient, because object position is in the middle, so if only a piece of object
+		// in the view, it will not disappear. Also corners need a bit bigger angle 
+		constexpr float viewExtensionCoefficient = 1.15f;
+		// Multiply by 0.5f because we need only half of fov
+		const float cameraViewAngle = XMConvertToRadians(std::max(camera.fov.y, camera.fov.x) * 0.5f * viewExtensionCoefficient);
+		return std::acos(dot) <= cameraViewAngle;
+	}
+
+	return false;
 }
 
 void Renderer::RequestResourceDeletion(ComPtr<ID3D12Resource> resourceToDelete)
@@ -2526,11 +2544,8 @@ void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context
 {
 	const Camera& camera = context.frame.camera;
 	
-	XMMATRIX sseMvpMat = camera.GenerateViewMatrix() *
-		camera.GenerateProjectionMatrix();
-
 	XMFLOAT4X4 mvpMat;
-	XMStoreFloat4x4(&mvpMat, sseMvpMat);
+	XMStoreFloat4x4(&mvpMat, camera.GetViewProjMatrix());
 
 	BufferHandler constBufferHandler = obj.frameData[context.frame.GetArrayIndex()].constantBufferHandler;
 
@@ -2549,9 +2564,7 @@ void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entit
 	const Camera& camera = context.frame.camera;
 
 	// Calculate transformation matrix
-	XMMATRIX sseMvpMat = DynamicObjectModel::GenerateModelMat(entity) *
-		camera.GenerateViewMatrix() *
-		camera.GenerateProjectionMatrix();
+	XMMATRIX sseMvpMat = DynamicObjectModel::GenerateModelMat(entity) * camera.GetViewProjMatrix();
 
 	XMFLOAT4X4 mvpMat;
 	XMStoreFloat4x4(&mvpMat, sseMvpMat);
@@ -2607,7 +2620,7 @@ BufferHandler Renderer::UpdateParticleConstantBuffer(Context& context)
 
 	XMFLOAT4X4 mvpMat;
 
-	XMStoreFloat4x4(&mvpMat, camera.GenerateViewMatrix() * camera.GenerateProjectionMatrix());
+	XMStoreFloat4x4(&mvpMat, camera.GetViewProjMatrix());
 
 	auto[yaw, pitch, roll] = camera.GetBasis();
 
@@ -3289,6 +3302,7 @@ void Renderer::UpdateFrame(const refdef_t& updateData)
 	Frame& frame = GetCurrentFrame();
 
 	frame.camera.Update(updateData);
+	frame.camera.GenerateViewProjMat();
 	
 	frame.entitiesToDraw.resize(updateData.num_entities);
 	memcpy(frame.entitiesToDraw.data(), updateData.entities, sizeof(entity_t) * updateData.num_entities);

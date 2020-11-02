@@ -42,7 +42,7 @@ StaticObject& StaticObject::StaticObject::operator=(StaticObject&& other)
 	return *this;
 }
 
-std::tuple<XMFLOAT4, XMFLOAT4> StaticObject::GenerateBoundingBox(const std::vector<XMFLOAT4>& vertices) const
+std::tuple<XMFLOAT4, XMFLOAT4> StaticObject::GenerateAABB(const std::vector<XMFLOAT4>& vertices) const
 {
 	constexpr float minFloat = std::numeric_limits<float>::min();
 	constexpr float maxFloat = std::numeric_limits<float>::max();

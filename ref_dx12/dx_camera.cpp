@@ -17,6 +17,8 @@
 void Camera::Init()
 {
 	Renderer::Inst().GetDrawAreaSize(&width, &height);
+
+	XMStoreFloat4x4(&viewProjMat, XMMatrixIdentity());
 }
 
 void Camera::Update(const refdef_t& updateData)
@@ -34,6 +36,16 @@ void Camera::Update(const refdef_t& updateData)
 
 	width = updateData.width;
 	height = updateData.height;
+}
+
+void Camera::GenerateViewProjMat()
+{
+	XMStoreFloat4x4(&viewProjMat, GenerateViewMatrix() * GenerateProjectionMatrix());
+}
+
+XMMATRIX Camera::GetViewProjMatrix() const
+{
+	return XMLoadFloat4x4(&viewProjMat);
 }
 
 XMMATRIX Camera::GenerateViewMatrix() const 
@@ -83,7 +95,7 @@ std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> Camera::GetBasis() const
 	XMFLOAT4 yaw = *reinterpret_cast<XMFLOAT4*>(viewMat.m[1]);
 	XMFLOAT4 pitch =* reinterpret_cast<XMFLOAT4*>(viewMat.m[0]);
 	XMFLOAT4 roll;
-	// Initially point left, we need right
+	// Initially points left, we need right
 	XMStoreFloat4(&roll, XMVectorScale(
 		XMLoadFloat4(reinterpret_cast<XMFLOAT4*>(viewMat.m[2])),
 		-1.0f));
@@ -94,7 +106,7 @@ std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> Camera::GetBasis() const
 	return std::make_tuple(yaw, pitch, roll);
 }
 
-std::tuple<XMFLOAT4, XMFLOAT4> Camera::GetAABBInWorldSpace() const
+Utils::AABB Camera::GetAABB() const
 {
 	std::array<XMVECTOR, 8> frustum = 
 	{
@@ -136,5 +148,5 @@ std::tuple<XMFLOAT4, XMFLOAT4> Camera::GetAABBInWorldSpace() const
 	XMStoreFloat4(&bbMin, sseBBMin);
 	XMStoreFloat4(&bbMax, sseBBMax);
 
-	return std::make_tuple(bbMin, bbMax);
+	return { bbMin, bbMax };
 }

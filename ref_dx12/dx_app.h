@@ -242,7 +242,7 @@ private:
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
 	bool IsVisible(const entity_t& entity, const Camera& camera) const;
 	DynamicObjectConstBuffer& FindDynamicObjConstBuffer();
-	std::vector<int> BuildObjectsInFrustumList(const Camera& camera, const std::vector<StaticObjectCulling>& objCulling) const;
+	std::vector<int> BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const;
 
 	/* Job  */
 	void EndFrameJob(Context& context);
@@ -328,7 +328,7 @@ private:
 
 	// Should I separate UI from game object? Damn, is this NWN speaks in me
 	std::vector<StaticObject> m_staticObjects;
-	std::vector<StaticObjectCulling> m_staticObjectsCulling;
+	std::vector<Utils::AABB> m_staticObjectsAABB;
 
 	std::unordered_map<model_t*, DynamicObjectModel> m_dynamicObjectsModels;
 	// Expected to set a size for it during initialization. Don't change size afterward

@@ -34,13 +34,6 @@ public:
 	BufferHandler constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
 };
 
-struct StaticObjectCulling
-{
-	// Bounding box, in WORLD space
-	XMFLOAT4 bbMax = { 0.0f, 0.0f, 0.0f, 1.0f };
-	XMFLOAT4 bbMin = { 0.0f, 0.0f, 0.0f, 1.0f };
-};
-
 class StaticObject
 {
 public:
@@ -58,7 +51,7 @@ public:
 
 	~StaticObject();
 	// min, max
-	std::tuple<XMFLOAT4, XMFLOAT4> GenerateBoundingBox(const std::vector<XMFLOAT4>& vertices) const;
+	std::tuple<XMFLOAT4, XMFLOAT4> GenerateAABB(const std::vector<XMFLOAT4>& vertices) const;
 
 	std::string textureKey;
 	

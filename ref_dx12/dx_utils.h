@@ -33,7 +33,15 @@ namespace Utils
 	extern const XMFLOAT4 axisY;
 	extern const XMFLOAT4 axisZ;
 
-	/* CLASSES */
+	/* TYPES */
+
+	struct AABB
+	{
+		// Bounding box, in WORLD space
+		XMFLOAT4 bbMin = { 0.0f, 0.0f, 0.0f, 1.0f };
+		XMFLOAT4 bbMax = { 0.0f, 0.0f, 0.0f, 1.0f };
+	};
+
 
 	class Exception : public std::exception
 	{
