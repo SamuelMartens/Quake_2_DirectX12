@@ -1,0 +1,50 @@
+Pass <- PassInput Resources State ShaderList
+
+Resources   <- T( < ( Attr / ConstBuff / Texture / Sampler)* > )
+State       <- T( < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt )* > )
+ShaderList  <- T( < Shader* > )
+
+# --- Pass properties
+PassInput       <- T( 'PassInput' _ ':' < PassInputIdent (Comma PassInputIdent)* > )
+PassInputIdent  <- T( < 'Static' / 'Dynamic' / 'Particles' / 'UI' / 'PostProcess' > )
+
+# --- Shader code ---
+ShaderType          <- T( < 'VS' / 'GS' / 'PS' > _ ':' ) 
+ShaderExternalDecl  <- T( 'External'_ ':' < Ident? (Comma Ident)* > )
+ShaderSource        <- T( '<[' < ( !"]>"  . )* > ']>' ) 
+Shader              <- T( < ShaderType '['_ ShaderExternalDecl ShaderSource _ ']' > )
+
+# --- States ---
+ColorTargetSt   <- T( 'ColorTarget' _ ':' < Ident > )
+DepthTargetSt   <- T( 'DepthTarget' _ ':' < Ident > )
+ViewportSt      <- T( 'Viewport' _ ':' < (Float / Int) (Comma (Float / Int)){3} > )
+BlendEnabledSt  <- T( 'BlendEnabled' _ ':' < Bool > )
+# TODO implement D3D enums after include works.
+
+# --- Resources ---
+Attr        <- T( 'struct' < Ident '{' ResourceContent '}' > )
+ConstBuff   <- T( 'cbuffer' < Ident ':' RegisterIdent  '{' ResourceContent '}' > )
+Texture     <- T( 'Texture2D' < Ident ':' RegisterIdent > )
+Sampler     <- T( 'SamplerState' < Ident ':' RegisterIdent > )
+
+# --- Tokens ---
+Ident 	        <- ( __ < [a-zA-Z][a-zA-Z0-9]* > _ )
+RegisterIdent   <- T( 'register' _ '(' _ < [bts] [0-9]+ > _ ')' )
+ResourceContent <- [^}]*
+
+# --- Types ---
+Bool   <- T( < 'true' / 'false'> )
+Float  <- T( < [0-9][0-9]* '.' [0-9][0-9]* > )
+Int    <- T( < [0-9][0-9]* > )
+
+# --- Punctuation ---
+Comma <- _ ',' _
+
+# --- Whitespaces ---
+# Carefull with this this. Because of greedy nature of 'star symbol, two these symbols
+# in a row will never work
+__  <- [ \t\r\n]+
+_   <- [ \t\r\n]*
+
+# --- Macro ---
+T(x)        <- (_ x _)
