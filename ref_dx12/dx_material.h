@@ -77,3 +77,69 @@ public:
 
 	D3D_PRIMITIVE_TOPOLOGY primitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
 };
+
+class PassSource
+{
+public:
+
+	enum ShaderType
+	{
+		Vs = 0,
+		Gs = 1,
+		Ps = 2,
+		SIZE
+	};
+
+	enum class InputType
+	{
+		Static,
+		Dynamic,
+		Particles,
+		UI,
+		PostProcess,
+		Undefined
+	};
+
+	struct ShaderSource
+	{
+		ShaderType type;
+		std::vector<std::string> externalList;
+		std::string source;
+	};
+
+
+	PassSource();
+
+	// The reason to remove copy functionality here is because when we initialize some structures
+	// during material creation we pass pointers from descriptorRanges, which got invalidated
+	// if you copy objects around
+	PassSource(const PassSource&) = delete;
+	PassSource& operator=(const PassSource&) = delete;
+
+	PassSource(PassSource&&) = default;
+	PassSource& operator=(PassSource&&) = default;
+
+	~PassSource() = default;
+
+	std::string name;
+	std::vector<ShaderSource> shaders;
+
+	std::string colorTargetName;
+	std::string depthTargetName;
+
+	D3D12_VIEWPORT viewport = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
+	std::vector<D3D12_INPUT_ELEMENT_DESC> inputLayout;
+
+	// I need to keep this object in memory until serialization
+	std::vector<std::vector<CD3DX12_DESCRIPTOR_RANGE>> descriptorRanges;
+
+	std::vector<CD3DX12_ROOT_PARAMETER> rootParameters;
+	std::vector<CD3DX12_STATIC_SAMPLER_DESC> staticSamplers;
+	D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+
+	D3D_PRIMITIVE_TOPOLOGY primitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+
+	InputType input = InputType::Undefined;
+};

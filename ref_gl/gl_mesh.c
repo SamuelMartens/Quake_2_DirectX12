@@ -148,7 +148,7 @@ void GL_DrawAliasFrameLerp (dmdl_t *paliashdr, float backlerp)
 	}
 
 	lerp = s_lerped[0];
-	//#INFO actually do interpolation ( I can do this on GPU)
+	
 	GL_LerpVerts( paliashdr->num_xyz, v, ov, verts, lerp, move, frontv, backv );
 
 	if ( gl_vertex_arrays->value)

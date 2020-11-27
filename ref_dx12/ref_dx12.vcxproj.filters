@@ -96,6 +96,12 @@
     <ClInclude Include="dx_settings.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="dx_materialcompiler.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="peglib.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ref_dx12.def">
@@ -165,6 +171,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="dx_settings.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dx_materialcompiler.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

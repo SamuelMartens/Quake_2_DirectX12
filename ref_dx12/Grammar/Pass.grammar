@@ -1,7 +1,7 @@
 Pass <- PassInput Resources State ShaderList
 
 Resources   <- T( < ( Attr / ConstBuff / Texture / Sampler)* > )
-State       <- T( < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt )* > )
+State       <- T( < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendAlphaSt / SrcDestAlphaSt )* > )
 ShaderList  <- T( < Shader* > )
 
 # --- Pass properties
@@ -10,16 +10,21 @@ PassInputIdent  <- T( < 'Static' / 'Dynamic' / 'Particles' / 'UI' / 'PostProcess
 
 # --- Shader code ---
 ShaderType          <- T( < 'VS' / 'GS' / 'PS' > _ ':' ) 
-ShaderExternalDecl  <- T( 'External'_ ':' < Ident? (Comma Ident)* > )
+ShaderExternalDecl  <- T( 'External'_ ':' < Ident? ( Comma Ident )* > )
 ShaderSource        <- T( '<[' < ( !"]>"  . )* > ']>' ) 
 Shader              <- T( < ShaderType '['_ ShaderExternalDecl ShaderSource _ ']' > )
 
-# --- States ---
-ColorTargetSt   <- T( 'ColorTarget' _ ':' < Ident > )
-DepthTargetSt   <- T( 'DepthTarget' _ ':' < Ident > )
-ViewportSt      <- T( 'Viewport' _ ':' < (Float / Int) (Comma (Float / Int)){3} > )
-BlendEnabledSt  <- T( 'BlendEnabled' _ ':' < Bool > )
-# TODO implement D3D enums after include works.
+# --- State ---
+ColorTargetSt   	<- T( 'ColorTarget' _ ':' < Ident > )
+DepthTargetSt   	<- T( 'DepthTarget' _ ':' < Ident > )
+ViewportSt      	<- T( 'Viewport' _ ':' < (Float / Int) (Comma (Float / Int)){3} > )
+BlendEnabledSt  	<- T( 'BlendEnabled' _ ':' < Bool > )
+SrcBlendAlphaSt		<- T( 'SrcBlendAlpha' _ ':' < BlendStValues > )
+SrcDestAlphaSt		<- T( 'DestBlendAlpha' _ ':' < BlendStValues > )
+TopologySt			<- T( 'Topology' _ ':' < ( 'Triangle' / 'Point' ) > )
+DepthWriteMaskSt	<- T( 'DepthWriteMask' _ ':' < Bool > )
+
+BlendStValues		<- T( < ( 'SrcAlpha' / 'InvSrcAlpha' ) > )
 
 # --- Resources ---
 Attr        <- T( 'struct' < Ident '{' ResourceContent '}' > )
@@ -32,6 +37,14 @@ Ident 	        <- ( __ < [a-zA-Z][a-zA-Z0-9]* > _ )
 RegisterIdent   <- T( 'register' _ '(' _ < [bts] [0-9]+ > _ ')' )
 ResourceContent <- [^}]*
 
+# --- In code macro ---
+# I don't actually need this. According to the current plant, there will
+# be no macro definitions after preprocessing, so parser will never see this
+# MacroList    <- T( < (MacroInclude)*  > )
+# MacroInclude <- T( '#include' __ < FileName > EndOfLine )
+# FileName     <- T( < [a-zA-Z][a-zA-Z0-9]* '.' [a-zA-Z][a-zA-Z0-9]* > )
+
+
 # --- Types ---
 Bool   <- T( < 'true' / 'false'> )
 Float  <- T( < [0-9][0-9]* '.' [0-9][0-9]* > )
@@ -42,9 +55,15 @@ Comma <- _ ',' _
 
 # --- Whitespaces ---
 # Carefull with this this. Because of greedy nature of 'star symbol, two these symbols
-# in a row will never work
-__  <- [ \t\r\n]+
-_   <- [ \t\r\n]*
+# in a row will never work.
+# TODO investigate whitespace ignore option like %whitespace
+__  <- Spacing+
+_   <- Spacing*
 
-# --- Macro ---
+Spacing   <- (Space / Comment)
+Comment   <- '//' ( !EndOfLine . )* EndOfLine
+Space     <- ' ' / '\t' / EndOfLine
+EndOfLine <- '\r\n' / '\n' / '\r'
+
+# --- Parser macro ---
 T(x)        <- (_ x _)

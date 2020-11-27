@@ -2,10 +2,5 @@ Materail <- Pass+
 
 Pass 	<-  ( _ < [a-zA-Z][a-zA-Z0-9]* > _ )
 
-# --- Punctuation ---
-
 # --- Whitespaces ---
-# Carefull with this this. Because of greedy nature of 'star symbol, two these symbols
-# in a row will never work
-__  <- [ \t\r\n]+
 _   <- [ \t\r\n]*

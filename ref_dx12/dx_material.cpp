@@ -165,3 +165,9 @@ MaterialSource::MaterialSource()
 	ZeroMemory(&psoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
 }
 
+
+PassSource::PassSource()
+{
+	//#DEBUG make pso default state intitalization here
+	ZeroMemory(&psoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+}

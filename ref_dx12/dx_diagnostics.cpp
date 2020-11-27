@@ -60,11 +60,12 @@ namespace Logs
 
 	constexpr bool CategoryEnabled[static_cast<int>(Category::_Count)] =
 	{
-		true, // Generic,
-		true, // Synchronization,
-		true, // FrameSubmission,
-		true,  // Textures, 
-		true   // Job
+		true,	// Generic,
+		true,	// Synchronization,
+		true,	// FrameSubmission,
+		true,	// Textures, 
+		true,	// Job
+		true,	// Parser
 	};
 }
 

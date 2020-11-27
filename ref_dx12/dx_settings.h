@@ -1,6 +1,7 @@
 #pragma once
 
 #include <dxgi.h>
+#include <string>
 
 namespace Settings
 {
@@ -32,4 +33,13 @@ namespace Settings
 	constexpr static DXGI_FORMAT BACK_BUFFER_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
 	constexpr static DXGI_FORMAT DEPTH_STENCIL_FORMAT = DXGI_FORMAT_D24_UNORM_S8_UINT;
 
+	/* Material Compiler  */
+
+	extern const std::string	 GRAMMAR_DIR;
+	extern const std::string	 GRAMMAR_PASS_FILENAME;
+	extern const std::string	 GRAMMAR_MATERIAL_FILENAME;
+
+	extern const std::string	 MATERIAL_DIR;
+	extern const std::string	 MATERIAL_PASS_FILE_EXT;
+	extern const std::string	 MATERIAL_FILE_EXT;
 }

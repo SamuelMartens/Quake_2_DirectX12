@@ -40,6 +40,7 @@ namespace Logs
 		FrameSubmission,
 		Textures,
 		Job,
+		Parser,
 
 		_Count
 	};
@@ -50,7 +51,8 @@ namespace Logs
 		"Synchronization",
 		"FrameSubmission",
 		"Textures",
-		"Job"
+		"Job",
+		"Parser"
 	};
 
 	struct Event
