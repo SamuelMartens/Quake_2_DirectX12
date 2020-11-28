@@ -168,6 +168,16 @@ MaterialSource::MaterialSource()
 
 PassSource::PassSource()
 {
-	//#DEBUG make pso default state intitalization here
 	ZeroMemory(&psoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.RTVFormats[0] = Settings::BACK_BUFFER_FORMAT;
+	psoDesc.SampleDesc.Count = Renderer::Inst().GetMSAASampleCount();
+	psoDesc.SampleDesc.Quality = Renderer::Inst().GetMSAAQuality();
+	psoDesc.DSVFormat = Settings::DEPTH_STENCIL_FORMAT;
 }

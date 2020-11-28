@@ -19,6 +19,7 @@
 #include "dx_diagnostics.h"
 #include "dx_infrastructure.h"
 #include "dx_settings.h"
+#include "dx_materialcompiler.h"
 
 #ifdef max
 #undef max
@@ -412,6 +413,10 @@ void Renderer::InitUtils()
 	InitScissorRect();
 
 	ThreadingUtils::Init();
+
+	//#DEBUG
+	MaterialCompiler::Inst().GenerateMaterial();
+	//END
 }
 
 void Renderer::InitMemory(Context& context)

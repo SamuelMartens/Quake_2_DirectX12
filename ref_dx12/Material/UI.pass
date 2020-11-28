@@ -1,0 +1,69 @@
+// Input geometry type
+PassInput : UI
+
+// State
+
+ColorTarget  : BACK_BUFFER
+DepthTarget  : BACK_BUFFER
+Viewport	 : 1.0, 1.0, 1.0, 1.0
+BlendEnabled : false
+Topology	 : Triangle
+
+// Resources 
+
+cbuffer cbPerObject : register(b0)
+{
+	float4x4 gWorldViewProj;
+}
+
+
+struct VertexIn
+{
+	float4 Pos : POSITION;
+	float2 Tex : TEXCOORD;
+}
+
+
+struct VertexOut
+{
+	float4 Pos : SV_POSITION;
+	float2 Tex : TEXCOORD;
+}
+
+
+Texture2D gDiffuseMap : register(t0)
+
+SamplerState gSamLinearWrap : register(s0)
+
+// Shaders
+
+Type : VS 
+External : cbPerObject, VertexIn, VertexOut
+<[
+VertexOut main(VertexIn vIn)
+{
+	VertexOut vOut;
+	// Funny enought, by default matrices are packed as column major.
+	vOut.Pos = mul(gWorldViewProj, vIn.Pos);
+
+	vOut.Tex = vIn.Tex;
+
+	return vOut;
+}
+]>
+
+Type : PS 
+External : gDiffuseMap, gSamLinearWrap, VertexOut
+<[
+float4 main(VertexOut vOut) : SV_Target
+{
+	float4 color = gDiffuseMap.Sample(gSamLinearWrap, vOut.Tex);
+    
+    if (color.a == 0)
+    {
+        discard;
+    }
+    
+    return color;
+}
+]>

@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <filesystem>
 
 class MaterialCompiler
 {
@@ -25,8 +26,13 @@ public:
 	//#DEBUG making it all public for now, I don't have final design yet
 	void GenerateMaterial();
 	std::unordered_map<std::string, std::string> LoadPassFiles();
+	std::filesystem::path GenPathToFile(const std::string fileName) const;
 
 	void PreprocessPassFiles(const std::vector<std::string>& fileList);
 	void ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles);
+
+private:
+
+	std::filesystem::path ROOT_DIR_PATH;
 
 };

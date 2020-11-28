@@ -1,4 +1,4 @@
-Pass <- PassInput Resources State ShaderList
+Pass <- PassInput State Resources ShaderList
 
 Resources   <- T( < ( Attr / ConstBuff / Texture / Sampler)* > )
 State       <- T( < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendAlphaSt / SrcDestAlphaSt )* > )
@@ -9,10 +9,10 @@ PassInput       <- T( 'PassInput' _ ':' < PassInputIdent (Comma PassInputIdent)*
 PassInputIdent  <- T( < 'Static' / 'Dynamic' / 'Particles' / 'UI' / 'PostProcess' > )
 
 # --- Shader code ---
-ShaderType          <- T( < 'VS' / 'GS' / 'PS' > _ ':' ) 
+ShaderType          <- T( 'Type' _ ':' _ < 'VS' / 'GS' / 'PS' > ) 
 ShaderExternalDecl  <- T( 'External'_ ':' < Ident? ( Comma Ident )* > )
 ShaderSource        <- T( '<[' < ( !"]>"  . )* > ']>' ) 
-Shader              <- T( < ShaderType '['_ ShaderExternalDecl ShaderSource _ ']' > )
+Shader              <- T( < ShaderType ShaderExternalDecl ShaderSource > )
 
 # --- State ---
 ColorTargetSt   	<- T( 'ColorTarget' _ ':' < Ident > )
@@ -21,7 +21,7 @@ ViewportSt      	<- T( 'Viewport' _ ':' < (Float / Int) (Comma (Float / Int)){3}
 BlendEnabledSt  	<- T( 'BlendEnabled' _ ':' < Bool > )
 SrcBlendAlphaSt		<- T( 'SrcBlendAlpha' _ ':' < BlendStValues > )
 SrcDestAlphaSt		<- T( 'DestBlendAlpha' _ ':' < BlendStValues > )
-TopologySt			<- T( 'Topology' _ ':' < ( 'Triangle' / 'Point' ) > )
+TopologySt			<- T( 'Topology' _ ':' < _ ( 'Triangle' / 'Point' ) _ > )
 DepthWriteMaskSt	<- T( 'DepthWriteMask' _ ':' < Bool > )
 
 BlendStValues		<- T( < ( 'SrcAlpha' / 'InvSrcAlpha' ) > )
@@ -33,7 +33,7 @@ Texture     <- T( 'Texture2D' < Ident ':' RegisterIdent > )
 Sampler     <- T( 'SamplerState' < Ident ':' RegisterIdent > )
 
 # --- Tokens ---
-Ident 	        <- ( __ < [a-zA-Z][a-zA-Z0-9]* > _ )
+Ident 	        <- T( < [a-zA-Z_][a-zA-Z0-9_]* > )
 RegisterIdent   <- T( 'register' _ '(' _ < [bts] [0-9]+ > _ ')' )
 ResourceContent <- [^}]*
 
@@ -57,8 +57,7 @@ Comma <- _ ',' _
 # Carefull with this this. Because of greedy nature of 'star symbol, two these symbols
 # in a row will never work.
 # TODO investigate whitespace ignore option like %whitespace
-__  <- Spacing+
-_   <- Spacing*
+~_   <- Spacing*
 
 Spacing   <- (Space / Comment)
 Comment   <- '//' ( !EndOfLine . )* EndOfLine

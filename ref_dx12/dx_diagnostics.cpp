@@ -55,7 +55,7 @@ namespace Logs
 	std::array<Event, BUFFER_SIZE> gEventsBuffer;
 	std::atomic<int> gPos = 0;
 
-	constexpr bool gEnableLogs = false;
+	constexpr bool gEnableLogs = true;
 	constexpr bool gPrintToConsole = true;
 
 	constexpr bool CategoryEnabled[static_cast<int>(Category::_Count)] =
