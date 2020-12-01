@@ -181,3 +181,43 @@ PassSource::PassSource()
 	psoDesc.SampleDesc.Quality = Renderer::Inst().GetMSAAQuality();
 	psoDesc.DSVFormat = Settings::DEPTH_STENCIL_FORMAT;
 }
+
+std::string_view PassSource::GetResourceName(const Resource_t& res)
+{
+	return std::visit([](auto && resource)
+	{
+		using T = std::decay_t<decltype(resource)>;
+
+		return _GetResourceName<T>(resource);
+	},
+	res);
+}
+
+std::string_view PassSource::GetResourceRawView(const Resource_t& res)
+{
+	return std::visit([](auto && resource)
+	{
+		using T = std::decay_t<decltype(resource)>;
+
+		return _GetResourceRawView<T>(resource);
+	},
+	res);
+}
+
+std::string PassSource::ShaderTypeToStr(ShaderType& type)
+{
+	switch (type)
+	{
+	case ShaderType::Vs:
+		return "Vs";
+	case ShaderType::Gs:
+		return "Gs";
+	case ShaderType::Ps:
+		return "Ps";
+	default:
+		assert(false && "Undefined shader type");
+		break;
+	}
+
+	return "Undefined";
+}

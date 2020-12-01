@@ -125,6 +125,7 @@ namespace Utils
 
 	void Sprintf(char* dest, int size, const char* fmt, ...);
 	void VSCon_Printf(const char *msg, ...);
+	std::string StrToLower(const std::string& str);
 
 	std::wstring StringToWideString(const std::string& s);
 

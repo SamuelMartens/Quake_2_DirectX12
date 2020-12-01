@@ -11,6 +11,7 @@ Topology	 : Triangle
 
 // Resources 
 
+[Global, PerObject]
 cbuffer cbPerObject : register(b0)
 {
 	float4x4 gWorldViewProj;
@@ -30,9 +31,10 @@ struct VertexOut
 	float2 Tex : TEXCOORD;
 }
 
-
+[Global, PerObject]
 Texture2D gDiffuseMap : register(t0)
 
+[Global, PerObject]
 SamplerState gSamLinearWrap : register(s0)
 
 // Shaders

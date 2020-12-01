@@ -3,6 +3,8 @@
 #include <codecvt>
 #include <stdarg.h> 
 #include <cstddef>
+#include <algorithm>
+#include <cctype>
 
 #include "dx_app.h"
 
@@ -30,6 +32,16 @@ void Utils::VSCon_Printf(const char *msg, ...)
 	OutputDebugStringA(text);
 }
 
+
+std::string Utils::StrToLower(const std::string& str)
+{
+	std::string res = str;
+
+	std::transform(str.begin(), str.end(), res.begin(),
+		[](unsigned char c) -> unsigned char { return std::tolower(c); });
+
+	return res;
+}
 
 std::wstring Utils::StringToWideString(const std::string& s)
 {

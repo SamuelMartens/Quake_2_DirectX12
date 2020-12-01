@@ -4,6 +4,9 @@
 #include <string>
 #include <unordered_map>
 #include <filesystem>
+#include <memory>
+
+#include "dx_material.h"
 
 class MaterialCompiler
 {
@@ -29,7 +32,7 @@ public:
 	std::filesystem::path GenPathToFile(const std::string fileName) const;
 
 	void PreprocessPassFiles(const std::vector<std::string>& fileList);
-	void ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles);
+	std::shared_ptr<ParseContext> ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles);
 
 private:
 

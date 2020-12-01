@@ -3,50 +3,25 @@
 #include <string_view>
 #include <fstream>
 #include <cassert>
-#include <variant>
 #include <vector>
-#include <memory>
+#include <tuple>
+#include <d3dcompiler.h>
+
+#ifdef max
+#undef max
+#endif
+
+#ifdef min
+#undef min
+#endif
 
 #include "peglib.h"
 #include "dx_settings.h"
 #include "dx_diagnostics.h"
-#include "dx_material.h"
 #include "dx_app.h"
 
 namespace
 {
-	struct Resource_Attr
-	{
-		std::string name;
-		std::string content;
-	};
-
-	struct Resource_ConstBuff
-	{
-		std::string name;
-		std::string registerName;
-		std::string content;
-	};
-
-	struct Resource_Texture
-	{
-		std::string name;
-		std::string registerName;
-	};
-
-	struct Resource_Sampler
-	{
-		std::string name;
-		std::string registerName;
-	};
-
-	using  ResourceType_t = std::variant<Resource_Attr, Resource_ConstBuff, Resource_Texture, Resource_Sampler>;
-
-	struct PassParseContext
-	{
-		std::vector<PassSource> passSource;
-		std::vector<ResourceType_t> resources;
-	};
 
 	std::string ReadFile(const std::filesystem::path& filePath)
 	{
@@ -64,22 +39,73 @@ namespace
 		return fileContent;
 	}
 
-	D3D12_BLEND ParserBlendToD3D12Blend(const peg::SemanticValues& sv)
+	template<typename T>
+	void ValidateResource(const T& resource, PassSource::ResourceScope scope, const ParseContext& parseCtx)
 	{
-		switch (sv.choice())
+#ifdef _DEBUG
+
+		std::string_view resourceName = PassSource::_GetResourceName(resource);
+
+		switch (scope)
 		{
-		case 0:
-			return D3D12_BLEND_SRC_ALPHA;
-			break;
-		case 1:
-			return D3D12_BLEND_INV_SRC_ALPHA;
-			break;
-		default:
-			assert(false && "Invalid blend state");
+		case PassSource::ResourceScope::Local:
+		{
+			// Local resource can't collide with local resources in the same pass
+			// or with any global resource
+			const PassSource& currentPassSource = parseCtx.passSources.back();
+
+			// Check against same pass resources
+			assert(std::find_if(currentPassSource.resources.cbegin(), currentPassSource.resources.cend(),
+				[resourceName](const Resource_t& existingRes) 
+			{
+				return resourceName == PassSource::GetResourceName(existingRes);
+
+			}) == currentPassSource.resources.cend() &&
+				"Local to local resource name collision");
+
+			// Check against other globals
+			assert(std::find_if(parseCtx.resources.cbegin(), parseCtx.resources.cend(),
+				[resourceName](const Resource_t& existingRes)
+			{
+				return  resourceName == PassSource::GetResourceName(existingRes);
+
+			}) == parseCtx.resources.cend() &&
+				"Global to local resource name collision, local insertion");
+
 			break;
 		}
+		case PassSource::ResourceScope::Global:
+		{
+			// Global resource can't collide with other global resource and with any local resource
 
-		return D3D12_BLEND_ZERO;
+			for(const PassSource& currentPassSource : parseCtx.passSources)
+			{
+				// Check against same pass resources
+				assert(std::find_if(currentPassSource.resources.cbegin(), currentPassSource.resources.cend(),
+					[resourceName](const Resource_t& existingRes)
+				{
+					return resourceName == PassSource::GetResourceName(existingRes);
+
+				}) == currentPassSource.resources.cend() &&
+					"Global to local resource name collision, global insertion");
+			}
+
+			// Check against other globals
+			assert(std::find_if(parseCtx.resources.cbegin(), parseCtx.resources.cend(),
+				[resourceName](const Resource_t& existingRes)
+			{
+				return resourceName == PassSource::GetResourceName(existingRes);
+
+			}) == parseCtx.resources.cend() &&
+				"Global to global resource name collision");
+
+			break;
+		}	
+		default:
+			assert(false && "Can't validate resource. Invalid scope");
+			break;
+		}
+#endif // _DEBUG
 	}
 
 	void InitParser(peg::parser& parser) 
@@ -100,8 +126,8 @@ namespace
 		// Set up callbacks
 		parser["PassInputIdent"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			PassParseContext& passCtx = *std::any_cast<std::shared_ptr<PassParseContext>&>(ctx);
-			passCtx.passSource.back().input = static_cast<PassSource::InputType>(sv.choice());
+			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			parseCtx.passSources.back().input = static_cast<PassSource::InputType>(sv.choice());
 		};
 
 		//#DEBUG write resource validation in the end. Make sure not same resources are in
@@ -109,20 +135,20 @@ namespace
 		// --- State
 		parser["ColorTargetSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			PassParseContext& passCtx = *std::any_cast<std::shared_ptr<PassParseContext>&>(ctx);
-			passCtx.passSource.back().colorTargetName = peg::any_cast<std::string>(sv[0]);
+			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			parseCtx.passSources.back().colorTargetName = peg::any_cast<std::string>(sv[0]);
 		};
 
 		parser["DepthTargetSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			PassParseContext& passCtx = *std::any_cast<std::shared_ptr<PassParseContext>&>(ctx);
-			passCtx.passSource.back().depthTargetName = peg::any_cast<std::string>(sv[0]);
+			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			parseCtx.passSources.back().depthTargetName = peg::any_cast<std::string>(sv[0]);
 		};
 
 		parser["ViewportSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			PassParseContext& passCtx = *std::any_cast<std::shared_ptr<PassParseContext>&>(ctx);
-			PassSource& currentPass = passCtx.passSource.back();
+			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			PassSource& currentPass = parseCtx.passSources.back();
 
 			// This might be a bit buggy. I am pretty sure that camera viewport is always equal to drawing area
 			// but I might not be the case.
@@ -144,63 +170,80 @@ namespace
 
 		parser["BlendEnabledSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			PassParseContext& passCtx = *std::any_cast<std::shared_ptr<PassParseContext>&>(ctx);
-			PassSource& currentPass = passCtx.passSource.back();
+			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			PassSource& currentPass = parseCtx.passSources.back();
 
 			currentPass.psoDesc.BlendState.RenderTarget[0].BlendEnable = peg::any_cast<bool>(sv[0]);
 		};
 
 		parser["SrcBlendAlphaSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			PassParseContext& passCtx = *std::any_cast<std::shared_ptr<PassParseContext>&>(ctx);
-			PassSource& currentPass = passCtx.passSource.back();
+			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			PassSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.psoDesc.BlendState.RenderTarget[0].SrcBlendAlpha = ParserBlendToD3D12Blend(sv);
+			currentPass.psoDesc.BlendState.RenderTarget[0].SrcBlendAlpha = peg::any_cast<D3D12_BLEND>(sv[0]);
 		};
 
 		parser["DestBlendAlphaSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			PassParseContext& passCtx = *std::any_cast<std::shared_ptr<PassParseContext>&>(ctx);
-			PassSource& currentPass = passCtx.passSource.back();
+			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			PassSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.psoDesc.BlendState.RenderTarget[0].DestBlendAlpha = ParserBlendToD3D12Blend(sv);
+			currentPass.psoDesc.BlendState.RenderTarget[0].DestBlendAlpha = peg::any_cast<D3D12_BLEND>(sv[0]);
 		};
 
 		parser["TopologySt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			PassParseContext& passCtx = *std::any_cast<std::shared_ptr<PassParseContext>&>(ctx);
-			PassSource& currentPass = passCtx.passSource.back();
+			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			PassSource& currentPass = parseCtx.passSources.back();
 
-			switch (sv.choice())
-			{
-			case 0:
-				currentPass.primitiveTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-				break;
-			case 1:
-				currentPass.primitiveTopology = D3D_PRIMITIVE_TOPOLOGY_POINTLIST;
-				break;
-			default:
-				break;
-			}
+			currentPass.primitiveTopology = peg::any_cast<D3D_PRIMITIVE_TOPOLOGY>(sv[0]);
 		};
 
 		parser["DepthWriteMaskSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			PassParseContext& passCtx = *std::any_cast<std::shared_ptr<PassParseContext>&>(ctx);
-			PassSource& currentPass = passCtx.passSource.back();
+			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			PassSource& currentPass = parseCtx.passSources.back();
 
 			currentPass.psoDesc.DepthStencilState.DepthWriteMask = peg::any_cast<bool>(sv) ?
 				D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
 		};
 
-		// --- Shader code
-
-		parser["ShaderType"] = [](const peg::SemanticValues& sv)
+		parser["BlendStValues"] = [](const peg::SemanticValues& sv)
 		{
-			assert(sv.choice() < PassSource::ShaderType::SIZE && "Error during parsing shader type");
+			switch (sv.choice())
+			{
+			case 0:
+				return D3D12_BLEND_SRC_ALPHA;
+				break;
+			case 1:
+				return D3D12_BLEND_INV_SRC_ALPHA;
+				break;
+			default:
+				assert(false && "Invalid blend state");
+				break;
+			}
 
-			return static_cast<PassSource::ShaderType>(sv.choice());
+			return D3D12_BLEND_ZERO;
 		};
+
+		parser["TopologyStValues"] = [](const peg::SemanticValues& sv) 
+		{
+			switch (sv.choice())
+			{
+			case 0:
+				return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+			case 1:
+				return D3D_PRIMITIVE_TOPOLOGY_POINTLIST;
+			default:
+				assert(false && "Invalid topology state");
+				break;
+			}
+
+			return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		};
+
+		// --- Shader code
 
 		parser["ShaderExternalDecl"] = [](const peg::SemanticValues& sv)
 		{
@@ -221,53 +264,144 @@ namespace
 
 		parser["Shader"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			PassParseContext& passCtx = *std::any_cast<std::shared_ptr<PassParseContext>&>(ctx);
-			PassSource& currentPass = passCtx.passSource.back();
+			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			PassSource& currentPass = parseCtx.passSources.back();
 
 			PassSource::ShaderSource& shaderSource = currentPass.shaders.emplace_back(PassSource::ShaderSource());
 
 			shaderSource.type = peg::any_cast<PassSource::ShaderType>(sv[0]);
-			shaderSource.externalList = std::move(peg::any_cast<std::vector<std::string>>(sv[1]));
+			shaderSource.externals = std::move(peg::any_cast<std::vector<std::string>>(sv[1]));
 			shaderSource.source = std::move(peg::any_cast<std::string>(sv[2]));
 		};
 
-		// --- Resources
-		parser["Attr"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["ShaderType"] = [](const peg::SemanticValues& sv)
 		{
-			PassParseContext& passCtx = *std::any_cast<std::shared_ptr<PassParseContext>&>(ctx);
+			assert(sv.choice() < PassSource::ShaderType::SIZE && "Error during parsing shader type");
 
-			passCtx.resources.emplace_back(Resource_Attr{
-				peg::any_cast<std::string>(sv[0]),
-				peg::any_cast<std::string>(sv[1]) });
+			return static_cast<PassSource::ShaderType>(sv.choice());
 		};
 
-		parser["ConstBuff"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["ShaderTypeDecl"] = [](const peg::SemanticValues& sv)
 		{
-			PassParseContext& passCtx = *std::any_cast<std::shared_ptr<PassParseContext>&>(ctx);
+			return peg::any_cast<PassSource::ShaderType>(sv[0]);
+		};
 
-			passCtx.resources.emplace_back(Resource_ConstBuff{
+		// --- Resources
+		parser["VertAttr"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		{
+			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			//#DEBUG attributes shall be handled in stand alone manner
+			parseCtx.resources.emplace_back(Resource_VertAttr{
 				peg::any_cast<std::string>(sv[0]),
 				peg::any_cast<std::string>(sv[1]),
-				peg::any_cast<std::string>(sv[1]) });
+				sv.str()});
 		};
 
-		parser["Texture"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["Resource"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			PassParseContext& passCtx = *std::any_cast<std::shared_ptr<PassParseContext>&>(ctx);
+			//#DEBUG ignore ResourceUpdate for now. Handle Scope only. Do debug validation
+			std::tuple<PassSource::ResourceScope, PassSource::ResourceUpdate> resourceAttr =
+				peg::any_cast<std::tuple<PassSource::ResourceScope, PassSource::ResourceUpdate>>(sv[0]);
 
-			passCtx.resources.emplace_back(Resource_Texture{
+			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			PassSource& currentPass = parseCtx.passSources.back();
+
+			switch (std::get<PassSource::ResourceScope>(resourceAttr))
+			{
+			case PassSource::ResourceScope::Local:
+			{
+				if (sv[1].type() == typeid(Resource_ConstBuff))
+				{
+					ValidateResource(std::any_cast<Resource_ConstBuff>(sv[1]), PassSource::ResourceScope::Local, parseCtx);
+					currentPass.resources.emplace_back(std::any_cast<Resource_ConstBuff>(sv[1]));
+				}
+				else if (sv[1].type() == typeid(Resource_Texture))
+				{
+					ValidateResource(std::any_cast<Resource_Texture>(sv[1]), PassSource::ResourceScope::Local, parseCtx);
+					currentPass.resources.emplace_back(std::any_cast<Resource_Texture>(sv[1]));
+				}
+				else if (sv[1].type() == typeid(Resource_Sampler))
+				{
+					ValidateResource(std::any_cast<Resource_Sampler>(sv[1]), PassSource::ResourceScope::Local, parseCtx);
+					currentPass.resources.emplace_back(std::any_cast<Resource_Sampler>(sv[1]));
+				}
+				else
+				{
+					assert(false && "Resource callback invalid type");
+				}
+				break;
+			}
+			case PassSource::ResourceScope::Global:
+			{
+				if (sv[1].type() == typeid(Resource_ConstBuff))
+				{
+					ValidateResource(std::any_cast<Resource_ConstBuff>(sv[1]), PassSource::ResourceScope::Global, parseCtx);
+					parseCtx.resources.emplace_back(std::any_cast<Resource_ConstBuff>(sv[1]));
+				}
+				else if (sv[1].type() == typeid(Resource_Texture))
+				{
+					ValidateResource(std::any_cast<Resource_Texture>(sv[1]), PassSource::ResourceScope::Global, parseCtx);
+					parseCtx.resources.emplace_back(std::any_cast<Resource_Texture>(sv[1]));
+				}
+				else if (sv[1].type() == typeid(Resource_Sampler))
+				{
+					ValidateResource(std::any_cast<Resource_Sampler>(sv[1]), PassSource::ResourceScope::Global, parseCtx);
+					parseCtx.resources.emplace_back(std::any_cast<Resource_Sampler>(sv[1]));
+				}
+				else
+				{
+					assert(false && "Resource callback invalid type");
+				}
+				break;
+			}
+			default:
+				assert(false && "Resource callback undefined resource scope type");
+				break;
+			}
+
+		};
+
+		parser["ConstBuff"] = [](const peg::SemanticValues& sv)
+		{
+			return Resource_ConstBuff{
 				peg::any_cast<std::string>(sv[0]),
-				peg::any_cast<std::string>(sv[1]) });
+				peg::any_cast<std::string>(sv[1]),
+				peg::any_cast<std::string>(sv[2]),
+				sv.str()};
+		};
+
+		parser["Texture"] = [](const peg::SemanticValues& sv)
+		{
+			return Resource_Texture{
+				peg::any_cast<std::string>(sv[0]),
+				peg::any_cast<std::string>(sv[1]),
+				sv.str()};
 		};
 
 
-		parser["Sampler"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["Sampler"] = [](const peg::SemanticValues& sv)
 		{
-			PassParseContext& passCtx = *std::any_cast<std::shared_ptr<PassParseContext>&>(ctx);
-
-			passCtx.resources.emplace_back(Resource_Sampler{
+			return Resource_Sampler{
 				peg::any_cast<std::string>(sv[0]),
-				peg::any_cast<std::string>(sv[1]) });
+				peg::any_cast<std::string>(sv[1]),
+				sv.str()};
+		};
+
+		parser["ResourceAttr"] = [](const peg::SemanticValues& sv)
+		{
+			return std::make_tuple(
+				peg::any_cast<PassSource::ResourceScope>(sv[0]),
+				peg::any_cast<PassSource::ResourceUpdate>(sv[1]));
+		};
+
+		parser["ResourceScope"] = [](const peg::SemanticValues& sv)
+		{
+			return static_cast<PassSource::ResourceScope>(sv.choice());
+		};
+
+		parser["ResourceUpdate"] = [](const peg::SemanticValues& sv)
+		{
+			return static_cast<PassSource::ResourceUpdate>(sv.choice());
 		};
 
 		// --- Tokens
@@ -302,6 +436,91 @@ namespace
 			return stoi(sv.token());
 		};
 	};
+
+	using PassCompiledShaders_t = std::vector<std::pair<PassSource::ShaderType, ComPtr<ID3DBlob>>>;
+
+	std::unordered_map<std::string, PassCompiledShaders_t> CompileShaders(ParseContext& ctx)
+	{
+		std::unordered_map<std::string, PassCompiledShaders_t> compiledShaders;
+
+		for (PassSource& pass : ctx.passSources)
+		{
+
+			PassCompiledShaders_t passCompiledShaders;
+			
+			for (PassSource::ShaderSource& shader : pass.shaders)
+			{
+				std::string resToInclude;
+
+				for (std::string& externalRes : shader.externals)
+				{
+					// Find resource and stub it into shader source
+					
+					// Search in local first
+					const auto localResIt = std::find_if(pass.resources.cbegin(), pass.resources.cend(), 
+						[externalRes](const Resource_t& currRes)
+					{
+						return externalRes == PassSource::GetResourceName(currRes);
+					});
+
+
+					if (localResIt != pass.resources.cend())
+					{
+						resToInclude += PassSource::GetResourceRawView(*localResIt);
+						resToInclude += ";";
+					}
+					else
+					{
+						// Search in global scope
+						const auto globalResIt = std::find_if(ctx.resources.cbegin(), ctx.resources.cend(),
+							[externalRes](const Resource_t& currRes)
+						{
+							return externalRes == PassSource::GetResourceName(currRes);
+						});
+
+						assert(globalResIt != ctx.resources.cend() && "External resource can't be found");
+
+						resToInclude += PassSource::GetResourceRawView(*globalResIt);
+						resToInclude += ";";
+					}
+				}
+
+				shader.source = resToInclude + shader.source;
+
+				// Got final shader source, now compile
+				ComPtr<ID3DBlob>& shaderBlob = passCompiledShaders.emplace_back(std::make_pair(shader.type, ComPtr<ID3DBlob>())).second;
+				ComPtr<ID3DBlob> errors;
+
+				const std::string strShaderType = PassSource::ShaderTypeToStr(shader.type);
+
+				HRESULT hr = D3DCompile(
+					shader.source.c_str(),
+					shader.source.size(),
+					(pass.name + strShaderType).c_str(),
+					nullptr,
+					nullptr,
+					"main",
+					(Utils::StrToLower(strShaderType) + "_5_1").c_str(),
+					Settings::SHADER_COMPILATION_FLAGS,
+					0,
+					&shaderBlob,
+					&errors
+				);
+
+				if (errors != nullptr)
+				{
+					Logs::Logf(Logs::Category::Parser, "Shader compilation error: %s", 
+						reinterpret_cast<char*>(errors->GetBufferPointer()));
+				}
+
+				ThrowIfFailed(hr);
+			}
+
+			compiledShaders[pass.name] = std::move(passCompiledShaders);
+		}
+
+		return compiledShaders;
+	}
 }
 
 
@@ -325,7 +544,9 @@ MaterialCompiler& MaterialCompiler::Inst()
 
 void MaterialCompiler::GenerateMaterial()
 {
-	ParsePassFiles(LoadPassFiles());
+	std::shared_ptr<ParseContext> parseCtx = ParsePassFiles(LoadPassFiles());
+
+	CompileShaders(*parseCtx);
 }
 
 std::unordered_map<std::string, std::string> MaterialCompiler::LoadPassFiles()
@@ -354,27 +575,33 @@ void MaterialCompiler::PreprocessPassFiles(const std::vector<std::string>& fileL
 	//#DEBUG going to make it work without preprocess first. And the add preprocessing
 }
 
-void MaterialCompiler::ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles)
+//#DEBUG not sure returning context is fine
+std::shared_ptr<ParseContext> MaterialCompiler::ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles)
 {
 	peg::parser parser;
 	InitParser(parser);
 
-	// Do actual parsing
-	std::shared_ptr<PassParseContext> context = std::make_shared<PassParseContext>();
+	std::shared_ptr<ParseContext> context = std::make_shared<ParseContext>();
 
 	for (const auto& passFile : passFiles)
 	{
-		context->passSource.emplace_back(PassSource()).name = passFile.first.substr(0, passFile.first.rfind('.'));
+		//#DEBUG
+		std::string passName = passFile.first.substr(0, passFile.first.rfind('.'));
+
+		if (passName != "UI")
+		{
+			continue;
+		}
+		//END
+
+		context->passSources.emplace_back(PassSource()).name = passFile.first.substr(0, passFile.first.rfind('.'));
 
 		peg::any ctx = context;
 
 		parser.parse(passFile.second.c_str(), ctx);
-
-		//#DEBUG
-		int i = 0;
-		++i;
-		//END
 	}
+
+	return context;
 }
 
 std::filesystem::path MaterialCompiler::GenPathToFile(const std::string fileName) const

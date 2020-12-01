@@ -2,6 +2,7 @@
 
 #include <dxgi.h>
 #include <string>
+#include <d3dcompiler.h>
 
 namespace Settings
 {
@@ -42,4 +43,10 @@ namespace Settings
 	extern const std::string	 MATERIAL_DIR;
 	extern const std::string	 MATERIAL_PASS_FILE_EXT;
 	extern const std::string	 MATERIAL_FILE_EXT;
+
+#ifdef _DEBUG
+	constexpr static UINT		SHADER_COMPILATION_FLAGS = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+	constexpr static UINT		SHADER_COMPILATION_FLAGS = 0;
+#endif
 }

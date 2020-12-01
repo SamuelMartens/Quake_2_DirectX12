@@ -1,18 +1,19 @@
 Pass <- PassInput State Resources ShaderList
 
-Resources   <- T( < ( Attr / ConstBuff / Texture / Sampler)* > )
+Resources   <- T( < (Resource / VertAttr)* > )
 State       <- T( < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendAlphaSt / SrcDestAlphaSt )* > )
 ShaderList  <- T( < Shader* > )
 
 # --- Pass properties
 PassInput       <- T( 'PassInput' _ ':' < PassInputIdent (Comma PassInputIdent)* > )
-PassInputIdent  <- T( < 'Static' / 'Dynamic' / 'Particles' / 'UI' / 'PostProcess' > )
+PassInputIdent  <- _ 'Static' _ / _ 'Dynamic' _ / _ 'Particles' _ / _ 'UI' _ / _ 'PostProcess' _
 
 # --- Shader code ---
-ShaderType          <- T( 'Type' _ ':' _ < 'VS' / 'GS' / 'PS' > ) 
 ShaderExternalDecl  <- T( 'External'_ ':' < Ident? ( Comma Ident )* > )
 ShaderSource        <- T( '<[' < ( !"]>"  . )* > ']>' ) 
-Shader              <- T( < ShaderType ShaderExternalDecl ShaderSource > )
+Shader              <- T( < ShaderTypeDecl ShaderExternalDecl ShaderSource > )
+ShaderTypeDecl      <- T( 'Type' _ ':' _ < ShaderType > ) 
+ShaderType			<- _'VS' _ / _ 'GS' _ / _ 'PS' _
 
 # --- State ---
 ColorTargetSt   	<- T( 'ColorTarget' _ ':' < Ident > )
@@ -21,16 +22,22 @@ ViewportSt      	<- T( 'Viewport' _ ':' < (Float / Int) (Comma (Float / Int)){3}
 BlendEnabledSt  	<- T( 'BlendEnabled' _ ':' < Bool > )
 SrcBlendAlphaSt		<- T( 'SrcBlendAlpha' _ ':' < BlendStValues > )
 SrcDestAlphaSt		<- T( 'DestBlendAlpha' _ ':' < BlendStValues > )
-TopologySt			<- T( 'Topology' _ ':' < _ ( 'Triangle' / 'Point' ) _ > )
+TopologySt			<- T( 'Topology' _ ':' < TopologyStValues > )
 DepthWriteMaskSt	<- T( 'DepthWriteMask' _ ':' < Bool > )
 
-BlendStValues		<- T( < ( 'SrcAlpha' / 'InvSrcAlpha' ) > )
+BlendStValues		<- _ 'SrcAlpha' _ / _ 'InvSrcAlpha' _
+TopologyStValues    <- _ 'Triangle' _ / _ 'Point' _
 
 # --- Resources ---
-Attr        <- T( 'struct' < Ident '{' ResourceContent '}' > )
-ConstBuff   <- T( 'cbuffer' < Ident ':' RegisterIdent  '{' ResourceContent '}' > )
-Texture     <- T( 'Texture2D' < Ident ':' RegisterIdent > )
-Sampler     <- T( 'SamplerState' < Ident ':' RegisterIdent > )
+VertAttr            <- T( 'struct' < Ident '{' ResourceContent '}' > )
+Resource            <- T(  ResourceAttr ( ConstBuff / Texture / Sampler) )
+ConstBuff           <- T( 'cbuffer' < Ident ':' RegisterIdent  '{' ResourceContent '}' > )
+Texture             <- T( 'Texture2D' < Ident ':' RegisterIdent > )
+Sampler             <- T( 'SamplerState' < Ident ':' RegisterIdent > )
+ResourceAttr        <- T( '[' < ResourceScope ',' ResourceUpdate > ']' )
+ResourceScope       <- _ 'Global' _ / _ 'Local' _
+ResourceUpdate      <- _ 'PerObject' _ / _ 'PerPass' _ / _ 'PerFrame' _ / _ 'OnInit' _
+
 
 # --- Tokens ---
 Ident 	        <- T( < [a-zA-Z_][a-zA-Z0-9_]* > )
@@ -46,7 +53,7 @@ ResourceContent <- [^}]*
 
 
 # --- Types ---
-Bool   <- T( < 'true' / 'false'> )
+Bool   <- _ 'true' _ / _ 'false' _
 Float  <- T( < [0-9][0-9]* '.' [0-9][0-9]* > )
 Int    <- T( < [0-9][0-9]* > )
 
