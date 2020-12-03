@@ -6,6 +6,9 @@
 #include <vector>
 #include <tuple>
 #include <d3dcompiler.h>
+//#DEBUG
+#include <any>
+//END
 
 #ifdef max
 #undef max
@@ -15,7 +18,8 @@
 #undef min
 #endif
 
-#include "peglib.h"
+#include "Lib/crc32.h"
+#include "Lib/peglib.h"
 #include "dx_settings.h"
 #include "dx_diagnostics.h"
 #include "dx_app.h"
@@ -128,6 +132,18 @@ namespace
 		{
 			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
 			parseCtx.passSources.back().input = static_cast<PassSource::InputType>(sv.choice());
+		};
+
+		parser["PassVertAttr"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		{
+			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			parseCtx.passSources.back().vertAttr = peg::any_cast<std::string>(sv[0]);
+		};
+
+		parser["PassVertAttrSlots"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		{
+			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			parseCtx.passSources.back().vertAttrSlots = std::move(std::any_cast<std::vector<std::tuple<unsigned int, int>>>(sv[0]));
 		};
 
 		//#DEBUG write resource validation in the end. Make sure not same resources are in
@@ -290,11 +306,12 @@ namespace
 		parser["VertAttr"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
 			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
-			//#DEBUG attributes shall be handled in stand alone manner
+			
 			parseCtx.resources.emplace_back(Resource_VertAttr{
 				peg::any_cast<std::string>(sv[0]),
-				peg::any_cast<std::string>(sv[1]),
-				sv.str()});
+				std::move(peg::any_cast<std::vector<VertAttrField>>(sv[1])),
+				sv.str()
+				});
 		};
 
 		parser["Resource"] = [](const peg::SemanticValues& sv, peg::any& ctx)
@@ -404,6 +421,59 @@ namespace
 			return static_cast<PassSource::ResourceUpdate>(sv.choice());
 		};
 
+		parser["VertAttrContent"] = [](const peg::SemanticValues& sv)
+		{
+			std::vector<VertAttrField> content;
+
+			std::transform(sv.begin(), sv.end(), std::back_inserter(content),
+				[](const peg::any& field) { return std::any_cast<VertAttrField>(field); });
+
+			return content;
+		};
+
+		parser["VertAttrField"] = [](const peg::SemanticValues& sv) 
+		{
+			std::string name = peg::any_cast<std::string>(sv[1]);
+			std::tuple<std::string, unsigned int> semanticInfo = 
+				peg::any_cast<std::tuple<std::string, unsigned int>>(sv[2]);
+
+			return VertAttrField{
+				peg::any_cast<ParseDataType>(sv[0]),
+				HASH(name.c_str()),
+				std::get<std::string>(semanticInfo),
+				std::get<unsigned int>(semanticInfo),
+				std::move(name)
+			};
+		};
+
+		parser["VertAttrFieldSlot"] = [](const peg::SemanticValues& sv) 
+		{
+			std::vector<std::tuple<unsigned int, int>> result;
+
+			for (int i = 0; i < sv.size(); i += 2)
+			{
+				result.push_back(peg::any_cast<std::tuple<unsigned int, int>>(sv[i]));
+			}
+
+			return result;
+		};
+
+		parser["VertAttrFieldSlot"] = [](const peg::SemanticValues& sv) 
+		{
+			return std::make_tuple(HASH(peg::any_cast<std::string>(sv[0]).c_str()), peg::any_cast<int>(sv[1]));
+		};
+
+		parser["ResourceFieldType"] = [](const peg::SemanticValues& sv)
+		{
+			return static_cast<ParseDataType>(sv.choice());
+		};
+
+		parser["ResourceFieldSemantic"] = [](const peg::SemanticValues& sv)
+		{
+			return std::make_tuple(peg::any_cast<std::string>(sv[0]), 
+				sv.size() > 1 ? static_cast<unsigned int>(peg::any_cast<int>(sv[1])) : 0);
+		};
+
 		// --- Tokens
 		parser["Ident"] = [](const peg::SemanticValues& sv)
 		{
@@ -434,6 +504,11 @@ namespace
 		parser["Int"] = [](const peg::SemanticValues& sv)
 		{
 			return stoi(sv.token());
+		};
+
+		parser["Word"] = [](const peg::SemanticValues& sv)
+		{
+			return sv.token();
 		};
 	};
 
@@ -547,6 +622,13 @@ void MaterialCompiler::GenerateMaterial()
 	std::shared_ptr<ParseContext> parseCtx = ParsePassFiles(LoadPassFiles());
 
 	CompileShaders(*parseCtx);
+
+	//#DEBUG
+	for (const PassSource& passSource : parseCtx->passSources)
+	{
+		GenerateInputLayout(passSource, parseCtx->resources);
+	}
+	//END
 }
 
 std::unordered_map<std::string, std::string> MaterialCompiler::LoadPassFiles()
@@ -602,6 +684,69 @@ std::shared_ptr<ParseContext> MaterialCompiler::ParsePassFiles(const std::unorde
 	}
 
 	return context;
+}
+
+std::vector<D3D12_INPUT_ELEMENT_DESC> MaterialCompiler::GenerateInputLayout(const PassSource& pass, const std::vector<Resource_t>& globalRes) const
+{
+
+	const std::string& inputName = pass.vertAttr;
+
+	const Resource_VertAttr* inputRes = nullptr;
+
+	// Find vert attr resource
+	const auto localResIt = std::find_if(pass.resources.cbegin(), pass.resources.cend(), 
+		[inputName](const Resource_t& r) { return inputName == PassSource::GetResourceName(r); });
+
+	if (localResIt == pass.resources.cend())
+	{
+		const auto globalResIt = std::find_if(globalRes.cbegin(), globalRes.cend(),
+			[inputName](const Resource_t& r) { return inputName == PassSource::GetResourceName(r); });
+
+		assert(globalResIt != globalRes.cend() && "Pass input resource is not found");
+
+		inputRes = &std::get<Resource_VertAttr>(*globalResIt);
+	}
+	else
+	{
+		inputRes = &std::get<Resource_VertAttr>(*localResIt);
+	}
+
+	assert((pass.vertAttrSlots.empty() || pass.vertAttrSlots.size() == inputRes->content.size())
+		&& "Invalid vert attr slots num, for input layout generation");
+
+	std::array<unsigned int, 16> inputSlotOffset;
+	std::fill(inputSlotOffset.begin(), inputSlotOffset.end(), 0);
+
+	std::vector<D3D12_INPUT_ELEMENT_DESC> inputLayout;
+
+	
+	for (int i = 0; i < inputRes->content.size(); ++i)
+	{
+		const VertAttrField& field = inputRes->content[i];
+
+		const auto inputSlotIt = std::find_if(pass.vertAttrSlots.cbegin(), pass.vertAttrSlots.cend(),
+			[field](const std::tuple<unsigned int, int>& slot) 
+		{
+			return	field.hashedName == std::get<0>(slot);
+		});
+
+		const int inputSlot = inputSlotIt == pass.vertAttrSlots.cend() ? 0 : std::get<1>(*inputSlotIt);
+
+		inputLayout.push_back(
+			{
+				field.semanticName.c_str(),
+				field.semanticIndex,
+				GetParseDataTypeDXGIFormat(field.type),
+				static_cast<unsigned>(inputSlot),
+				inputSlotOffset[inputSlot],
+				D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+				0U
+			});
+
+		inputSlotOffset[inputSlot] += GetParseDataTypeSize(field.type);
+	}
+
+	return inputLayout;
 }
 
 std::filesystem::path MaterialCompiler::GenPathToFile(const std::string fileName) const

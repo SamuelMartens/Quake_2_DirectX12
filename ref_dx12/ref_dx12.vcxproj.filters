@@ -16,12 +16,12 @@
     <Filter Include="Shaders">
       <UniqueIdentifier>{b160e90b-a57c-4504-8304-cf6237080178}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\Lib">
+      <UniqueIdentifier>{48b60800-17fd-47b8-bc00-b2a3de1a9368}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\qcommon\qcommon.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\game\q_shared.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="dx_app.h">
@@ -99,8 +99,11 @@
     <ClInclude Include="dx_materialcompiler.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="peglib.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Lib\peglib.h">
+      <Filter>Header Files\Lib</Filter>
+    </ClInclude>
+    <ClInclude Include="Lib\crc32.h">
+      <Filter>Header Files\Lib</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

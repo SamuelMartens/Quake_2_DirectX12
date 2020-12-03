@@ -1,12 +1,15 @@
-Pass <- PassInput State Resources ShaderList
+Pass <- PassProps State Resources ShaderList
 
 Resources   <- T( < (Resource / VertAttr)* > )
 State       <- T( < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendAlphaSt / SrcDestAlphaSt )* > )
 ShaderList  <- T( < Shader* > )
 
 # --- Pass properties
-PassInput       <- T( 'PassInput' _ ':' < PassInputIdent (Comma PassInputIdent)* > )
-PassInputIdent  <- _ 'Static' _ / _ 'Dynamic' _ / _ 'Particles' _ / _ 'UI' _ / _ 'PostProcess' _
+PassProps           <- T( PassInput PassVertAttr PassVertAttrSlots? )
+PassInput           <- T( 'PassInput' _ ':' < PassInputIdent (Comma PassInputIdent)* > )
+PassInputIdent      <- _ 'Static' _ / _ 'Dynamic' _ / _ 'Particles' _ / _ 'UI' _ / _ 'PostProcess' _
+PassVertAttr        <- T( 'PassVertAttr' _ ':' Ident )
+PassVertAttrSlots   <- T( 'PassSlotLayout' _ ':' VertAttrSlots )
 
 # --- Shader code ---
 ShaderExternalDecl  <- T( 'External'_ ':' < Ident? ( Comma Ident )* > )
@@ -29,7 +32,7 @@ BlendStValues		<- _ 'SrcAlpha' _ / _ 'InvSrcAlpha' _
 TopologyStValues    <- _ 'Triangle' _ / _ 'Point' _
 
 # --- Resources ---
-VertAttr            <- T( 'struct' < Ident '{' ResourceContent '}' > )
+VertAttr            <- T(  'struct' < Ident '{' VertAttrContent '}' > )
 Resource            <- T(  ResourceAttr ( ConstBuff / Texture / Sampler) )
 ConstBuff           <- T( 'cbuffer' < Ident ':' RegisterIdent  '{' ResourceContent '}' > )
 Texture             <- T( 'Texture2D' < Ident ':' RegisterIdent > )
@@ -38,6 +41,13 @@ ResourceAttr        <- T( '[' < ResourceScope ',' ResourceUpdate > ']' )
 ResourceScope       <- _ 'Global' _ / _ 'Local' _
 ResourceUpdate      <- _ 'PerObject' _ / _ 'PerPass' _ / _ 'PerFrame' _ / _ 'OnInit' _
 
+VertAttrContent     <- T( VertAttrField* ) 
+VertAttrField       <- T( ResourceFieldType Ident ':' ResourceFieldSemantic ';' )
+VertAttrSlots       <- T( '[' VertAttrFieldSlot? ( Comma VertAttrFieldSlot )* ']' )
+VertAttrFieldSlot   <- T( Ident ':' Int )
+
+ResourceFieldType       <- _ 'float4x4' _ / _ 'float4' _ / _ 'float2' _ / _ 'int' _
+ResourceFieldSemantic   <- T( Word Int? )
 
 # --- Tokens ---
 Ident 	        <- T( < [a-zA-Z_][a-zA-Z0-9_]* > )
@@ -53,9 +63,10 @@ ResourceContent <- [^}]*
 
 
 # --- Types ---
-Bool   <- _ 'true' _ / _ 'false' _
-Float  <- T( < [0-9][0-9]* '.' [0-9][0-9]* > )
-Int    <- T( < [0-9][0-9]* > )
+Bool    <- _ 'true' _ / _ 'false' _
+Float   <- T( < [0-9][0-9]* '.' [0-9][0-9]* > )
+Int     <- T( < [0-9][0-9]* > )
+Word    <- T( < [a-zA-Z_][a-zA-Z_]* > )
 
 # --- Punctuation ---
 Comma <- _ ',' _

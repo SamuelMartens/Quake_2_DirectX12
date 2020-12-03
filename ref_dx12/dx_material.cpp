@@ -221,3 +221,45 @@ std::string PassSource::ShaderTypeToStr(ShaderType& type)
 
 	return "Undefined";
 }
+
+unsigned int GetParseDataTypeSize(ParseDataType type)
+{
+	switch (type)
+	{
+	case ParseDataType::Float4x4:
+		return sizeof(XMFLOAT4X4);
+	case ParseDataType::Float4:
+		return sizeof(XMFLOAT4);
+	case ParseDataType::Float2:
+		return sizeof(XMFLOAT2);
+	case ParseDataType::Int:
+		return sizeof(int32_t);
+	default:
+		assert(false && "Can't get parse data type size, invalid type");
+		break;
+	}
+
+	return 0;
+}
+
+DXGI_FORMAT GetParseDataTypeDXGIFormat(ParseDataType type)
+{
+	switch (type)
+	{
+	case ParseDataType::Float4x4:
+		assert(false && "Parse data type, can't use Float4x4 for DXGI format");
+		return DXGI_FORMAT_R32G32B32A32_FLOAT;
+	case ParseDataType::Float4:
+		return DXGI_FORMAT_R32G32B32A32_FLOAT;
+	case ParseDataType::Float2:
+		return DXGI_FORMAT_R32G32_FLOAT;
+	case ParseDataType::Int:
+		assert(false && "Parse data type, can't use Int for DXGI format");
+		return DXGI_FORMAT_R32G32B32A32_FLOAT;
+	default:
+		assert(false && "Parse data type, unknown type");
+		break;
+	}
+
+	return DXGI_FORMAT_R32G32B32A32_FLOAT;
+}

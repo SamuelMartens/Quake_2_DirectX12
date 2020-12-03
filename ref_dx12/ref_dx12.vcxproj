@@ -19,7 +19,6 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\game\q_shared.h" />
     <ClInclude Include="..\qcommon\qcommon.h" />
     <ClInclude Include="..\qcommon\qfiles.h" />
     <ClInclude Include="..\win32\winquake.h" />
@@ -46,7 +45,8 @@
     <ClInclude Include="dx_texture.h" />
     <ClInclude Include="dx_threadingutils.h" />
     <ClInclude Include="dx_utils.h" />
-    <ClInclude Include="peglib.h" />
+    <ClInclude Include="Lib\crc32.h" />
+    <ClInclude Include="Lib\peglib.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

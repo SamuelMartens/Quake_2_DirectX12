@@ -1,5 +1,6 @@
 // Input geometry type
 PassInput : UI
+PassVertAttr: VertexIn
 
 // State
 

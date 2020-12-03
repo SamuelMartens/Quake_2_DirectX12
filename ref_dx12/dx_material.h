@@ -82,10 +82,33 @@ public:
 
 //#DEBUG find proper place for this
 //#DEBUG in all resource it should really be "rawView" and the rest of stuff is maintained by "string_view"
+
+enum class ParseDataType
+{
+	Float4x4,
+	Float4,
+	Float2,
+	Int
+};
+
+unsigned int GetParseDataTypeSize(ParseDataType type);
+DXGI_FORMAT GetParseDataTypeDXGIFormat(ParseDataType type);
+
+struct VertAttrField
+{
+	ParseDataType type = ParseDataType::Float4;
+	unsigned int hashedName = 0;
+	std::string semanticName;
+	unsigned int semanticIndex = 0;
+	// Need this for debug
+	std::string name;
+};
+//#DEBUG not sure if rawView is really needed. 
+// SFINAE can help solve problem if I don't need it for some members
 struct Resource_VertAttr
 {
 	std::string name;
-	std::string content;
+	std::vector<VertAttrField> content;
 	std::string rawView;
 };
 
@@ -211,6 +234,8 @@ public:
 	InputType input = InputType::Undefined;
 
 	std::vector<Resource_t> resources;
+	std::string vertAttr;
+	std::vector<std::tuple<unsigned int, int>> vertAttrSlots;
 };
 
 //#DEBUG findt proper place for this as well
