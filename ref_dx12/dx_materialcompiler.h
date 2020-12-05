@@ -34,7 +34,7 @@ public:
 	void PreprocessPassFiles(const std::vector<std::string>& fileList);
 	std::shared_ptr<ParseContext> ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles);
 
-	std::vector<D3D12_INPUT_ELEMENT_DESC> GenerateInputLayout(const PassSource& pass, const std::vector<Resource_t>& globalRes) const;
+	std::vector<D3D12_INPUT_ELEMENT_DESC> GenerateInputLayout(const PassSource& pass) const;
 
 private:
 

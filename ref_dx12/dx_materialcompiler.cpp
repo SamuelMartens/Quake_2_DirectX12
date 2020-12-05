@@ -137,7 +137,7 @@ namespace
 		parser["PassVertAttr"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
 			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
-			parseCtx.passSources.back().vertAttr = peg::any_cast<std::string>(sv[0]);
+			parseCtx.passSources.back().inputVertAttr = peg::any_cast<std::string>(sv[0]);
 		};
 
 		parser["PassVertAttrSlots"] = [](const peg::SemanticValues& sv, peg::any& ctx)
@@ -145,8 +145,6 @@ namespace
 			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
 			parseCtx.passSources.back().vertAttrSlots = std::move(std::any_cast<std::vector<std::tuple<unsigned int, int>>>(sv[0]));
 		};
-
-		//#DEBUG write resource validation in the end. Make sure not same resources are in
 
 		// --- State
 		parser["ColorTargetSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
@@ -259,6 +257,20 @@ namespace
 			return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		};
 
+		// --- Root Signatures
+
+		parser["RSig"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		{
+			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			std::string& rootSig = parseCtx.passSources.back().rootSignature;
+			
+			rootSig = sv.token(); 
+			// Later root signature is inserted into shader source code. It must be in one line
+			// otherwise shader wouldn't compile
+			rootSig.erase(std::remove(rootSig.begin(), rootSig.end(), '\n'), rootSig.end());
+			
+		};
+
 		// --- Shader code
 
 		parser["ShaderExternalDecl"] = [](const peg::SemanticValues& sv)
@@ -307,7 +319,7 @@ namespace
 		{
 			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
 			
-			parseCtx.resources.emplace_back(Resource_VertAttr{
+			parseCtx.passSources.back().vertAttr.emplace_back(Resource_VertAttr{
 				peg::any_cast<std::string>(sv[0]),
 				std::move(peg::any_cast<std::vector<VertAttrField>>(sv[1])),
 				sv.str()
@@ -480,9 +492,14 @@ namespace
 			return sv.token();
 		};
 
-		parser["RegisterIdent"] = [](const peg::SemanticValues& sv)
+		parser["RegisterDecl"] = [](const peg::SemanticValues& sv)
 		{
-			return sv.token();
+			return peg::any_cast<std::string>(sv[0]);
+		};
+
+		parser["RegisterId"] = [](const peg::SemanticValues& sv) 
+		{
+			return sv.str();
 		};
 
 		parser["ResourceContent"] = [](const peg::SemanticValues& sv)
@@ -527,17 +544,17 @@ namespace
 			{
 				std::string resToInclude;
 
+				// Add External Resources
 				for (std::string& externalRes : shader.externals)
 				{
 					// Find resource and stub it into shader source
 					
-					// Search in local first
+					// Search in local scope first
 					const auto localResIt = std::find_if(pass.resources.cbegin(), pass.resources.cend(), 
 						[externalRes](const Resource_t& currRes)
 					{
 						return externalRes == PassSource::GetResourceName(currRes);
 					});
-
 
 					if (localResIt != pass.resources.cend())
 					{
@@ -553,14 +570,32 @@ namespace
 							return externalRes == PassSource::GetResourceName(currRes);
 						});
 
-						assert(globalResIt != ctx.resources.cend() && "External resource can't be found");
+						if (globalResIt != ctx.resources.cend())
+						{
+							resToInclude += PassSource::GetResourceRawView(*globalResIt);
+							resToInclude += ";";
+						}
+						else
+						{
+							// Finally try vert attributes
+							const auto vertAttrIt = std::find_if(pass.vertAttr.cbegin(), pass.vertAttr.cend(),
+								[externalRes](const Resource_VertAttr& currVert)
+							{
+								return externalRes == currVert.name;
+							});
 
-						resToInclude += PassSource::GetResourceRawView(*globalResIt);
-						resToInclude += ";";
+							assert(vertAttrIt != pass.vertAttr.cend() && "External resource can't be found");
+
+							resToInclude += vertAttrIt->rawView;
+							resToInclude += ";";
+						}
 					}
 				}
 
-				shader.source = resToInclude + shader.source;
+				shader.source = 
+					resToInclude + 
+					"[RootSignature( \" " + pass.rootSignature + " \" )]" +
+					shader.source;
 
 				// Got final shader source, now compile
 				ComPtr<ID3DBlob>& shaderBlob = passCompiledShaders.emplace_back(std::make_pair(shader.type, ComPtr<ID3DBlob>())).second;
@@ -626,7 +661,7 @@ void MaterialCompiler::GenerateMaterial()
 	//#DEBUG
 	for (const PassSource& passSource : parseCtx->passSources)
 	{
-		GenerateInputLayout(passSource, parseCtx->resources);
+		GenerateInputLayout(passSource);
 	}
 	//END
 }
@@ -686,32 +721,17 @@ std::shared_ptr<ParseContext> MaterialCompiler::ParsePassFiles(const std::unorde
 	return context;
 }
 
-std::vector<D3D12_INPUT_ELEMENT_DESC> MaterialCompiler::GenerateInputLayout(const PassSource& pass, const std::vector<Resource_t>& globalRes) const
+std::vector<D3D12_INPUT_ELEMENT_DESC> MaterialCompiler::GenerateInputLayout(const PassSource& pass) const
 {
 
-	const std::string& inputName = pass.vertAttr;
+	const std::string& inputName = pass.inputVertAttr;
 
-	const Resource_VertAttr* inputRes = nullptr;
+	const auto attrIt = std::find_if(pass.vertAttr.cbegin(), pass.vertAttr.cend(),
+		[inputName](const Resource_VertAttr& attr) { return inputName == attr.name; });
 
-	// Find vert attr resource
-	const auto localResIt = std::find_if(pass.resources.cbegin(), pass.resources.cend(), 
-		[inputName](const Resource_t& r) { return inputName == PassSource::GetResourceName(r); });
+	assert(attrIt != pass.vertAttr.cend() && "Can't find input vert attribute");
 
-	if (localResIt == pass.resources.cend())
-	{
-		const auto globalResIt = std::find_if(globalRes.cbegin(), globalRes.cend(),
-			[inputName](const Resource_t& r) { return inputName == PassSource::GetResourceName(r); });
-
-		assert(globalResIt != globalRes.cend() && "Pass input resource is not found");
-
-		inputRes = &std::get<Resource_VertAttr>(*globalResIt);
-	}
-	else
-	{
-		inputRes = &std::get<Resource_VertAttr>(*localResIt);
-	}
-
-	assert((pass.vertAttrSlots.empty() || pass.vertAttrSlots.size() == inputRes->content.size())
+	assert((pass.vertAttrSlots.empty() || pass.vertAttrSlots.size() == attrIt->content.size())
 		&& "Invalid vert attr slots num, for input layout generation");
 
 	std::array<unsigned int, 16> inputSlotOffset;
@@ -720,9 +740,9 @@ std::vector<D3D12_INPUT_ELEMENT_DESC> MaterialCompiler::GenerateInputLayout(cons
 	std::vector<D3D12_INPUT_ELEMENT_DESC> inputLayout;
 
 	
-	for (int i = 0; i < inputRes->content.size(); ++i)
+	for (int i = 0; i < attrIt->content.size(); ++i)
 	{
-		const VertAttrField& field = inputRes->content[i];
+		const VertAttrField& field = attrIt->content[i];
 
 		const auto inputSlotIt = std::find_if(pass.vertAttrSlots.cbegin(), pass.vertAttrSlots.cend(),
 			[field](const std::tuple<unsigned int, int>& slot) 

@@ -134,7 +134,7 @@ struct Resource_Sampler
 	std::string rawView;
 };
 
-using  Resource_t = std::variant<Resource_VertAttr, Resource_ConstBuff, Resource_Texture, Resource_Sampler>;
+using  Resource_t = std::variant<Resource_ConstBuff, Resource_Texture, Resource_Sampler>;
 
 class PassSource
 {
@@ -233,9 +233,11 @@ public:
 
 	InputType input = InputType::Undefined;
 
+	std::vector<Resource_VertAttr> vertAttr;
 	std::vector<Resource_t> resources;
-	std::string vertAttr;
+	std::string inputVertAttr;
 	std::vector<std::tuple<unsigned int, int>> vertAttrSlots;
+	std::string rootSignature;
 };
 
 //#DEBUG findt proper place for this as well

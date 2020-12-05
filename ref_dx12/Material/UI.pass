@@ -1,14 +1,25 @@
 // Input geometry type
+{
 PassInput : UI
 PassVertAttr: VertexIn
+}
 
 // State
-
+{
 ColorTarget  : BACK_BUFFER
 DepthTarget  : BACK_BUFFER
 Viewport	 : 1.0, 1.0, 1.0, 1.0
 BlendEnabled : false
 Topology	 : Triangle
+}
+
+// Root signature
+{
+RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
+DescriptorTable(SRV(t0)),
+DescriptorTable(Sampler(s0)),
+CBV(b0, visibility = SHADER_VISIBILITY_VERTEX)
+}
 
 // Resources 
 

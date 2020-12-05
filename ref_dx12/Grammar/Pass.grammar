@@ -1,11 +1,11 @@
-Pass <- PassProps State Resources ShaderList
+Pass <- PassProps State RSig Resources ShaderList
 
 Resources   <- T( < (Resource / VertAttr)* > )
-State       <- T( < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendAlphaSt / SrcDestAlphaSt )* > )
+State       <- T( '{' < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendAlphaSt / SrcDestAlphaSt )* > '}' )
 ShaderList  <- T( < Shader* > )
 
 # --- Pass properties
-PassProps           <- T( PassInput PassVertAttr PassVertAttrSlots? )
+PassProps           <- T( '{' < ( PassInput / PassVertAttr / PassVertAttrSlots )* > '}' )
 PassInput           <- T( 'PassInput' _ ':' < PassInputIdent (Comma PassInputIdent)* > )
 PassInputIdent      <- _ 'Static' _ / _ 'Dynamic' _ / _ 'Particles' _ / _ 'UI' _ / _ 'PostProcess' _
 PassVertAttr        <- T( 'PassVertAttr' _ ':' Ident )
@@ -31,12 +31,36 @@ DepthWriteMaskSt	<- T( 'DepthWriteMask' _ ':' < Bool > )
 BlendStValues		<- _ 'SrcAlpha' _ / _ 'InvSrcAlpha' _
 TopologyStValues    <- _ 'Triangle' _ / _ 'Point' _
 
+# --- Root Signature ---
+RSig                <- T( '{' < RSigFlagsDecl ( Comma RSigEntity )+ > '}' )
+RSigEntity          <- RSigCBVDecl / RSigSRVDecl / RSigUAVDecl / RSigRootConstDecl / RSigStatSamplerDecl / RSigDescTableDecl
+
+RSigFlagsDecl   	<- T( < 'RootFlags' _ '(' RSigFlags? ( _ '|' _ RSigFlags )* ')' > )
+RSigFlags       	<- _ '0' _ / _ 'ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT' _ / _ 'DENY_VERTEX_SHADER_ROOT_ACCESS' _ / _ 'DENY_PIXEL_SHADER_ROOT_ACCESS' _
+
+RSigCBVDecl         <- T( < 'CBV' _ '(' RegisterId ( Comma RSigDeclOptions )* ')' > )
+RSigSRVDecl         <- T( < 'SRV' _ '(' RegisterId ( Comma RSigDeclOptions )* ')' > )
+RSigUAVDecl         <- T( < 'UAV' _ '(' RegisterId ( Comma RSigDeclOptions )* ')' > )
+
+RSigRootConstDecl	<- T( 'RootConstants' _ '(' _ 'num32BitConstants' _ '=' Int Comma RegisterId (Comma RSigVisibilityDecl)? ')' )
+
+RSigStatSamplerDecl <- T( 'StaticSampler' _ '(' RegisterId ( Comma ( !')' . )* )? ')' )
+
+RSigDescTableDecl       <- T( 'DescriptorTable' _ '(' RSigDescTableEntity ( Comma RSigDescTableEntity )*  ')' )
+RSigDescTableEntity     <- _ RSigCBVDecl _ / _ RSigSRVDecl _ / _ RSigUAVDecl _ / _ RSigDescTableSampler _
+RSigDescTableSampler    <- T( 'Sampler' _ '(' RegisterId ( Comma RSDescNumDecl )? ')' )
+
+RSigDeclOptions     <- _ RSigVisibilityDecl _ / _ RSDescNumDecl _
+RSigVisibilityDecl  <- T( 'visibility' _ '=' RSigVisibilityFlags )
+RSigVisibilityFlags	<- _ 'SHADER_VISIBILITY_ALL' _ / _ 'SHADER_VISIBILITY_VERTEX' _ / _ 'SHADER_VISIBILITY_HULL' _ / _ 'SHADER_VISIBILITY_DOMAIN' _ / _ 'SHADER_VISIBILITY_GEOMETRY' _ / _ 'SHADER_VISIBILITY_PIXEL' _
+RSDescNumDecl       <- T( 'numDescriptors' _ '=' Int )
+
 # --- Resources ---
 VertAttr            <- T(  'struct' < Ident '{' VertAttrContent '}' > )
 Resource            <- T(  ResourceAttr ( ConstBuff / Texture / Sampler) )
-ConstBuff           <- T( 'cbuffer' < Ident ':' RegisterIdent  '{' ResourceContent '}' > )
-Texture             <- T( 'Texture2D' < Ident ':' RegisterIdent > )
-Sampler             <- T( 'SamplerState' < Ident ':' RegisterIdent > )
+ConstBuff           <- T( 'cbuffer' < Ident ':' RegisterDecl  '{' ResourceContent '}' > )
+Texture             <- T( 'Texture2D' < Ident ':' RegisterDecl > )
+Sampler             <- T( 'SamplerState' < Ident ':' RegisterDecl > )
 ResourceAttr        <- T( '[' < ResourceScope ',' ResourceUpdate > ']' )
 ResourceScope       <- _ 'Global' _ / _ 'Local' _
 ResourceUpdate      <- _ 'PerObject' _ / _ 'PerPass' _ / _ 'PerFrame' _ / _ 'OnInit' _
@@ -51,7 +75,8 @@ ResourceFieldSemantic   <- T( Word Int? )
 
 # --- Tokens ---
 Ident 	        <- T( < [a-zA-Z_][a-zA-Z0-9_]* > )
-RegisterIdent   <- T( 'register' _ '(' _ < [bts] [0-9]+ > _ ')' )
+RegisterDecl    <- T( 'register' _ '(' RegisterId ')' )
+RegisterId      <- T( [btsu] [0-9]+ )
 ResourceContent <- [^}]*
 
 # --- In code macro ---
@@ -69,7 +94,7 @@ Int     <- T( < [0-9][0-9]* > )
 Word    <- T( < [a-zA-Z_][a-zA-Z_]* > )
 
 # --- Punctuation ---
-Comma <- _ ',' _
+Comma <-  T( < ',' > )
 
 # --- Whitespaces ---
 # Carefull with this this. Because of greedy nature of 'star symbol, two these symbols
