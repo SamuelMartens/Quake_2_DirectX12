@@ -97,9 +97,6 @@ Word    <- T( < [a-zA-Z_][a-zA-Z_]* > )
 Comma <-  T( < ',' > )
 
 # --- Whitespaces ---
-# Carefull with this this. Because of greedy nature of 'star symbol, two these symbols
-# in a row will never work.
-# TODO investigate whitespace ignore option like %whitespace
 ~_   <- Spacing*
 
 Spacing   <- (Space / Comment)

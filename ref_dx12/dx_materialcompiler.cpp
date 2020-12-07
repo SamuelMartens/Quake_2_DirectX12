@@ -23,6 +23,7 @@
 #include "dx_settings.h"
 #include "dx_diagnostics.h"
 #include "dx_app.h"
+#include "dx_infrastructure.h"
 
 namespace
 {
@@ -44,7 +45,7 @@ namespace
 	}
 
 	template<typename T>
-	void ValidateResource(const T& resource, PassSource::ResourceScope scope, const ParseContext& parseCtx)
+	void ValidateResource(const T& resource, PassSource::ResourceScope scope, const ParsePassContext& parseCtx)
 	{
 #ifdef _DEBUG
 
@@ -112,7 +113,7 @@ namespace
 #endif // _DEBUG
 	}
 
-	void InitParser(peg::parser& parser) 
+	void InitPassParser(peg::parser& parser) 
 	{
 		// Load grammar
 		const std::string passGrammar = ReadFile(MaterialCompiler::Inst().GenPathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_PASS_FILENAME));
@@ -124,44 +125,44 @@ namespace
 			assert(false && "Parsing error");
 		};
 
-		bool loadGrammarResult = parser.load_grammar(passGrammar.c_str());
+		const bool loadGrammarResult = parser.load_grammar(passGrammar.c_str());
 		assert(loadGrammarResult && "Can't load pass grammar");
 
 		// Set up callbacks
 		parser["PassInputIdent"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			parseCtx.passSources.back().input = static_cast<PassSource::InputType>(sv.choice());
 		};
 
 		parser["PassVertAttr"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			parseCtx.passSources.back().inputVertAttr = peg::any_cast<std::string>(sv[0]);
 		};
 
 		parser["PassVertAttrSlots"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			parseCtx.passSources.back().vertAttrSlots = std::move(std::any_cast<std::vector<std::tuple<unsigned int, int>>>(sv[0]));
 		};
 
 		// --- State
 		parser["ColorTargetSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			parseCtx.passSources.back().colorTargetName = peg::any_cast<std::string>(sv[0]);
 		};
 
 		parser["DepthTargetSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			parseCtx.passSources.back().depthTargetName = peg::any_cast<std::string>(sv[0]);
 		};
 
 		parser["ViewportSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			PassSource& currentPass = parseCtx.passSources.back();
 
 			// This might be a bit buggy. I am pretty sure that camera viewport is always equal to drawing area
@@ -184,7 +185,7 @@ namespace
 
 		parser["BlendEnabledSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			PassSource& currentPass = parseCtx.passSources.back();
 
 			currentPass.psoDesc.BlendState.RenderTarget[0].BlendEnable = peg::any_cast<bool>(sv[0]);
@@ -192,7 +193,7 @@ namespace
 
 		parser["SrcBlendAlphaSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			PassSource& currentPass = parseCtx.passSources.back();
 
 			currentPass.psoDesc.BlendState.RenderTarget[0].SrcBlendAlpha = peg::any_cast<D3D12_BLEND>(sv[0]);
@@ -200,7 +201,7 @@ namespace
 
 		parser["DestBlendAlphaSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			PassSource& currentPass = parseCtx.passSources.back();
 
 			currentPass.psoDesc.BlendState.RenderTarget[0].DestBlendAlpha = peg::any_cast<D3D12_BLEND>(sv[0]);
@@ -208,15 +209,18 @@ namespace
 
 		parser["TopologySt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			PassSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.primitiveTopology = peg::any_cast<D3D_PRIMITIVE_TOPOLOGY>(sv[0]);
+			auto topology = peg::any_cast<std::tuple<D3D_PRIMITIVE_TOPOLOGY, D3D12_PRIMITIVE_TOPOLOGY_TYPE>>(sv[0]);
+
+			currentPass.primitiveTopology = std::get<D3D_PRIMITIVE_TOPOLOGY>(topology);
+			currentPass.psoDesc.PrimitiveTopologyType = std::get<D3D12_PRIMITIVE_TOPOLOGY_TYPE>(topology);
 		};
 
 		parser["DepthWriteMaskSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			PassSource& currentPass = parseCtx.passSources.back();
 
 			currentPass.psoDesc.DepthStencilState.DepthWriteMask = peg::any_cast<bool>(sv) ?
@@ -246,22 +250,22 @@ namespace
 			switch (sv.choice())
 			{
 			case 0:
-				return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+				return std::make_tuple(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST,  D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);
 			case 1:
-				return D3D_PRIMITIVE_TOPOLOGY_POINTLIST;
+				return std::make_tuple(D3D_PRIMITIVE_TOPOLOGY_POINTLIST, D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT);
 			default:
 				assert(false && "Invalid topology state");
 				break;
 			}
 
-			return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+			return std::make_tuple(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST,  D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);
 		};
 
 		// --- Root Signatures
 
 		parser["RSig"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			std::string& rootSig = parseCtx.passSources.back().rootSignature;
 			
 			rootSig = sv.token(); 
@@ -292,7 +296,7 @@ namespace
 
 		parser["Shader"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			PassSource& currentPass = parseCtx.passSources.back();
 
 			PassSource::ShaderSource& shaderSource = currentPass.shaders.emplace_back(PassSource::ShaderSource());
@@ -317,7 +321,7 @@ namespace
 		// --- Resources
 		parser["VertAttr"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			
 			parseCtx.passSources.back().vertAttr.emplace_back(Resource_VertAttr{
 				peg::any_cast<std::string>(sv[0]),
@@ -332,7 +336,7 @@ namespace
 			std::tuple<PassSource::ResourceScope, PassSource::ResourceUpdate> resourceAttr =
 				peg::any_cast<std::tuple<PassSource::ResourceScope, PassSource::ResourceUpdate>>(sv[0]);
 
-			ParseContext& parseCtx = *std::any_cast<std::shared_ptr<ParseContext>&>(ctx);
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			PassSource& currentPass = parseCtx.passSources.back();
 
 			switch (std::get<PassSource::ResourceScope>(resourceAttr))
@@ -529,110 +533,137 @@ namespace
 		};
 	};
 
-	using PassCompiledShaders_t = std::vector<std::pair<PassSource::ShaderType, ComPtr<ID3DBlob>>>;
-
-	std::unordered_map<std::string, PassCompiledShaders_t> CompileShaders(ParseContext& ctx)
+	void InitMaterialParser(peg::parser& parser)
 	{
-		std::unordered_map<std::string, PassCompiledShaders_t> compiledShaders;
+		// Load grammar
+		const std::string materialGrammar = ReadFile(MaterialCompiler::Inst().GenPathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_MATERIAL_FILENAME));
 
-		for (PassSource& pass : ctx.passSources)
+		parser.log = [](size_t line, size_t col, const std::string& msg)
 		{
+			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
 
-			PassCompiledShaders_t passCompiledShaders;
+			assert(false && "Parsing error");
+		};
+
+		const bool loadGrammarResult = parser.load_grammar(materialGrammar.c_str());
+		assert(loadGrammarResult && "Can't load pass grammar");
+
+		parser["Material"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		{
+			ParseMaterialContext& parseCtx = *std::any_cast<std::shared_ptr<ParseMaterialContext>&>(ctx);
 			
-			for (PassSource::ShaderSource& shader : pass.shaders)
+			std::for_each(sv.begin(), sv.end(),
+				[&parseCtx](const peg::any& pass) 
 			{
-				std::string resToInclude;
+				parseCtx.passes.push_back(peg::any_cast<std::string>(pass));
+			});
+		};
 
-				// Add External Resources
-				for (std::string& externalRes : shader.externals)
-				{
-					// Find resource and stub it into shader source
-					
-					// Search in local scope first
-					const auto localResIt = std::find_if(pass.resources.cbegin(), pass.resources.cend(), 
-						[externalRes](const Resource_t& currRes)
-					{
-						return externalRes == PassSource::GetResourceName(currRes);
-					});
+		parser["Pass"] = [](const peg::SemanticValues& sv)
+		{
+			return sv.token();
+		};
 
-					if (localResIt != pass.resources.cend())
-					{
-						resToInclude += PassSource::GetResourceRawView(*localResIt);
-						resToInclude += ";";
-					}
-					else
-					{
-						// Search in global scope
-						const auto globalResIt = std::find_if(ctx.resources.cbegin(), ctx.resources.cend(),
-							[externalRes](const Resource_t& currRes)
-						{
-							return externalRes == PassSource::GetResourceName(currRes);
-						});
+	};
 
-						if (globalResIt != ctx.resources.cend())
-						{
-							resToInclude += PassSource::GetResourceRawView(*globalResIt);
-							resToInclude += ";";
-						}
-						else
-						{
-							// Finally try vert attributes
-							const auto vertAttrIt = std::find_if(pass.vertAttr.cbegin(), pass.vertAttr.cend(),
-								[externalRes](const Resource_VertAttr& currVert)
-							{
-								return externalRes == currVert.name;
-							});
-
-							assert(vertAttrIt != pass.vertAttr.cend() && "External resource can't be found");
-
-							resToInclude += vertAttrIt->rawView;
-							resToInclude += ";";
-						}
-					}
-				}
-
-				shader.source = 
-					resToInclude + 
-					"[RootSignature( \" " + pass.rootSignature + " \" )]" +
-					shader.source;
-
-				// Got final shader source, now compile
-				ComPtr<ID3DBlob>& shaderBlob = passCompiledShaders.emplace_back(std::make_pair(shader.type, ComPtr<ID3DBlob>())).second;
-				ComPtr<ID3DBlob> errors;
-
-				const std::string strShaderType = PassSource::ShaderTypeToStr(shader.type);
-
-				HRESULT hr = D3DCompile(
-					shader.source.c_str(),
-					shader.source.size(),
-					(pass.name + strShaderType).c_str(),
-					nullptr,
-					nullptr,
-					"main",
-					(Utils::StrToLower(strShaderType) + "_5_1").c_str(),
-					Settings::SHADER_COMPILATION_FLAGS,
-					0,
-					&shaderBlob,
-					&errors
-				);
-
-				if (errors != nullptr)
-				{
-					Logs::Logf(Logs::Category::Parser, "Shader compilation error: %s", 
-						reinterpret_cast<char*>(errors->GetBufferPointer()));
-				}
-
-				ThrowIfFailed(hr);
-			}
-
-			compiledShaders[pass.name] = std::move(passCompiledShaders);
-		}
-
-		return compiledShaders;
-	}
+	
 }
 
+
+
+
+MaterialCompiler::PassCompiledShaders_t MaterialCompiler::CompileShaders(const PassSource& pass, const std::vector<Resource_t>& globalRes) const
+{
+	PassCompiledShaders_t passCompiledShaders;
+
+	for (const PassSource::ShaderSource& shader : pass.shaders)
+	{
+		std::string resToInclude;
+
+		// Add External Resources
+		for (const std::string& externalRes : shader.externals)
+		{
+			// Find resource and stub it into shader source
+
+			// Search in local scope first
+			const auto localResIt = std::find_if(pass.resources.cbegin(), pass.resources.cend(),
+				[externalRes](const Resource_t& currRes)
+			{
+				return externalRes == PassSource::GetResourceName(currRes);
+			});
+
+			if (localResIt != pass.resources.cend())
+			{
+				resToInclude += PassSource::GetResourceRawView(*localResIt);
+				resToInclude += ";";
+			}
+			else
+			{
+				// Search in global scope
+				const auto globalResIt = std::find_if(globalRes.cbegin(), globalRes.cend(),
+					[externalRes](const Resource_t& currRes)
+				{
+					return externalRes == PassSource::GetResourceName(currRes);
+				});
+
+				if (globalResIt != globalRes.cend())
+				{
+					resToInclude += PassSource::GetResourceRawView(*globalResIt);
+					resToInclude += ";";
+				}
+				else
+				{
+					// Finally try vert attributes
+					const auto vertAttrIt = std::find_if(pass.vertAttr.cbegin(), pass.vertAttr.cend(),
+						[externalRes](const Resource_VertAttr& currVert)
+					{
+						return externalRes == currVert.name;
+					});
+
+					assert(vertAttrIt != pass.vertAttr.cend() && "External resource can't be found");
+
+					resToInclude += vertAttrIt->rawView;
+					resToInclude += ";";
+				}
+			}
+		}
+
+		std::string sourceCode =
+			resToInclude +
+			"[RootSignature( \" " + pass.rootSignature + " \" )]" +
+			shader.source;
+
+		// Got final shader source, now compile
+		ComPtr<ID3DBlob>& shaderBlob = passCompiledShaders.emplace_back(std::make_pair(shader.type, ComPtr<ID3DBlob>())).second;
+		ComPtr<ID3DBlob> errors;
+
+		const std::string strShaderType = PassSource::ShaderTypeToStr(shader.type);
+
+		HRESULT hr = D3DCompile(
+			sourceCode.c_str(),
+			sourceCode.size(),
+			(pass.name + strShaderType).c_str(),
+			nullptr,
+			nullptr,
+			"main",
+			(Utils::StrToLower(strShaderType) + "_5_1").c_str(),
+			Settings::SHADER_COMPILATION_FLAGS,
+			0,
+			&shaderBlob,
+			&errors
+		);
+
+		if (errors != nullptr)
+		{
+			Logs::Logf(Logs::Category::Parser, "Shader compilation error: %s",
+				reinterpret_cast<char*>(errors->GetBufferPointer()));
+		}
+
+		ThrowIfFailed(hr);
+	}
+
+	return passCompiledShaders;
+}
 
 MaterialCompiler::MaterialCompiler()
 {
@@ -652,21 +683,45 @@ MaterialCompiler& MaterialCompiler::Inst()
 	return *matCompiler;
 }
 
-void MaterialCompiler::GenerateMaterial()
+PassMaterial MaterialCompiler::GenerateMaterial()
 {
-	std::shared_ptr<ParseContext> parseCtx = ParsePassFiles(LoadPassFiles());
+	PassMaterial material;
 
-	CompileShaders(*parseCtx);
+	std::shared_ptr<ParseMaterialContext> parseCtx = ParseMaterialFile(LoadMaterialFile());
 
-	//#DEBUG
-	for (const PassSource& passSource : parseCtx->passSources)
+	std::vector<Pass> passes = GeneratePasses();
+
+	for (const std::string& passName : parseCtx->passes)
 	{
-		GenerateInputLayout(passSource);
+		const auto targetPassIt = std::find_if(passes.cbegin(), passes.cend(), 
+			[passName](const Pass& p)
+		{
+			return passName == p.name;
+		});
+
+		assert(targetPassIt != passes.cend() && "Can't generate material, target pass is not found");
+
+		material.passes.push_back(*targetPassIt);
 	}
-	//END
+
+	return material;
 }
 
-std::unordered_map<std::string, std::string> MaterialCompiler::LoadPassFiles()
+std::vector<Pass> MaterialCompiler::GeneratePasses() const
+{
+	std::shared_ptr<ParsePassContext> parseCtx = ParsePassFiles(LoadPassFiles());
+
+	std::vector<Pass> passes;
+
+	for (const PassSource& passSource : parseCtx->passSources)
+	{
+		passes.push_back(CompilePass(passSource, parseCtx->resources));
+	}
+
+	return passes;
+}
+
+std::unordered_map<std::string, std::string> MaterialCompiler::LoadPassFiles() const
 {
 	std::unordered_map<std::string, std::string> passFiles;
 
@@ -687,18 +742,37 @@ std::unordered_map<std::string, std::string> MaterialCompiler::LoadPassFiles()
 	return passFiles;
 }
 
+std::string MaterialCompiler::LoadMaterialFile() const
+{
+	for (const auto& file : std::filesystem::directory_iterator(GenPathToFile(Settings::MATERIAL_DIR)))
+	{
+		const std::filesystem::path filePath = file.path();
+
+		if (filePath.extension() == Settings::MATERIAL_FILE_EXT)
+		{
+			std::string materialFileContent = ReadFile(filePath);
+
+			return materialFileContent;
+		}
+	}
+
+	assert(false && "Material file was not found");
+
+	return std::string();
+}
+
 void MaterialCompiler::PreprocessPassFiles(const std::vector<std::string>& fileList)
 {
 	//#DEBUG going to make it work without preprocess first. And the add preprocessing
 }
 
 //#DEBUG not sure returning context is fine
-std::shared_ptr<ParseContext> MaterialCompiler::ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles)
+std::shared_ptr<ParsePassContext> MaterialCompiler::ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles) const
 {
 	peg::parser parser;
-	InitParser(parser);
+	InitPassParser(parser);
 
-	std::shared_ptr<ParseContext> context = std::make_shared<ParseContext>();
+	std::shared_ptr<ParsePassContext> context = std::make_shared<ParsePassContext>();
 
 	for (const auto& passFile : passFiles)
 	{
@@ -717,6 +791,19 @@ std::shared_ptr<ParseContext> MaterialCompiler::ParsePassFiles(const std::unorde
 
 		parser.parse(passFile.second.c_str(), ctx);
 	}
+
+	return context;
+}
+
+std::shared_ptr<ParseMaterialContext> MaterialCompiler::ParseMaterialFile(const std::string& materialFileContent) const
+{
+	peg::parser parser;
+	InitMaterialParser(parser);
+
+	std::shared_ptr<ParseMaterialContext> context = std::make_shared<ParseMaterialContext>();
+	peg::any ctx = context;
+
+	parser.parse(materialFileContent.c_str(), ctx);
 
 	return context;
 }
@@ -767,6 +854,76 @@ std::vector<D3D12_INPUT_ELEMENT_DESC> MaterialCompiler::GenerateInputLayout(cons
 	}
 
 	return inputLayout;
+}
+
+ComPtr<ID3D12RootSignature> MaterialCompiler::GenerateRootSignature(const PassSource& pass, const PassCompiledShaders_t& shaders) const
+{
+	assert(shaders.empty() == false && "Can't generate root signature with not shaders");
+
+	ComPtr<ID3D12RootSignature> rootSig;
+
+	const ComPtr<ID3DBlob>& shaderBlob = shaders.front().second;
+
+	Infr::Inst().GetDevice()->CreateRootSignature(0, shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize(),
+		IID_PPV_ARGS(rootSig.GetAddressOf()));
+
+	return rootSig;
+}
+
+ComPtr<ID3D12PipelineState> MaterialCompiler::GeneratePipelineStateObject(const PassSource& passSource, PassCompiledShaders_t& shaders, ComPtr<ID3D12RootSignature>& rootSig) const
+{
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = passSource.psoDesc;
+
+	// Set up root sig
+	psoDesc.pRootSignature = rootSig.Get();
+	
+	// Set up shaders
+	for (const std::pair<PassSource::ShaderType, ComPtr<ID3DBlob>>& shaders : shaders)
+	{
+		D3D12_SHADER_BYTECODE shaderByteCode = {
+			reinterpret_cast<BYTE*>(shaders.second->GetBufferPointer()),
+			shaders.second->GetBufferSize()
+		};
+
+		switch (shaders.first)
+		{
+		case PassSource::Vs:
+			psoDesc.VS = shaderByteCode;
+			break;
+		case PassSource::Gs:
+			psoDesc.GS = shaderByteCode;
+			break;
+		case PassSource::Ps:
+			psoDesc.PS = shaderByteCode;
+			break;
+		default:
+			assert(false && "Generate pipeline state object. Invalid shader type");
+			break;
+		}
+	}
+
+	// Set up input layout
+	std::vector<D3D12_INPUT_ELEMENT_DESC> inputLayout = GenerateInputLayout(passSource);
+	psoDesc.InputLayout = { inputLayout.data(), static_cast<UINT>(inputLayout.size()) };
+
+	ComPtr<ID3D12PipelineState> pipelineState;
+
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipelineState)));
+
+	return pipelineState;
+}
+
+Pass MaterialCompiler::CompilePass(const PassSource& passSource, const std::vector<Resource_t>& globalRes) const
+{
+	Pass pass;
+	pass.name = passSource.name;
+	pass.primitiveTopology = passSource.primitiveTopology;
+
+	PassCompiledShaders_t compiledShaders = CompileShaders(passSource, globalRes);
+	pass.rootSingature = GenerateRootSignature(passSource, compiledShaders);
+	pass.pipelineState = GeneratePipelineStateObject(passSource, compiledShaders, pass.rootSingature);
+
+	return pass;
 }
 
 std::filesystem::path MaterialCompiler::GenPathToFile(const std::string fileName) const

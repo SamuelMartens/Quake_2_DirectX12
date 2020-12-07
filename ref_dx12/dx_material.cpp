@@ -204,7 +204,7 @@ std::string_view PassSource::GetResourceRawView(const Resource_t& res)
 	res);
 }
 
-std::string PassSource::ShaderTypeToStr(ShaderType& type)
+std::string PassSource::ShaderTypeToStr(ShaderType type)
 {
 	switch (type)
 	{

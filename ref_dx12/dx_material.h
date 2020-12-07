@@ -209,7 +209,7 @@ public:
 	static std::string_view GetResourceName(const Resource_t& res);
 	static std::string_view GetResourceRawView(const Resource_t& res);
 
-	static std::string ShaderTypeToStr(ShaderType& type);
+	static std::string ShaderTypeToStr(ShaderType type);
 
 	std::string name;
 	std::vector<ShaderSource> shaders;
@@ -220,14 +220,6 @@ public:
 	D3D12_VIEWPORT viewport = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
-	std::vector<D3D12_INPUT_ELEMENT_DESC> inputLayout;
-
-	// I need to keep this object in memory until serialization
-	std::vector<std::vector<CD3DX12_DESCRIPTOR_RANGE>> descriptorRanges;
-
-	std::vector<CD3DX12_ROOT_PARAMETER> rootParameters;
-	std::vector<CD3DX12_STATIC_SAMPLER_DESC> staticSamplers;
-	D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
 	D3D_PRIMITIVE_TOPOLOGY primitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
 
@@ -241,8 +233,54 @@ public:
 };
 
 //#DEBUG findt proper place for this as well
-struct ParseContext
+struct ParsePassContext
 {
 	std::vector<PassSource> passSources;
 	std::vector<Resource_t> resources;
+};
+
+struct ParseMaterialContext
+{
+	std::vector<std::string> passes;
+};
+
+class Pass
+{
+public:
+
+	Pass() = default;
+
+	Pass(const Pass&) = default;
+	Pass& operator=(const Pass&) = default;
+
+	Pass(Pass&&) = default;
+	Pass& operator=(Pass&&) = default;
+
+	~Pass() = default;
+
+	std::string name;
+
+	ComPtr<ID3D12PipelineState>		  pipelineState;
+	ComPtr<ID3D12RootSignature>		  rootSingature;
+
+	D3D_PRIMITIVE_TOPOLOGY primitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+};
+
+
+//#DEBUG rename this to just materials
+class PassMaterial
+{
+public:
+
+	PassMaterial() = default;
+
+	PassMaterial(const PassMaterial&) = default;
+	PassMaterial& operator=(const PassMaterial&) = default;
+
+	PassMaterial(PassMaterial&&) = default;
+	PassMaterial& operator=(PassMaterial&&) = default;
+
+	~PassMaterial() = default;
+
+	std::vector<Pass> passes;
 };
