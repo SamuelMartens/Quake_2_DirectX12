@@ -1751,6 +1751,19 @@ void Renderer::DrawParticleJob(Context& context)
 	Logs::Logf(Logs::Category::Job, "Particle job ended frame %d", context.frame.frameNumber);
 }
 
+void Renderer::ExecuteDrawUIPass(Context& context, const Pass& pass)
+{
+	JOB_GUARD(context);
+
+	Frame& frame = context.frame;
+
+	if (frame.uiDrawCalls.empty())
+	{
+		Logs::Log(Logs::Category::Job, "DrawUI job started. No draw calls");
+		return;
+	}
+}
+
 void Renderer::CreateDeferredTextures(Context& context)
 {
 	CommandListRAIIGuard_t commandListGuard(context.commandList);

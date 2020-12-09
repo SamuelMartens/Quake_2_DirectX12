@@ -252,6 +252,9 @@ private:
 	void DrawDynamicGeometryJob(Context& context);
 	void DrawParticleJob(Context& context);
 
+	/* Passes */
+	void ExecuteDrawUIPass(Context& context, const Pass& pass);
+
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;
 

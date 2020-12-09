@@ -261,20 +261,6 @@ namespace
 			return std::make_tuple(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST,  D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);
 		};
 
-		// --- Root Signatures
-
-		parser["RSig"] = [](const peg::SemanticValues& sv, peg::any& ctx)
-		{
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
-			std::string& rootSig = parseCtx.passSources.back().rootSignature;
-			
-			rootSig = sv.token(); 
-			// Later root signature is inserted into shader source code. It must be in one line
-			// otherwise shader wouldn't compile
-			rootSig.erase(std::remove(rootSig.begin(), rootSig.end(), '\n'), rootSig.end());
-			
-		};
-
 		// --- Shader code
 
 		parser["ShaderExternalDecl"] = [](const peg::SemanticValues& sv)
@@ -318,12 +304,172 @@ namespace
 			return peg::any_cast<PassSource::ShaderType>(sv[0]);
 		};
 
+		// --- Root Signature
+		parser["RSig"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		{
+			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
+			RootSigParseData::RootSignature& rootSig = parseCtx.passSources.back().rootSignature;
+
+			rootSig.rawView = sv.token();
+			// Later root signature is inserted into shader source code. It must be in one line
+			// otherwise shader wouldn't compile
+			rootSig.rawView.erase(std::remove(rootSig.rawView.begin(), rootSig.rawView.end(), '\n'), rootSig.rawView.end());
+
+			std::for_each(sv.begin() + 1, sv.end(),
+				[&rootSig](const peg::any& token) 
+			{
+				if (token.type() == typeid(RootSigParseData::RootParam_ConstBuffView))
+				{
+					RootSigParseData::RootParam_ConstBuffView cbv = peg::any_cast<RootSigParseData::RootParam_ConstBuffView>(token);
+					assert(cbv.num == 1 && "CBV Inline descriptor can't have more that 1 num");
+
+					rootSig.params.push_back(std::move(cbv));
+				}
+				else if (token.type() == typeid(RootSigParseData::RootParam_DescTable))
+				{
+					RootSigParseData::RootParam_DescTable descTable = peg::any_cast<RootSigParseData::RootParam_DescTable>(token);
+					rootSig.params.push_back(std::move(descTable));
+				}
+				else 
+				{
+					assert(false && "Invalid root parameter");
+				};
+			});
+		};
+
+
+		parser["RSigStatSamplerDecl"] = [](const peg::SemanticValues& sv)
+		{
+			assert(false && "Static samplers are not implemented");
+		};
+
+		parser["RSigRootConstDecl"] = [](const peg::SemanticValues& sv) 
+		{
+			assert(false && "Root constants are not implemented");
+		};
+
+		parser["RSigDescTableDecl"] = [](const peg::SemanticValues& sv)
+		{
+			RootSigParseData::RootParam_DescTable descTable;
+
+			std::for_each(sv.begin(), sv.end(),
+				[&descTable](const peg::any& token)
+			{
+				if (token.type() == typeid(RootSigParseData::RootParam_TextView))
+				{
+					descTable.entities.push_back(peg::any_cast<RootSigParseData::RootParam_TextView>(token));
+				}
+				else if (token.type() == typeid(RootSigParseData::RootParam_ConstBuffView))
+				{
+					descTable.entities.push_back(peg::any_cast<RootSigParseData::RootParam_ConstBuffView>(token));
+				}
+				else if (token.type() == typeid(RootSigParseData::RootParam_SamplerView))
+				{
+					descTable.entities.push_back(peg::any_cast<RootSigParseData::RootParam_SamplerView>(token));
+				}
+				else
+				{
+					assert(false && "Unknown type for desc table entity");
+				}
+			});
+
+			return descTable;
+		};
+
+		parser["RSigCBVDecl"] = [](const peg::SemanticValues& sv)
+		{
+			int num = 1;
+
+			for (int i = 2 ; i < sv.size(); i += 2)
+			{
+				auto option = peg::any_cast<std::tuple<RootSigParseData::Option, int>>(sv[i]);
+
+				switch (std::get<RootSigParseData::Option>(option))
+				{
+				case RootSigParseData::Option::NumDecl:
+					num = std::get<int>(option);
+					break;
+				case RootSigParseData::Option::Visibility:
+					break;
+				default:
+					assert(false && "Invalid root param option in CBV decl");
+					break;
+				}
+			}
+
+			return RootSigParseData::RootParam_ConstBuffView{
+				peg::any_cast<int>(sv[0]),
+				num
+			};
+		};
+
+		parser["RSigSRVDecl"] = [](const peg::SemanticValues& sv)
+		{
+			int num = 1;
+
+			for (int i = 2; i < sv.size(); i += 2)
+			{
+				auto option = peg::any_cast<std::tuple<RootSigParseData::Option, int>>(sv[i]);
+
+				switch (std::get<RootSigParseData::Option>(option))
+				{
+				case RootSigParseData::Option::NumDecl:
+					num = std::get<int>(option);
+					break;
+				case RootSigParseData::Option::Visibility:
+					break;
+				default:
+					assert(false && "Invalid root param option in SRV decl");
+					break;
+				}
+			}
+
+			return RootSigParseData::RootParam_TextView{
+				peg::any_cast<int>(sv[0]),
+				num
+			};
+		};
+
+		parser["RSigUAVDecl"] = [](const peg::SemanticValues& sv) 
+		{
+			assert(false && "UAV is not implemented");
+		};
+
+		parser["RSigDescTableSampler"] = [](const peg::SemanticValues& sv)
+		{
+			return RootSigParseData::RootParam_SamplerView{
+				peg::any_cast<int>(sv[0]),
+				sv.size() == 1 ? 1 :  peg::any_cast<int>(sv[2])
+			};
+		};
+
+		parser["RSigDeclOptions"] = [](const peg::SemanticValues& sv)
+		{
+			switch (sv.choice())
+			{
+			case 0:
+				return std::make_tuple(RootSigParseData::Option::Visibility, 0);
+			case 1:
+				return std::make_tuple(RootSigParseData::Option::NumDecl, peg::any_cast<int>(sv[0]));
+			default:
+				assert(false && "Unknown Root signature declaration option");
+				break;
+			}
+
+			return std::make_tuple(RootSigParseData::Option::NumDecl, 1);
+		};
+
+		parser["RSDescNumDecl"] = [](const peg::SemanticValues& sv)
+		{
+			return peg::any_cast<int>(sv[0]);
+		};
+
 		// --- Resources
 		parser["VertAttr"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
 			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			
-			parseCtx.passSources.back().vertAttr.emplace_back(Resource_VertAttr{
+			parseCtx.passSources.back().vertAttr.emplace_back(VertAttr{
 				peg::any_cast<std::string>(sv[0]),
 				std::move(peg::any_cast<std::vector<VertAttrField>>(sv[1])),
 				sv.str()
@@ -398,8 +544,8 @@ namespace
 		{
 			return Resource_ConstBuff{
 				peg::any_cast<std::string>(sv[0]),
-				peg::any_cast<std::string>(sv[1]),
-				peg::any_cast<std::string>(sv[2]),
+				peg::any_cast<int>(sv[1]),
+				peg::any_cast<std::vector<ConstBuffField>>(sv[2]),
 				sv.str()};
 		};
 
@@ -407,7 +553,7 @@ namespace
 		{
 			return Resource_Texture{
 				peg::any_cast<std::string>(sv[0]),
-				peg::any_cast<std::string>(sv[1]),
+				peg::any_cast<int>(sv[1]),
 				sv.str()};
 		};
 
@@ -416,7 +562,7 @@ namespace
 		{
 			return Resource_Sampler{
 				peg::any_cast<std::string>(sv[0]),
-				peg::any_cast<std::string>(sv[1]),
+				peg::any_cast<int>(sv[1]),
 				sv.str()};
 		};
 
@@ -435,6 +581,29 @@ namespace
 		parser["ResourceUpdate"] = [](const peg::SemanticValues& sv)
 		{
 			return static_cast<PassSource::ResourceUpdate>(sv.choice());
+		};
+
+		parser["ConstBuffField"] = [](const peg::SemanticValues& sv)
+		{
+			std::vector<ConstBuffField> constBufferContent;
+
+			std::transform(sv.begin(), sv.end(), std::back_inserter(constBufferContent),
+				[](const peg::any& token)
+			{
+				const std::tuple<ParseDataType, std::string>& dataField = peg::any_cast<std::tuple<ParseDataType, std::string>>(token);
+
+				return ConstBuffField{
+					GetParseDataTypeSize(std::get<ParseDataType>(dataField)),
+					HASH(std::get<std::string>(dataField).c_str())
+				};
+			});
+
+			return constBufferContent;
+		};
+
+		parser["ConstBuffField"] = [](const peg::SemanticValues& sv)
+		{
+			return std::make_tuple(peg::any_cast<ParseDataType>(sv[0]), peg::any_cast<std::string>(sv[1]));
 		};
 
 		parser["VertAttrContent"] = [](const peg::SemanticValues& sv)
@@ -498,12 +667,12 @@ namespace
 
 		parser["RegisterDecl"] = [](const peg::SemanticValues& sv)
 		{
-			return peg::any_cast<std::string>(sv[0]);
+			return peg::any_cast<int>(sv[0]);
 		};
 
 		parser["RegisterId"] = [](const peg::SemanticValues& sv) 
 		{
-			return sv.str();
+			return peg::any_cast<int>(sv[0]);
 		};
 
 		parser["ResourceContent"] = [](const peg::SemanticValues& sv)
@@ -570,8 +739,6 @@ namespace
 }
 
 
-
-
 MaterialCompiler::PassCompiledShaders_t MaterialCompiler::CompileShaders(const PassSource& pass, const std::vector<Resource_t>& globalRes) const
 {
 	PassCompiledShaders_t passCompiledShaders;
@@ -615,7 +782,7 @@ MaterialCompiler::PassCompiledShaders_t MaterialCompiler::CompileShaders(const P
 				{
 					// Finally try vert attributes
 					const auto vertAttrIt = std::find_if(pass.vertAttr.cbegin(), pass.vertAttr.cend(),
-						[externalRes](const Resource_VertAttr& currVert)
+						[externalRes](const VertAttr& currVert)
 					{
 						return externalRes == currVert.name;
 					});
@@ -630,7 +797,7 @@ MaterialCompiler::PassCompiledShaders_t MaterialCompiler::CompileShaders(const P
 
 		std::string sourceCode =
 			resToInclude +
-			"[RootSignature( \" " + pass.rootSignature + " \" )]" +
+			"[RootSignature( \" " + pass.rootSignature.rawView + " \" )]" +
 			shader.source;
 
 		// Got final shader source, now compile
@@ -814,7 +981,7 @@ std::vector<D3D12_INPUT_ELEMENT_DESC> MaterialCompiler::GenerateInputLayout(cons
 	const std::string& inputName = pass.inputVertAttr;
 
 	const auto attrIt = std::find_if(pass.vertAttr.cbegin(), pass.vertAttr.cend(),
-		[inputName](const Resource_VertAttr& attr) { return inputName == attr.name; });
+		[inputName](const VertAttr& attr) { return inputName == attr.name; });
 
 	assert(attrIt != pass.vertAttr.cend() && "Can't find input vert attribute");
 
@@ -916,8 +1083,12 @@ ComPtr<ID3D12PipelineState> MaterialCompiler::GeneratePipelineStateObject(const 
 Pass MaterialCompiler::CompilePass(const PassSource& passSource, const std::vector<Resource_t>& globalRes) const
 {
 	Pass pass;
+
 	pass.name = passSource.name;
 	pass.primitiveTopology = passSource.primitiveTopology;
+	pass.colorTargetNameHash = HASH(passSource.colorTargetName.c_str());
+	pass.depthTargetNameHash = HASH(passSource.depthTargetName.c_str());
+	pass.viewport = passSource.viewport;
 
 	PassCompiledShaders_t compiledShaders = CompileShaders(passSource, globalRes);
 	pass.rootSingature = GenerateRootSignature(passSource, compiledShaders);

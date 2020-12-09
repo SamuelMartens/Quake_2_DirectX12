@@ -8,6 +8,8 @@
 
 #include "d3dx12.h"
 #include "dx_common.h"
+#include "dx_utils.h"
+#include "dx_buffer.h"
 
 class MaterialSource
 {
@@ -83,6 +85,63 @@ public:
 //#DEBUG find proper place for this
 //#DEBUG in all resource it should really be "rawView" and the rest of stuff is maintained by "string_view"
 
+namespace RootSigParseData
+{
+	enum class Option
+	{
+		Visibility,
+		NumDecl
+	};
+
+	enum class DescViewType
+	{
+		ConstBuff,
+		TextView,
+		SamplerView
+	};
+
+	struct RootParam_RootConst
+	{
+		int num32BitConsts = Const::INVALID_SIZE;
+		int registerId = Const::INVALID_INDEX;
+	};
+
+	// All these views can be used for both inlinde descriptor declaration and
+	// as a part of descriptor table
+	struct RootParam_ConstBuffView
+	{
+		int registerId = Const::INVALID_INDEX;
+		int num = Const::INVALID_SIZE;
+	};
+
+	struct RootParam_TextView
+	{
+		int registerId = Const::INVALID_INDEX;
+		int num = Const::INVALID_SIZE;
+	};
+
+	struct RootParam_SamplerView
+	{
+		int registerId = Const::INVALID_INDEX;
+		int num = Const::INVALID_SIZE;
+	};
+
+	using DescTableEntity_t = std::variant<RootParam_ConstBuffView, RootParam_TextView, RootParam_SamplerView>;
+
+	struct RootParam_DescTable
+	{
+		std::vector<DescTableEntity_t> entities;
+	};
+
+	using RootParma_t = std::variant<RootParam_ConstBuffView, RootParam_DescTable>;
+
+	struct RootSignature
+	{
+		std::vector<RootParma_t> params;
+		std::string rawView;
+	};
+};
+
 enum class ParseDataType
 {
 	Float4x4,
@@ -102,10 +161,63 @@ struct VertAttrField
 	unsigned int semanticIndex = 0;
 	// Need this for debug
 	std::string name;
+}; 
+ 
+struct RootArg_RootConstant
+{
+	int index = Const::INVALID_INDEX;
+	unsigned int size = Const::INVALID_SIZE;
+	unsigned int hashedName = 0;
 };
+
+struct ConstBuffField 
+{
+	unsigned int size = Const::INVALID_SIZE;
+ 	unsigned int hashedName = 0;
+};
+
+struct RootArg_ConstBuffView
+{
+	int index = Const::INVALID_INDEX;
+	unsigned int hashedName = 0;
+	std::vector<ConstBuffField> content;
+	BufferHandler gpuMem;
+};
+
+struct DescTableEntity_ConstBufferView
+{
+	unsigned int hashedName = 0;
+	std::vector<ConstBuffField> content;
+	BufferHandler gpuMem;
+	int viewIndex = Const::INVALID_INDEX;
+};
+
+struct DescTableEntity_Texture
+{
+	unsigned int hashedName = 0;
+	int viewIndex = Const::INVALID_INDEX;
+};
+
+struct DescTableEntity_Sampler
+{
+	unsigned int hashedName = 0;
+	int viewIndex = Const::INVALID_INDEX;
+};
+
+using DescTableEntity_t = std::variant<DescTableEntity_ConstBufferView, DescTableEntity_Texture, DescTableEntity_Sampler>;
+
+struct RootArg_DescTable
+{
+	int index = Const::INVALID_INDEX;
+	std::vector<DescTableEntity_t> content;
+};
+
+using RootArg_t = std::variant<RootArg_RootConstant, RootArg_ConstBuffView, RootArg_DescTable>;
+
 //#DEBUG not sure if rawView is really needed. 
 // SFINAE can help solve problem if I don't need it for some members
-struct Resource_VertAttr
+// This shows what is the name name of res to bind
+struct VertAttr
 {
 	std::string name;
 	std::vector<VertAttrField> content;
@@ -115,22 +227,22 @@ struct Resource_VertAttr
 struct Resource_ConstBuff
 {
 	std::string name;
-	std::string registerName;
-	std::string content;
+	int registerId = Const::INVALID_INDEX;
+	std::vector<ConstBuffField> content;
 	std::string rawView;
 };
 
 struct Resource_Texture
 {
 	std::string name;
-	std::string registerName;
+	int registerId = Const::INVALID_INDEX;
 	std::string rawView;
 };
 
 struct Resource_Sampler
 {
 	std::string name;
-	std::string registerName;
+	int registerId = Const::INVALID_INDEX;
 	std::string rawView;
 };
 
@@ -225,11 +337,11 @@ public:
 
 	InputType input = InputType::Undefined;
 
-	std::vector<Resource_VertAttr> vertAttr;
+	std::vector<VertAttr> vertAttr;
 	std::vector<Resource_t> resources;
 	std::string inputVertAttr;
 	std::vector<std::tuple<unsigned int, int>> vertAttrSlots;
-	std::string rootSignature;
+	RootSigParseData::RootSignature rootSignature;
 };
 
 //#DEBUG findt proper place for this as well
@@ -259,6 +371,15 @@ public:
 	~Pass() = default;
 
 	std::string name;
+
+	unsigned int colorTargetNameHash = 0;
+	unsigned int depthTargetNameHash = 0;
+
+	D3D12_VIEWPORT viewport = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+
+	std::vector<RootArg_t> passRootArgs;
+
+	std::vector<RootArg_t> perObjectRootArgsTemplate;
 
 	ComPtr<ID3D12PipelineState>		  pipelineState;
 	ComPtr<ID3D12RootSignature>		  rootSingature;

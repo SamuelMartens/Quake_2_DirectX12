@@ -32,7 +32,7 @@ BlendStValues		<- _ 'SrcAlpha' _ / _ 'InvSrcAlpha' _
 TopologyStValues    <- _ 'Triangle' _ / _ 'Point' _
 
 # --- Root Signature ---
-RSig                <- T( '{' < RSigFlagsDecl ( Comma RSigEntity )+ > '}' )
+RSig                <- T( '{' < RSigFlagsDecl ( ~Comma RSigEntity )+ > '}' )
 RSigEntity          <- RSigCBVDecl / RSigSRVDecl / RSigUAVDecl / RSigRootConstDecl / RSigStatSamplerDecl / RSigDescTableDecl
 
 RSigFlagsDecl   	<- T( < 'RootFlags' _ '(' RSigFlags? ( _ '|' _ RSigFlags )* ')' > )
@@ -46,7 +46,7 @@ RSigRootConstDecl	<- T( 'RootConstants' _ '(' _ 'num32BitConstants' _ '=' Int Co
 
 RSigStatSamplerDecl <- T( 'StaticSampler' _ '(' RegisterId ( Comma ( !')' . )* )? ')' )
 
-RSigDescTableDecl       <- T( 'DescriptorTable' _ '(' RSigDescTableEntity ( Comma RSigDescTableEntity )*  ')' )
+RSigDescTableDecl       <- T( 'DescriptorTable' _ '(' RSigDescTableEntity ( ~Comma RSigDescTableEntity )*  ')' )
 RSigDescTableEntity     <- _ RSigCBVDecl _ / _ RSigSRVDecl _ / _ RSigUAVDecl _ / _ RSigDescTableSampler _
 RSigDescTableSampler    <- T( 'Sampler' _ '(' RegisterId ( Comma RSDescNumDecl )? ')' )
 
@@ -58,12 +58,15 @@ RSDescNumDecl       <- T( 'numDescriptors' _ '=' Int )
 # --- Resources ---
 VertAttr            <- T(  'struct' < Ident '{' VertAttrContent '}' > )
 Resource            <- T(  ResourceAttr ( ConstBuff / Texture / Sampler) )
-ConstBuff           <- T( 'cbuffer' < Ident ':' RegisterDecl  '{' ResourceContent '}' > )
+ConstBuff           <- T( 'cbuffer' < Ident ':' RegisterDecl  '{' ConstBuffContent '}' > )
 Texture             <- T( 'Texture2D' < Ident ':' RegisterDecl > )
 Sampler             <- T( 'SamplerState' < Ident ':' RegisterDecl > )
 ResourceAttr        <- T( '[' < ResourceScope ',' ResourceUpdate > ']' )
 ResourceScope       <- _ 'Global' _ / _ 'Local' _
 ResourceUpdate      <- _ 'PerObject' _ / _ 'PerPass' _ / _ 'PerFrame' _ / _ 'OnInit' _
+
+ConstBuffContent	<- T( ConstBuffField* )
+ConstBuffField		<- T( ResourceFieldType Ident ';' )
 
 VertAttrContent     <- T( VertAttrField* ) 
 VertAttrField       <- T( ResourceFieldType Ident ':' ResourceFieldSemantic ';' )
@@ -76,7 +79,7 @@ ResourceFieldSemantic   <- T( Word Int? )
 # --- Tokens ---
 Ident 	        <- T( < [a-zA-Z_][a-zA-Z0-9_]* > )
 RegisterDecl    <- T( 'register' _ '(' RegisterId ')' )
-RegisterId      <- T( [btsu] [0-9]+ )
+RegisterId      <- T( [btsu] Int )
 ResourceContent <- [^}]*
 
 # --- In code macro ---
