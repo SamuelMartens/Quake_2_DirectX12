@@ -31,7 +31,7 @@ public:
 
 	~StaticObjectFrameData();
 
-	BufferHandler constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
+	BufferHandler constantBufferHandler = BuffConst::INVALID_BUFFER_HANDLER;
 };
 
 class StaticObject
@@ -55,8 +55,8 @@ public:
 
 	std::string textureKey;
 	
-	BufferHandler vertices = BufConst::INVALID_BUFFER_HANDLER;
-	BufferHandler indices = BufConst::INVALID_BUFFER_HANDLER;
+	BufferHandler vertices = BuffConst::INVALID_BUFFER_HANDLER;
+	BufferHandler indices = BuffConst::INVALID_BUFFER_HANDLER;
 
 	int verticesSizeInBytes = Const::INVALID_SIZE;
 	int indicesSizeInBytes = Const::INVALID_SIZE;
@@ -105,12 +105,12 @@ public:
 	HeaderData headerData;
 
 	// - Texture coordinates not interpolated stored in extradata as well
-	BufferHandler textureCoords = BufConst::INVALID_BUFFER_HANDLER;
+	BufferHandler textureCoords = BuffConst::INVALID_BUFFER_HANDLER;
 
 	// - Vertices, sequence of keyframe vertices
-	BufferHandler vertices = BufConst::INVALID_BUFFER_HANDLER;
+	BufferHandler vertices = BuffConst::INVALID_BUFFER_HANDLER;
 
-	BufferHandler indices = BufConst::INVALID_BUFFER_HANDLER;
+	BufferHandler indices = BuffConst::INVALID_BUFFER_HANDLER;
 
 	// - Animation frames
 	std::vector<AnimFrame> animationFrames;
@@ -132,7 +132,7 @@ public:
 
 	~DynamicObjectConstBuffer();
 
-	BufferHandler constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
+	BufferHandler constantBufferHandler = BuffConst::INVALID_BUFFER_HANDLER;
 	std::atomic<bool> isInUse = false;
 };
 

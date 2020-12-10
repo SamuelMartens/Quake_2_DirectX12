@@ -142,6 +142,14 @@ namespace RootSigParseData
 	};
 };
 
+enum class ResourceUpdate
+{
+	PerObject,
+	PerFrame,
+	OnInit
+};
+
+
 enum class ParseDataType
 {
 	Float4x4,
@@ -181,7 +189,7 @@ struct RootArg_ConstBuffView
 	int index = Const::INVALID_INDEX;
 	unsigned int hashedName = 0;
 	std::vector<ConstBuffField> content;
-	BufferHandler gpuMem;
+	BufferHandler gpuMem = BuffConst::INVALID_BUFFER_HANDLER;
 };
 
 struct DescTableEntity_ConstBufferView
@@ -227,6 +235,7 @@ struct VertAttr
 struct Resource_ConstBuff
 {
 	std::string name;
+	ResourceUpdate updateFrequency = ResourceUpdate::OnInit;
 	int registerId = Const::INVALID_INDEX;
 	std::vector<ConstBuffField> content;
 	std::string rawView;
@@ -235,6 +244,7 @@ struct Resource_ConstBuff
 struct Resource_Texture
 {
 	std::string name;
+	ResourceUpdate updateFrequency = ResourceUpdate::OnInit;
 	int registerId = Const::INVALID_INDEX;
 	std::string rawView;
 };
@@ -242,6 +252,7 @@ struct Resource_Texture
 struct Resource_Sampler
 {
 	std::string name;
+	ResourceUpdate updateFrequency = ResourceUpdate::OnInit;
 	int registerId = Const::INVALID_INDEX;
 	std::string rawView;
 };
@@ -270,14 +281,6 @@ public:
 		Undefined
 	};
 	
-	enum class ResourceUpdate
-	{
-		PerObject,
-		PerPass,
-		PerFrame,
-		OnInit
-	};
-
 	enum class ResourceScope
 	{
 		Local,
@@ -304,19 +307,6 @@ public:
 	PassSource& operator=(PassSource&&) = default;
 
 	~PassSource() = default;
-
-
-	template<typename T>
-	static std::string_view _GetResourceName(const T& res)
-	{
-		return res.name;
-	}
-
-	template<typename T>
-	static std::string_view _GetResourceRawView(const T& res)
-	{
-		return res.rawView;
-	}
 
 	static std::string_view GetResourceName(const Resource_t& res);
 	static std::string_view GetResourceRawView(const Resource_t& res);

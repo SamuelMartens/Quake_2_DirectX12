@@ -15,14 +15,14 @@
 
 using BufferHandler = uint32_t;
 
-namespace BufConst
+namespace BuffConst
 {
 	extern const BufferHandler INVALID_BUFFER_HANDLER;
 };
 
 struct BufferPiece
 {
-	BufferHandler handler = BufConst::INVALID_BUFFER_HANDLER;
+	BufferHandler handler = BuffConst::INVALID_BUFFER_HANDLER;
 	int offset = Const::INVALID_OFFSET;
 };
 
@@ -90,7 +90,7 @@ public:
 	{
 		std::scoped_lock<std::mutex> lock(mutex);
 
-		assert(handler != BufConst::INVALID_BUFFER_HANDLER && "Trying to delete invalid default buffer handler");
+		assert(handler != BuffConst::INVALID_BUFFER_HANDLER && "Trying to delete invalid default buffer handler");
 
 		assert(m_handlers[handler] != Const::INVALID_OFFSET);
 

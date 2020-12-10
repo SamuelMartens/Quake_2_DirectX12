@@ -184,22 +184,18 @@ PassSource::PassSource()
 
 std::string_view PassSource::GetResourceName(const Resource_t& res)
 {
-	return std::visit([](auto && resource)
+	return std::visit([](auto&& resource)
 	{
-		using T = std::decay_t<decltype(resource)>;
-
-		return _GetResourceName<T>(resource);
+		return std::string_view(resource.name);
 	},
 	res);
 }
 
 std::string_view PassSource::GetResourceRawView(const Resource_t& res)
 {
-	return std::visit([](auto && resource)
+	return std::visit([](auto&& resource)
 	{
-		using T = std::decay_t<decltype(resource)>;
-
-		return _GetResourceRawView<T>(resource);
+		return std::string_view(resource.rawView);
 	},
 	res);
 }

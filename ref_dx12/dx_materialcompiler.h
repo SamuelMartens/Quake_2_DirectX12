@@ -50,6 +50,7 @@ public:
 		const PassSource& passSource,
 		PassCompiledShaders_t& shaders,
 		ComPtr<ID3D12RootSignature>& rootSig) const;
+	void CreateResourceArguments(const PassSource& passSource, const std::vector<Resource_t>& globalRes, Pass& pass) const;
 
 	Pass CompilePass(const PassSource& passSource, const std::vector<Resource_t>& globalRes) const;
 

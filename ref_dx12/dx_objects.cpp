@@ -32,10 +32,10 @@ StaticObject& StaticObject::StaticObject::operator=(StaticObject&& other)
 	other.indicesSizeInBytes = Const::INVALID_SIZE;
 
 	vertices = other.vertices;
-	other.vertices = BufConst::INVALID_BUFFER_HANDLER;
+	other.vertices = BuffConst::INVALID_BUFFER_HANDLER;
 
 	indices = other.indices;
-	other.indices = BufConst::INVALID_BUFFER_HANDLER;
+	other.indices = BuffConst::INVALID_BUFFER_HANDLER;
 
 	frameData = std::move(other.frameData);
 
@@ -68,12 +68,12 @@ std::tuple<XMFLOAT4, XMFLOAT4> StaticObject::GenerateAABB(const std::vector<XMFL
 
 StaticObject::~StaticObject()
 {
-	if (vertices != BufConst::INVALID_BUFFER_HANDLER)
+	if (vertices != BuffConst::INVALID_BUFFER_HANDLER)
 	{
 		Renderer::Inst().DeleteDefaultMemoryBuffer(vertices);
 	}
 
-	if (indices != BufConst::INVALID_BUFFER_HANDLER)
+	if (indices != BuffConst::INVALID_BUFFER_HANDLER)
 	{
 		Renderer::Inst().DeleteDefaultMemoryBuffer(indices);
 	}
@@ -97,13 +97,13 @@ DynamicObjectModel& DynamicObjectModel::operator=(DynamicObjectModel&& other)
 	other.headerData.indicesNum = Const::INVALID_SIZE;
 
 	textureCoords = other.textureCoords;
-	other.textureCoords = BufConst::INVALID_BUFFER_HANDLER;
+	other.textureCoords = BuffConst::INVALID_BUFFER_HANDLER;
 
 	vertices = other.vertices;
-	other.vertices = BufConst::INVALID_BUFFER_HANDLER;
+	other.vertices = BuffConst::INVALID_BUFFER_HANDLER;
 
 	indices = other.indices;
-	other.indices = BufConst::INVALID_BUFFER_HANDLER;
+	other.indices = BuffConst::INVALID_BUFFER_HANDLER;
 
 	animationFrames = std::move(other.animationFrames);
 
@@ -177,17 +177,17 @@ std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> DynamicObjectModel::GenerateAnimInterpo
 
 DynamicObjectModel::~DynamicObjectModel()
 {
-	if (indices != BufConst::INVALID_BUFFER_HANDLER)
+	if (indices != BuffConst::INVALID_BUFFER_HANDLER)
 	{
 		Renderer::Inst().DeleteDefaultMemoryBuffer(indices);
 	}
 
-	if (vertices != BufConst::INVALID_BUFFER_HANDLER)
+	if (vertices != BuffConst::INVALID_BUFFER_HANDLER)
 	{
 		Renderer::Inst().DeleteDefaultMemoryBuffer(vertices);
 	}
 
-	if (textureCoords != BufConst::INVALID_BUFFER_HANDLER)
+	if (textureCoords != BuffConst::INVALID_BUFFER_HANDLER)
 	{
 		Renderer::Inst().DeleteDefaultMemoryBuffer(textureCoords);
 	}
@@ -203,7 +203,7 @@ DynamicObjectConstBuffer& DynamicObjectConstBuffer::operator=(DynamicObjectConst
 	PREVENT_SELF_MOVE_ASSIGN
 
 	constantBufferHandler = other.constantBufferHandler;
-	other.constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
+	other.constantBufferHandler = BuffConst::INVALID_BUFFER_HANDLER;
 
 	isInUse.store(other.isInUse.load());
 	other.isInUse = false;
@@ -213,7 +213,7 @@ DynamicObjectConstBuffer& DynamicObjectConstBuffer::operator=(DynamicObjectConst
 
 DynamicObjectConstBuffer::~DynamicObjectConstBuffer()
 {
-	if (constantBufferHandler != BufConst::INVALID_BUFFER_HANDLER)
+	if (constantBufferHandler != BuffConst::INVALID_BUFFER_HANDLER)
 	{
 		Renderer::Inst().DeleteUploadMemoryBuffer(constantBufferHandler);
 	}
@@ -256,14 +256,14 @@ StaticObjectFrameData& StaticObjectFrameData::operator=(StaticObjectFrameData&& 
 	PREVENT_SELF_MOVE_ASSIGN;
 
 	constantBufferHandler = other.constantBufferHandler;
-	other.constantBufferHandler = BufConst::INVALID_BUFFER_HANDLER;
+	other.constantBufferHandler = BuffConst::INVALID_BUFFER_HANDLER;
 
 	return *this;
 }
 
 StaticObjectFrameData::~StaticObjectFrameData()
 {
-	if (constantBufferHandler != BufConst::INVALID_BUFFER_HANDLER)
+	if (constantBufferHandler != BuffConst::INVALID_BUFFER_HANDLER)
 	{
 		Renderer::Inst().DeleteUploadMemoryBuffer(constantBufferHandler);
 	}

@@ -13,5 +13,5 @@ public:
 	void Execute(Context& context);
 
 	Pass pass;
-	BufferHandler stageMemory = BufConst::INVALID_BUFFER_HANDLER;
+	BufferHandler stageMemory = BuffConst::INVALID_BUFFER_HANDLER;
 };

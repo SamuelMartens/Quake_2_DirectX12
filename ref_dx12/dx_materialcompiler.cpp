@@ -6,6 +6,7 @@
 #include <vector>
 #include <tuple>
 #include <d3dcompiler.h>
+#include <optional>
 //#DEBUG
 #include <any>
 //END
@@ -24,6 +25,7 @@
 #include "dx_diagnostics.h"
 #include "dx_app.h"
 #include "dx_infrastructure.h"
+
 
 namespace
 {
@@ -49,7 +51,7 @@ namespace
 	{
 #ifdef _DEBUG
 
-		std::string_view resourceName = PassSource::_GetResourceName(resource);
+		std::string_view resourceName = resource.name;
 
 		switch (scope)
 		{
@@ -113,6 +115,74 @@ namespace
 #endif // _DEBUG
 	}
 
+	template<typename T>
+	const T* FindResourceOfTypeAndRegId(const std::vector<Resource_t>& resources, int registerId)
+	{
+		for (const Resource_t& res : resources)
+		{
+			// Visit can't return different types for different invocations. So we just use it to find right resource
+			const bool isTargetRes = std::visit([registerId](auto&& res)
+			{
+				using resT = std::decay_t<decltype(res)>;
+
+				if constexpr (std::is_same_v<T, resT>)
+				{
+					return res.registerId == registerId;
+				}
+
+				return false;
+
+			}, res);
+
+			if (isTargetRes)
+			{
+				return &std::get<T>(res);
+			}
+		}
+
+		return nullptr;
+	}
+
+	template<typename T1>
+	const T1* FindResourceForRootArgument(const std::vector<Resource_t>& passResources, const std::vector<Resource_t>& globalRes, int registerId)
+	{
+		const T1* res = FindResourceOfTypeAndRegId<T1>(passResources, registerId);
+		if (res == nullptr)
+		{
+			res = FindResourceOfTypeAndRegId<T1>(globalRes, registerId);
+		}
+
+		assert(res != nullptr && "Can't find resource for root argument");
+
+		return res;
+	}
+
+	template<typename T>
+	void AddRootArgToPass(Pass& pass, ResourceUpdate updateFrequency, T&& res)
+	{
+		switch (updateFrequency)
+		{
+		case ResourceUpdate::PerObject:
+			pass.perObjectRootArgsTemplate.push_back(res);
+			break;
+		case ResourceUpdate::PerFrame:
+			pass.passRootArgs.push_back(res);
+			break;
+		case ResourceUpdate::OnInit:
+		default:
+			assert(false && "Unimplemented update frequency handling in add root arg pass");
+			break;
+		}
+	}
+
+	void SetResourceUpdateFrequency(Resource_t& r, ResourceUpdate update)
+	{
+		std::visit([update](auto&& resource) 
+		{
+			resource.updateFrequency = update;
+		}, r);
+	}
+
 	void InitPassParser(peg::parser& parser) 
 	{
 		// Load grammar
@@ -129,6 +199,8 @@ namespace
 		assert(loadGrammarResult && "Can't load pass grammar");
 
 		// Set up callbacks
+
+		// --- Top level pass tokens
 		parser["PassInputIdent"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
 			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
@@ -479,8 +551,8 @@ namespace
 		parser["Resource"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
 			//#DEBUG ignore ResourceUpdate for now. Handle Scope only. Do debug validation
-			std::tuple<PassSource::ResourceScope, PassSource::ResourceUpdate> resourceAttr =
-				peg::any_cast<std::tuple<PassSource::ResourceScope, PassSource::ResourceUpdate>>(sv[0]);
+			std::tuple<PassSource::ResourceScope, ResourceUpdate> resourceAttr =
+				peg::any_cast<std::tuple<PassSource::ResourceScope, ResourceUpdate>>(sv[0]);
 
 			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
 			PassSource& currentPass = parseCtx.passSources.back();
@@ -506,8 +578,11 @@ namespace
 				}
 				else
 				{
-					assert(false && "Resource callback invalid type");
+					assert(false && "Resource callback invalid type. Local scope");
 				}
+
+				SetResourceUpdateFrequency(currentPass.resources.back(), std::get<ResourceUpdate>(resourceAttr));
+
 				break;
 			}
 			case PassSource::ResourceScope::Global:
@@ -529,8 +604,11 @@ namespace
 				}
 				else
 				{
-					assert(false && "Resource callback invalid type");
+					assert(false && "Resource callback invalid type. Global scope");
 				}
+
+				SetResourceUpdateFrequency(parseCtx.resources.back(), std::get<ResourceUpdate>(resourceAttr));
+
 				break;
 			}
 			default:
@@ -544,6 +622,7 @@ namespace
 		{
 			return Resource_ConstBuff{
 				peg::any_cast<std::string>(sv[0]),
+				ResourceUpdate::OnInit,
 				peg::any_cast<int>(sv[1]),
 				peg::any_cast<std::vector<ConstBuffField>>(sv[2]),
 				sv.str()};
@@ -553,6 +632,7 @@ namespace
 		{
 			return Resource_Texture{
 				peg::any_cast<std::string>(sv[0]),
+				ResourceUpdate::OnInit,
 				peg::any_cast<int>(sv[1]),
 				sv.str()};
 		};
@@ -562,6 +642,7 @@ namespace
 		{
 			return Resource_Sampler{
 				peg::any_cast<std::string>(sv[0]),
+				ResourceUpdate::OnInit,
 				peg::any_cast<int>(sv[1]),
 				sv.str()};
 		};
@@ -570,7 +651,7 @@ namespace
 		{
 			return std::make_tuple(
 				peg::any_cast<PassSource::ResourceScope>(sv[0]),
-				peg::any_cast<PassSource::ResourceUpdate>(sv[1]));
+				peg::any_cast<ResourceUpdate>(sv[1]));
 		};
 
 		parser["ResourceScope"] = [](const peg::SemanticValues& sv)
@@ -580,10 +661,10 @@ namespace
 
 		parser["ResourceUpdate"] = [](const peg::SemanticValues& sv)
 		{
-			return static_cast<PassSource::ResourceUpdate>(sv.choice());
+			return static_cast<ResourceUpdate>(sv.choice());
 		};
 
-		parser["ConstBuffField"] = [](const peg::SemanticValues& sv)
+		parser["ConstBuffContent"] = [](const peg::SemanticValues& sv)
 		{
 			std::vector<ConstBuffField> constBufferContent;
 
@@ -1080,6 +1161,117 @@ ComPtr<ID3D12PipelineState> MaterialCompiler::GeneratePipelineStateObject(const 
 	return pipelineState;
 }
 
+void MaterialCompiler::CreateResourceArguments(const PassSource& passSource, const std::vector<Resource_t>& globalRes, Pass& pass) const
+{
+	const std::vector<Resource_t>& passResources = passSource.resources;
+
+	for (int i = 0; i < passSource.rootSignature.params.size(); ++i)
+	{
+		const RootSigParseData::RootParma_t& rootParam = passSource.rootSignature.params[i];
+
+		std::visit([paramIndex = i, &passResources, &pass, &globalRes](auto&& rootParam)
+		{
+			using T = std::decay_t<decltype(rootParam)>;
+
+			if constexpr (std::is_same_v<T, RootSigParseData::RootParam_ConstBuffView>)
+			{
+				const Resource_ConstBuff* res =
+					FindResourceForRootArgument<Resource_ConstBuff>(passResources, globalRes, rootParam.registerId);
+
+				assert(rootParam.num == 1 && "Const buffer view should always have numDescriptors 1");
+
+				AddRootArgToPass(pass, res->updateFrequency, RootArg_ConstBuffView{
+					paramIndex,
+					HASH(res->name.c_str()),
+					res->content,
+					BuffConst::INVALID_BUFFER_HANDLER
+				});
+
+			}
+			else if constexpr (std::is_same_v<T, RootSigParseData::RootParam_DescTable>)
+			{
+				RootArg_DescTable descTableArgument;
+				descTableArgument.index = paramIndex;
+				//#DEBUG so far it will be updated on every entity. The idea is that everything in
+				// the same desc table should have the same update frequency. I need to find some way to validate this
+				// and enforce this suff, and set it up
+				ResourceUpdate updateFrequency = ResourceUpdate::OnInit;
+
+
+				for (const RootSigParseData::DescTableEntity_t& descTableEntity : rootParam.entities) 
+				{
+					std::visit([&descTableArgument, &updateFrequency, &passResources, &pass, &globalRes](auto&& descTableParam) 
+					{
+						using T = std::decay_t<decltype(descTableParam)>;
+
+						if constexpr (std::is_same_v<T, RootSigParseData::RootParam_ConstBuffView>)
+						{
+							for (int i = 0; i < descTableParam.num; ++i)
+							{
+								const Resource_ConstBuff* res =
+									FindResourceForRootArgument<Resource_ConstBuff>(passResources, globalRes, descTableParam.registerId + i);
+
+								updateFrequency = res->updateFrequency;
+
+								descTableArgument.content.emplace_back(DescTableEntity_ConstBufferView{
+									HASH(res->name.c_str()),
+									res->content,
+									BuffConst::INVALID_BUFFER_HANDLER,
+									Const::INVALID_INDEX
+									});
+							}
+						}
+						else if constexpr (std::is_same_v<T, RootSigParseData::RootParam_TextView>)
+						{
+							for (int i = 0; i < descTableParam.num; ++i)
+							{
+								const Resource_Texture* res =
+									FindResourceForRootArgument<Resource_Texture>(passResources, globalRes, descTableParam.registerId + i);
+
+								updateFrequency = res->updateFrequency;
+
+								descTableArgument.content.emplace_back(DescTableEntity_Texture{
+									HASH(res->name.c_str()),
+									Const::INVALID_INDEX								
+								});
+							}
+
+						}
+						else if constexpr (std::is_same_v<T, RootSigParseData::RootParam_SamplerView>)
+						{
+							for (int i = 0; i < descTableParam.num; ++i)
+							{
+								const Resource_Sampler* res =
+									FindResourceForRootArgument<Resource_Sampler>(passResources, globalRes, descTableParam.registerId + i);
+
+								updateFrequency = res->updateFrequency;
+
+								descTableArgument.content.emplace_back(DescTableEntity_Sampler{
+									HASH(res->name.c_str()),
+									Const::INVALID_INDEX
+									});
+							}
+						}
+						else
+						{
+							static_assert(false, "Invalid desc table entity type");
+						}
+
+					}, descTableEntity);
+				}
+
+				AddRootArgToPass(pass, updateFrequency, descTableArgument);
+			}
+			else
+			{
+				static_assert(false, "Resource argument can't be created. Invalid root param type");
+			}
+
+
+		}, rootParam);
+	}
+}
+
 Pass MaterialCompiler::CompilePass(const PassSource& passSource, const std::vector<Resource_t>& globalRes) const
 {
 	Pass pass;
@@ -1093,6 +1285,8 @@ Pass MaterialCompiler::CompilePass(const PassSource& passSource, const std::vect
 	PassCompiledShaders_t compiledShaders = CompileShaders(passSource, globalRes);
 	pass.rootSingature = GenerateRootSignature(passSource, compiledShaders);
 	pass.pipelineState = GeneratePipelineStateObject(passSource, compiledShaders, pass.rootSingature);
+
+	CreateResourceArguments(passSource, globalRes, pass);
 
 	return pass;
 }

@@ -3,7 +3,7 @@
 #ifdef max
 #undef max
 
-const BufferHandler BufConst::INVALID_BUFFER_HANDLER = std::numeric_limits<BufferHandler>::max();
+const BufferHandler BuffConst::INVALID_BUFFER_HANDLER = std::numeric_limits<BufferHandler>::max();
 
 #endif
 
