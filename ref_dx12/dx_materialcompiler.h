@@ -45,6 +45,8 @@ public:
 
 	PassCompiledShaders_t CompileShaders(const PassSource& pass, const std::vector<Resource_t>& globalRes) const;
 	std::vector<D3D12_INPUT_ELEMENT_DESC> GenerateInputLayout(const PassSource& pass) const;
+	const VertAttr& GetPassInputVertAttr(const PassSource& pass) const;
+
 	ComPtr<ID3D12RootSignature> GenerateRootSignature(const PassSource& pass, const PassCompiledShaders_t& shaders) const;
 	ComPtr<ID3D12PipelineState>	GeneratePipelineStateObject(
 		const PassSource& passSource,

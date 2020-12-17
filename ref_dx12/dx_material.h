@@ -10,6 +10,7 @@
 #include "dx_common.h"
 #include "dx_utils.h"
 #include "dx_buffer.h"
+#include "dx_commandlist.h"
 
 class MaterialSource
 {
@@ -134,7 +135,7 @@ namespace RootSigParseData
 	};
 
 	using RootParma_t = std::variant<RootParam_ConstBuffView, RootParam_DescTable>;
-
+	//#DEBUG super IMPORTANT! handle views free
 	struct RootSignature
 	{
 		std::vector<RootParma_t> params;
@@ -142,10 +143,14 @@ namespace RootSigParseData
 	};
 };
 
+//#DEBUG implement PerFrame
+// Remove on init. This is actually not update? Rebind maybe?
+// Think about good name
 enum class ResourceUpdate
 {
 	PerObject,
-	PerFrame,
+	PerPass,
+//	PerFrame,
 	OnInit
 };
 
@@ -189,27 +194,24 @@ struct RootArg_ConstBuffView
 	int index = Const::INVALID_INDEX;
 	unsigned int hashedName = 0;
 	std::vector<ConstBuffField> content;
-	BufferHandler gpuMem = BuffConst::INVALID_BUFFER_HANDLER;
+	BufferPiece gpuMem;
 };
 
 struct DescTableEntity_ConstBufferView
 {
 	unsigned int hashedName = 0;
 	std::vector<ConstBuffField> content;
-	BufferHandler gpuMem;
-	int viewIndex = Const::INVALID_INDEX;
+	BufferPiece gpuMem;
 };
 
 struct DescTableEntity_Texture
 {
 	unsigned int hashedName = 0;
-	int viewIndex = Const::INVALID_INDEX;
 };
 
 struct DescTableEntity_Sampler
 {
 	unsigned int hashedName = 0;
-	int viewIndex = Const::INVALID_INDEX;
 };
 
 using DescTableEntity_t = std::variant<DescTableEntity_ConstBufferView, DescTableEntity_Texture, DescTableEntity_Sampler>;
@@ -218,9 +220,14 @@ struct RootArg_DescTable
 {
 	int index = Const::INVALID_INDEX;
 	std::vector<DescTableEntity_t> content;
+	int viewIndex = Const::INVALID_INDEX;
 };
 
+int AllocateDescTableView(const RootArg_DescTable& descTable);
+
 using RootArg_t = std::variant<RootArg_RootConstant, RootArg_ConstBuffView, RootArg_DescTable>;
+
+void BindRootArg(const RootArg_t& rootArg, CommandList& commandList);
 
 //#DEBUG not sure if rawView is really needed. 
 // SFINAE can help solve problem if I don't need it for some members
@@ -258,6 +265,22 @@ struct Resource_Sampler
 };
 
 using  Resource_t = std::variant<Resource_ConstBuff, Resource_Texture, Resource_Sampler>;
+
+
+template<typename T>
+int GetConstBuffSize(const T& cb)
+{
+	int size = 0;
+
+	std::for_each(cb.content.begin(), cb.content.end(),
+		[&size](const ConstBuffField& f)
+	{
+		size += f.size;
+	});
+
+	return Utils::Align(size, Settings::CONST_BUFFER_ALIGNMENT);
+}
+
 
 class PassSource
 {
@@ -360,6 +383,7 @@ public:
 
 	~Pass() = default;
 
+public:
 	std::string name;
 
 	unsigned int colorTargetNameHash = 0;
@@ -370,6 +394,12 @@ public:
 	std::vector<RootArg_t> passRootArgs;
 
 	std::vector<RootArg_t> perObjectRootArgsTemplate;
+
+	// I do need this if I want callback style handling of vertex attributes
+	// Maybe not everything from this tho. Like rawView is not required. 
+	// Will refactor this if I will ever do callbacks for vertex attribute handling
+	//#DEBUG rework this on something that I actually need
+	VertAttr vertAttr;
 
 	ComPtr<ID3D12PipelineState>		  pipelineState;
 	ComPtr<ID3D12RootSignature>		  rootSingature;

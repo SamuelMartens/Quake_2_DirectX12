@@ -165,7 +165,7 @@ namespace
 		case ResourceUpdate::PerObject:
 			pass.perObjectRootArgsTemplate.push_back(res);
 			break;
-		case ResourceUpdate::PerFrame:
+		case ResourceUpdate::PerPass:
 			pass.passRootArgs.push_back(res);
 			break;
 		case ResourceUpdate::OnInit:
@@ -1058,15 +1058,9 @@ std::shared_ptr<ParseMaterialContext> MaterialCompiler::ParseMaterialFile(const 
 
 std::vector<D3D12_INPUT_ELEMENT_DESC> MaterialCompiler::GenerateInputLayout(const PassSource& pass) const
 {
+	const VertAttr& vertAttr = GetPassInputVertAttr(pass);
 
-	const std::string& inputName = pass.inputVertAttr;
-
-	const auto attrIt = std::find_if(pass.vertAttr.cbegin(), pass.vertAttr.cend(),
-		[inputName](const VertAttr& attr) { return inputName == attr.name; });
-
-	assert(attrIt != pass.vertAttr.cend() && "Can't find input vert attribute");
-
-	assert((pass.vertAttrSlots.empty() || pass.vertAttrSlots.size() == attrIt->content.size())
+	assert((pass.vertAttrSlots.empty() || pass.vertAttrSlots.size() == vertAttr.content.size())
 		&& "Invalid vert attr slots num, for input layout generation");
 
 	std::array<unsigned int, 16> inputSlotOffset;
@@ -1075,9 +1069,9 @@ std::vector<D3D12_INPUT_ELEMENT_DESC> MaterialCompiler::GenerateInputLayout(cons
 	std::vector<D3D12_INPUT_ELEMENT_DESC> inputLayout;
 
 	
-	for (int i = 0; i < attrIt->content.size(); ++i)
+	for (int i = 0; i < vertAttr.content.size(); ++i)
 	{
-		const VertAttrField& field = attrIt->content[i];
+		const VertAttrField& field = vertAttr.content[i];
 
 		const auto inputSlotIt = std::find_if(pass.vertAttrSlots.cbegin(), pass.vertAttrSlots.cend(),
 			[field](const std::tuple<unsigned int, int>& slot) 
@@ -1102,6 +1096,18 @@ std::vector<D3D12_INPUT_ELEMENT_DESC> MaterialCompiler::GenerateInputLayout(cons
 	}
 
 	return inputLayout;
+}
+
+const VertAttr& MaterialCompiler::GetPassInputVertAttr(const PassSource& pass) const
+{
+	const std::string& inputName = pass.inputVertAttr;
+
+	const auto attrIt = std::find_if(pass.vertAttr.cbegin(), pass.vertAttr.cend(),
+		[inputName](const VertAttr& attr) { return inputName == attr.name; });
+
+	assert(attrIt != pass.vertAttr.cend() && "Can't find input vert attribute");
+
+	return *attrIt;
 }
 
 ComPtr<ID3D12RootSignature> MaterialCompiler::GenerateRootSignature(const PassSource& pass, const PassCompiledShaders_t& shaders) const
@@ -1194,7 +1200,7 @@ void MaterialCompiler::CreateResourceArguments(const PassSource& passSource, con
 				descTableArgument.index = paramIndex;
 				//#DEBUG so far it will be updated on every entity. The idea is that everything in
 				// the same desc table should have the same update frequency. I need to find some way to validate this
-				// and enforce this suff, and set it up
+				// and enforce this stuff, and set it up
 				ResourceUpdate updateFrequency = ResourceUpdate::OnInit;
 
 
@@ -1231,8 +1237,7 @@ void MaterialCompiler::CreateResourceArguments(const PassSource& passSource, con
 								updateFrequency = res->updateFrequency;
 
 								descTableArgument.content.emplace_back(DescTableEntity_Texture{
-									HASH(res->name.c_str()),
-									Const::INVALID_INDEX								
+									HASH(res->name.c_str())						
 								});
 							}
 
@@ -1247,8 +1252,7 @@ void MaterialCompiler::CreateResourceArguments(const PassSource& passSource, con
 								updateFrequency = res->updateFrequency;
 
 								descTableArgument.content.emplace_back(DescTableEntity_Sampler{
-									HASH(res->name.c_str()),
-									Const::INVALID_INDEX
+									HASH(res->name.c_str())
 									});
 							}
 						}
@@ -1281,6 +1285,7 @@ Pass MaterialCompiler::CompilePass(const PassSource& passSource, const std::vect
 	pass.colorTargetNameHash = HASH(passSource.colorTargetName.c_str());
 	pass.depthTargetNameHash = HASH(passSource.depthTargetName.c_str());
 	pass.viewport = passSource.viewport;
+	pass.vertAttr = GetPassInputVertAttr(passSource);
 
 	PassCompiledShaders_t compiledShaders = CompileShaders(passSource, globalRes);
 	pass.rootSingature = GenerateRootSignature(passSource, compiledShaders);

@@ -71,7 +71,6 @@ namespace FArg
 
 
 //#TODO 
-// 1) currently I do : Update - Draw, Update - Draw. It should be Update Update , Draw Draw (especially text)
 // 2) Make your wrappers as exclusive owners of some resource, and operate with smart pointers instead to avoid mess
 //    during resource management.(This requires rewrite some stuff like Textures or buffers)
 // 3) For Movies and UI we don't need stream drawing, but just one quad object  and the width and height would be
@@ -79,7 +78,6 @@ namespace FArg
 // 4) If decided to go with preallocated GPU buffers I should come up with some way to control buffers states
 //	  and actively avoid redundant state transitions
 // 5) Implement occlusion query. If this is not enough, resurrect BSP tree.
-// 6) Device and factory should leave in separate class. That would fix a lot(will do it after job system is implemented)
 class Renderer
 {
 private:
@@ -141,6 +139,8 @@ public:
 	int GetMSAASampleCount() const;
 	int GetMSAAQuality() const;
 	void GetDrawAreaSize(int* Width, int* Height);
+	const std::array<unsigned int, 256>& GetRawPalette() const;
+	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
 
 	/* Initialization and creation */
 	void CreateFences(ComPtr<ID3D12Fence>& fence);
@@ -153,6 +153,31 @@ public:
 	std::unique_ptr<DescriptorHeap>	rtvHeap = nullptr;
 	std::unique_ptr<DescriptorHeap>	dsvHeap = nullptr;
 	std::unique_ptr<DescriptorHeap> cbvSrvHeap = nullptr;
+	std::unique_ptr<DescriptorHeap> samplerHeap = nullptr;
+
+	//#DEBUG move this to memory manager
+	// I need enforce alignment on this buffer, because I allocate constant buffers from it. 
+	// I don't want to create separate buffer just for constant buffers, because that would increase complexity
+	// without real need to do this. I still try to explicitly indicate places where I actually need alignment
+	// in case I would decide to refactor this into separate buffer
+	HandlerBuffer<Settings::UPLOAD_MEMORY_BUFFER_SIZE,
+		Settings::UPLOAD_MEMORY_BUFFER_HANDLERS_NUM,
+		Settings::CONST_BUFFER_ALIGNMENT> m_uploadMemoryBuffer;
+	HandlerBuffer<Settings::DEFAULT_MEMORY_BUFFER_SIZE, Settings::DEFAULT_MEMORY_BUFFER_HANDLERS_NUM> m_defaultMemoryBuffer;
+
+	/* Buffer */
+	//#DEBUG this also should be part of memory manager
+	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, Context& context);
+	ComPtr<ID3D12Resource> CreateUploadHeapBuffer(UINT64 byteSize) const;
+	void UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const;
+	void UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args);
+
+	//#DEBUG this should be part of UI render stage
+	// DirectX and OpenGL have different directions for Y axis,
+	// this matrix is required to fix this. Also apparently original Quake 2
+	// had origin in a middle of a screen, while we have it in upper left corner,
+	// so we need to center content to the screen center
+	XMFLOAT4X4 m_yInverseAndCenterMatrix;
 
 private:
 
@@ -184,8 +209,6 @@ private:
 
 	void CreateCommandQueue();
 
-	void InitDescriptorSizes();
-
 	void CreateCompiledMaterials();
 
 	void CreateTextureSampler();
@@ -208,13 +231,8 @@ private:
 	void CreateDeferredTextures(Context& context);
 	void UpdateTexture(Texture& tex, const std::byte* data, Context& context);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
-	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
 
-	/* Buffer */
-	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, Context& context);
-	ComPtr<ID3D12Resource> CreateUploadHeapBuffer(UINT64 byteSize) const;
-	void UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const;
-	void UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args);
+	
 
 	/* Shutdown and clean up Win32 specific stuff */
 	void ShutdownWin32();
@@ -293,31 +311,11 @@ private:
 
 	ComPtr<ID3D12CommandQueue>		  m_commandQueue;
 	
-	ComPtr<ID3D12DescriptorHeap>	  m_samplerHeap;
-
-	// I need enforce alignment on this buffer, because I allocate constant buffers from it. 
-	// I don't want to create separate buffer just for constant buffers, because that would increase complexity
-	// without real need to do this. I still try to explicitly indicate places where I actually need alignment
-	// in case I would decide to refactor this into separate buffer
-	HandlerBuffer<Settings::UPLOAD_MEMORY_BUFFER_SIZE, 
-		Settings::UPLOAD_MEMORY_BUFFER_HANDLERS_NUM, 
-		Settings::CONST_BUFFER_ALIGNMENT> m_uploadMemoryBuffer;
-	HandlerBuffer<Settings::DEFAULT_MEMORY_BUFFER_SIZE, Settings::DEFAULT_MEMORY_BUFFER_HANDLERS_NUM> m_defaultMemoryBuffer;
-	
 	CommandListBuffer<Settings::COMMAND_LISTS_NUM> m_commandListBuffer;
 
 	tagRECT		   m_scissorRect;
 
 	INT	m_currentBackBuffer = 0;
-
-	/* Render target descriptor size */
-	UINT								   m_rtvDescriptorSize = 0;
-	/* Depth/Stencil descriptor size */
-	UINT								   m_dsvDescriptorSize = 0;
-	/* Constant buffer / shader resource descriptor size */
-	UINT								   m_cbvSrbDescriptorSize = 0;
-	/* Sampler descriptor size */
-	UINT								   m_samplerDescriptorSize = 0;
 
 	UINT m_MSQualityLevels = 0;
 
@@ -336,12 +334,6 @@ private:
 	std::unordered_map<model_t*, DynamicObjectModel> m_dynamicObjectsModels;
 	// Expected to set a size for it during initialization. Don't change size afterward
 	LockVector_t<DynamicObjectConstBuffer> m_dynamicObjectsConstBuffersPool;
-
-	// DirectX and OpenGL have different directions for Y axis,
-	// this matrix is required to fix this. Also apparently original Quake 2
-	// had origin in a middle of a screen, while we have it in upper left corner,
-	// so we need to center content to the screen center
-	XMFLOAT4X4 m_yInverseAndCenterMatrix;
 
 	std::vector<Material> m_materials;
 

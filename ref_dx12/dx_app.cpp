@@ -297,8 +297,6 @@ void Renderer::InitDx()
 	// Stuff that doesn't require frames for initialization
 	SetDebugMessageFilter();
 
-	InitDescriptorSizes();
-
 	CreateCommandQueue();
 
 	CheckMSAAQualitySupport();
@@ -472,17 +470,8 @@ void Renderer::CreateDescriptorHeaps()
 	cbvSrvHeap = std::make_unique<DescriptorHeap>(Settings::CBV_SRV_DESCRIPTOR_HEAP_SIZE,
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
 
-	// Create sampler heap
-	D3D12_DESCRIPTOR_HEAP_DESC samplerHeapDesc;
-	samplerHeapDesc.NumDescriptors = 1;
-	samplerHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-	samplerHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	samplerHeapDesc.NodeMask = 0;
-
-	ThrowIfFailed(Infr::Inst().GetDevice()->CreateDescriptorHeap(
-		&samplerHeapDesc,
-		IID_PPV_ARGS(m_samplerHeap.GetAddressOf())));
-
+	samplerHeap = std::make_unique<DescriptorHeap>(Settings::SAMPLER_DESCRIPTOR_HEAP_SIZE,
+		D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
 }
 
 void Renderer::CreateSwapChainBuffersAndViews()
@@ -494,7 +483,7 @@ void Renderer::CreateSwapChainBuffersAndViews()
 		// Get i-th buffer in a swap chain
 		ThrowIfFailed(m_swapChain->GetBuffer(i, IID_PPV_ARGS(&buffView.buffer)));
 
-		buffView.viewIndex = rtvHeap->Allocate(buffView.buffer);
+		buffView.viewIndex = rtvHeap->Allocate(buffView.buffer.Get());
 	}
 }
 
@@ -607,17 +596,6 @@ void Renderer::CreateDepthStencilBuffer(ComPtr<ID3D12Resource>& buffer)
 int Renderer::GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType) const
 {
 	return Infr::Inst().GetDevice()->GetDescriptorHandleIncrementSize(descriptorHeapType);
-}
-
-void Renderer::InitDescriptorSizes()
-{
-	ComPtr<ID3D12Device>& device = Infr::Inst().GetDevice();
-
-	// Get descriptors sizes
-	m_rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	m_dsvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-	m_cbvSrbDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	m_samplerDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 }
 
 ComPtr<ID3D12RootSignature> Renderer::SerializeAndCreateRootSigFromRootDesc(const CD3DX12_ROOT_SIGNATURE_DESC& rootSigDesc) const
@@ -778,7 +756,7 @@ void Renderer::SetNonMaterialState(Context& context) const
 	// Specify buffer we are going to render to
 	commandList.commandList->OMSetRenderTargets(1, &renderTargetView, true, &depthTargetView);
 
-	ID3D12DescriptorHeap* descriptorHeaps[] = { cbvSrvHeap->GetHeapResource(), m_samplerHeap.Get() };
+	ID3D12DescriptorHeap* descriptorHeaps[] = { cbvSrvHeap->GetHeapResource(),	samplerHeap->GetHeapResource() };
 	commandList.commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 }
 
@@ -990,17 +968,18 @@ int Renderer::GetFenceValue() const
 
 void Renderer::CreateTextureSampler()
 {
-	D3D12_SAMPLER_DESC samplerDesc = {};
-	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	samplerDesc.MinLOD = 0;
-	samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
-	samplerDesc.MipLODBias = 1;
-	samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	DescriptorHeap::Desc_t samplerDesc = D3D12_SAMPLER_DESC{};
+	D3D12_SAMPLER_DESC& samplerDescRef = std::get<D3D12_SAMPLER_DESC>(samplerDesc);
+	samplerDescRef.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	samplerDescRef.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDescRef.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDescRef.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDescRef.MinLOD = 0;
+	samplerDescRef.MaxLOD = D3D12_FLOAT32_MAX;
+	samplerDescRef.MipLODBias = 1;
+	samplerDescRef.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
 
-	Infr::Inst().GetDevice()->CreateSampler(&samplerDesc, m_samplerHeap->GetCPUDescriptorHandleForHeapStart());
+	samplerHeap->Allocate(nullptr, &samplerDesc);
 }
 
 int Renderer::GetMSAASampleCount() const
@@ -1231,7 +1210,7 @@ void Renderer::_CreateGpuTexture(const unsigned int* raw, int width, int height,
 	srvDescriptionRef.Texture2D.MipLevels = 1;
 	srvDescriptionRef.Texture2D.ResourceMinLODClamp = 0.0f;
 
-	outTex.texViewIndex = cbvSrvHeap->Allocate(outTex.buffer, &srvDescription);
+	outTex.texViewIndex = cbvSrvHeap->Allocate(outTex.buffer.Get(), &srvDescription);
 }
 
 Texture* Renderer::_CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context)
@@ -2095,10 +2074,8 @@ void Renderer::Draw(const StaticObject& object, Context& context)
 	commandList.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
 
 
-	// 2)
-	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
-	samplerHandle.Offset(texture.samplerInd, m_samplerDescriptorSize);
-
+	// 2)	
+	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle = samplerHeap->GetHandleGPU(texture.samplerInd);
 	commandList.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
 
 	// 3)
@@ -2145,9 +2122,7 @@ void Renderer::DrawIndiced(const StaticObject& object, Context& context)
 	commandList.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
 
 	// 2)
-	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
-	samplerHandle.Offset(texture.samplerInd, m_samplerDescriptorSize);
-
+	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle = samplerHeap->GetHandleGPU(texture.samplerInd);
 	commandList.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
 
 	// 3)
@@ -2239,9 +2214,7 @@ void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, 
 	commandList.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
 
 	// 2)
-	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
-	samplerHandle.Offset(tex->samplerInd, m_samplerDescriptorSize);
-
+	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle = samplerHeap->GetHandleGPU(tex->samplerInd);
 	commandList.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
 
 	// 3)
@@ -2300,9 +2273,7 @@ void Renderer::DrawStreaming(const FArg::DrawStreaming& args)
 	commandList.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
 
 	// 2)
-	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(m_samplerHeap->GetGPUDescriptorHandleForHeapStart());
-	samplerHandle.Offset(texture.samplerInd, m_samplerDescriptorSize);
-
+	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle = samplerHeap->GetHandleGPU(texture.samplerInd);
 	commandList.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
 
 	// 3)
@@ -2372,6 +2343,11 @@ void Renderer::GetDrawAreaSize(int* Width, int* Height)
 
 	assert(mode);
 	GetRefImport().Vid_GetModeInfo(Width, Height, static_cast<int>(mode->value));
+}
+
+const std::array<unsigned int, 256>& Renderer::GetRawPalette() const
+{
+	return m_rawPalette;
 }
 
 void Renderer::Load8To24Table()
@@ -2751,6 +2727,7 @@ void Renderer::ResampleTexture(const unsigned *in, int inwidth, int inheight, un
 	}
 }
 
+//#DEBUG move this to utils. This shouldn't be here. Or make it at least static
 void Renderer::GetDrawTextureFullname(const char* name, char* dest, int destSize) const
 {
 	if (name[0] != '/' && name[0] != '\\')

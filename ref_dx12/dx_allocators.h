@@ -11,6 +11,7 @@ public:
 	FlagAllocator(const int flagsNum);
 
 	int Allocate();
+	int AllocateRange(int size);
 	void Delete(int index);
 
 private:

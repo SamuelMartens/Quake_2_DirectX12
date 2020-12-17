@@ -13,7 +13,7 @@ void Frame::Init(int arrayIndexVal)
 
 	renderer.CreateDepthStencilBuffer(depthStencilBuffer);
 	
-	depthBufferViewIndex = renderer.dsvHeap->Allocate(depthStencilBuffer);
+	depthBufferViewIndex = renderer.dsvHeap->Allocate(depthStencilBuffer.Get());
 
 	camera.Init();
 }

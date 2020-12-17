@@ -15,6 +15,7 @@
 
 using BufferHandler = uint32_t;
 
+//#DEBUG can I move this to Const:: for convinience?
 namespace BuffConst
 {
 	extern const BufferHandler INVALID_BUFFER_HANDLER;

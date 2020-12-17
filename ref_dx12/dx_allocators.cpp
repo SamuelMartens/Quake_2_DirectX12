@@ -1,6 +1,7 @@
 #include "dx_allocators.h"
 
 #include <cassert>
+#include <algorithm>
 
 FlagAllocator::FlagAllocator(const int flagsNum)
 {
@@ -18,6 +19,22 @@ int FlagAllocator::Allocate()
 	assert(resIt != flags.end() && "Failed allocation attempt in flag allocator");
 
 	*resIt = true;
+
+	return std::distance(flags.begin(), resIt);
+}
+
+int FlagAllocator::AllocateRange(int size)
+{
+	std::scoped_lock<std::mutex> lock(mutex);
+
+	std::vector<bool> searchSequence(size, false);
+
+	auto resIt = std::search(flags.begin(), flags.end(), searchSequence.begin(), searchSequence.end());
+
+	assert(resIt != flags.end() && "Failed range allocation attempt in flag allocator");
+
+	// Mark elements as done
+	std::fill(resIt, resIt + size, true);
 
 	return std::distance(flags.begin(), resIt);
 }

@@ -16,22 +16,31 @@ public:
 	using Desc_t = std::variant<
 		D3D12_RENDER_TARGET_VIEW_DESC,
 		D3D12_DEPTH_STENCIL_VIEW_DESC,
-		D3D12_SHADER_RESOURCE_VIEW_DESC>;
+		D3D12_SHADER_RESOURCE_VIEW_DESC,
+		D3D12_SAMPLER_DESC>;
 
 	DescriptorHeap(
 		int descriptorsNum,
 		D3D12_DESCRIPTOR_HEAP_TYPE descriptorsType,
 		D3D12_DESCRIPTOR_HEAP_FLAGS flags);
 
-	int Allocate(ComPtr<ID3D12Resource> resource, DescriptorHeap::Desc_t* desc = nullptr);
+	int Allocate();
+	int Allocate(ID3D12Resource* resource, DescriptorHeap::Desc_t* desc = nullptr);
+	// Guarantees to allocate continuous range of descriptors
+	// Return first index in the continuous range
+	int AllocateRange(int size);
+	int AllocateRange(std::vector<ID3D12Resource*>& resources, std::vector<DescriptorHeap::Desc_t*> descs);
 	void Delete(int index);
 
+	
 	ID3D12DescriptorHeap* GetHeapResource();
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE GetHandleCPU(int index) const;
 	CD3DX12_GPU_DESCRIPTOR_HANDLE GetHandleGPU(int index) const;
 
 private:
+
+	void AllocateDescriptor(int allocatedIndex, ID3D12Resource* resource, DescriptorHeap::Desc_t* desc);
 
 	FlagAllocator alloc;
 	ComPtr<ID3D12DescriptorHeap> heap;

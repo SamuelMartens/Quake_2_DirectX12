@@ -259,3 +259,78 @@ DXGI_FORMAT GetParseDataTypeDXGIFormat(ParseDataType type)
 
 	return DXGI_FORMAT_R32G32B32A32_FLOAT;
 }
+
+int AllocateDescTableView(const RootArg_DescTable& descTable)
+{
+	assert(descTable.content.empty() == false && "Allocation view error. Desc table content can't be empty.");
+
+	// Figure what kind of desc hep to use from inspection of the first element
+	return std::visit([size = descTable.content.size()](auto&& descTableEntity) 
+	{
+		using T = std::decay_t<decltype(descTableEntity)>;
+
+		if constexpr (std::is_same_v<T, DescTableEntity_ConstBufferView> ||
+			std::is_same_v<T, DescTableEntity_Texture>)
+		{
+			return Renderer::Inst().cbvSrvHeap->AllocateRange(size);
+		}
+		else if constexpr (std::is_same_v<T, DescTableEntity_Sampler>)
+		{
+			// Samplers are hard coded to 0 for now. Always use 0
+			// Samplers live in descriptor heap, which makes things more complicated, because
+			// I loose one of indirections that I rely on.
+			return 0;
+			//return Renderer::Inst().samplerHeap->AllocateRange(size);
+		}
+		else
+		{
+			assert(false && "AllocateDescTableView error. Unknown type of desc table entity ");
+		}
+
+		return -1;
+
+	}, descTable.content[0]);
+}
+
+void BindRootArg(const RootArg_t& rootArg, CommandList& commandList)
+{
+	std::visit([&commandList](auto&& rootArg) 
+	{
+		using T = std::decay_t<decltype(rootArg)>;
+		Renderer& renderer = Renderer::Inst();
+
+		if constexpr (std::is_same_v<T, RootArg_RootConstant>) 
+		{
+			assert(false && "Root constants are not implemented");
+		}
+		if constexpr (std::is_same_v<T, RootArg_ConstBuffView>)
+		{
+			D3D12_GPU_VIRTUAL_ADDRESS cbAddress = renderer.m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+
+			cbAddress += renderer.m_uploadMemoryBuffer.GetOffset(rootArg.gpuMem.handler) + rootArg.gpuMem.offset;
+			commandList.commandList->SetGraphicsRootConstantBufferView(rootArg.index, cbAddress);
+		}
+		else if constexpr (std::is_same_v<T, RootArg_DescTable>)
+		{
+			assert(rootArg.content.empty() == false && "Trying to bind empty desc table");
+
+			// Figure out is this cbv or sampler desc heap
+			std::visit([&commandList, &rootArg, &renderer](auto&& descTableEntity) 
+			{
+				using T = std::decay_t<decltype(descTableEntity)>;
+
+				if constexpr (std::is_same_v<T, DescTableEntity_Sampler>)
+				{
+					commandList.commandList->SetGraphicsRootDescriptorTable(rootArg.index, renderer.samplerHeap->GetHandleGPU(rootArg.viewIndex));
+				}
+				else
+				{
+					commandList.commandList->SetGraphicsRootDescriptorTable(rootArg.index, renderer.cbvSrvHeap->GetHandleGPU(rootArg.viewIndex));
+
+				}
+
+			}, rootArg.content[0]);
+		}
+
+	}, rootArg);
+}

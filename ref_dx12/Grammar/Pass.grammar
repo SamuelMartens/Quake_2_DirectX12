@@ -63,7 +63,7 @@ Texture             <- T( 'Texture2D' < Ident ':' RegisterDecl > )
 Sampler             <- T( 'SamplerState' < Ident ':' RegisterDecl > )
 ResourceAttr        <- T( '[' < ResourceScope ',' ResourceUpdate > ']' )
 ResourceScope       <- _ 'Global' _ / _ 'Local' _
-ResourceUpdate      <- _ 'PerObject' _ / _ 'PerFrame' _ / _ 'OnInit' _
+ResourceUpdate      <- _ 'PerObject' _ / _ 'PerPass' _ / _ 'OnInit' _
 
 ConstBuffContent	<- T( ConstBuffField* )
 ConstBuffField		<- T( ResourceFieldType Ident ';' )
