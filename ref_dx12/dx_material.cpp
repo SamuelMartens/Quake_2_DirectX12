@@ -260,6 +260,24 @@ DXGI_FORMAT GetParseDataTypeDXGIFormat(ParseDataType type)
 	return DXGI_FORMAT_R32G32B32A32_FLOAT;
 }
 
+RootArg_t CreateEmptyRootArgCopy(const RootArg_t& rootArg)
+{
+	return std::visit([](auto&& rootArg) -> RootArg_t
+	{
+		using T = std::decay_t<decltype(rootArg)>;
+
+		if constexpr (std::is_same_v<T, RootArg_DescTable>)
+		{
+			return rootArg.CreateEmptyViewCopy();
+		}
+		else
+		{
+			return rootArg;
+		}
+
+	}, rootArg);
+}
+
 int AllocateDescTableView(const RootArg_DescTable& descTable)
 {
 	assert(descTable.content.empty() == false && "Allocation view error. Desc table content can't be empty.");
@@ -314,23 +332,62 @@ void BindRootArg(const RootArg_t& rootArg, CommandList& commandList)
 		{
 			assert(rootArg.content.empty() == false && "Trying to bind empty desc table");
 
-			// Figure out is this cbv or sampler desc heap
-			std::visit([&commandList, &rootArg, &renderer](auto&& descTableEntity) 
-			{
-				using T = std::decay_t<decltype(descTableEntity)>;
-
-				if constexpr (std::is_same_v<T, DescTableEntity_Sampler>)
-				{
-					commandList.commandList->SetGraphicsRootDescriptorTable(rootArg.index, renderer.samplerHeap->GetHandleGPU(rootArg.viewIndex));
-				}
-				else
-				{
-					commandList.commandList->SetGraphicsRootDescriptorTable(rootArg.index, renderer.cbvSrvHeap->GetHandleGPU(rootArg.viewIndex));
-
-				}
-
-			}, rootArg.content[0]);
+			commandList.commandList->SetGraphicsRootDescriptorTable(rootArg.index, 
+				renderer.GetDescTableHeap(rootArg)->GetHandleGPU(rootArg.viewIndex));
 		}
 
 	}, rootArg);
+}
+
+RootArg_DescTable::RootArg_DescTable(RootArg_DescTable&& other)
+{
+	*this = std::move(other);
+}
+
+RootArg_DescTable& RootArg_DescTable::operator=(RootArg_DescTable&& other)
+{
+	PREVENT_SELF_MOVE_ASSIGN;
+
+	index = other.index;
+	other.index = Const::INVALID_INDEX;
+
+	content = std::move(other.content);
+
+	viewIndex = other.viewIndex;
+	other.viewIndex = Const::INVALID_INDEX;
+
+	return *this;
+}
+
+RootArg_DescTable::~RootArg_DescTable()
+{
+	assert(content.empty() == false && "Empty desc table in desc table destructor detected");
+
+	std::visit([this](auto&& desctTableEntity) 
+	{
+		using T = std::decay_t<decltype(desctTableEntity)>;
+
+		//#TODO fix this when samplers are handled properly
+		if constexpr (std::is_same_v<T, DescTableEntity_Sampler> == false)
+		{
+			if (viewIndex != Const::INVALID_INDEX)
+			{
+				Renderer::Inst().GetDescTableHeap(*this)->DeleteRange(viewIndex, content.size());
+			}
+		}
+
+	}, content[0]);
+}
+
+RootArg_DescTable RootArg_DescTable::CreateEmptyViewCopy() const
+{
+	RootArg_DescTable newRootArg;
+
+	assert(viewIndex == Const::INVALID_INDEX && "Trying to copy non empty root arg. Is this intended?");
+
+	newRootArg.index = index;
+	newRootArg.content = content;
+	newRootArg.viewIndex = Const::INVALID_INDEX;
+
+	return newRootArg;
 }

@@ -163,10 +163,10 @@ namespace
 		switch (updateFrequency)
 		{
 		case ResourceUpdate::PerObject:
-			pass.perObjectRootArgsTemplate.push_back(res);
+			pass.perObjectRootArgsTemplate.push_back(std::move(res));
 			break;
 		case ResourceUpdate::PerPass:
-			pass.passRootArgs.push_back(res);
+			pass.passRootArgs.push_back(std::move(res));
 			break;
 		case ResourceUpdate::OnInit:
 		default:
@@ -934,14 +934,14 @@ MaterialCompiler& MaterialCompiler::Inst()
 PassMaterial MaterialCompiler::GenerateMaterial()
 {
 	PassMaterial material;
-
+	
 	std::shared_ptr<ParseMaterialContext> parseCtx = ParseMaterialFile(LoadMaterialFile());
 
 	std::vector<Pass> passes = GeneratePasses();
 
 	for (const std::string& passName : parseCtx->passes)
 	{
-		const auto targetPassIt = std::find_if(passes.cbegin(), passes.cend(), 
+		auto targetPassIt = std::find_if(passes.begin(), passes.end(),
 			[passName](const Pass& p)
 		{
 			return passName == p.name;
@@ -949,7 +949,7 @@ PassMaterial MaterialCompiler::GenerateMaterial()
 
 		assert(targetPassIt != passes.cend() && "Can't generate material, target pass is not found");
 
-		material.passes.push_back(*targetPassIt);
+		material.passes.push_back(std::move(*targetPassIt));
 	}
 
 	return material;
@@ -1290,7 +1290,6 @@ Pass MaterialCompiler::CompilePass(const PassSource& passSource, const std::vect
 	PassCompiledShaders_t compiledShaders = CompileShaders(passSource, globalRes);
 	pass.rootSingature = GenerateRootSignature(passSource, compiledShaders);
 	pass.pipelineState = GeneratePipelineStateObject(passSource, compiledShaders, pass.rootSingature);
-
 	CreateResourceArguments(passSource, globalRes, pass);
 
 	return pass;

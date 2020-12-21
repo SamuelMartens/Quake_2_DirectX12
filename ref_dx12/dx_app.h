@@ -30,11 +30,18 @@
 #include "dx_frame.h"
 #include "dx_descriptorheap.h"
 #include "dx_commandlist.h"
+#include "dx_renderstage.h"
 
 extern "C"
 {
 	#include "../client/ref.h"
 };
+
+// Order is extremely important. Consider construction/destruction order
+// when adding something
+#define JOB_GUARD( context ) \
+	DependenciesRAIIGuard_t dependenciesGuard(context); \
+	CommandListRAIIGuard_t commandListGuard(context.commandList)
 
 namespace FArg 
 {
@@ -120,7 +127,9 @@ public:
 
 
 	void BeginFrame();
+	//#TODO delete regualr EndFrame
 	void EndFrame();
+	void EndFrame_Material();
 
 	void GetDrawTextureSize(int* x, int* y, const char* name);
 	void SetPalette(const unsigned char* palette);
@@ -141,6 +150,7 @@ public:
 	void GetDrawAreaSize(int* Width, int* Height);
 	const std::array<unsigned int, 256>& GetRawPalette() const;
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
+	std::unique_ptr<DescriptorHeap>& GetDescTableHeap(const RootArg_DescTable& descTable);
 
 	/* Initialization and creation */
 	void CreateFences(ComPtr<ID3D12Fence>& fence);
@@ -178,6 +188,18 @@ public:
 	// had origin in a middle of a screen, while we have it in upper left corner,
 	// so we need to center content to the screen center
 	XMFLOAT4X4 m_yInverseAndCenterMatrix;
+
+	JobSystem m_jobSystem;
+	//#TODO should belong to job System
+	Context CreateContext(Frame& frame);
+
+	/* Job  */
+	void EndFrameJob(Context& context);
+	void BeginFrameJob(Context& context);
+	void DrawUIJob(Context& context);
+	void DrawStaticGeometryJob(Context& context);
+	void DrawDynamicGeometryJob(Context& context);
+	void DrawParticleJob(Context& context);
 
 private:
 
@@ -241,7 +263,7 @@ private:
 	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model, Context& context);
 	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Context& frame);
 	void DecomposeGLModelNode(const model_t& model, const mnode_t& node, Context& context);
-	Context CreateContext(Frame& frame);
+	
 
 	/* Rendering */
 	void Draw(const StaticObject& object, Context& context);
@@ -261,14 +283,6 @@ private:
 	bool IsVisible(const entity_t& entity, const Camera& camera) const;
 	DynamicObjectConstBuffer& FindDynamicObjConstBuffer();
 	std::vector<int> BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const;
-
-	/* Job  */
-	void EndFrameJob(Context& context);
-	void BeginFrameJob(Context& context);
-	void DrawUIJob(Context& context);
-	void DrawStaticGeometryJob(Context& context);
-	void DrawDynamicGeometryJob(Context& context);
-	void DrawParticleJob(Context& context);
 
 	/* Passes */
 	void ExecuteDrawUIPass(Context& context, const Pass& pass);
@@ -337,8 +351,6 @@ private:
 
 	std::vector<Material> m_materials;
 
-	JobSystem m_jobSystem;
-
 	std::array<Frame, Settings::FRAMES_NUM> m_frames;
 	int m_currentFrameIndex = Const::INVALID_INDEX;
 
@@ -350,4 +362,6 @@ private:
 	/* Level registration data */
 	std::unique_ptr<Context> m_staticModelRegContext;
 	std::unique_ptr<Context> m_dynamicModelRegContext;
+
+	FrameGraph m_frameGraph;
 };

@@ -25,11 +25,7 @@
 #undef max
 #endif
 
-// Order is extremely important. Consider construction/destruction order
-// when adding something
-#define JOB_GUARD( context ) \
-	DependenciesRAIIGuard_t dependenciesGuard(context); \
-	CommandListRAIIGuard_t commandListGuard(context.commandList)
+
 
 namespace
 {
@@ -413,7 +409,7 @@ void Renderer::InitUtils()
 	ThreadingUtils::Init();
 
 	//#DEBUG
-	MaterialCompiler::Inst().GenerateMaterial();
+	m_frameGraph.BuildFrameGraph(MaterialCompiler::Inst().GenerateMaterial());
 	//END
 }
 
@@ -2741,6 +2737,26 @@ void Renderer::GetDrawTextureFullname(const char* name, char* dest, int destSize
 	}
 }
 
+std::unique_ptr<DescriptorHeap>& Renderer::GetDescTableHeap(const RootArg_DescTable& descTable)
+{
+	assert(descTable.content.empty() == false && "GetDescTableHeap error. Desc table content can't be empty");
+
+	return std::visit([this](auto&& descTableEntity)  -> std::unique_ptr<DescriptorHeap>&
+	{
+		using T = std::decay_t<decltype(descTableEntity)>;
+
+		if constexpr (std::is_same_v<T, DescTableEntity_Sampler>)
+		{
+			return samplerHeap;
+		}
+		else
+		{
+			return cbvSrvHeap;
+		}
+
+	}, descTable.content[0]);
+}
+
 void Renderer::UpdateTexture(Texture& tex, const std::byte* data, Context& context)
 {
 	Logs::Logf(Logs::Category::Textures, "Update Texture with name %s", tex.name.c_str());
@@ -3136,6 +3152,26 @@ void Renderer::EndFrame()
 	{
 		EndFrameJob(endFrameContext);
 	}));
+}
+
+void Renderer::EndFrame_Material()
+{
+	Logs::Log(Logs::Category::Generic, "API: EndFrame");
+
+	// All heavy lifting is here
+
+	Frame& frame = GetCurrentFrame();
+
+	if (frame.texCreationRequests.empty() == false)
+	{
+		Context createDeferredTextureContext = CreateContext(frame);
+		CreateDeferredTextures(createDeferredTextureContext);
+	}
+
+	// Proceed to next frame
+	DetachCurrentFrame();
+
+	m_frameGraph.Execute(frame);
 }
 
 // This seems to take 188Kb of memory. Which is not that bad, so I will leave it

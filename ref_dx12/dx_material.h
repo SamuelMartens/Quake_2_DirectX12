@@ -194,6 +194,7 @@ struct RootArg_ConstBuffView
 	int index = Const::INVALID_INDEX;
 	unsigned int hashedName = 0;
 	std::vector<ConstBuffField> content;
+	// Doesn't own memory in this buffer, so no need to dealloc in destructor
 	BufferPiece gpuMem;
 };
 
@@ -218,16 +219,31 @@ using DescTableEntity_t = std::variant<DescTableEntity_ConstBufferView, DescTabl
 
 struct RootArg_DescTable
 {
+	RootArg_DescTable() = default;
+
+	RootArg_DescTable(const RootArg_DescTable&) = delete;
+	RootArg_DescTable& operator=(const RootArg_DescTable&) = delete;
+
+	RootArg_DescTable(RootArg_DescTable&& other);
+	RootArg_DescTable& operator=(RootArg_DescTable&& other);
+
+	~RootArg_DescTable();
+
 	int index = Const::INVALID_INDEX;
 	std::vector<DescTableEntity_t> content;
 	int viewIndex = Const::INVALID_INDEX;
-};
 
-int AllocateDescTableView(const RootArg_DescTable& descTable);
+	RootArg_DescTable CreateEmptyViewCopy() const;
+};
 
 using RootArg_t = std::variant<RootArg_RootConstant, RootArg_ConstBuffView, RootArg_DescTable>;
 
+RootArg_t CreateEmptyRootArgCopy(const RootArg_t& rootArg);
 void BindRootArg(const RootArg_t& rootArg, CommandList& commandList);
+
+int AllocateDescTableView(const RootArg_DescTable& descTable);
+
+
 
 //#DEBUG not sure if rawView is really needed. 
 // SFINAE can help solve problem if I don't need it for some members
@@ -375,8 +391,8 @@ public:
 
 	Pass() = default;
 
-	Pass(const Pass&) = default;
-	Pass& operator=(const Pass&) = default;
+	Pass(const Pass&) = delete;
+	Pass& operator=(const Pass&) = delete;
 
 	Pass(Pass&&) = default;
 	Pass& operator=(Pass&&) = default;
@@ -400,6 +416,9 @@ public:
 	// Will refactor this if I will ever do callbacks for vertex attribute handling
 	//#DEBUG rework this on something that I actually need
 	VertAttr vertAttr;
+
+	//#TODO this doesn't belongs to pass, as stage type is what defines information for that
+	PassSource::InputType input = PassSource::InputType::Undefined;
 
 	ComPtr<ID3D12PipelineState>		  pipelineState;
 	ComPtr<ID3D12RootSignature>		  rootSingature;

@@ -29,16 +29,16 @@ void RenderStage_UI::Init()
 				assert(false && "Root constants not implemented");
 			}
 
-			if constexpr(std::is_same_v<T, RootArg_ConstBuffView>)
+			if constexpr (std::is_same_v<T, RootArg_ConstBuffView>)
 			{
 				perObjectConstBuffMemorySize += GetConstBuffSize(rootArg);
 			}
 
-			if constexpr(std::is_same_v<T, RootArg_DescTable>)
+			if constexpr (std::is_same_v<T, RootArg_DescTable>)
 			{
 				for (const DescTableEntity_t& descTableEntitiy : rootArg.content)
 				{
-					std::visit([this](auto&& descTableEntitiy) 
+					std::visit([this](auto&& descTableEntitiy)
 					{
 						using T = std::decay_t<decltype(descTableEntitiy)>;
 
@@ -71,17 +71,28 @@ void RenderStage_UI::Init()
 	perObjectVertexMemorySize = perVertexMemorySize * 6;
 }
 
-void RenderStage_UI::RegisterUIDrawCalls(const std::vector<DrawCall_UI_t>& objects, Context& jobCtx)
+void RenderStage_UI::Start(Context& jobCtx)
 {
-	//#DEBUG FREE THIS MEMORY
-	// REMEMBER MULTITHREADING
+	const std::vector<DrawCall_UI_t>& objects = jobCtx.frame.uiDrawCalls;
+
 	//Check if we need to free this memory, maybe same amount needs to allocated
 	constBuffMemory = Renderer::Inst().m_uploadMemoryBuffer.Allocate(perObjectConstBuffMemorySize * objects.size());
 	vertexMemory = Renderer::Inst().m_uploadMemoryBuffer.Allocate(perObjectVertexMemorySize * objects.size());
 
 	for (int i = 0; i < objects.size(); ++i)
 	{
-		StageObj& stageObj = drawObjects.emplace_back(StageObj{pass.perObjectRootArgsTemplate, objects[i]});
+		// Special copy routine is required here.
+		std::vector<RootArg_t> objRootArg;
+
+		std::transform(pass.perObjectRootArgsTemplate.begin(),
+			pass.perObjectRootArgsTemplate.end(),
+			std::back_inserter(objRootArg),
+			[](const RootArg_t& rootArg) 
+		{
+			return CreateEmptyRootArgCopy(rootArg);
+		});
+
+		StageObj& stageObj = drawObjects.emplace_back(StageObj{ std::move(objRootArg), objects[i] });
 
 		// Init object root args
 
@@ -413,9 +424,9 @@ void RenderStage_UI::Draw(Context& jobCtx)
 	}
 }
 
-void RenderStage_UI::Execute(const std::vector<DrawCall_UI_t>& objects, Context& context)
+void RenderStage_UI::Execute(Context& context)
 {
-	RegisterUIDrawCalls(objects, context);
+	Start(context);
 	
 	UpdateDrawObjects(context);
 
@@ -431,4 +442,75 @@ void RenderStage_UI::Finish()
 	Renderer::Inst().m_uploadMemoryBuffer.Delete(vertexMemory);
 
 	drawObjects.clear();
+}
+
+void FrameGraph::Execute(Frame& frame)
+{
+	ASSERT_MAIN_THREAD;
+
+	std::vector<Context*> endFrameDependencies;
+	
+	Renderer& renderer = Renderer::Inst();
+	JobQueue& jobQueue = renderer.m_jobSystem.GetJobQueue();
+
+	for (RenderStage_t& stage : stages)
+	{
+		// Execute every stage as a separate job
+
+		Context stageJobContext = renderer.CreateContext(frame);
+		endFrameDependencies.push_back(&stageJobContext);
+
+		std::visit([&jobQueue, &stageJobContext](auto&& stage)
+		{
+			jobQueue.Enqueue(Job(
+				[stageJobContext, &stage]() mutable
+			{
+				JOB_GUARD(stageJobContext);
+
+				stage.Execute(stageJobContext);
+			}));
+
+		}, stage);
+	}
+
+	Context endFrameJobContext = renderer.CreateContext(frame);
+	endFrameJobContext.CreateDependencyFrom(endFrameDependencies);
+
+	jobQueue.Enqueue(Job([endFrameJobContext ,&renderer]() mutable 
+	{
+		renderer.EndFrameJob(endFrameJobContext);
+	}));
+}
+
+void FrameGraph::BuildFrameGraph(PassMaterial&& passMaterial)
+{
+	stages.clear();
+
+	for (int i = 0; i < passMaterial.passes.size(); ++i)
+	{
+		Pass& pass = passMaterial.passes[i];
+
+		switch (pass.input)
+		{
+		case PassSource::InputType::UI:
+		{
+			RenderStage_t& renderStage = stages.emplace_back(RenderStage_UI{});
+			InitRenderStage(std::move(pass), renderStage);
+		}
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+void FrameGraph::InitRenderStage(Pass&& pass, RenderStage_t& renderStage)
+{
+	std::visit([&pass](auto&& renderStage) 
+	{
+		renderStage.pass = std::move(pass);
+
+		renderStage.Init();
+
+	}, renderStage);
 }

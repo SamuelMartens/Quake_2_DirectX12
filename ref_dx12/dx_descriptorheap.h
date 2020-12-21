@@ -30,8 +30,9 @@ public:
 	// Return first index in the continuous range
 	int AllocateRange(int size);
 	int AllocateRange(std::vector<ID3D12Resource*>& resources, std::vector<DescriptorHeap::Desc_t*> descs);
-	void Delete(int index);
 
+	void Delete(int index);
+	void DeleteRange(int index, int size);
 	
 	ID3D12DescriptorHeap* GetHeapResource();
 

@@ -82,6 +82,7 @@ private:
 	std::thread thread;
 };
 
+//#TODO make this singleton
 class JobSystem
 {
 public:
