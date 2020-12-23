@@ -201,6 +201,16 @@ public:
 	void DrawDynamicGeometryJob(Context& context);
 	void DrawParticleJob(Context& context);
 
+	//#TODO texture manager?
+	/* Texture */
+	Texture* CreateTextureFromFileDeferred(const char* name, Frame& frame);
+	Texture* CreateTextureFromFile(const char* name, Context& context);
+	Texture* CreateTextureFromDataDeferred(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame);
+	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
+	void CreateDeferredTextures(Context& context);
+	void UpdateTexture(Texture& tex, const std::byte* data, Context& context);
+	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
+
 private:
 
 	/* Initialize win32 specific stuff */
@@ -242,18 +252,10 @@ private:
 	
 	void PresentAndSwapBuffers(Frame& frame);
 
-	/* Texture */
-	Texture* CreateTextureFromFileDeferred(const char* name, Frame& frame);
-	Texture* CreateTextureFromFile(const char* name, Context& context);
-	Texture* CreateTextureFromDataDeferred(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame);
-	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
+	/* Textures */
 	Texture* _CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
 	Texture* _CreateTextureFromFile(const char* name, Context& context);
 	void _CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Context& context, Texture& outTex);
-	void CreateDeferredTextures(Context& context);
-	void UpdateTexture(Texture& tex, const std::byte* data, Context& context);
-	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
-
 	
 
 	/* Shutdown and clean up Win32 specific stuff */
@@ -362,6 +364,4 @@ private:
 	/* Level registration data */
 	std::unique_ptr<Context> m_staticModelRegContext;
 	std::unique_ptr<Context> m_dynamicModelRegContext;
-
-	FrameGraph m_frameGraph;
 };

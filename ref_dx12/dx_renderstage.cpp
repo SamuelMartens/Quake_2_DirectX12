@@ -7,6 +7,7 @@
 #include "dx_utils.h"
 #include "dx_settings.h"
 #include "dx_app.h"
+#include "dx_jobmultithreading.h"
 
 void RenderStage_UI::Init()
 {
@@ -82,17 +83,9 @@ void RenderStage_UI::Start(Context& jobCtx)
 	for (int i = 0; i < objects.size(); ++i)
 	{
 		// Special copy routine is required here.
-		std::vector<RootArg_t> objRootArg;
-
-		std::transform(pass.perObjectRootArgsTemplate.begin(),
-			pass.perObjectRootArgsTemplate.end(),
-			std::back_inserter(objRootArg),
-			[](const RootArg_t& rootArg) 
-		{
-			return CreateEmptyRootArgCopy(rootArg);
-		});
-
-		StageObj& stageObj = drawObjects.emplace_back(StageObj{ std::move(objRootArg), objects[i] });
+		StageObj& stageObj = drawObjects.emplace_back(StageObj{ 
+			pass.perObjectRootArgsTemplate,
+			&objects[i] });
 
 		// Init object root args
 
@@ -116,7 +109,7 @@ void RenderStage_UI::Start(Context& jobCtx)
 				if constexpr (std::is_same_v<T, RootArg_ConstBuffView>)
 				{
 					rootArg.gpuMem.handler = constBuffMemory;
-					rootArg.gpuMem.offset = objectOffset + rootArgOffset;
+      					rootArg.gpuMem.offset = objectOffset + rootArgOffset;
 
 					rootArgOffset += GetConstBuffSize(rootArg);
 				}
@@ -147,20 +140,13 @@ void RenderStage_UI::Start(Context& jobCtx)
 
 							if constexpr (std::is_same_v<T, DescTableEntity_Texture>)
 							{
-								std::visit([this, &descTableEntitiy, &stageObj, &regCtx, currentViewIndex]
-								(auto&& drawCall) 
-								{
-									RenderCallbacks::PerObjectRegisterCallback(
-										HASH(pass.name.c_str()),
-										descTableEntitiy.hashedName,
-										drawCall,
-										&currentViewIndex,
-										regCtx
-									);
-
-								}, stageObj.originalDrawCall);
-
-								
+								RenderCallbacks::PerObjectRegisterCallback(
+									HASH(pass.name.c_str()),
+									descTableEntitiy.hashedName,
+									*stageObj.originalDrawCall,
+									&currentViewIndex,
+									regCtx
+								);
 							}
 
 						}, descTableEntitiy);
@@ -325,7 +311,7 @@ void RenderStage_UI::UpdateDrawObjects(Context& jobCtx)
 								&cpuMem[currentBufferOffset],
 								updateCtx);
 
-						}, obj.originalDrawCall);
+						}, *obj.originalDrawCall);
 
 						// Proceed to next buffer
 						currentBufferOffset += field.size;
@@ -354,7 +340,7 @@ void RenderStage_UI::UpdateDrawObjects(Context& jobCtx)
 			}, rootArg);
 		}
 
-		assert(currentObjecOffset < (i + 1) * perObjectConstBuffMemorySize && "Update error. Per object const buff offset overwrites next obj memory");
+		assert(currentObjecOffset <= (i + 1) * perObjectConstBuffMemorySize && "Update error. Per object const buff offset overwrites next obj memory");
 	}
 
 	auto& uploadMemoryBuff = Renderer::Inst().m_uploadMemoryBuffer;
@@ -426,6 +412,11 @@ void RenderStage_UI::Draw(Context& jobCtx)
 
 void RenderStage_UI::Execute(Context& context)
 {
+	if (context.frame.uiDrawCalls.empty() == true)
+	{
+		return;
+	}
+
 	Start(context);
 	
 	UpdateDrawObjects(context);
@@ -448,19 +439,43 @@ void FrameGraph::Execute(Frame& frame)
 {
 	ASSERT_MAIN_THREAD;
 
-	std::vector<Context*> endFrameDependencies;
-	
 	Renderer& renderer = Renderer::Inst();
 	JobQueue& jobQueue = renderer.m_jobSystem.GetJobQueue();
 
+	// Some preparations
+	XMMATRIX tempMat = XMMatrixIdentity();
+	XMStoreFloat4x4(&frame.uiViewMat, tempMat);
+
+	tempMat = XMMatrixOrthographicRH(frame.camera.width, frame.camera.height, 0.0f, 1.0f);
+	XMStoreFloat4x4(&frame.uiProjectionMat, tempMat);
+
+	//#TODO get rid of begin frame hack
+	// NOTE: creation order is the order in which command Lists will be submitted.
+	// Set up dependencies 
+	
+	std::vector<Context> frameStagesContexts;
+	//#DEBUG this is not even frame stage context
+	Context& beginFrameContext = frameStagesContexts.emplace_back(renderer.CreateContext(frame));
+
 	for (RenderStage_t& stage : stages)
 	{
-		// Execute every stage as a separate job
+		frameStagesContexts.emplace_back(renderer.CreateContext(frame));
+	};
 
-		Context stageJobContext = renderer.CreateContext(frame);
-		endFrameDependencies.push_back(&stageJobContext);
+	Context endFrameJobContext = renderer.CreateContext(frame);
+	endFrameJobContext.CreateDependencyFrom(frameStagesContexts);
 
-		std::visit([&jobQueue, &stageJobContext](auto&& stage)
+	jobQueue.Enqueue(Job([ctx = frameStagesContexts[0], &renderer]() mutable
+	{
+		renderer.BeginFrameJob(ctx);
+	}));
+
+	for (int i = 0; i < stages.size() ; ++i)
+	{
+		std::visit([
+			&jobQueue, 
+			// i + 1 because of begin frame job
+			stageJobContext = frameStagesContexts[i + 1]](auto&& stage)
 		{
 			jobQueue.Enqueue(Job(
 				[stageJobContext, &stage]() mutable
@@ -470,11 +485,8 @@ void FrameGraph::Execute(Frame& frame)
 				stage.Execute(stageJobContext);
 			}));
 
-		}, stage);
+		}, stages[i]);
 	}
-
-	Context endFrameJobContext = renderer.CreateContext(frame);
-	endFrameJobContext.CreateDependencyFrom(endFrameDependencies);
 
 	jobQueue.Enqueue(Job([endFrameJobContext ,&renderer]() mutable 
 	{
@@ -496,6 +508,11 @@ void FrameGraph::BuildFrameGraph(PassMaterial&& passMaterial)
 		{
 			RenderStage_t& renderStage = stages.emplace_back(RenderStage_UI{});
 			InitRenderStage(std::move(pass), renderStage);
+		}
+			break;
+		case PassSource::InputType::Undefined:
+		{
+			assert(false && "Pass with undefined input is detected");
 		}
 			break;
 		default:

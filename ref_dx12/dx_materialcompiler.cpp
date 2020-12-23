@@ -1280,6 +1280,7 @@ Pass MaterialCompiler::CompilePass(const PassSource& passSource, const std::vect
 {
 	Pass pass;
 
+	pass.input = passSource.input;
 	pass.name = passSource.name;
 	pass.primitiveTopology = passSource.primitiveTopology;
 	pass.colorTargetNameHash = HASH(passSource.colorTargetName.c_str());

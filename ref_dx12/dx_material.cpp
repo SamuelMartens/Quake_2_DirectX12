@@ -260,24 +260,6 @@ DXGI_FORMAT GetParseDataTypeDXGIFormat(ParseDataType type)
 	return DXGI_FORMAT_R32G32B32A32_FLOAT;
 }
 
-RootArg_t CreateEmptyRootArgCopy(const RootArg_t& rootArg)
-{
-	return std::visit([](auto&& rootArg) -> RootArg_t
-	{
-		using T = std::decay_t<decltype(rootArg)>;
-
-		if constexpr (std::is_same_v<T, RootArg_DescTable>)
-		{
-			return rootArg.CreateEmptyViewCopy();
-		}
-		else
-		{
-			return rootArg;
-		}
-
-	}, rootArg);
-}
-
 int AllocateDescTableView(const RootArg_DescTable& descTable)
 {
 	assert(descTable.content.empty() == false && "Allocation view error. Desc table content can't be empty.");
@@ -344,6 +326,22 @@ RootArg_DescTable::RootArg_DescTable(RootArg_DescTable&& other)
 	*this = std::move(other);
 }
 
+RootArg_DescTable::RootArg_DescTable(const RootArg_DescTable& other)
+{
+	*this = other;
+}
+
+RootArg_DescTable& RootArg_DescTable::operator=(const RootArg_DescTable& other)
+{
+	assert(viewIndex == Const::INVALID_INDEX && "Trying to copy non empty root arg. Is this intended?");
+
+	index = other.index;
+	content = other.content;
+	viewIndex = other.viewIndex;
+
+	return *this;
+}
+
 RootArg_DescTable& RootArg_DescTable::operator=(RootArg_DescTable&& other)
 {
 	PREVENT_SELF_MOVE_ASSIGN;
@@ -361,7 +359,10 @@ RootArg_DescTable& RootArg_DescTable::operator=(RootArg_DescTable&& other)
 
 RootArg_DescTable::~RootArg_DescTable()
 {
-	assert(content.empty() == false && "Empty desc table in desc table destructor detected");
+	if (content.empty() == true)
+	{
+		return;
+	}
 
 	std::visit([this](auto&& desctTableEntity) 
 	{
@@ -377,17 +378,4 @@ RootArg_DescTable::~RootArg_DescTable()
 		}
 
 	}, content[0]);
-}
-
-RootArg_DescTable RootArg_DescTable::CreateEmptyViewCopy() const
-{
-	RootArg_DescTable newRootArg;
-
-	assert(viewIndex == Const::INVALID_INDEX && "Trying to copy non empty root arg. Is this intended?");
-
-	newRootArg.index = index;
-	newRootArg.content = content;
-	newRootArg.viewIndex = Const::INVALID_INDEX;
-
-	return newRootArg;
 }

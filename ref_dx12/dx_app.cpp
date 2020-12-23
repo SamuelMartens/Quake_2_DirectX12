@@ -311,13 +311,11 @@ void Renderer::InitDx()
 
 	InitCommandListsBuffer();
 
+	InitUtils();
+
 	// ------- Frames init -----
 
 	InitFrames();
-
-	// ------- After frames init -----
-
-	InitUtils();
 
 	// ------- Open init command list -----
 	AcquireCurrentFrame();
@@ -407,10 +405,6 @@ void Renderer::InitUtils()
 	InitScissorRect();
 
 	ThreadingUtils::Init();
-
-	//#DEBUG
-	m_frameGraph.BuildFrameGraph(MaterialCompiler::Inst().GenerateMaterial());
-	//END
 }
 
 void Renderer::InitMemory(Context& context)
@@ -439,9 +433,15 @@ void Renderer::InitFrames()
 {
 	assert(Settings::SWAP_CHAIN_BUFFER_COUNT == Settings::FRAMES_NUM && "Swap chain buffer count shall be equal to frames num");
 
+	FrameGraph frameGraph;
+	frameGraph.BuildFrameGraph(MaterialCompiler::Inst().GenerateMaterial());
+
 	for (int i = 0; i < Settings::FRAMES_NUM; ++i)
 	{
-		m_frames[i].Init(i);
+		Frame& frame = m_frames[i];
+
+		frame.Init(i);
+		frame.frameGraph = frameGraph;
 	}
 }
 
@@ -1189,12 +1189,12 @@ void Renderer::_CreateGpuTexture(const unsigned int* raw, int width, int height,
 	textureData.RowPitch = width * bpp / 8;
 	// Not SlicePitch but texture size in our case
 	textureData.SlicePitch = textureData.RowPitch * height;
-
+	
 	UpdateSubresources(commandList.commandList.Get(), outTex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
 	commandList.commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		outTex.buffer.Get(),
 		D3D12_RESOURCE_STATE_COPY_DEST,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
 
 
 	DescriptorHeap::Desc_t srvDescription = D3D12_SHADER_RESOURCE_VIEW_DESC{};
@@ -2780,7 +2780,8 @@ void Renderer::UpdateTexture(Texture& tex, const std::byte* data, Context& conte
 
 	commandList.commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		tex.buffer.Get(),
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		//#TODO figure out what's up with this NON PIXEL SHADER resource. Everywhere it is used
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
 		D3D12_RESOURCE_STATE_COPY_DEST
 	));
 
@@ -2788,7 +2789,7 @@ void Renderer::UpdateTexture(Texture& tex, const std::byte* data, Context& conte
 	commandList.commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		tex.buffer.Get(),
 		D3D12_RESOURCE_STATE_COPY_DEST,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
 }
 
 void Renderer::GetDrawTextureSize(int* x, int* y, const char* name)
@@ -3171,7 +3172,8 @@ void Renderer::EndFrame_Material()
 	// Proceed to next frame
 	DetachCurrentFrame();
 
-	m_frameGraph.Execute(frame);
+	//#TODO a bit silly. Should Execute be part of frame func?
+	frame.frameGraph.Execute(frame);
 }
 
 // This seems to take 188Kb of memory. Which is not that bad, so I will leave it

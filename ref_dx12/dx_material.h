@@ -221,8 +221,8 @@ struct RootArg_DescTable
 {
 	RootArg_DescTable() = default;
 
-	RootArg_DescTable(const RootArg_DescTable&) = delete;
-	RootArg_DescTable& operator=(const RootArg_DescTable&) = delete;
+	RootArg_DescTable(const RootArg_DescTable& other);
+	RootArg_DescTable& operator=(const RootArg_DescTable& other);
 
 	RootArg_DescTable(RootArg_DescTable&& other);
 	RootArg_DescTable& operator=(RootArg_DescTable&& other);
@@ -232,13 +232,10 @@ struct RootArg_DescTable
 	int index = Const::INVALID_INDEX;
 	std::vector<DescTableEntity_t> content;
 	int viewIndex = Const::INVALID_INDEX;
-
-	RootArg_DescTable CreateEmptyViewCopy() const;
 };
 
 using RootArg_t = std::variant<RootArg_RootConstant, RootArg_ConstBuffView, RootArg_DescTable>;
 
-RootArg_t CreateEmptyRootArgCopy(const RootArg_t& rootArg);
 void BindRootArg(const RootArg_t& rootArg, CommandList& commandList);
 
 int AllocateDescTableView(const RootArg_DescTable& descTable);
@@ -391,8 +388,8 @@ public:
 
 	Pass() = default;
 
-	Pass(const Pass&) = delete;
-	Pass& operator=(const Pass&) = delete;
+	Pass(const Pass&) = default;
+	Pass& operator=(const Pass&) = default;
 
 	Pass(Pass&&) = default;
 	Pass& operator=(Pass&&) = default;
@@ -400,6 +397,9 @@ public:
 	~Pass() = default;
 
 public:
+
+	/* Shared */
+
 	std::string name;
 
 	unsigned int colorTargetNameHash = 0;
@@ -407,7 +407,6 @@ public:
 
 	D3D12_VIEWPORT viewport = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
 
-	std::vector<RootArg_t> passRootArgs;
 
 	std::vector<RootArg_t> perObjectRootArgsTemplate;
 
@@ -424,6 +423,11 @@ public:
 	ComPtr<ID3D12RootSignature>		  rootSingature;
 
 	D3D_PRIMITIVE_TOPOLOGY primitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+
+	/*  Owned by pass */
+
+	std::vector<RootArg_t> passRootArgs;
+
 };
 
 

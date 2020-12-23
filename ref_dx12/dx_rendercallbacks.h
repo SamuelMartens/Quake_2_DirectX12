@@ -3,6 +3,14 @@
 #include "Lib/crc32.h"
 #include "dx_renderstage.h"
 #include "dx_descriptorheap.h"
+#include "dx_texture.h"
+
+
+extern "C"
+{
+	#include "../client/ref.h"
+};
+
 
 namespace RenderCallbacks
 {
@@ -137,7 +145,7 @@ namespace RenderCallbacks
 					{
 					case HASH("gDiffuseMap"):
 					{
-						std::visit([](auto&& drawCall) 
+						std::visit([&ctx, bindPoint](auto&& drawCall) 
 						{
 							using drawCallT = std::decay_t<decltype(drawCall)>;
 
@@ -155,7 +163,7 @@ namespace RenderCallbacks
 								srvDescriptionRef.Texture2D.MipLevels = 1;
 								srvDescriptionRef.Texture2D.ResourceMinLODClamp = 0.0f;
 
-								Renderer::Inst().cbvSrvHeap.AllocateDescriptor(*bindPoint ,tex->buffer.Get(), &srvDescription);
+								Renderer::Inst().cbvSrvHeap->AllocateDescriptor(*bindPoint ,tex->buffer.Get(), &srvDescription);
 								
 							}
 
@@ -179,7 +187,7 @@ namespace RenderCallbacks
 								srvDescriptionRef.Texture2D.MipLevels = 1;
 								srvDescriptionRef.Texture2D.ResourceMinLODClamp = 0.0f;
 
-								Renderer::Inst().cbvSrvHeap.AllocateDescriptor(*bindPoint , tex->buffer.Get(), &srvDescription);
+								Renderer::Inst().cbvSrvHeap->AllocateDescriptor(*bindPoint , tex->buffer.Get(), &srvDescription);
 
 							}
 
@@ -189,7 +197,7 @@ namespace RenderCallbacks
 								assert(tex != nullptr && "Draw_RawPic texture doesn't exist");
 
 								// If there is no data, then texture is requested to be created for this frame. So no need to update
-								if (drawCall.data().empty() == false)
+								if (drawCall.data.empty() == false)
 								{
 									const int textureSize = drawCall.textureWidth * drawCall.textureHeight;
 
@@ -216,7 +224,7 @@ namespace RenderCallbacks
 								srvDescriptionRef.Texture2D.MipLevels = 1;
 								srvDescriptionRef.Texture2D.ResourceMinLODClamp = 0.0f;
 
-								Renderer::Inst().cbvSrvHeap.AllocateDescriptor(*bindPoint , tex->buffer.Get(), &srvDescription);
+								Renderer::Inst().cbvSrvHeap->AllocateDescriptor(*bindPoint , tex->buffer.Get(), &srvDescription);
 							}
 
 						}, obj);
@@ -232,6 +240,10 @@ namespace RenderCallbacks
 				break;
 			}
 
+		}
+		else
+		{
+			static_assert(false, "Unknown type");
 		}
 	}
 }

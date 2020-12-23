@@ -117,6 +117,7 @@ struct Context
 	Context(Frame& frameVal, CommandList& commandListVal);
 
 	void CreateDependencyFrom(std::vector<Context*> dependsFromList);
+	void CreateDependencyFrom(std::vector<Context>& dependsFromList);
 	void SignalDependencies();
 
 	// This properties represent relationship between jobs that Semaphore implements.

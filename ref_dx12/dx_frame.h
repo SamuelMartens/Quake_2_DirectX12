@@ -12,6 +12,7 @@
 #include "dx_camera.h"
 #include "dx_threadingutils.h"
 #include "dx_texture.h"
+#include "dx_renderstage.h"
 
 class Semaphore;
 
@@ -76,6 +77,7 @@ public:
 	int executeCommandListFenceValue = -1;
 	HANDLE executeCommandListEvenHandle = INVALID_HANDLE_VALUE;
 
+	FrameGraph frameGraph;
 
 private:
 

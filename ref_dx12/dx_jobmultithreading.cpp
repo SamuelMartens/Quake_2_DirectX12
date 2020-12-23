@@ -48,7 +48,7 @@ WorkerThread::WorkerThread(std::function<void()> callback)
 
 void JobSystem::Init()
 {
-	// Minus one because, we also have main thread
+	// Minus one, because we also have main thread
 	const int workerThreadsNum = std::thread::hardware_concurrency() - 1;
 
 	// --- WORKER THREAD CALLBACK ---
@@ -82,6 +82,8 @@ Context::Context(Frame& frameVal, CommandList& commandListVal):
 
 void Context::CreateDependencyFrom(std::vector<Context*> dependsFromList)
 {
+	ASSERT_MAIN_THREAD;
+
 	assert(dependsFromList.empty() == false && "Trying to create dependency from empty list");
 	assert(waitDependancy == nullptr && "Trying to create dependency to job that already has it");
 
@@ -92,6 +94,19 @@ void Context::CreateDependencyFrom(std::vector<Context*> dependsFromList)
 		dependency->signalDependencies.push_back(waitDependancy);
 	}
 	
+}
+
+void Context::CreateDependencyFrom(std::vector<Context>& dependsFromList)
+{
+	std::vector<Context*> dependsFromListPtrs;
+	dependsFromListPtrs.reserve(dependsFromList.size());
+
+	for (Context& ctx : dependsFromList)
+	{
+		dependsFromListPtrs.push_back(&ctx);
+	}
+
+	CreateDependencyFrom(std::move(dependsFromListPtrs));
 }
 
 void Context::SignalDependencies()

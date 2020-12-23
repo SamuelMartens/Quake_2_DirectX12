@@ -97,7 +97,7 @@ void DX12_BeginFrame( float camera_separation )
 
 void DX12_EndFrame(void)
 {
-	Renderer::Inst().EndFrame();
+	Renderer::Inst().EndFrame_Material();
 }
 
 void DX12_SetPalette(const unsigned char *palette)

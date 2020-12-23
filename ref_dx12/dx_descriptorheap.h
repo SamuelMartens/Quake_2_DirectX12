@@ -39,9 +39,10 @@ public:
 	CD3DX12_CPU_DESCRIPTOR_HANDLE GetHandleCPU(int index) const;
 	CD3DX12_GPU_DESCRIPTOR_HANDLE GetHandleGPU(int index) const;
 
+	void AllocateDescriptor(int allocatedIndex, ID3D12Resource* resource, DescriptorHeap::Desc_t* desc);
+
 private:
 
-	void AllocateDescriptor(int allocatedIndex, ID3D12Resource* resource, DescriptorHeap::Desc_t* desc);
 
 	FlagAllocator alloc;
 	ComPtr<ID3D12DescriptorHeap> heap;
