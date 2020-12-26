@@ -133,15 +133,6 @@ public:
 	std::unique_ptr<DescriptorHeap> cbvSrvHeap = nullptr;
 	std::unique_ptr<DescriptorHeap> samplerHeap = nullptr;
 
-	// I need enforce alignment on this buffer, because I allocate constant buffers from it. 
-	// I don't want to create separate buffer just for constant buffers, because that would increase complexity
-	// without real need to do this. I still try to explicitly indicate places where I actually need alignment
-	// in case I would decide to refactor this into separate buffer
-	HandlerBuffer<Settings::UPLOAD_MEMORY_BUFFER_SIZE,
-		Settings::UPLOAD_MEMORY_BUFFER_HANDLERS_NUM,
-		Settings::CONST_BUFFER_ALIGNMENT> m_uploadMemoryBuffer;
-	HandlerBuffer<Settings::DEFAULT_MEMORY_BUFFER_SIZE, Settings::DEFAULT_MEMORY_BUFFER_HANDLERS_NUM> m_defaultMemoryBuffer;
-
 	//#DEBUG this should be part of UI render stage
 	// DirectX and OpenGL have different directions for Y axis,
 	// this matrix is required to fix this. Also apparently original Quake 2
@@ -171,8 +162,6 @@ private:
 	void SetDebugMessageFilter();
 
 	void InitUtils();
-
-	void InitMemory(Context& context);
 
 	void InitScissorRect();
 
@@ -275,8 +264,6 @@ private:
 	INT	m_currentBackBuffer = 0;
 
 	UINT m_MSQualityLevels = 0;
-
-	LockUnorderedMap_t<std::string, Texture> m_textures;
 
 	std::array<unsigned int, 256> m_8To24Table;
 	std::array<unsigned int, 256> m_rawPalette;

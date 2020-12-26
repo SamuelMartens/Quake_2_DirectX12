@@ -1,6 +1,7 @@
 #pragma once
 
 #include <d3d12.h>
+#include <array>
 
 #include "dx_utils.h"
 #include "dx_common.h"
@@ -73,6 +74,6 @@ private:
 	// resource will still be in use, so we just put it here and delete it later 
 	LockVector_t<ComPtr<ID3D12Resource>> resourcesToDelete;
 
-
 	LockUnorderedMap_t<std::string, Texture> textures;
+
 };

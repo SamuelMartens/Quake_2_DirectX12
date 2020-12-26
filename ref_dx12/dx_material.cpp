@@ -1,6 +1,7 @@
 #include "dx_material.h"
 
 #include "dx_app.h"
+#include "dx_memorymanager.h"
 
 const std::string MaterialSource::STATIC_MATERIAL_NAME = "Static";
 const std::string MaterialSource::DYNAMIC_MATERIAL_NAME = "Dynamic";
@@ -299,15 +300,18 @@ void BindRootArg(const RootArg_t& rootArg, CommandList& commandList)
 		using T = std::decay_t<decltype(rootArg)>;
 		Renderer& renderer = Renderer::Inst();
 
+		MemoryManager::UploadBuff_t& uploadMemory =
+			MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+
 		if constexpr (std::is_same_v<T, RootArg_RootConstant>) 
 		{
 			assert(false && "Root constants are not implemented");
 		}
 		if constexpr (std::is_same_v<T, RootArg_ConstBuffView>)
 		{
-			D3D12_GPU_VIRTUAL_ADDRESS cbAddress = renderer.m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+			D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
 
-			cbAddress += renderer.m_uploadMemoryBuffer.GetOffset(rootArg.gpuMem.handler) + rootArg.gpuMem.offset;
+			cbAddress += uploadMemory.GetOffset(rootArg.gpuMem.handler) + rootArg.gpuMem.offset;
 			commandList.commandList->SetGraphicsRootConstantBufferView(rootArg.index, cbAddress);
 		}
 		else if constexpr (std::is_same_v<T, RootArg_DescTable>)

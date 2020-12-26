@@ -16,11 +16,14 @@
 class MemoryManager
 {
 public:
-	using UploadBuff_t = HandlerBuffer<Settings::UPLOAD_MEMORY_BUFFER_SIZE,
+	using UploadBuff_t = HandlerBuffer<
+		Settings::UPLOAD_MEMORY_BUFFER_SIZE,
 		Settings::UPLOAD_MEMORY_BUFFER_HANDLERS_NUM,
 		Settings::CONST_BUFFER_ALIGNMENT>;
 
-	using DefaultBuff_t = HandlerBuffer<Settings::DEFAULT_MEMORY_BUFFER_SIZE, Settings::DEFAULT_MEMORY_BUFFER_HANDLERS_NUM>;
+	using DefaultBuff_t = HandlerBuffer<
+		Settings::DEFAULT_MEMORY_BUFFER_SIZE,
+		Settings::DEFAULT_MEMORY_BUFFER_HANDLERS_NUM>;
 
 	enum Type
 	{

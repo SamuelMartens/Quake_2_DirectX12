@@ -9,6 +9,7 @@
 #include "dx_app.h"
 #include "dx_jobmultithreading.h"
 #include "dx_resourcemanager.h"
+#include "dx_memorymanager.h"
 
 void RenderStage_UI::Init()
 {
@@ -76,10 +77,12 @@ void RenderStage_UI::Init()
 void RenderStage_UI::Start(Context& jobCtx)
 {
 	const std::vector<DrawCall_UI_t>& objects = jobCtx.frame.uiDrawCalls;
+	MemoryManager::UploadBuff_t& uploadMemory =
+		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
 
 	//Check if we need to free this memory, maybe same amount needs to allocated
-	constBuffMemory = Renderer::Inst().m_uploadMemoryBuffer.Allocate(perObjectConstBuffMemorySize * objects.size());
-	vertexMemory = Renderer::Inst().m_uploadMemoryBuffer.Allocate(perObjectVertexMemorySize * objects.size());
+	constBuffMemory = uploadMemory.Allocate(perObjectConstBuffMemorySize * objects.size());
+	vertexMemory = uploadMemory.Allocate(perObjectVertexMemorySize * objects.size());
 
 	for (int i = 0; i < objects.size(); ++i)
 	{
@@ -168,6 +171,8 @@ void RenderStage_UI::Start(Context& jobCtx)
 
 			assert(perVertexMemorySize == sizeof(ShDef::Vert::PosTexCoord) && "Per vertex memory invalid size");
 			Renderer& renderer = Renderer::Inst();
+			MemoryManager::UploadBuff_t& uploadMemory =
+				MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
 
 			if constexpr (std::is_same_v<T, DrawCall_Pic>)
 			{
@@ -183,10 +188,10 @@ void RenderStage_UI::Start(Context& jobCtx)
 					XMFLOAT2(1.0f, 1.0f),
 					vertices.data());
 
-				const int uploadBuffOffset = renderer.m_uploadMemoryBuffer.GetOffset(vertexMemory) + perObjectVertexMemorySize * i;
+				const int uploadBuffOffset = uploadMemory.GetOffset(vertexMemory) + perObjectVertexMemorySize * i;
 
 				FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
-				updateVertexBufferArgs.buffer = renderer.m_uploadMemoryBuffer.allocBuffer.gpuBuffer;
+				updateVertexBufferArgs.buffer = uploadMemory.allocBuffer.gpuBuffer;
 				updateVertexBufferArgs.offset = uploadBuffOffset;
 				updateVertexBufferArgs.data = vertices.data();
 				updateVertexBufferArgs.byteSize = perObjectVertexMemorySize;
@@ -219,10 +224,10 @@ void RenderStage_UI::Start(Context& jobCtx)
 					XMFLOAT2(uCoord + texSize, vCoord + texSize),
 					vertices.data());
 
-				const int uploadBuffOffset = renderer.m_uploadMemoryBuffer.GetOffset(vertexMemory) + perObjectVertexMemorySize * i;
+				const int uploadBuffOffset = uploadMemory.GetOffset(vertexMemory) + perObjectVertexMemorySize * i;
 
 				FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
-				updateVertexBufferArgs.buffer = renderer.m_uploadMemoryBuffer.allocBuffer.gpuBuffer;
+				updateVertexBufferArgs.buffer = uploadMemory.allocBuffer.gpuBuffer;
 				updateVertexBufferArgs.offset = uploadBuffOffset;
 				updateVertexBufferArgs.data = vertices.data();
 				updateVertexBufferArgs.byteSize = perObjectVertexMemorySize;
@@ -240,10 +245,10 @@ void RenderStage_UI::Start(Context& jobCtx)
 					XMFLOAT2(1.0f, 1.0f),
 					vertices.data());
 
-				const int uploadBuffOffset = renderer.m_uploadMemoryBuffer.GetOffset(vertexMemory) + perObjectVertexMemorySize * i;
+				const int uploadBuffOffset = uploadMemory.GetOffset(vertexMemory) + perObjectVertexMemorySize * i;
 
 				FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
-				updateVertexBufferArgs.buffer = renderer.m_uploadMemoryBuffer.allocBuffer.gpuBuffer;
+				updateVertexBufferArgs.buffer = uploadMemory.allocBuffer.gpuBuffer;
 				updateVertexBufferArgs.offset = uploadBuffOffset;
 				updateVertexBufferArgs.data = vertices.data();
 				updateVertexBufferArgs.byteSize = perObjectVertexMemorySize;
@@ -344,7 +349,7 @@ void RenderStage_UI::UpdateDrawObjects(Context& jobCtx)
 		assert(currentObjecOffset <= (i + 1) * perObjectConstBuffMemorySize && "Update error. Per object const buff offset overwrites next obj memory");
 	}
 
-	auto& uploadMemoryBuff = Renderer::Inst().m_uploadMemoryBuffer;
+	auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
 
 	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
 	updateConstBufferArgs.buffer = uploadMemoryBuff.allocBuffer.gpuBuffer;
@@ -393,12 +398,15 @@ void RenderStage_UI::Draw(Context& jobCtx)
 	vertexBufferView.StrideInBytes = perVertexMemorySize;
 	vertexBufferView.SizeInBytes = perObjectVertexMemorySize;
 
+	MemoryManager::UploadBuff_t& uploadMemory =
+		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+
 	for (int i = 0; i < drawObjects.size(); ++i)
 	{
 		const StageObj& obj = drawObjects[i];
 
-		vertexBufferView.BufferLocation = renderer.m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() +
-			renderer.m_uploadMemoryBuffer.GetOffset(vertexMemory) + i * perObjectVertexMemorySize;
+		vertexBufferView.BufferLocation = uploadMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress() +
+			uploadMemory.GetOffset(vertexMemory) + i * perObjectVertexMemorySize;
 
 		commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
 
@@ -428,15 +436,18 @@ void RenderStage_UI::Execute(Context& context)
 
 void RenderStage_UI::Finish()
 {
+	MemoryManager::UploadBuff_t& uploadMemory =
+		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+
 	if (constBuffMemory != BuffConst::INVALID_BUFFER_HANDLER)
 	{
-		Renderer::Inst().m_uploadMemoryBuffer.Delete(constBuffMemory);
+		uploadMemory.Delete(constBuffMemory);
 		constBuffMemory = BuffConst::INVALID_BUFFER_HANDLER;
 	}
 	
 	if (vertexMemory != BuffConst::INVALID_BUFFER_HANDLER )
 	{
-		Renderer::Inst().m_uploadMemoryBuffer.Delete(vertexMemory);
+		uploadMemory.Delete(vertexMemory);
 		vertexMemory = BuffConst::INVALID_BUFFER_HANDLER;
 	}
 	
