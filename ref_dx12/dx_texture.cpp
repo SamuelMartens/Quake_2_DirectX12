@@ -1,6 +1,7 @@
 #include "dx_texture.h"
 
 #include "dx_app.h"
+#include "dx_resourcemanager.h"
 
 Texture::Texture(Texture&& other)
 {
@@ -13,7 +14,7 @@ Texture& Texture::operator=(Texture&& other)
 
 	buffer = other.buffer;
 
-	Renderer::Inst().RequestResourceDeletion(other.buffer);
+	ResourceManager::Inst().RequestResourceDeletion(other.buffer);
 	other.buffer = nullptr;
 
 	texViewIndex = other.texViewIndex;
@@ -40,5 +41,5 @@ Texture::~Texture()
 
 	// This is a bit lame cause, resource might actually not be deleted, if 
 	// some other texture owns it.
-	Renderer::Inst().RequestResourceDeletion(buffer);
+	ResourceManager::Inst().RequestResourceDeletion(buffer);
 }

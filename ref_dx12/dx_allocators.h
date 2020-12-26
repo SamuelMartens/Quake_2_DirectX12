@@ -13,6 +13,7 @@ public:
 	int Allocate();
 	int AllocateRange(int size);
 	void Delete(int index);
+	void DeleteRange(int index, int size);
 
 private:
 	

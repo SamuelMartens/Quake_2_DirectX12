@@ -3,6 +3,7 @@
 #include <cassert>
 
 #include "dx_app.h"
+#include "dx_resourcemanager.h"
 
 model_t	*loadmodel;
 int		modfilelen;
@@ -592,7 +593,7 @@ void Mod_LoadTexinfo(lump_t *l, Context& context)
 		char texNameFormat[] = "textures/%s.wal";
 		Com_sprintf(name, sizeof(name), texNameFormat, in->texture);
 
-		out->image = Renderer::Inst().FindOrCreateTexture(name, context);
+		out->image = ResourceManager::Inst().FindOrCreateTexture(name, context);
 
 		if (!out->image)
 		{
@@ -1244,7 +1245,7 @@ void Mod_LoadAliasModel(model_t *mod, void *buffer, Context& context)
 		pheader->num_skins*MAX_SKINNAME);
 	for (i = 0; i < pheader->num_skins; i++)
 	{
-		mod->skins[i] = Renderer::Inst().FindOrCreateTexture(
+		mod->skins[i] = ResourceManager::Inst().FindOrCreateTexture(
 			(char *)pheader + pheader->ofs_skins + i * MAX_SKINNAME, context);
 	}
 
@@ -1307,7 +1308,7 @@ void Mod_LoadSpriteModel(model_t *mod, void *buffer, Context& context)
 		sprout->frames[i].origin_y = LittleLong(sprin->frames[i].origin_y);
 		memcpy(sprout->frames[i].name, sprin->frames[i].name, MAX_SKINNAME);
 
-		mod->skins[i] = Renderer::Inst().FindOrCreateTexture(sprout->frames[i].name, context);
+		mod->skins[i] = ResourceManager::Inst().FindOrCreateTexture(sprout->frames[i].name, context);
 	}
 
 	mod->type = mod_sprite;

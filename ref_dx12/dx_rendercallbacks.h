@@ -4,7 +4,8 @@
 #include "dx_renderstage.h"
 #include "dx_descriptorheap.h"
 #include "dx_texture.h"
-
+#include "dx_app.h"
+#include "dx_resourcemanager.h"
 
 extern "C"
 {
@@ -36,7 +37,6 @@ namespace RenderCallbacks
 	template<typename sT, typename bT>
 	void PerPassUpdateCallback(unsigned int name, sT& stage, bT& bindPoint, PerPassUpdateContext& ctx)
 	{
-		//#DEBUG do I need this?
 		using bindT = std::decay_t<bT>;
 		using stageT = std::decay_t<sT>;
 
@@ -66,7 +66,6 @@ namespace RenderCallbacks
 	template<typename oT, typename bT>
 	void PerObjectUpdateCallback(unsigned int passName, unsigned int paramName, const oT& obj, bT* bindPoint, PerObjectUpdateContext& ctx)
 	{
-		//#DEBUG do I need this?
 		using bindT = std::decay_t<bT>;
 		using objT = std::decay_t<oT>;
 
@@ -117,7 +116,6 @@ namespace RenderCallbacks
 	template<typename oT, typename bT>
 	void PerObjectRegisterCallback(unsigned int passName, unsigned int paramName, oT& obj, bT* bindPoint, PerObjectRegisterContext& ctx) 
 	{
-		//#DEBUG do I need this?
 		using bindT = std::decay_t<bT>;
 		using objT = std::decay_t<oT>;
 
@@ -151,7 +149,12 @@ namespace RenderCallbacks
 
 							if constexpr (std::is_same_v<drawCallT ,DrawCall_Pic>)
 							{
-								Texture* tex = Renderer::Inst().FindOrCreateTexture(drawCall.name, ctx.jobCtx);
+								Renderer& renderer = Renderer::Inst();
+
+								std::array<char, MAX_QPATH> texFullName;
+								ResourceManager::Inst().GetDrawTextureFullname(drawCall.name.c_str(), texFullName.data(), texFullName.size());
+
+								Texture* tex = ResourceManager::Inst().FindOrCreateTexture(texFullName.data(), ctx.jobCtx);
 								//#DEBUG this might be nullptr and texture will be the same as base texture?
 								DescriptorHeap::Desc_t srvDescription = D3D12_SHADER_RESOURCE_VIEW_DESC{};
 								D3D12_SHADER_RESOURCE_VIEW_DESC& srvDescriptionRef = std::get<D3D12_SHADER_RESOURCE_VIEW_DESC>(srvDescription);
@@ -163,19 +166,22 @@ namespace RenderCallbacks
 								srvDescriptionRef.Texture2D.MipLevels = 1;
 								srvDescriptionRef.Texture2D.ResourceMinLODClamp = 0.0f;
 
-								Renderer::Inst().cbvSrvHeap->AllocateDescriptor(*bindPoint ,tex->buffer.Get(), &srvDescription);
+								renderer.cbvSrvHeap->AllocateDescriptor(*bindPoint ,tex->buffer.Get(), &srvDescription);
 								
 							}
 
 							if constexpr (std::is_same_v<drawCallT, DrawCall_Char>)
 							{
 								std::array<char, MAX_QPATH> texFullName;
-								Renderer::Inst().GetDrawTextureFullname(Texture::FONT_TEXTURE_NAME, texFullName.data(), texFullName.size());
+								ResourceManager& resMan = ResourceManager::Inst();
 
-								Texture* tex = Renderer::Inst().FindTexture(texFullName.data());
+								resMan.GetDrawTextureFullname(Texture::FONT_TEXTURE_NAME, texFullName.data(), texFullName.size());
+
+
+								Texture* tex = resMan.FindTexture(texFullName.data());
 								if (tex == nullptr)
 								{
-									tex = Renderer::Inst().CreateTextureFromFile(texFullName.data(), ctx.jobCtx);
+									tex = resMan.CreateTextureFromFile(texFullName.data(), ctx.jobCtx);
 								}
 
 								DescriptorHeap::Desc_t srvDescription = D3D12_SHADER_RESOURCE_VIEW_DESC{};
@@ -193,7 +199,7 @@ namespace RenderCallbacks
 
 							if constexpr (std::is_same_v<drawCallT, DrawCall_StretchRaw>)
 							{
-								Texture* tex = Renderer::Inst().FindTexture(Texture::RAW_TEXTURE_NAME);
+								Texture* tex = ResourceManager::Inst().FindTexture(Texture::RAW_TEXTURE_NAME);
 								assert(tex != nullptr && "Draw_RawPic texture doesn't exist");
 
 								// If there is no data, then texture is requested to be created for this frame. So no need to update
@@ -211,7 +217,7 @@ namespace RenderCallbacks
 										texture[i] =  rawPalette[std::to_integer<int>(drawCall.data[i])];
 									}
 
-									Renderer::Inst().UpdateTexture(*tex, reinterpret_cast<std::byte*>(texture.data()), ctx.jobCtx);
+									ResourceManager::Inst().UpdateTexture(*tex, reinterpret_cast<std::byte*>(texture.data()), ctx.jobCtx);
 								}
 
 								//#DEBUG MAKE PROPER DELETION OF HANDLES AND VIEW

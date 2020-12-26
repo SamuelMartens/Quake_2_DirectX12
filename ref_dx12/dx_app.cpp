@@ -20,6 +20,7 @@
 #include "dx_infrastructure.h"
 #include "dx_settings.h"
 #include "dx_materialcompiler.h"
+#include "dx_resourcemanager.h"
 
 #ifdef max
 #undef max
@@ -177,23 +178,6 @@ namespace
 			}
 		}
 	}
-}
-
-
-Renderer::Renderer()
-{
-}
-
-Renderer& Renderer::Inst()
-{
-	static Renderer* app = nullptr;
-
-	if (app == nullptr)
-	{
-		app = new Renderer();
-	}
-
-	return *app;
 }
 
 void Renderer::Init(WNDPROC WindowProc, HINSTANCE hInstance)
@@ -400,7 +384,7 @@ void Renderer::InitUtils()
 	// Init dynamic objects constant buffers pool
 	m_dynamicObjectsConstBuffersPool.obj.resize(Settings::DYNAM_OBJECT_CONST_BUFFER_POOL_SIZE);
 
-	m_jobSystem.Init();
+	JobSystem::Inst().Init();
 
 	InitScissorRect();
 
@@ -410,11 +394,13 @@ void Renderer::InitUtils()
 void Renderer::InitMemory(Context& context)
 {
 	// Create default memory buffer
-	m_defaultMemoryBuffer.allocBuffer.gpuBuffer = CreateDefaultHeapBuffer(nullptr, Settings::DEFAULT_MEMORY_BUFFER_SIZE, context);
+	m_defaultMemoryBuffer.allocBuffer.gpuBuffer = 
+		ResourceManager::Inst().CreateDefaultHeapBuffer(nullptr, Settings::DEFAULT_MEMORY_BUFFER_SIZE, context);
 	Diagnostics::SetResourceName(m_defaultMemoryBuffer.allocBuffer.gpuBuffer.Get(), "DefaultMemoryHeap");
 
 	// Create upload memory buffer
-	m_uploadMemoryBuffer.allocBuffer.gpuBuffer = CreateUploadHeapBuffer(Settings::UPLOAD_MEMORY_BUFFER_SIZE);
+	m_uploadMemoryBuffer.allocBuffer.gpuBuffer = 
+		ResourceManager::Inst().CreateUploadHeapBuffer(Settings::UPLOAD_MEMORY_BUFFER_SIZE);
 	Diagnostics::SetResourceName(m_uploadMemoryBuffer.allocBuffer.gpuBuffer.Get(), "UploadMemoryHeap");
 }
 
@@ -840,6 +826,14 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 
 	// Remove used draw calls
 	frame.uiDrawCalls.clear();
+
+	for (RenderStage_t& stage : frame.frameGraph.stages)
+	{
+		std::visit([](auto&& stage)
+		{
+			stage.Finish();
+		}, stage);
+	}
 }
 
 void Renderer::AcquireCurrentFrame()
@@ -1006,387 +1000,6 @@ void Renderer::PresentAndSwapBuffers(Frame& frame)
 
 }
 
-Texture* Renderer::CreateTextureFromFileDeferred(const char* name, Frame& frame)
-{
-	std::scoped_lock<std::mutex> lock(m_textures.mutex);
-
-	Texture tex;
-	tex.name = name;
-
-	Texture* result = &m_textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
-
-	TexCreationRequest_FromFile texRequest(*result);
-	frame.texCreationRequests.push_back(std::move(texRequest));
-
-	return result;
-}
-
-Texture* Renderer::CreateTextureFromFile(const char* name, Context& context)
-{
-	std::scoped_lock<std::mutex> lock(m_textures.mutex);
-
-	return _CreateTextureFromFile(name, context);
-}
-
-Texture* Renderer::CreateTextureFromDataDeferred(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame)
-{
-	std::scoped_lock<std::mutex> lock(m_textures.mutex);
-
-	Texture tex;
-	tex.name = name;
-	tex.width = width;
-	tex.height = height;
-	tex.bpp = bpp;
-
-	Texture* result = &m_textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
-
-	TexCreationRequest_FromData texRequest(*result);
-	const int texSize = width * height * bpp / 8;
-
-	texRequest.data.resize(texSize);
-	memcpy(texRequest.data.data(), data, texSize);
-
-	frame.texCreationRequests.push_back(std::move(texRequest));
-
-	return result;
-}
-
-Texture* Renderer::_CreateTextureFromFile(const char* name, Context& context)
-{
-	if (name == nullptr)
-		return nullptr;
-
-	std::array<char, MAX_QPATH> nonConstName;
-	// Some old functions access only non const pointer, that's just work around
-	char* nonConstNamePtr = nonConstName.data();
-	strcpy(nonConstNamePtr, name);
-
-
-	constexpr int fileExtensionLength = 4;
-	const char* texFileExtension = nonConstNamePtr + strlen(nonConstNamePtr) - fileExtensionLength;
-
-	std::byte* image = nullptr;
-	std::byte* palette = nullptr;
-	int width = 0;
-	int height = 0;
-	int bpp = 0;
-
-	if (strcmp(texFileExtension, ".pcx") == 0)
-	{
-		bpp = 8;
-		Utils::LoadPCX(nonConstNamePtr, &image, &palette, &width, &height);
-	}
-	else if (strcmp(texFileExtension, ".wal") == 0)
-	{
-		bpp = 8;
-		Utils::LoadWal(nonConstNamePtr, &image, &width, &height);
-	}
-	else if (strcmp(texFileExtension, ".tga") == 0)
-	{
-		bpp = 32;
-		Utils::LoadTGA(nonConstNamePtr, &image, &width, &height);
-	}
-	else
-	{
-		assert(false && "Invalid texture file extension");
-		return nullptr;
-	}
-
-	if (image == nullptr)
-	{
-		assert(false && "Failed to create texture from file");
-		return nullptr;
-	}
-
-	unsigned int* image32 = nullptr;
-	constexpr int maxImageSize = 512 * 256;
-	// This would be great to have this on heap, but it's too big and
-	// cause stack overflow immediately on entrance in function
-	static unsigned int* fixedImage = new unsigned int[maxImageSize];
-#ifdef _DEBUG
-	memset(fixedImage, 0, maxImageSize * sizeof(unsigned int));
-#endif
-
-	//#TODO I ignore texture type (which is basically represents is this texture sky or
-	// or something else. It's kind of important here, as we need to handle pictures
-	// differently sometimes depending on type. I will need to take care of it later.
-	if (bpp == 8)
-	{
-		ImageBpp8To32(image, width, height, fixedImage);
-		bpp = 32;
-
-		image32 = fixedImage;
-	}
-	else
-	{
-		image32 = reinterpret_cast<unsigned int*>(image);
-	}
-
-	// I might need this later
-	//int scaledWidth = 0;
-	//int scaledHeight = 0;
-
-	//FindImageScaledSizes(width, height, scaledWidth, scaledHeight);
-
-	//std::vector<unsigned int> resampledImage(maxImageSize, 0);
-
-	//if (scaledWidth != width || scaledHeight != height)
-	//{
-	//	ResampleTexture(image32, width, height, resampledImage.data(), scaledHeight, scaledWidth);
-	//	image32 = resampledImage.data();
-	//}
-
-	Texture* createdTex = _CreateTextureFromData(reinterpret_cast<std::byte*>(image32), width, height, bpp, name, context);
-
-	if (image != nullptr)
-	{
-		free(image);
-	}
-
-	if (palette != nullptr)
-	{
-		free(palette);
-	}
-
-	return createdTex;
-}
-
-void Renderer::_CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Context& context, Texture& outTex)
-{
-	CommandList& commandList = context.commandList;
-
-	D3D12_RESOURCE_DESC textureDesc = {};
-	textureDesc.MipLevels = 1;
-	textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	textureDesc.Width = width;
-	textureDesc.Height = height;
-	textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-	textureDesc.DepthOrArraySize = 1;
-	textureDesc.SampleDesc.Count = 1;
-	textureDesc.SampleDesc.Quality = 0;
-	textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-
-	// Create destination texture
-	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-		D3D12_HEAP_FLAG_NONE,
-		&textureDesc,
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		nullptr,
-		IID_PPV_ARGS(&outTex.buffer)));
-
-	// Count alignment and go for what we need
-	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(outTex.buffer.Get(), 0, 1);
-
-	ComPtr<ID3D12Resource> textureUploadBuffer = CreateUploadHeapBuffer(uploadBufferSize);
-	Diagnostics::SetResourceNameWithAutoId(textureUploadBuffer.Get(), "TextureUploadBuffer_CreateTexture");
-
-	DO_IN_LOCK(context.frame.uploadResources, push_back(textureUploadBuffer));
-
-	D3D12_SUBRESOURCE_DATA textureData = {};
-	textureData.pData = raw;
-	// Divide by 8 cause bpp is bits per pixel, not bytes
-	textureData.RowPitch = width * bpp / 8;
-	// Not SlicePitch but texture size in our case
-	textureData.SlicePitch = textureData.RowPitch * height;
-	
-	UpdateSubresources(commandList.commandList.Get(), outTex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
-	commandList.commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		outTex.buffer.Get(),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
-
-
-	DescriptorHeap::Desc_t srvDescription = D3D12_SHADER_RESOURCE_VIEW_DESC{};
-	D3D12_SHADER_RESOURCE_VIEW_DESC& srvDescriptionRef = std::get<D3D12_SHADER_RESOURCE_VIEW_DESC>(srvDescription);
-	srvDescriptionRef.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDescriptionRef.Format = textureDesc.Format;
-	srvDescriptionRef.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDescriptionRef.Texture2D.MostDetailedMip = 0;
-	srvDescriptionRef.Texture2D.MipLevels = 1;
-	srvDescriptionRef.Texture2D.ResourceMinLODClamp = 0.0f;
-
-	outTex.texViewIndex = cbvSrvHeap->Allocate(outTex.buffer.Get(), &srvDescription);
-}
-
-Texture* Renderer::_CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context)
-{
-	Logs::Logf(Logs::Category::Textures, "Create texture %s", name);
-
-	Texture tex;
-	_CreateGpuTexture(reinterpret_cast<const unsigned int*>(data), width, height, bpp, context, tex);
-
-	tex.width = width;
-	tex.height = height;
-	tex.bpp = bpp;
-
-	tex.name = name;
-
-	Diagnostics::SetResourceName(tex.buffer.Get(), tex.name);
-
-	return &m_textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
-}
-
-Texture* Renderer::CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context)
-{
-	std::scoped_lock<std::mutex> lock(m_textures.mutex);
-
-	return _CreateTextureFromData(data, width, height, bpp, name, context);
-}
-
-ComPtr<ID3D12Resource> Renderer::CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, Context& context)
-{
-	// Create actual buffer 
-	D3D12_RESOURCE_DESC bufferDesc = {};
-	bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-	bufferDesc.Alignment = 0;
-	bufferDesc.Width = byteSize;
-	bufferDesc.Height = 1;
-	bufferDesc.DepthOrArraySize = 1;
-	bufferDesc.MipLevels = 1;
-	bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
-	bufferDesc.SampleDesc.Count = 1;
-	bufferDesc.SampleDesc.Quality = 0;
-	bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-	bufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
-	ComPtr<ID3D12Resource> buffer;
-
-	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-		D3D12_HEAP_FLAG_NONE,
-		&bufferDesc,
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		nullptr,
-		IID_PPV_ARGS(&buffer)
-	));
-
-	ComPtr<ID3D12GraphicsCommandList>& commandList = context.commandList.commandList;
-
-	if (data != nullptr)
-	{
-		// Create upload buffer
-		ComPtr<ID3D12Resource> uploadBuffer = CreateUploadHeapBuffer(byteSize);
-		Diagnostics::SetResourceNameWithAutoId(uploadBuffer.Get(), "UploadBuffer_CreateDefaultHeap");
-
-		DO_IN_LOCK(context.frame.uploadResources, push_back(uploadBuffer));
-
-		// Describe upload resource data 
-		D3D12_SUBRESOURCE_DATA subResourceData = {};
-		subResourceData.pData = data;
-		subResourceData.RowPitch = byteSize;
-		subResourceData.SlicePitch = subResourceData.RowPitch;
-
-		UpdateSubresources(commandList.Get(), buffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
-	}
-
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		buffer.Get(),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		D3D12_RESOURCE_STATE_GENERIC_READ
-	));
-
-	return buffer;
-}
-
-ComPtr<ID3D12Resource> Renderer::CreateUploadHeapBuffer(UINT64 byteSize) const
-{
-	ComPtr<ID3D12Resource> uploadHeapBuffer;
-
-	// Create actual buffer 
-	D3D12_RESOURCE_DESC bufferDesc = {};
-	bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-	bufferDesc.Alignment = 0;
-	bufferDesc.Width = byteSize;
-	bufferDesc.Height = 1;
-	bufferDesc.DepthOrArraySize = 1;
-	bufferDesc.MipLevels = 1;
-	bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
-	bufferDesc.SampleDesc.Count = 1;
-	bufferDesc.SampleDesc.Quality = 0;
-	bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-	bufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
-	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&bufferDesc,
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&uploadHeapBuffer)
-	));
-
-	return uploadHeapBuffer;
-}
-
-void Renderer::UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const
-{
-	assert(args.buffer != nullptr &&
-		args.alignment != -1 &&
-		args.byteSize != Const::INVALID_SIZE &&
-		args.data != nullptr &&
-		args.offset != Const::INVALID_OFFSET && "Uninitialized arguments in update upload buff");
-
-	const unsigned int dataSize = args.alignment != 0 ? Utils::Align(args.byteSize, args.alignment) : args.byteSize;
-
-	BYTE* mappedMemory = nullptr;
-	// This parameter indicates the range that CPU might read. If begin and end are equal, we promise
-	// that CPU will never try to read from this memory
-	D3D12_RANGE mappedRange = { 0, 0 };
-
-	ThrowIfFailed(args.buffer->Map(0, &mappedRange, reinterpret_cast<void**>(&mappedMemory)));
-
-	memcpy(mappedMemory + args.offset, args.data, dataSize);
-
-	args.buffer->Unmap(0, &mappedRange);
-}
-
-void Renderer::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
-{
-	assert(args.buffer != nullptr &&
-		args.alignment != -1 &&
-		args.byteSize != Const::INVALID_SIZE &&
-		args.data != nullptr &&
-		args.offset != Const::INVALID_OFFSET &&
-		args.context != nullptr &&
-		"Uninitialized arguments in update default buff");
-
-	const unsigned int dataSize = args.alignment != 0 ? Utils::Align(args.byteSize, args.alignment) : args.byteSize;
-
-	Frame& frame = args.context->frame;
-	CommandList& commandList = args.context->commandList;
-
-	// Create upload buffer
-	ComPtr<ID3D12Resource> uploadBuffer = CreateUploadHeapBuffer(args.byteSize);
-	Diagnostics::SetResourceNameWithAutoId(uploadBuffer.Get(), "UploadBuffer_UpdateDefaultHeap");
-
-	DO_IN_LOCK(frame.uploadResources, push_back(uploadBuffer));
-
-	FArg::UpdateUploadHeapBuff uploadHeapBuffArgs;
-	uploadHeapBuffArgs.alignment = 0;
-	uploadHeapBuffArgs.buffer = uploadBuffer;
-	uploadHeapBuffArgs.byteSize = args.byteSize;
-	uploadHeapBuffArgs.data = args.data;
-	uploadHeapBuffArgs.offset = 0;
-	UpdateUploadHeapBuff(uploadHeapBuffArgs);
-
-	commandList.commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		args.buffer.Get(),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		D3D12_RESOURCE_STATE_COPY_DEST
-	));
-
-	// Last argument is intentionally args.byteSize, cause that's how much data we pass to this function
-	// we don't want to read out of range
-	commandList.commandList->CopyBufferRegion(args.buffer.Get(), args.offset, uploadBuffer.Get(), 0, args.byteSize);
-
-	commandList.commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		args.buffer.Get(),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		D3D12_RESOURCE_STATE_GENERIC_READ
-	));
-}
-
 DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
 {
 	m_dynamicObjectsConstBuffersPool.mutex.lock();
@@ -1485,7 +1098,7 @@ void Renderer::EndFrameJob(Context& context)
 	ThreadingUtils::AssertUnlocked(context.frame.uploadResources);
 	
 	// Delete shared resources marked for deletion
-	DeleteRequestedResources();
+	ResourceManager::Inst().DeleteRequestedResources();
 
 	Logs::Log(Logs::Category::Job, "EndFrame job ended");
 }
@@ -1739,51 +1352,6 @@ void Renderer::ExecuteDrawUIPass(Context& context, const Pass& pass)
 	}
 }
 
-void Renderer::CreateDeferredTextures(Context& context)
-{
-	CommandListRAIIGuard_t commandListGuard(context.commandList);
-
-	std::scoped_lock<std::mutex> lock(m_textures.mutex);
-
-	for (const TextureCreationRequest_t& tr : context.frame.texCreationRequests)
-	{
-		std::visit([&context, this](auto&& texRequest) 
-		{
-			using T = std::decay_t<decltype(texRequest)>;
-
-			if constexpr (std::is_same_v<T, TexCreationRequest_FromFile>)
-			{
-				std::string name = texRequest.texture.name;
-				_CreateTextureFromFile(name.c_str(), context);
-			}
-			else if constexpr (std::is_same_v<T, TexCreationRequest_FromData>)
-			{
-				// Get tex actual color
-				const int textureSize = texRequest.texture.width * texRequest.texture.height;
-				std::vector<unsigned int> texture(textureSize, 0);
-				for (int i = 0; i < textureSize; ++i)
-				{
-					texture[i] = m_rawPalette[std::to_integer<int>(texRequest.data[i])];
-				}
-
-				std::string name = texRequest.texture.name;
-				_CreateTextureFromData(
-					reinterpret_cast<std::byte*>(texture.data()),
-					texRequest.texture.width,
-					texRequest.texture.height,
-					texRequest.texture.bpp,
-					name.c_str(),
-					context);
-			}
-			else
-			{
-				static_assert(false, "Invalid class in Deferred Tex creation");
-			}
-		}
-		, tr);
-	}
-}
-
 ComPtr<ID3DBlob> Renderer::LoadCompiledShader(const std::string& filename) const
 {
 	std::ifstream fin(filename, std::ios::binary);
@@ -1885,6 +1453,8 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	object.indices = m_defaultMemoryBuffer.Allocate(indexBufferSize);
 	object.textureCoords = m_defaultMemoryBuffer.Allocate(texCoordsBufferSize);
 
+	ResourceManager& resMan = ResourceManager::Inst();
+
 	// Get vertices in
 	FArg::UpdateDefaultHeapBuff updateArgs;
 	updateArgs.alignment = 0;
@@ -1893,7 +1463,7 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	updateArgs.data = reinterpret_cast<const void*>(vertexBuffer.data());
 	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.vertices);
 	updateArgs.context = &context;
-	UpdateDefaultHeapBuff(updateArgs);
+	resMan.UpdateDefaultHeapBuff(updateArgs);
 
 	// Get indices in
 	updateArgs.alignment = 0;
@@ -1902,7 +1472,7 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	updateArgs.data = reinterpret_cast<const void*>(normalizedIndexBuffer.data());
 	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.indices);
 	updateArgs.context = &context;
-	UpdateDefaultHeapBuff(updateArgs);
+	resMan.UpdateDefaultHeapBuff(updateArgs);
 
 	// Get tex coords in
 	updateArgs.alignment = 0;
@@ -1911,7 +1481,7 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	updateArgs.data = reinterpret_cast<const void*>(normalizedTexCoordsBuffer.data());
 	updateArgs.offset = m_defaultMemoryBuffer.GetOffset(object.textureCoords);
 	updateArgs.context = &context;
-	UpdateDefaultHeapBuff(updateArgs);
+	resMan.UpdateDefaultHeapBuff(updateArgs);
 
 	// Get textures in
 	object.textures.reserve(aliasHeader->num_skins);
@@ -1966,7 +1536,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Contex
 	updateBuffArg.alignment = 0;
 	updateBuffArg.context = &context;
 
-	UpdateDefaultHeapBuff(updateBuffArg);
+	ResourceManager::Inst().UpdateDefaultHeapBuff(updateBuffArg);
 
 	static uint64_t allocSize = 0;
 	uint64_t size = sizeof(ShDef::Vert::PosTexCoord) * vertices.size();
@@ -1985,7 +1555,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Contex
 	updateBuffArg.alignment = 0;
 	updateBuffArg.context = &context;
 
-	UpdateDefaultHeapBuff(updateBuffArg);
+	ResourceManager::Inst().UpdateDefaultHeapBuff(updateBuffArg);
 
 	const unsigned int PictureObjectConstSize = Utils::Align(sizeof(ShDef::ConstBuff::TransMat), 
 		Settings::CONST_BUFFER_ALIGNMENT);
@@ -2063,7 +1633,7 @@ void Renderer::Draw(const StaticObject& object, Context& context)
 	// Binding root signature params
 
 	// 1)
-	const Texture& texture = *FindTexture(object.textureKey);
+	const Texture& texture = *ResourceManager::Inst().FindTexture(object.textureKey);
 
 	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);
 
@@ -2111,7 +1681,7 @@ void Renderer::DrawIndiced(const StaticObject& object, Context& context)
 	// Binding root signature params
 
 	// 1)
-	const Texture& texture = *FindTexture(object.textureKey);
+	const Texture& texture = *ResourceManager::Inst().FindTexture(object.textureKey);
 
 	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);;
 
@@ -2188,15 +1758,15 @@ void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, 
 
 	if (entity.skinnum >= MAX_MD2SKINS)
 	{
-		tex = FindTexture(model.textures[0]);
+		tex = ResourceManager::Inst().FindTexture(model.textures[0]);
 	}
 	else
 	{
-		tex = FindTexture(model.textures[entity.skinnum]);
+		tex = ResourceManager::Inst().FindTexture(model.textures[entity.skinnum]);
 
 		if (tex == nullptr)
 		{
-			tex = FindTexture(model.textures[0]);
+			tex = ResourceManager::Inst().FindTexture(model.textures[0]);
 		}
 	}
 
@@ -2250,7 +1820,7 @@ void Renderer::DrawStreaming(const FArg::DrawStreaming& args)
 	updateVertexBufferArgs.byteSize = args.verticesSizeInBytes;
 	updateVertexBufferArgs.alignment = 0;
 
-	UpdateUploadHeapBuff(updateVertexBufferArgs);
+	ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
 
 	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
 	vertBuffView.BufferLocation = m_uploadMemoryBuffer.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + vertexBufferOffset;
@@ -2262,7 +1832,7 @@ void Renderer::DrawStreaming(const FArg::DrawStreaming& args)
 	// Binding root signature params
 
 	// 1)
-	const Texture& texture = *FindTexture(args.texName);
+	const Texture& texture = *ResourceManager::Inst().FindTexture(args.texName);
 
 	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);;
 
@@ -2302,7 +1872,7 @@ void Renderer::AddParticleToDrawList(const particle_t& particle, BufferHandler v
 	updateVertexBufferArgs.data = &particleGpuData;
 	updateVertexBufferArgs.byteSize = sizeof(particleGpuData);
 	updateVertexBufferArgs.alignment = 0;
-	UpdateUploadHeapBuff(updateVertexBufferArgs);
+	ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
 }
 
 void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Context& context)
@@ -2469,20 +2039,6 @@ bool Renderer::IsVisible(const entity_t& entity, const Camera& camera) const
 	return false;
 }
 
-void Renderer::RequestResourceDeletion(ComPtr<ID3D12Resource> resourceToDelete)
-{
-	std::scoped_lock<std::mutex> lock(m_resourcesToDelete.mutex);
-
-	m_resourcesToDelete.obj.push_back(resourceToDelete);
-}
-
-void Renderer::DeleteRequestedResources()
-{
-	std::scoped_lock<std::mutex> lock(m_resourcesToDelete.mutex);
-
-	m_resourcesToDelete.obj.clear();
-}
-
 void Renderer::DeleteDefaultMemoryBuffer(BufferHandler handler)
 {
 	m_defaultMemoryBuffer.Delete(handler);
@@ -2527,7 +2083,7 @@ void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, 
 	updateConstBufferArgs.byteSize = sizeof(transMat);
 	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
 	// Update our constant buffer
-	UpdateUploadHeapBuff(updateConstBufferArgs);
+	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
 void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context& context)
@@ -2546,7 +2102,7 @@ void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context
 	updateConstBufferArgs.byteSize = sizeof(mvpMat);
 	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
 
-	UpdateUploadHeapBuff(updateConstBufferArgs);
+	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
 void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, Context& context)
@@ -2593,7 +2149,7 @@ void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entit
 	updateConstBufferArgs.byteSize = updateDataSize;
 	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
 
-	UpdateUploadHeapBuff(updateConstBufferArgs);
+	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
 BufferHandler Renderer::UpdateParticleConstantBuffer(Context& context)
@@ -2645,96 +2201,9 @@ BufferHandler Renderer::UpdateParticleConstantBuffer(Context& context)
 	updateConstBufferArgs.byteSize = updateDataSize;
 	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
 
-	UpdateUploadHeapBuff(updateConstBufferArgs);
+	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 
 	return constantBufferHandler;
-}
-
-Texture* Renderer::FindOrCreateTexture(std::string_view textureName, Context& context)
-{
-	std::scoped_lock<std::mutex> lock(m_textures.mutex);
-	
-	Texture* texture = nullptr;
-	auto texIt = m_textures.obj.find(textureName.data());
-
-	if (texIt != m_textures.obj.end())
-	{
-		texture = &texIt->second;
-	}
-	else
-	{
-		texture = _CreateTextureFromFile(textureName.data(), context);
-	}
-
-	return texture;
-}
-
-Texture* Renderer::FindTexture(std::string_view textureName)
-{
-	std::scoped_lock<std::mutex> lock(m_textures.mutex);
-
-	auto texIt = m_textures.obj.find(textureName.data());
-
-	return texIt == m_textures.obj.end() ? nullptr : &texIt->second;
-}
-
-void Renderer::ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight)
-{
-	// Copied from GL_ResampleTexture
-	// Honestly, I don't know exactly what it does, I mean I understand that
-	// it most likely upscales image, but how?
-	int		i, j;
-	const unsigned	*inrow, *inrow2;
-	unsigned	frac, fracstep;
-	unsigned	p1[1024], p2[1024];
-	byte		*pix1, *pix2, *pix3, *pix4;
-
-	fracstep = inwidth * 0x10000 / outwidth;
-
-	frac = fracstep >> 2;
-	for (i = 0; i < outwidth; i++)
-	{
-		p1[i] = 4 * (frac >> 16);
-		frac += fracstep;
-	}
-	frac = 3 * (fracstep >> 2);
-	for (i = 0; i < outwidth; i++)
-	{
-		p2[i] = 4 * (frac >> 16);
-		frac += fracstep;
-	}
-
-	for (i = 0; i < outheight; i++, out += outwidth)
-	{
-		inrow = in + inwidth * (int)((i + 0.25)*inheight / outheight);
-		inrow2 = in + inwidth * (int)((i + 0.75)*inheight / outheight);
-		frac = fracstep >> 1;
-		for (j = 0; j < outwidth; j++)
-		{
-			pix1 = (byte *)inrow + p1[j];
-			pix2 = (byte *)inrow + p2[j];
-			pix3 = (byte *)inrow2 + p1[j];
-			pix4 = (byte *)inrow2 + p2[j];
-			((byte *)(out + j))[0] = (pix1[0] + pix2[0] + pix3[0] + pix4[0]) >> 2;
-			((byte *)(out + j))[1] = (pix1[1] + pix2[1] + pix3[1] + pix4[1]) >> 2;
-			((byte *)(out + j))[2] = (pix1[2] + pix2[2] + pix3[2] + pix4[2]) >> 2;
-			((byte *)(out + j))[3] = (pix1[3] + pix2[3] + pix3[3] + pix4[3]) >> 2;
-		}
-	}
-}
-
-//#DEBUG move this to utils. This shouldn't be here. Or make it at least static
-void Renderer::GetDrawTextureFullname(const char* name, char* dest, int destSize) const
-{
-	if (name[0] != '/' && name[0] != '\\')
-	{
-		Utils::Sprintf(dest, destSize, "pics/%s.pcx", name);
-	}
-	else
-	{
-		assert(destSize >= strlen(name) + 1);
-		strcpy(dest, name + 1);
-	}
 }
 
 std::unique_ptr<DescriptorHeap>& Renderer::GetDescTableHeap(const RootArg_DescTable& descTable)
@@ -2757,49 +2226,14 @@ std::unique_ptr<DescriptorHeap>& Renderer::GetDescTableHeap(const RootArg_DescTa
 	}, descTable.content[0]);
 }
 
-void Renderer::UpdateTexture(Texture& tex, const std::byte* data, Context& context)
-{
-	Logs::Logf(Logs::Category::Textures, "Update Texture with name %s", tex.name.c_str());
-
-	CommandList& commandList = context.commandList;
-
-	// Count alignment and go for what we need
-	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(tex.buffer.Get(), 0, 1);
-
-	ComPtr<ID3D12Resource> textureUploadBuffer = CreateUploadHeapBuffer(uploadBufferSize);
-	Diagnostics::SetResourceNameWithAutoId(textureUploadBuffer.Get(), "TextureUploadBuffer_UpdateTexture");
-
-	DO_IN_LOCK(context.frame.uploadResources, push_back(textureUploadBuffer));
-
-	D3D12_SUBRESOURCE_DATA textureData = {};
-	textureData.pData = data;
-	// Divide by 8 cause bpp is bits per pixel, not bytes
-	textureData.RowPitch = tex.width * tex.bpp / 8;
-	// Not SlicePitch but texture size in our case
-	textureData.SlicePitch = textureData.RowPitch * tex.height;
-
-	commandList.commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		tex.buffer.Get(),
-		//#TODO figure out what's up with this NON PIXEL SHADER resource. Everywhere it is used
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-		D3D12_RESOURCE_STATE_COPY_DEST
-	));
-
-	UpdateSubresources(commandList.commandList.Get(), tex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
-	commandList.commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		tex.buffer.Get(),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
-}
-
 void Renderer::GetDrawTextureSize(int* x, int* y, const char* name)
 {
 	Logs::Logf(Logs::Category::Generic, "API: Get draw texture size %s", name);
 
 	std::array<char, MAX_QPATH> texFullName;
-	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
+	ResourceManager::Inst().GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
 
-	const Texture* tex = FindTexture(texFullName.data());
+	const Texture* tex = ResourceManager::Inst().FindTexture(texFullName.data());
 
 	if (tex != nullptr)
 	{
@@ -2850,7 +2284,7 @@ void Renderer::EndLevelLoading()
 	m_dynamicModelRegContext->commandList.Close();
 	
 	Context createDeferredTextureContext = CreateContext(frame);
-	CreateDeferredTextures(createDeferredTextureContext);
+	ResourceManager::Inst().CreateDeferredTextures(createDeferredTextureContext);
 	
 	CloseFrame(frame);
 
@@ -2884,14 +2318,14 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 	
 	// To enforce order of texture create/update, this check must be done in main thread,
 	// so worker threads can run independently
-	Texture* rawTex = FindTexture(Texture::RAW_TEXTURE_NAME);
+	Texture* rawTex = ResourceManager::Inst().FindTexture(Texture::RAW_TEXTURE_NAME);
 
 	if (rawTex == nullptr 
 		|| rawTex->width != textureWidth
 		|| rawTex->height != textureHeight)
 	{
 		constexpr int textureBitsPerPixel = 32;
-		rawTex = CreateTextureFromDataDeferred(data,
+		rawTex = ResourceManager::Inst().CreateTextureFromDataDeferred(data,
 			textureWidth, textureHeight, textureBitsPerPixel, Texture::RAW_TEXTURE_NAME, GetCurrentFrame());
 	}
 	else
@@ -2910,9 +2344,9 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 void Renderer::Draw_Pic(int x, int y, const char* name, const BufferPiece& bufferPiece, Context& context)
 {
 	std::array<char, MAX_QPATH> texFullName;
-	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
+	ResourceManager::Inst().GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
 
-	const Texture& texture = *FindOrCreateTexture(texFullName.data(), context);
+	const Texture& texture = *ResourceManager::Inst().FindOrCreateTexture(texFullName.data(), context);
 
 	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
 	Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
@@ -2964,13 +2398,13 @@ void Renderer::Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, 
 	const int vertexStride = sizeof(ShDef::Vert::PosTexCoord);
 
 	std::array<char, MAX_QPATH> texFullName;
-	GetDrawTextureFullname(Texture::FONT_TEXTURE_NAME, texFullName.data(), texFullName.size());
+	ResourceManager::Inst().GetDrawTextureFullname(Texture::FONT_TEXTURE_NAME, texFullName.data(), texFullName.size());
 
 	// Proper place for this is in Init(), but file loading system is not ready, when
 	// init is called for renderer
-	 if(FindTexture(texFullName.data()) == nullptr)
+	 if(ResourceManager::Inst().FindTexture(texFullName.data()) == nullptr)
 	 {
-		 CreateTextureFromFile(texFullName.data(), context);
+		 ResourceManager::Inst().CreateTextureFromFile(texFullName.data(), context);
 	 }
 
 	 FArg::DrawStreaming drawArgs;
@@ -3003,10 +2437,10 @@ void Renderer::Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiec
 			texture[i] = m_rawPalette[std::to_integer<int>(drawCall.data[i])];
 		}
 
-		Texture* rawTex = FindTexture(Texture::RAW_TEXTURE_NAME);
+		Texture* rawTex = ResourceManager::Inst().FindTexture(Texture::RAW_TEXTURE_NAME);
 		assert(rawTex != nullptr && "Draw_RawPic texture doesn't exist");
 
-		UpdateTexture(*rawTex, reinterpret_cast<std::byte*>(texture.data()), context);
+		ResourceManager::Inst().UpdateTexture(*rawTex, reinterpret_cast<std::byte*>(texture.data()), context);
 	}
 
 	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
@@ -3073,7 +2507,7 @@ void Renderer::EndFrame()
 	if (frame.texCreationRequests.empty() == false)
 	{
 		Context createDeferredTextureContext = CreateContext(frame);
-		CreateDeferredTextures(createDeferredTextureContext);
+		ResourceManager::Inst().CreateDeferredTextures(createDeferredTextureContext);
 	}
 
 	// Proceed to next frame
@@ -3104,7 +2538,7 @@ void Renderer::EndFrame()
 		});
 
 
-	JobQueue& jobQueue = m_jobSystem.GetJobQueue();
+	JobQueue& jobQueue = JobSystem::Inst().GetJobQueue();
 
 	// --- Begin frame job ---
 
@@ -3166,7 +2600,7 @@ void Renderer::EndFrame_Material()
 	if (frame.texCreationRequests.empty() == false)
 	{
 		Context createDeferredTextureContext = CreateContext(frame);
-		CreateDeferredTextures(createDeferredTextureContext);
+		ResourceManager::Inst().CreateDeferredTextures(createDeferredTextureContext);
 	}
 
 	// Proceed to next frame
@@ -3189,11 +2623,12 @@ Texture* Renderer::RegisterDrawPic(const char* name)
 	// If dynamic model registration context exists, then we are in the middle of the level loading. At this point
 	// current frame is most likely invalid
 	Frame& frame = m_dynamicModelRegContext != nullptr ? m_dynamicModelRegContext->frame : GetCurrentFrame();
+	ResourceManager& resMan = ResourceManager::Inst();
 
 	std::array<char, MAX_QPATH> texFullName;
-	GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
+	resMan.GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
 
-	Texture* newTex = CreateTextureFromFileDeferred(texFullName.data(), frame);
+	Texture* newTex = resMan.CreateTextureFromFileDeferred(texFullName.data(), frame);
 
 	return newTex;
 }
@@ -3238,7 +2673,7 @@ void Renderer::RegisterWorldModel(const char* model)
 	context.commandList.Close();
 	DetachCurrentFrame();
 
-	m_jobSystem.GetJobQueue().Enqueue(Job(
+	JobSystem::Inst().GetJobQueue().Enqueue(Job(
 		[context, this] () mutable 
 	{
 		Logs::Log(Logs::Category::Job, "Register world model job started");
@@ -3307,7 +2742,7 @@ model_s* Renderer::RegisterModel(const char* name)
 			for (int i = 0; i < pheader->num_skins; ++i)
 			{
 				char* imageName = reinterpret_cast<char*>(pheader) + pheader->ofs_skins + i * MAX_SKINNAME;
-				mod->skins[i] = FindOrCreateTexture(imageName, *m_dynamicModelRegContext);
+				mod->skins[i] = ResourceManager::Inst().FindOrCreateTexture(imageName, *m_dynamicModelRegContext);
 			}
 
 			m_dynamicObjectsModels[mod] = CreateDynamicGraphicObjectFromGLModel(mod, *m_dynamicModelRegContext);

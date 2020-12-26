@@ -12,6 +12,26 @@
 
 #include "dx_shaderdefinitions.h"
 
+#define DEFINE_SINGLETON(ClassName) \
+	private: \
+	ClassName() = default; \
+	public: \
+	ClassName(const ClassName&) = delete; \
+	ClassName& operator=(const ClassName&) = delete; \
+	ClassName(ClassName&&) = delete; \
+	ClassName& operator=(ClassName&&) = delete; \
+	~ClassName() = default;						\
+												\
+	static ClassName& Inst()	\
+	{					\
+		static ClassName* obj = nullptr;	\
+		if (obj == nullptr) { obj = new ClassName(); } \
+		return *obj;\
+	}
+
+		
+
+
 using namespace DirectX;
 
 namespace Const

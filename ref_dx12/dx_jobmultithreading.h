@@ -12,6 +12,7 @@
 #include "dx_frame.h"
 #include "dx_commandlist.h"
 #include "dx_threadingutils.h"
+#include "dx_utils.h"
 
 // Core job stuff
 
@@ -82,20 +83,11 @@ private:
 	std::thread thread;
 };
 
-//#TODO make this singleton
 class JobSystem
 {
 public:
-
-	JobSystem() = default;
-
-	JobSystem(const JobSystem&) = delete;
-	JobSystem& operator=(const JobSystem&) = delete;
-
-	JobSystem(JobSystem&&) = delete;
-	JobSystem& operator=(JobSystem&&) = delete;
-
-	~JobSystem() = default;
+	
+	DEFINE_SINGLETON(JobSystem);
 
 	void Init();
 

@@ -69,10 +69,7 @@ void DescriptorHeap::Delete(int index)
 
 void DescriptorHeap::DeleteRange(int index, int size)
 {
-	for (int i = 0; i < size; ++i)
-	{
-		alloc.Delete(i + index);
-	}
+	alloc.DeleteRange(index, size);
 }
 
 ID3D12DescriptorHeap* DescriptorHeap::GetHeapResource()

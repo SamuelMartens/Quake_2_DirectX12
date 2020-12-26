@@ -8,6 +8,7 @@
 #include "dx_settings.h"
 #include "dx_app.h"
 #include "dx_jobmultithreading.h"
+#include "dx_resourcemanager.h"
 
 void RenderStage_UI::Init()
 {
@@ -171,9 +172,9 @@ void RenderStage_UI::Start(Context& jobCtx)
 			if constexpr (std::is_same_v<T, DrawCall_Pic>)
 			{
 				std::array<char, MAX_QPATH> texFullName;
-			 	renderer.GetDrawTextureFullname(drawCall.name.c_str(), texFullName.data(), texFullName.size());
+			 	ResourceManager::Inst().GetDrawTextureFullname(drawCall.name.c_str(), texFullName.data(), texFullName.size());
 
-				const Texture& texture = *renderer.FindTexture(texFullName.data());
+				const Texture& texture = *ResourceManager::Inst().FindTexture(texFullName.data());
 
 				std::array<ShDef::Vert::PosTexCoord, 6> vertices;
 				Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
@@ -191,7 +192,7 @@ void RenderStage_UI::Start(Context& jobCtx)
 				updateVertexBufferArgs.byteSize = perObjectVertexMemorySize;
 				updateVertexBufferArgs.alignment = 0;
 
-				renderer.UpdateUploadHeapBuff(updateVertexBufferArgs);
+				ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
 			}
 			else if constexpr (std::is_same_v<T, DrawCall_Char>)
 			{
@@ -227,7 +228,7 @@ void RenderStage_UI::Start(Context& jobCtx)
 				updateVertexBufferArgs.byteSize = perObjectVertexMemorySize;
 				updateVertexBufferArgs.alignment = 0;
 
-				renderer.UpdateUploadHeapBuff(updateVertexBufferArgs);
+				ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
 
 			}
 			else if constexpr (std::is_same_v<T, DrawCall_StretchRaw>)
@@ -248,7 +249,7 @@ void RenderStage_UI::Start(Context& jobCtx)
 				updateVertexBufferArgs.byteSize = perObjectVertexMemorySize;
 				updateVertexBufferArgs.alignment = 0;
 
-				renderer.UpdateUploadHeapBuff(updateVertexBufferArgs);
+				ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
 			}
 
 		}, objects[i]);
@@ -352,7 +353,7 @@ void RenderStage_UI::UpdateDrawObjects(Context& jobCtx)
 	updateConstBufferArgs.byteSize = cpuMem.size();
 	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
 
-	Renderer::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
+	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
 void RenderStage_UI::SetUpRenderState(Context& jobCtx)
@@ -423,15 +424,22 @@ void RenderStage_UI::Execute(Context& context)
 
 	SetUpRenderState(context);
 	Draw(context);
-
-	Finish();
 }
 
 void RenderStage_UI::Finish()
 {
-	Renderer::Inst().m_uploadMemoryBuffer.Delete(constBuffMemory);
-	Renderer::Inst().m_uploadMemoryBuffer.Delete(vertexMemory);
-
+	if (constBuffMemory != BuffConst::INVALID_BUFFER_HANDLER)
+	{
+		Renderer::Inst().m_uploadMemoryBuffer.Delete(constBuffMemory);
+		constBuffMemory = BuffConst::INVALID_BUFFER_HANDLER;
+	}
+	
+	if (vertexMemory != BuffConst::INVALID_BUFFER_HANDLER )
+	{
+		Renderer::Inst().m_uploadMemoryBuffer.Delete(vertexMemory);
+		vertexMemory = BuffConst::INVALID_BUFFER_HANDLER;
+	}
+	
 	drawObjects.clear();
 }
 
@@ -440,7 +448,7 @@ void FrameGraph::Execute(Frame& frame)
 	ASSERT_MAIN_THREAD;
 
 	Renderer& renderer = Renderer::Inst();
-	JobQueue& jobQueue = renderer.m_jobSystem.GetJobQueue();
+	JobQueue& jobQueue = JobSystem::Inst().GetJobQueue();
 
 	// Some preparations
 	XMMATRIX tempMat = XMMatrixIdentity();
@@ -488,7 +496,7 @@ void FrameGraph::Execute(Frame& frame)
 		}, stages[i]);
 	}
 
-	jobQueue.Enqueue(Job([endFrameJobContext ,&renderer]() mutable 
+	jobQueue.Enqueue(Job([endFrameJobContext ,&renderer, this]() mutable 
 	{
 		renderer.EndFrameJob(endFrameJobContext);
 	}));

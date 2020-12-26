@@ -5,19 +5,13 @@
 #include <dxgi1_4.h>
 
 #include "dx_common.h"
+#include "dx_utils.h"
 
 class Infr
 {
 public:
-	Infr(const Infr&) = delete;
-	Infr& operator=(const Infr&) = delete;
 	
-	Infr(Infr&&) = delete;
-	Infr& operator=(Infr&&) = delete;
-
-	~Infr() = delete;
-
-	static Infr& Inst();
+	DEFINE_SINGLETON(Infr);
 
 	void Init();
 
@@ -25,8 +19,6 @@ public:
 	ComPtr<IDXGIFactory4>& GetFactory();
 
 private:
-
-	Infr() = default;
 
 	ComPtr<ID3D12Device>   device;
 	ComPtr<IDXGIFactory4>  dxgiFactory;

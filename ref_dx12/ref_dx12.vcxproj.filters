@@ -111,6 +111,12 @@
     <ClInclude Include="dx_rendercallbacks.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="dx_memorymanager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dx_resourcemanager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ref_dx12.def">
@@ -186,6 +192,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="dx_renderstage.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dx_memorymanager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dx_resourcemanager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

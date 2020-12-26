@@ -1,20 +1,5 @@
 #include "dx_infrastructure.h"
 
-#include "dx_utils.h"
-
-
-Infr& Infr::Inst()
-{
-	static Infr* infr = nullptr;
-
-	if (infr == nullptr)
-	{
-		infr = new Infr();
-	}
-
-	return *infr;
-}
-
 void Infr::Init()
 {
 	ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory)));

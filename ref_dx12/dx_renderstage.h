@@ -47,6 +47,7 @@ public:
 
 	void Execute(Context& context);
 	void Init();
+	void Finish();
 
 	//#TODO shouldn't be public
 	Pass pass;
@@ -58,7 +59,6 @@ private:
 
 	void SetUpRenderState(Context& jobCtx);
 	void Draw(Context& jobCtx);
-	void Finish();
 
 private:
 

@@ -48,4 +48,18 @@ void FlagAllocator::Delete(int index)
 	flags[index] = false;
 }
 
+void FlagAllocator::DeleteRange(int index, int size)
+{
+	std::scoped_lock<std::mutex> lock(mutex);
+
+#ifdef _DEBUG
+	for (int i = 0; i < size; ++i)
+	{
+		assert(flags[i + index] && "DeleteRange trying to free some flag twice");
+	}
+#endif
+
+	std::fill(flags.begin() + index, flags.begin() + index + size, false);
+
+}
 

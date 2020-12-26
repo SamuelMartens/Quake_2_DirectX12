@@ -25,12 +25,12 @@
 #include "dx_glmodel.h"
 #include "dx_camera.h"
 #include "dx_material.h"
-#include "dx_jobmultithreading.h"
 #include "dx_threadingutils.h"
 #include "dx_frame.h"
 #include "dx_descriptorheap.h"
 #include "dx_commandlist.h"
 #include "dx_renderstage.h"
+#include "dx_utils.h"
 
 extern "C"
 {
@@ -45,24 +45,6 @@ extern "C"
 
 namespace FArg 
 {
-	struct UpdateUploadHeapBuff
-	{
-		ComPtr<ID3D12Resource> buffer;
-		int offset = Const::INVALID_OFFSET;
-		const void* data = nullptr;
-		int byteSize = Const::INVALID_SIZE;
-		int alignment = -1;
-	};
-
-	struct UpdateDefaultHeapBuff
-	{
-		ComPtr<ID3D12Resource> buffer;
-		int offset = Const::INVALID_OFFSET;
-		const void* data = nullptr;
-		int byteSize = Const::INVALID_SIZE;
-		int alignment = -1;
-		Context* context = nullptr;
-	};
 
 	struct DrawStreaming
 	{
@@ -87,26 +69,12 @@ namespace FArg
 // 5) Implement occlusion query. If this is not enough, resurrect BSP tree.
 class Renderer
 {
-private:
-	Renderer();
-
-public:
-
-	Renderer(const Renderer&) = delete;
-	Renderer& operator=(const Renderer&) = delete;
-	Renderer(Renderer&&) = delete;
-	Renderer& operator=(Renderer&&) = delete;
-
-	~Renderer() = default;
-
-	static Renderer& Inst();
+	DEFINE_SINGLETON(Renderer);
 
 	const refimport_t& GetRefImport() const { return m_refImport; };
 	void SetRefImport(refimport_t RefImport) { m_refImport = RefImport; };
 
 	/*--- Buffers management --- */
-	void RequestResourceDeletion(ComPtr<ID3D12Resource> resourceToDelete);
-	void DeleteRequestedResources();
 	void DeleteDefaultMemoryBuffer(BufferHandler handler);
 	void DeleteUploadMemoryBuffer(BufferHandler handler);
 	
@@ -114,9 +82,6 @@ public:
 	void UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context& context);
 	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, Context& context);
 	BufferHandler UpdateParticleConstantBuffer(Context& context);
-
-	Texture* FindOrCreateTexture(std::string_view textureName, Context& context);
-	Texture* FindTexture(std::string_view textureName);
 
 	/*--- API functions begin --- */
 
@@ -149,8 +114,11 @@ public:
 	int GetMSAAQuality() const;
 	void GetDrawAreaSize(int* Width, int* Height);
 	const std::array<unsigned int, 256>& GetRawPalette() const;
-	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
 	std::unique_ptr<DescriptorHeap>& GetDescTableHeap(const RootArg_DescTable& descTable);
+	//#DEBUG move this to resource manager
+	void Load8To24Table();
+	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
+
 
 	/* Initialization and creation */
 	void CreateFences(ComPtr<ID3D12Fence>& fence);
@@ -165,7 +133,6 @@ public:
 	std::unique_ptr<DescriptorHeap> cbvSrvHeap = nullptr;
 	std::unique_ptr<DescriptorHeap> samplerHeap = nullptr;
 
-	//#DEBUG move this to memory manager
 	// I need enforce alignment on this buffer, because I allocate constant buffers from it. 
 	// I don't want to create separate buffer just for constant buffers, because that would increase complexity
 	// without real need to do this. I still try to explicitly indicate places where I actually need alignment
@@ -175,13 +142,6 @@ public:
 		Settings::CONST_BUFFER_ALIGNMENT> m_uploadMemoryBuffer;
 	HandlerBuffer<Settings::DEFAULT_MEMORY_BUFFER_SIZE, Settings::DEFAULT_MEMORY_BUFFER_HANDLERS_NUM> m_defaultMemoryBuffer;
 
-	/* Buffer */
-	//#DEBUG this also should be part of memory manager
-	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, Context& context);
-	ComPtr<ID3D12Resource> CreateUploadHeapBuffer(UINT64 byteSize) const;
-	void UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const;
-	void UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args);
-
 	//#DEBUG this should be part of UI render stage
 	// DirectX and OpenGL have different directions for Y axis,
 	// this matrix is required to fix this. Also apparently original Quake 2
@@ -189,7 +149,6 @@ public:
 	// so we need to center content to the screen center
 	XMFLOAT4X4 m_yInverseAndCenterMatrix;
 
-	JobSystem m_jobSystem;
 	//#TODO should belong to job System
 	Context CreateContext(Frame& frame);
 
@@ -200,16 +159,6 @@ public:
 	void DrawStaticGeometryJob(Context& context);
 	void DrawDynamicGeometryJob(Context& context);
 	void DrawParticleJob(Context& context);
-
-	//#TODO texture manager?
-	/* Texture */
-	Texture* CreateTextureFromFileDeferred(const char* name, Frame& frame);
-	Texture* CreateTextureFromFile(const char* name, Context& context);
-	Texture* CreateTextureFromDataDeferred(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame);
-	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
-	void CreateDeferredTextures(Context& context);
-	void UpdateTexture(Texture& tex, const std::byte* data, Context& context);
-	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 
 private:
 
@@ -252,12 +201,6 @@ private:
 	
 	void PresentAndSwapBuffers(Frame& frame);
 
-	/* Textures */
-	Texture* _CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context);
-	Texture* _CreateTextureFromFile(const char* name, Context& context);
-	void _CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Context& context, Texture& outTex);
-	
-
 	/* Shutdown and clean up Win32 specific stuff */
 	void ShutdownWin32();
 
@@ -279,8 +222,6 @@ private:
 	void Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, Context& context);
 
 	/* Utils */
-	void Load8To24Table();
-	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
 	bool IsVisible(const entity_t& entity, const Camera& camera) const;
 	DynamicObjectConstBuffer& FindDynamicObjConstBuffer();
@@ -336,9 +277,6 @@ private:
 	UINT m_MSQualityLevels = 0;
 
 	LockUnorderedMap_t<std::string, Texture> m_textures;
-	// If we want to delete resource we can't do this right away cause there is a high chance that this 
-	// resource will still be in use, so we just put it here and delete it later 
-	LockVector_t<ComPtr<ID3D12Resource>> m_resourcesToDelete;
 
 	std::array<unsigned int, 256> m_8To24Table;
 	std::array<unsigned int, 256> m_rawPalette;
