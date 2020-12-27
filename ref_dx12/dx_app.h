@@ -29,7 +29,7 @@
 #include "dx_frame.h"
 #include "dx_descriptorheap.h"
 #include "dx_commandlist.h"
-#include "dx_renderstage.h"
+#include "dx_pass.h"
 #include "dx_utils.h"
 
 extern "C"
@@ -114,8 +114,8 @@ class Renderer
 	int GetMSAAQuality() const;
 	void GetDrawAreaSize(int* Width, int* Height);
 	const std::array<unsigned int, 256>& GetRawPalette() const;
-	std::unique_ptr<DescriptorHeap>& GetDescTableHeap(const RootArg_DescTable& descTable);
-	//#DEBUG move this to resource manager
+	std::unique_ptr<DescriptorHeap>& GetDescTableHeap(const RootArg::DescTable& descTable);
+
 	void Load8To24Table();
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
 
@@ -133,7 +133,7 @@ public:
 	std::unique_ptr<DescriptorHeap> cbvSrvHeap = nullptr;
 	std::unique_ptr<DescriptorHeap> samplerHeap = nullptr;
 
-	//#DEBUG this should be part of UI render stage
+	//#TODO remove this when FrameGraph is implemented properly
 	// DirectX and OpenGL have different directions for Y axis,
 	// this matrix is required to fix this. Also apparently original Quake 2
 	// had origin in a middle of a screen, while we have it in upper left corner,
@@ -217,7 +217,7 @@ private:
 	std::vector<int> BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const;
 
 	/* Passes */
-	void ExecuteDrawUIPass(Context& context, const Pass& pass);
+	void ExecuteDrawUIPass(Context& context, const PassParameters& pass);
 
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;

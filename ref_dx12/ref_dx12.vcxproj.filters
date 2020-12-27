@@ -105,9 +105,6 @@
     <ClInclude Include="Lib\crc32.h">
       <Filter>Header Files\Lib</Filter>
     </ClInclude>
-    <ClInclude Include="dx_renderstage.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="dx_rendercallbacks.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -115,6 +112,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="dx_resourcemanager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dx_passparameters.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dx_pass.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -191,13 +194,16 @@
     <ClCompile Include="dx_materialcompiler.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="dx_renderstage.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="dx_memorymanager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="dx_resourcemanager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dx_passparameters.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dx_pass.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

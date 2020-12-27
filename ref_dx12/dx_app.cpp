@@ -818,12 +818,12 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	// Remove used draw calls
 	frame.uiDrawCalls.clear();
 
-	for (RenderStage_t& stage : frame.frameGraph.stages)
+	for (Pass_t& pass : frame.frameGraph.passes)
 	{
-		std::visit([](auto&& stage)
+		std::visit([](auto&& pass)
 		{
-			stage.Finish();
-		}, stage);
+			pass.Finish();
+		}, pass);
 	}
 }
 
@@ -1006,7 +1006,7 @@ DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
 	m_dynamicObjectsConstBuffersPool.mutex.unlock();
 
 
-	if (resIt->constantBufferHandler == BuffConst::INVALID_BUFFER_HANDLER)
+	if (resIt->constantBufferHandler == Const::INVALID_BUFFER_HANDLER)
 	{
 		// This buffer doesn't have any memory allocated. Do it now
 		// Allocate constant buffer
@@ -1227,7 +1227,7 @@ void Renderer::DrawStaticGeometryJob(Context& context)
 
 		UpdateStaticObjectConstantBuffer(obj, context);
 
-		if (obj.indices != BuffConst::INVALID_BUFFER_HANDLER)
+		if (obj.indices != Const::INVALID_BUFFER_HANDLER)
 		{
 			DrawIndiced(obj, context);
 		}
@@ -1315,7 +1315,7 @@ void Renderer::DrawParticleJob(Context& context)
 			MemoryManager::Inst().GetBuff<MemoryManager::Upload>().Allocate(vertexBufferSize);
 		DO_IN_LOCK(context.frame.streamingObjectsHandlers, push_back(particleVertexBufferHandler));
 
-		assert(particleVertexBufferHandler != BuffConst::INVALID_BUFFER_HANDLER && "Failed to allocate particle vertex buffer");
+		assert(particleVertexBufferHandler != Const::INVALID_BUFFER_HANDLER && "Failed to allocate particle vertex buffer");
 
 		// Gather all particles, and do one draw call for everything at once
 		for (int i = 0, currentVertexBufferOffset = 0; i < particlesToDraw.size(); ++i)
@@ -1333,7 +1333,7 @@ void Renderer::DrawParticleJob(Context& context)
 	Logs::Logf(Logs::Category::Job, "Particle job ended frame %d", context.frame.frameNumber);
 }
 
-void Renderer::ExecuteDrawUIPass(Context& context, const Pass& pass)
+void Renderer::ExecuteDrawUIPass(Context& context, const PassParameters& pass)
 {
 	JOB_GUARD(context);
 
@@ -1666,7 +1666,7 @@ void Renderer::Draw(const StaticObject& object, Context& context)
 
 void Renderer::DrawIndiced(const StaticObject& object, Context& context)
 {
-	assert(object.indices != BuffConst::INVALID_BUFFER_HANDLER && "Trying to draw indexed object without index buffer");
+	assert(object.indices != Const::INVALID_BUFFER_HANDLER && "Trying to draw indexed object without index buffer");
 
 	CommandList& commandList = context.commandList;
 
@@ -2082,7 +2082,7 @@ void Renderer::DeleteUploadMemoryBuffer(BufferHandler handler)
 
 void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, Context& context)
 {
-	assert(bufferPiece.handler != BuffConst::INVALID_BUFFER_HANDLER &&
+	assert(bufferPiece.handler != Const::INVALID_BUFFER_HANDLER &&
 		bufferPiece.offset != Const::INVALID_OFFSET &&
 		"Can't update constant buffer, invalid offset.");
 
@@ -2177,7 +2177,7 @@ void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entit
 	memcpy(updateDataPtr, &backLerp, cpySize);
 	updateDataPtr += cpySize;
 
-	assert(obj.constBuffer->constantBufferHandler != BuffConst::INVALID_BUFFER_HANDLER && "Can't update dynamic const buffer, invalid offset");
+	assert(obj.constBuffer->constantBufferHandler != Const::INVALID_BUFFER_HANDLER && "Can't update dynamic const buffer, invalid offset");
 
 	MemoryManager::UploadBuff_t& uploadMemory =
 		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
@@ -2205,7 +2205,7 @@ BufferHandler Renderer::UpdateParticleConstantBuffer(Context& context)
 		Settings::CONST_BUFFER_ALIGNMENT));
 	DO_IN_LOCK(context.frame.streamingObjectsHandlers, push_back(constantBufferHandler));
 
-	assert(constantBufferHandler != BuffConst::INVALID_BUFFER_HANDLER && "Can't update particle const buffer");
+	assert(constantBufferHandler != Const::INVALID_BUFFER_HANDLER && "Can't update particle const buffer");
 
 	XMFLOAT4X4 mvpMat;
 
@@ -2249,7 +2249,7 @@ BufferHandler Renderer::UpdateParticleConstantBuffer(Context& context)
 	return constantBufferHandler;
 }
 
-std::unique_ptr<DescriptorHeap>& Renderer::GetDescTableHeap(const RootArg_DescTable& descTable)
+std::unique_ptr<DescriptorHeap>& Renderer::GetDescTableHeap(const RootArg::DescTable& descTable)
 {
 	assert(descTable.content.empty() == false && "GetDescTableHeap error. Desc table content can't be empty");
 
@@ -2257,7 +2257,7 @@ std::unique_ptr<DescriptorHeap>& Renderer::GetDescTableHeap(const RootArg_DescTa
 	{
 		using T = std::decay_t<decltype(descTableEntity)>;
 
-		if constexpr (std::is_same_v<T, DescTableEntity_Sampler>)
+		if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Sampler>)
 		{
 			return samplerHeap;
 		}

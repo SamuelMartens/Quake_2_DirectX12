@@ -7,9 +7,7 @@
 #include <tuple>
 #include <d3dcompiler.h>
 #include <optional>
-//#DEBUG
-#include <any>
-//END
+
 
 #ifdef max
 #undef max
@@ -29,7 +27,6 @@
 
 namespace
 {
-
 	std::string ReadFile(const std::filesystem::path& filePath)
 	{
 		std::ifstream file(filePath);
@@ -47,7 +44,7 @@ namespace
 	}
 
 	template<typename T>
-	void ValidateResource(const T& resource, PassSource::ResourceScope scope, const ParsePassContext& parseCtx)
+	void ValidateResource(const T& resource, PassParametersSource::ResourceScope scope, const Parsing::PassParametersContext& parseCtx)
 	{
 #ifdef _DEBUG
 
@@ -55,43 +52,43 @@ namespace
 
 		switch (scope)
 		{
-		case PassSource::ResourceScope::Local:
+		case PassParametersSource::ResourceScope::Local:
 		{
 			// Local resource can't collide with local resources in the same pass
 			// or with any global resource
-			const PassSource& currentPassSource = parseCtx.passSources.back();
+			const PassParametersSource& currentPassSource = parseCtx.passSources.back();
 
 			// Check against same pass resources
 			assert(std::find_if(currentPassSource.resources.cbegin(), currentPassSource.resources.cend(),
-				[resourceName](const Resource_t& existingRes) 
+				[resourceName](const Parsing::Resource_t& existingRes) 
 			{
-				return resourceName == PassSource::GetResourceName(existingRes);
+				return resourceName == PassParametersSource::GetResourceName(existingRes);
 
 			}) == currentPassSource.resources.cend() &&
 				"Local to local resource name collision");
 
 			// Check against other globals
 			assert(std::find_if(parseCtx.resources.cbegin(), parseCtx.resources.cend(),
-				[resourceName](const Resource_t& existingRes)
+				[resourceName](const Parsing::Resource_t& existingRes)
 			{
-				return  resourceName == PassSource::GetResourceName(existingRes);
+				return  resourceName == PassParametersSource::GetResourceName(existingRes);
 
 			}) == parseCtx.resources.cend() &&
 				"Global to local resource name collision, local insertion");
 
 			break;
 		}
-		case PassSource::ResourceScope::Global:
+		case PassParametersSource::ResourceScope::Global:
 		{
 			// Global resource can't collide with other global resource and with any local resource
 
-			for(const PassSource& currentPassSource : parseCtx.passSources)
+			for(const PassParametersSource& currentPassSource : parseCtx.passSources)
 			{
 				// Check against same pass resources
 				assert(std::find_if(currentPassSource.resources.cbegin(), currentPassSource.resources.cend(),
-					[resourceName](const Resource_t& existingRes)
+					[resourceName](const Parsing::Resource_t& existingRes)
 				{
-					return resourceName == PassSource::GetResourceName(existingRes);
+					return resourceName == PassParametersSource::GetResourceName(existingRes);
 
 				}) == currentPassSource.resources.cend() &&
 					"Global to local resource name collision, global insertion");
@@ -99,9 +96,9 @@ namespace
 
 			// Check against other globals
 			assert(std::find_if(parseCtx.resources.cbegin(), parseCtx.resources.cend(),
-				[resourceName](const Resource_t& existingRes)
+				[resourceName](const Parsing::Resource_t& existingRes)
 			{
-				return resourceName == PassSource::GetResourceName(existingRes);
+				return resourceName == PassParametersSource::GetResourceName(existingRes);
 
 			}) == parseCtx.resources.cend() &&
 				"Global to global resource name collision");
@@ -116,9 +113,9 @@ namespace
 	}
 
 	template<typename T>
-	const T* FindResourceOfTypeAndRegId(const std::vector<Resource_t>& resources, int registerId)
+	const T* FindResourceOfTypeAndRegId(const std::vector<Parsing::Resource_t>& resources, int registerId)
 	{
-		for (const Resource_t& res : resources)
+		for (const Parsing::Resource_t& res : resources)
 		{
 			// Visit can't return different types for different invocations. So we just use it to find right resource
 			const bool isTargetRes = std::visit([registerId](auto&& res)
@@ -144,7 +141,7 @@ namespace
 	}
 
 	template<typename T1>
-	const T1* FindResourceForRootArgument(const std::vector<Resource_t>& passResources, const std::vector<Resource_t>& globalRes, int registerId)
+	const T1* FindResourceForRootArgument(const std::vector<Parsing::Resource_t>& passResources, const std::vector<Parsing::Resource_t>& globalRes, int registerId)
 	{
 		const T1* res = FindResourceOfTypeAndRegId<T1>(passResources, registerId);
 		if (res == nullptr)
@@ -158,24 +155,24 @@ namespace
 	}
 
 	template<typename T>
-	void AddRootArgToPass(Pass& pass, ResourceUpdate updateFrequency, T&& res)
+	void AddRootArgToPass(PassParameters& pass, Parsing::ResourceUpdate updateFrequency, T&& res)
 	{
 		switch (updateFrequency)
 		{
-		case ResourceUpdate::PerObject:
+		case Parsing::ResourceUpdate::PerObject:
 			pass.perObjectRootArgsTemplate.push_back(std::move(res));
 			break;
-		case ResourceUpdate::PerPass:
+		case Parsing::ResourceUpdate::PerPass:
 			pass.passRootArgs.push_back(std::move(res));
 			break;
-		case ResourceUpdate::OnInit:
+		case Parsing::ResourceUpdate::OnInit:
 		default:
 			assert(false && "Unimplemented update frequency handling in add root arg pass");
 			break;
 		}
 	}
 
-	void SetResourceUpdateFrequency(Resource_t& r, ResourceUpdate update)
+	void SetResourceUpdateFrequency(Parsing::Resource_t& r, Parsing::ResourceUpdate update)
 	{
 		std::visit([update](auto&& resource) 
 		{
@@ -203,39 +200,39 @@ namespace
 		// --- Top level pass tokens
 		parser["PassInputIdent"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
-			parseCtx.passSources.back().input = static_cast<PassSource::InputType>(sv.choice());
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			parseCtx.passSources.back().input = static_cast<PassParametersSource::InputType>(sv.choice());
 		};
 
 		parser["PassVertAttr"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			parseCtx.passSources.back().inputVertAttr = peg::any_cast<std::string>(sv[0]);
 		};
 
 		parser["PassVertAttrSlots"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			parseCtx.passSources.back().vertAttrSlots = std::move(std::any_cast<std::vector<std::tuple<unsigned int, int>>>(sv[0]));
 		};
 
 		// --- State
 		parser["ColorTargetSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			parseCtx.passSources.back().colorTargetName = peg::any_cast<std::string>(sv[0]);
 		};
 
 		parser["DepthTargetSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			parseCtx.passSources.back().depthTargetName = peg::any_cast<std::string>(sv[0]);
 		};
 
 		parser["ViewportSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
-			PassSource& currentPass = parseCtx.passSources.back();
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			PassParametersSource& currentPass = parseCtx.passSources.back();
 
 			// This might be a bit buggy. I am pretty sure that camera viewport is always equal to drawing area
 			// but I might not be the case.
@@ -257,32 +254,32 @@ namespace
 
 		parser["BlendEnabledSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
-			PassSource& currentPass = parseCtx.passSources.back();
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			PassParametersSource& currentPass = parseCtx.passSources.back();
 
 			currentPass.psoDesc.BlendState.RenderTarget[0].BlendEnable = peg::any_cast<bool>(sv[0]);
 		};
 
 		parser["SrcBlendAlphaSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
-			PassSource& currentPass = parseCtx.passSources.back();
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			PassParametersSource& currentPass = parseCtx.passSources.back();
 
 			currentPass.psoDesc.BlendState.RenderTarget[0].SrcBlendAlpha = peg::any_cast<D3D12_BLEND>(sv[0]);
 		};
 
 		parser["DestBlendAlphaSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
-			PassSource& currentPass = parseCtx.passSources.back();
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			PassParametersSource& currentPass = parseCtx.passSources.back();
 
 			currentPass.psoDesc.BlendState.RenderTarget[0].DestBlendAlpha = peg::any_cast<D3D12_BLEND>(sv[0]);
 		};
 
 		parser["TopologySt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
-			PassSource& currentPass = parseCtx.passSources.back();
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			PassParametersSource& currentPass = parseCtx.passSources.back();
 
 			auto topology = peg::any_cast<std::tuple<D3D_PRIMITIVE_TOPOLOGY, D3D12_PRIMITIVE_TOPOLOGY_TYPE>>(sv[0]);
 
@@ -292,8 +289,8 @@ namespace
 
 		parser["DepthWriteMaskSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
-			PassSource& currentPass = parseCtx.passSources.back();
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			PassParametersSource& currentPass = parseCtx.passSources.back();
 
 			currentPass.psoDesc.DepthStencilState.DepthWriteMask = peg::any_cast<bool>(sv) ?
 				D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
@@ -354,33 +351,33 @@ namespace
 
 		parser["Shader"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
-			PassSource& currentPass = parseCtx.passSources.back();
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			PassSource::ShaderSource& shaderSource = currentPass.shaders.emplace_back(PassSource::ShaderSource());
+			PassParametersSource::ShaderSource& shaderSource = currentPass.shaders.emplace_back(PassParametersSource::ShaderSource());
 
-			shaderSource.type = peg::any_cast<PassSource::ShaderType>(sv[0]);
+			shaderSource.type = peg::any_cast<PassParametersSource::ShaderType>(sv[0]);
 			shaderSource.externals = std::move(peg::any_cast<std::vector<std::string>>(sv[1]));
 			shaderSource.source = std::move(peg::any_cast<std::string>(sv[2]));
 		};
 
 		parser["ShaderType"] = [](const peg::SemanticValues& sv)
 		{
-			assert(sv.choice() < PassSource::ShaderType::SIZE && "Error during parsing shader type");
+			assert(sv.choice() < PassParametersSource::ShaderType::SIZE && "Error during parsing shader type");
 
-			return static_cast<PassSource::ShaderType>(sv.choice());
+			return static_cast<PassParametersSource::ShaderType>(sv.choice());
 		};
 
 		parser["ShaderTypeDecl"] = [](const peg::SemanticValues& sv)
 		{
-			return peg::any_cast<PassSource::ShaderType>(sv[0]);
+			return peg::any_cast<PassParametersSource::ShaderType>(sv[0]);
 		};
 
 		// --- Root Signature
 		parser["RSig"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
-			RootSigParseData::RootSignature& rootSig = parseCtx.passSources.back().rootSignature;
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			Parsing::RootSignature& rootSig = *parseCtx.passSources.back().rootSignature;
 
 			rootSig.rawView = sv.token();
 			// Later root signature is inserted into shader source code. It must be in one line
@@ -390,16 +387,16 @@ namespace
 			std::for_each(sv.begin() + 1, sv.end(),
 				[&rootSig](const peg::any& token) 
 			{
-				if (token.type() == typeid(RootSigParseData::RootParam_ConstBuffView))
+				if (token.type() == typeid(Parsing::RootParam_ConstBuffView))
 				{
-					RootSigParseData::RootParam_ConstBuffView cbv = peg::any_cast<RootSigParseData::RootParam_ConstBuffView>(token);
+					Parsing::RootParam_ConstBuffView cbv = peg::any_cast<Parsing::RootParam_ConstBuffView>(token);
 					assert(cbv.num == 1 && "CBV Inline descriptor can't have more that 1 num");
 
 					rootSig.params.push_back(std::move(cbv));
 				}
-				else if (token.type() == typeid(RootSigParseData::RootParam_DescTable))
+				else if (token.type() == typeid(Parsing::RootParam_DescTable))
 				{
-					RootSigParseData::RootParam_DescTable descTable = peg::any_cast<RootSigParseData::RootParam_DescTable>(token);
+					Parsing::RootParam_DescTable descTable = peg::any_cast<Parsing::RootParam_DescTable>(token);
 					rootSig.params.push_back(std::move(descTable));
 				}
 				else 
@@ -422,22 +419,22 @@ namespace
 
 		parser["RSigDescTableDecl"] = [](const peg::SemanticValues& sv)
 		{
-			RootSigParseData::RootParam_DescTable descTable;
+			Parsing::RootParam_DescTable descTable;
 
 			std::for_each(sv.begin(), sv.end(),
 				[&descTable](const peg::any& token)
 			{
-				if (token.type() == typeid(RootSigParseData::RootParam_TextView))
+				if (token.type() == typeid(Parsing::RootParam_TextView))
 				{
-					descTable.entities.push_back(peg::any_cast<RootSigParseData::RootParam_TextView>(token));
+					descTable.entities.push_back(peg::any_cast<Parsing::RootParam_TextView>(token));
 				}
-				else if (token.type() == typeid(RootSigParseData::RootParam_ConstBuffView))
+				else if (token.type() == typeid(Parsing::RootParam_ConstBuffView))
 				{
-					descTable.entities.push_back(peg::any_cast<RootSigParseData::RootParam_ConstBuffView>(token));
+					descTable.entities.push_back(peg::any_cast<Parsing::RootParam_ConstBuffView>(token));
 				}
-				else if (token.type() == typeid(RootSigParseData::RootParam_SamplerView))
+				else if (token.type() == typeid(Parsing::RootParam_SamplerView))
 				{
-					descTable.entities.push_back(peg::any_cast<RootSigParseData::RootParam_SamplerView>(token));
+					descTable.entities.push_back(peg::any_cast<Parsing::RootParam_SamplerView>(token));
 				}
 				else
 				{
@@ -454,14 +451,14 @@ namespace
 
 			for (int i = 2 ; i < sv.size(); i += 2)
 			{
-				auto option = peg::any_cast<std::tuple<RootSigParseData::Option, int>>(sv[i]);
+				auto option = peg::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
 
-				switch (std::get<RootSigParseData::Option>(option))
+				switch (std::get<Parsing::Option>(option))
 				{
-				case RootSigParseData::Option::NumDecl:
+				case Parsing::Option::NumDecl:
 					num = std::get<int>(option);
 					break;
-				case RootSigParseData::Option::Visibility:
+				case Parsing::Option::Visibility:
 					break;
 				default:
 					assert(false && "Invalid root param option in CBV decl");
@@ -469,7 +466,7 @@ namespace
 				}
 			}
 
-			return RootSigParseData::RootParam_ConstBuffView{
+			return Parsing::RootParam_ConstBuffView{
 				peg::any_cast<int>(sv[0]),
 				num
 			};
@@ -481,14 +478,14 @@ namespace
 
 			for (int i = 2; i < sv.size(); i += 2)
 			{
-				auto option = peg::any_cast<std::tuple<RootSigParseData::Option, int>>(sv[i]);
+				auto option = peg::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
 
-				switch (std::get<RootSigParseData::Option>(option))
+				switch (std::get<Parsing::Option>(option))
 				{
-				case RootSigParseData::Option::NumDecl:
+				case Parsing::Option::NumDecl:
 					num = std::get<int>(option);
 					break;
-				case RootSigParseData::Option::Visibility:
+				case Parsing::Option::Visibility:
 					break;
 				default:
 					assert(false && "Invalid root param option in SRV decl");
@@ -496,7 +493,7 @@ namespace
 				}
 			}
 
-			return RootSigParseData::RootParam_TextView{
+			return Parsing::RootParam_TextView{
 				peg::any_cast<int>(sv[0]),
 				num
 			};
@@ -509,7 +506,7 @@ namespace
 
 		parser["RSigDescTableSampler"] = [](const peg::SemanticValues& sv)
 		{
-			return RootSigParseData::RootParam_SamplerView{
+			return Parsing::RootParam_SamplerView{
 				peg::any_cast<int>(sv[0]),
 				sv.size() == 1 ? 1 :  peg::any_cast<int>(sv[2])
 			};
@@ -520,15 +517,15 @@ namespace
 			switch (sv.choice())
 			{
 			case 0:
-				return std::make_tuple(RootSigParseData::Option::Visibility, 0);
+				return std::make_tuple(Parsing::Option::Visibility, 0);
 			case 1:
-				return std::make_tuple(RootSigParseData::Option::NumDecl, peg::any_cast<int>(sv[0]));
+				return std::make_tuple(Parsing::Option::NumDecl, peg::any_cast<int>(sv[0]));
 			default:
 				assert(false && "Unknown Root signature declaration option");
 				break;
 			}
 
-			return std::make_tuple(RootSigParseData::Option::NumDecl, 1);
+			return std::make_tuple(Parsing::Option::NumDecl, 1);
 		};
 
 		parser["RSDescNumDecl"] = [](const peg::SemanticValues& sv)
@@ -539,11 +536,11 @@ namespace
 		// --- Resources
 		parser["VertAttr"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			
-			parseCtx.passSources.back().vertAttr.emplace_back(VertAttr{
+			parseCtx.passSources.back().vertAttr.emplace_back(Parsing::VertAttr{
 				peg::any_cast<std::string>(sv[0]),
-				std::move(peg::any_cast<std::vector<VertAttrField>>(sv[1])),
+				std::move(peg::any_cast<std::vector<Parsing::VertAttrField>>(sv[1])),
 				sv.str()
 				});
 		};
@@ -551,63 +548,63 @@ namespace
 		parser["Resource"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
 			//#DEBUG ignore ResourceUpdate for now. Handle Scope only. Do debug validation
-			std::tuple<PassSource::ResourceScope, ResourceUpdate> resourceAttr =
-				peg::any_cast<std::tuple<PassSource::ResourceScope, ResourceUpdate>>(sv[0]);
+			std::tuple<PassParametersSource::ResourceScope, Parsing::ResourceUpdate> resourceAttr =
+				peg::any_cast<std::tuple<PassParametersSource::ResourceScope, Parsing::ResourceUpdate>>(sv[0]);
 
-			ParsePassContext& parseCtx = *std::any_cast<std::shared_ptr<ParsePassContext>&>(ctx);
-			PassSource& currentPass = parseCtx.passSources.back();
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			switch (std::get<PassSource::ResourceScope>(resourceAttr))
+			switch (std::get<PassParametersSource::ResourceScope>(resourceAttr))
 			{
-			case PassSource::ResourceScope::Local:
+			case PassParametersSource::ResourceScope::Local:
 			{
-				if (sv[1].type() == typeid(Resource_ConstBuff))
+				if (sv[1].type() == typeid(Parsing::Resource_ConstBuff))
 				{
-					ValidateResource(std::any_cast<Resource_ConstBuff>(sv[1]), PassSource::ResourceScope::Local, parseCtx);
-					currentPass.resources.emplace_back(std::any_cast<Resource_ConstBuff>(sv[1]));
+					ValidateResource(std::any_cast<Parsing::Resource_ConstBuff>(sv[1]), PassParametersSource::ResourceScope::Local, parseCtx);
+					currentPass.resources.emplace_back(std::any_cast<Parsing::Resource_ConstBuff>(sv[1]));
 				}
-				else if (sv[1].type() == typeid(Resource_Texture))
+				else if (sv[1].type() == typeid(Parsing::Resource_Texture))
 				{
-					ValidateResource(std::any_cast<Resource_Texture>(sv[1]), PassSource::ResourceScope::Local, parseCtx);
-					currentPass.resources.emplace_back(std::any_cast<Resource_Texture>(sv[1]));
+					ValidateResource(std::any_cast<Parsing::Resource_Texture>(sv[1]), PassParametersSource::ResourceScope::Local, parseCtx);
+					currentPass.resources.emplace_back(std::any_cast<Parsing::Resource_Texture>(sv[1]));
 				}
-				else if (sv[1].type() == typeid(Resource_Sampler))
+				else if (sv[1].type() == typeid(Parsing::Resource_Sampler))
 				{
-					ValidateResource(std::any_cast<Resource_Sampler>(sv[1]), PassSource::ResourceScope::Local, parseCtx);
-					currentPass.resources.emplace_back(std::any_cast<Resource_Sampler>(sv[1]));
+					ValidateResource(std::any_cast<Parsing::Resource_Sampler>(sv[1]), PassParametersSource::ResourceScope::Local, parseCtx);
+					currentPass.resources.emplace_back(std::any_cast<Parsing::Resource_Sampler>(sv[1]));
 				}
 				else
 				{
 					assert(false && "Resource callback invalid type. Local scope");
 				}
 
-				SetResourceUpdateFrequency(currentPass.resources.back(), std::get<ResourceUpdate>(resourceAttr));
+				SetResourceUpdateFrequency(currentPass.resources.back(), std::get<Parsing::ResourceUpdate>(resourceAttr));
 
 				break;
 			}
-			case PassSource::ResourceScope::Global:
+			case PassParametersSource::ResourceScope::Global:
 			{
-				if (sv[1].type() == typeid(Resource_ConstBuff))
+				if (sv[1].type() == typeid(Parsing::Resource_ConstBuff))
 				{
-					ValidateResource(std::any_cast<Resource_ConstBuff>(sv[1]), PassSource::ResourceScope::Global, parseCtx);
-					parseCtx.resources.emplace_back(std::any_cast<Resource_ConstBuff>(sv[1]));
+					ValidateResource(std::any_cast<Parsing::Resource_ConstBuff>(sv[1]), PassParametersSource::ResourceScope::Global, parseCtx);
+					parseCtx.resources.emplace_back(std::any_cast<Parsing::Resource_ConstBuff>(sv[1]));
 				}
-				else if (sv[1].type() == typeid(Resource_Texture))
+				else if (sv[1].type() == typeid(Parsing::Resource_Texture))
 				{
-					ValidateResource(std::any_cast<Resource_Texture>(sv[1]), PassSource::ResourceScope::Global, parseCtx);
-					parseCtx.resources.emplace_back(std::any_cast<Resource_Texture>(sv[1]));
+					ValidateResource(std::any_cast<Parsing::Resource_Texture>(sv[1]), PassParametersSource::ResourceScope::Global, parseCtx);
+					parseCtx.resources.emplace_back(std::any_cast<Parsing::Resource_Texture>(sv[1]));
 				}
-				else if (sv[1].type() == typeid(Resource_Sampler))
+				else if (sv[1].type() == typeid(Parsing::Resource_Sampler))
 				{
-					ValidateResource(std::any_cast<Resource_Sampler>(sv[1]), PassSource::ResourceScope::Global, parseCtx);
-					parseCtx.resources.emplace_back(std::any_cast<Resource_Sampler>(sv[1]));
+					ValidateResource(std::any_cast<Parsing::Resource_Sampler>(sv[1]), PassParametersSource::ResourceScope::Global, parseCtx);
+					parseCtx.resources.emplace_back(std::any_cast<Parsing::Resource_Sampler>(sv[1]));
 				}
 				else
 				{
 					assert(false && "Resource callback invalid type. Global scope");
 				}
 
-				SetResourceUpdateFrequency(parseCtx.resources.back(), std::get<ResourceUpdate>(resourceAttr));
+				SetResourceUpdateFrequency(parseCtx.resources.back(), std::get<Parsing::ResourceUpdate>(resourceAttr));
 
 				break;
 			}
@@ -620,19 +617,19 @@ namespace
 
 		parser["ConstBuff"] = [](const peg::SemanticValues& sv)
 		{
-			return Resource_ConstBuff{
+			return Parsing::Resource_ConstBuff{
 				peg::any_cast<std::string>(sv[0]),
-				ResourceUpdate::OnInit,
+				Parsing::ResourceUpdate::OnInit,
 				peg::any_cast<int>(sv[1]),
-				peg::any_cast<std::vector<ConstBuffField>>(sv[2]),
+				peg::any_cast<std::vector<RootArg::ConstBuffField>>(sv[2]),
 				sv.str()};
 		};
 
 		parser["Texture"] = [](const peg::SemanticValues& sv)
 		{
-			return Resource_Texture{
+			return Parsing::Resource_Texture{
 				peg::any_cast<std::string>(sv[0]),
-				ResourceUpdate::OnInit,
+				Parsing::ResourceUpdate::OnInit,
 				peg::any_cast<int>(sv[1]),
 				sv.str()};
 		};
@@ -640,9 +637,9 @@ namespace
 
 		parser["Sampler"] = [](const peg::SemanticValues& sv)
 		{
-			return Resource_Sampler{
+			return Parsing::Resource_Sampler{
 				peg::any_cast<std::string>(sv[0]),
-				ResourceUpdate::OnInit,
+				Parsing::ResourceUpdate::OnInit,
 				peg::any_cast<int>(sv[1]),
 				sv.str()};
 		};
@@ -650,31 +647,31 @@ namespace
 		parser["ResourceAttr"] = [](const peg::SemanticValues& sv)
 		{
 			return std::make_tuple(
-				peg::any_cast<PassSource::ResourceScope>(sv[0]),
-				peg::any_cast<ResourceUpdate>(sv[1]));
+				peg::any_cast<PassParametersSource::ResourceScope>(sv[0]),
+				peg::any_cast<Parsing::ResourceUpdate>(sv[1]));
 		};
 
 		parser["ResourceScope"] = [](const peg::SemanticValues& sv)
 		{
-			return static_cast<PassSource::ResourceScope>(sv.choice());
+			return static_cast<PassParametersSource::ResourceScope>(sv.choice());
 		};
 
 		parser["ResourceUpdate"] = [](const peg::SemanticValues& sv)
 		{
-			return static_cast<ResourceUpdate>(sv.choice());
+			return static_cast<Parsing::ResourceUpdate>(sv.choice());
 		};
 
 		parser["ConstBuffContent"] = [](const peg::SemanticValues& sv)
 		{
-			std::vector<ConstBuffField> constBufferContent;
+			std::vector<RootArg::ConstBuffField> constBufferContent;
 
 			std::transform(sv.begin(), sv.end(), std::back_inserter(constBufferContent),
 				[](const peg::any& token)
 			{
-				const std::tuple<ParseDataType, std::string>& dataField = peg::any_cast<std::tuple<ParseDataType, std::string>>(token);
+				const std::tuple<Parsing::DataType, std::string>& dataField = peg::any_cast<std::tuple<Parsing::DataType, std::string>>(token);
 
-				return ConstBuffField{
-					GetParseDataTypeSize(std::get<ParseDataType>(dataField)),
+				return RootArg::ConstBuffField{
+					Parsing::GetParseDataTypeSize(std::get<Parsing::DataType>(dataField)),
 					HASH(std::get<std::string>(dataField).c_str())
 				};
 			});
@@ -684,15 +681,15 @@ namespace
 
 		parser["ConstBuffField"] = [](const peg::SemanticValues& sv)
 		{
-			return std::make_tuple(peg::any_cast<ParseDataType>(sv[0]), peg::any_cast<std::string>(sv[1]));
+			return std::make_tuple(peg::any_cast<Parsing::DataType>(sv[0]), peg::any_cast<std::string>(sv[1]));
 		};
 
 		parser["VertAttrContent"] = [](const peg::SemanticValues& sv)
 		{
-			std::vector<VertAttrField> content;
+			std::vector<Parsing::VertAttrField> content;
 
 			std::transform(sv.begin(), sv.end(), std::back_inserter(content),
-				[](const peg::any& field) { return std::any_cast<VertAttrField>(field); });
+				[](const peg::any& field) { return std::any_cast<Parsing::VertAttrField>(field); });
 
 			return content;
 		};
@@ -703,8 +700,8 @@ namespace
 			std::tuple<std::string, unsigned int> semanticInfo = 
 				peg::any_cast<std::tuple<std::string, unsigned int>>(sv[2]);
 
-			return VertAttrField{
-				peg::any_cast<ParseDataType>(sv[0]),
+			return Parsing::VertAttrField{
+				peg::any_cast<Parsing::DataType>(sv[0]),
 				HASH(name.c_str()),
 				std::get<std::string>(semanticInfo),
 				std::get<unsigned int>(semanticInfo),
@@ -731,7 +728,7 @@ namespace
 
 		parser["ResourceFieldType"] = [](const peg::SemanticValues& sv)
 		{
-			return static_cast<ParseDataType>(sv.choice());
+			return static_cast<Parsing::DataType>(sv.choice());
 		};
 
 		parser["ResourceFieldSemantic"] = [](const peg::SemanticValues& sv)
@@ -800,7 +797,7 @@ namespace
 
 		parser["Material"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			ParseMaterialContext& parseCtx = *std::any_cast<std::shared_ptr<ParseMaterialContext>&>(ctx);
+			Parsing::MaterialContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::MaterialContext>&>(ctx);
 			
 			std::for_each(sv.begin(), sv.end(),
 				[&parseCtx](const peg::any& pass) 
@@ -820,11 +817,11 @@ namespace
 }
 
 
-MaterialCompiler::PassCompiledShaders_t MaterialCompiler::CompileShaders(const PassSource& pass, const std::vector<Resource_t>& globalRes) const
+MaterialCompiler::PassCompiledShaders_t MaterialCompiler::CompileShaders(const PassParametersSource& pass, const std::vector<Parsing::Resource_t>& globalRes) const
 {
 	PassCompiledShaders_t passCompiledShaders;
 
-	for (const PassSource::ShaderSource& shader : pass.shaders)
+	for (const PassParametersSource::ShaderSource& shader : pass.shaders)
 	{
 		std::string resToInclude;
 
@@ -835,35 +832,35 @@ MaterialCompiler::PassCompiledShaders_t MaterialCompiler::CompileShaders(const P
 
 			// Search in local scope first
 			const auto localResIt = std::find_if(pass.resources.cbegin(), pass.resources.cend(),
-				[externalRes](const Resource_t& currRes)
+				[externalRes](const Parsing::Resource_t& currRes)
 			{
-				return externalRes == PassSource::GetResourceName(currRes);
+				return externalRes == PassParametersSource::GetResourceName(currRes);
 			});
 
 			if (localResIt != pass.resources.cend())
 			{
-				resToInclude += PassSource::GetResourceRawView(*localResIt);
+				resToInclude += PassParametersSource::GetResourceRawView(*localResIt);
 				resToInclude += ";";
 			}
 			else
 			{
 				// Search in global scope
 				const auto globalResIt = std::find_if(globalRes.cbegin(), globalRes.cend(),
-					[externalRes](const Resource_t& currRes)
+					[externalRes](const Parsing::Resource_t& currRes)
 				{
-					return externalRes == PassSource::GetResourceName(currRes);
+					return externalRes == PassParametersSource::GetResourceName(currRes);
 				});
 
 				if (globalResIt != globalRes.cend())
 				{
-					resToInclude += PassSource::GetResourceRawView(*globalResIt);
+					resToInclude += PassParametersSource::GetResourceRawView(*globalResIt);
 					resToInclude += ";";
 				}
 				else
 				{
 					// Finally try vert attributes
 					const auto vertAttrIt = std::find_if(pass.vertAttr.cbegin(), pass.vertAttr.cend(),
-						[externalRes](const VertAttr& currVert)
+						[externalRes](const Parsing::VertAttr& currVert)
 					{
 						return externalRes == currVert.name;
 					});
@@ -878,14 +875,14 @@ MaterialCompiler::PassCompiledShaders_t MaterialCompiler::CompileShaders(const P
 
 		std::string sourceCode =
 			resToInclude +
-			"[RootSignature( \" " + pass.rootSignature.rawView + " \" )]" +
+			"[RootSignature( \" " + pass.rootSignature->rawView + " \" )]" +
 			shader.source;
 
 		// Got final shader source, now compile
 		ComPtr<ID3DBlob>& shaderBlob = passCompiledShaders.emplace_back(std::make_pair(shader.type, ComPtr<ID3DBlob>())).second;
 		ComPtr<ID3DBlob> errors;
 
-		const std::string strShaderType = PassSource::ShaderTypeToStr(shader.type);
+		const std::string strShaderType = PassParametersSource::ShaderTypeToStr(shader.type);
 
 		HRESULT hr = D3DCompile(
 			sourceCode.c_str(),
@@ -934,15 +931,15 @@ MaterialCompiler& MaterialCompiler::Inst()
 PassMaterial MaterialCompiler::GenerateMaterial()
 {
 	PassMaterial material;
-	
-	std::shared_ptr<ParseMaterialContext> parseCtx = ParseMaterialFile(LoadMaterialFile());
 
-	std::vector<Pass> passes = GeneratePasses();
+	std::shared_ptr<Parsing::MaterialContext> parseCtx = ParseMaterialFile(LoadMaterialFile());
+
+	std::vector<PassParameters> passes = GeneratePasses();
 
 	for (const std::string& passName : parseCtx->passes)
 	{
 		auto targetPassIt = std::find_if(passes.begin(), passes.end(),
-			[passName](const Pass& p)
+			[passName](const PassParameters& p)
 		{
 			return passName == p.name;
 		});
@@ -955,13 +952,13 @@ PassMaterial MaterialCompiler::GenerateMaterial()
 	return material;
 }
 
-std::vector<Pass> MaterialCompiler::GeneratePasses() const
+std::vector<PassParameters> MaterialCompiler::GeneratePasses() const
 {
-	std::shared_ptr<ParsePassContext> parseCtx = ParsePassFiles(LoadPassFiles());
+	std::shared_ptr<Parsing::PassParametersContext> parseCtx = ParsePassFiles(LoadPassFiles());
 
-	std::vector<Pass> passes;
+	std::vector<PassParameters> passes;
 
-	for (const PassSource& passSource : parseCtx->passSources)
+	for (const PassParametersSource& passSource : parseCtx->passSources)
 	{
 		passes.push_back(CompilePass(passSource, parseCtx->resources));
 	}
@@ -1015,12 +1012,12 @@ void MaterialCompiler::PreprocessPassFiles(const std::vector<std::string>& fileL
 }
 
 //#DEBUG not sure returning context is fine
-std::shared_ptr<ParsePassContext> MaterialCompiler::ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles) const
+std::shared_ptr<Parsing::PassParametersContext> MaterialCompiler::ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles) const
 {
 	peg::parser parser;
 	InitPassParser(parser);
 
-	std::shared_ptr<ParsePassContext> context = std::make_shared<ParsePassContext>();
+	std::shared_ptr<Parsing::PassParametersContext> context = std::make_shared<Parsing::PassParametersContext>();
 
 	for (const auto& passFile : passFiles)
 	{
@@ -1033,7 +1030,7 @@ std::shared_ptr<ParsePassContext> MaterialCompiler::ParsePassFiles(const std::un
 		}
 		//END
 
-		context->passSources.emplace_back(PassSource()).name = passFile.first.substr(0, passFile.first.rfind('.'));
+		context->passSources.emplace_back(PassParametersSource()).name = passFile.first.substr(0, passFile.first.rfind('.'));
 
 		peg::any ctx = context;
 
@@ -1043,12 +1040,12 @@ std::shared_ptr<ParsePassContext> MaterialCompiler::ParsePassFiles(const std::un
 	return context;
 }
 
-std::shared_ptr<ParseMaterialContext> MaterialCompiler::ParseMaterialFile(const std::string& materialFileContent) const
+std::shared_ptr<Parsing::MaterialContext> MaterialCompiler::ParseMaterialFile(const std::string& materialFileContent) const
 {
 	peg::parser parser;
 	InitMaterialParser(parser);
 
-	std::shared_ptr<ParseMaterialContext> context = std::make_shared<ParseMaterialContext>();
+	std::shared_ptr<Parsing::MaterialContext> context = std::make_shared<Parsing::MaterialContext>();
 	peg::any ctx = context;
 
 	parser.parse(materialFileContent.c_str(), ctx);
@@ -1056,9 +1053,9 @@ std::shared_ptr<ParseMaterialContext> MaterialCompiler::ParseMaterialFile(const 
 	return context;
 }
 
-std::vector<D3D12_INPUT_ELEMENT_DESC> MaterialCompiler::GenerateInputLayout(const PassSource& pass) const
+std::vector<D3D12_INPUT_ELEMENT_DESC> MaterialCompiler::GenerateInputLayout(const PassParametersSource& pass) const
 {
-	const VertAttr& vertAttr = GetPassInputVertAttr(pass);
+	const Parsing::VertAttr& vertAttr = GetPassInputVertAttr(pass);
 
 	assert((pass.vertAttrSlots.empty() || pass.vertAttrSlots.size() == vertAttr.content.size())
 		&& "Invalid vert attr slots num, for input layout generation");
@@ -1071,7 +1068,7 @@ std::vector<D3D12_INPUT_ELEMENT_DESC> MaterialCompiler::GenerateInputLayout(cons
 	
 	for (int i = 0; i < vertAttr.content.size(); ++i)
 	{
-		const VertAttrField& field = vertAttr.content[i];
+		const Parsing::VertAttrField& field = vertAttr.content[i];
 
 		const auto inputSlotIt = std::find_if(pass.vertAttrSlots.cbegin(), pass.vertAttrSlots.cend(),
 			[field](const std::tuple<unsigned int, int>& slot) 
@@ -1085,32 +1082,32 @@ std::vector<D3D12_INPUT_ELEMENT_DESC> MaterialCompiler::GenerateInputLayout(cons
 			{
 				field.semanticName.c_str(),
 				field.semanticIndex,
-				GetParseDataTypeDXGIFormat(field.type),
+				Parsing::GetParseDataTypeDXGIFormat(field.type),
 				static_cast<unsigned>(inputSlot),
 				inputSlotOffset[inputSlot],
 				D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
 				0U
 			});
 
-		inputSlotOffset[inputSlot] += GetParseDataTypeSize(field.type);
+		inputSlotOffset[inputSlot] += Parsing::GetParseDataTypeSize(field.type);
 	}
 
 	return inputLayout;
 }
 
-const VertAttr& MaterialCompiler::GetPassInputVertAttr(const PassSource& pass) const
+const Parsing::VertAttr& MaterialCompiler::GetPassInputVertAttr(const PassParametersSource& pass) const
 {
 	const std::string& inputName = pass.inputVertAttr;
 
 	const auto attrIt = std::find_if(pass.vertAttr.cbegin(), pass.vertAttr.cend(),
-		[inputName](const VertAttr& attr) { return inputName == attr.name; });
+		[inputName](const Parsing::VertAttr& attr) { return inputName == attr.name; });
 
 	assert(attrIt != pass.vertAttr.cend() && "Can't find input vert attribute");
 
 	return *attrIt;
 }
 
-ComPtr<ID3D12RootSignature> MaterialCompiler::GenerateRootSignature(const PassSource& pass, const PassCompiledShaders_t& shaders) const
+ComPtr<ID3D12RootSignature> MaterialCompiler::GenerateRootSignature(const PassParametersSource& pass, const PassCompiledShaders_t& shaders) const
 {
 	assert(shaders.empty() == false && "Can't generate root signature with not shaders");
 
@@ -1124,7 +1121,7 @@ ComPtr<ID3D12RootSignature> MaterialCompiler::GenerateRootSignature(const PassSo
 	return rootSig;
 }
 
-ComPtr<ID3D12PipelineState> MaterialCompiler::GeneratePipelineStateObject(const PassSource& passSource, PassCompiledShaders_t& shaders, ComPtr<ID3D12RootSignature>& rootSig) const
+ComPtr<ID3D12PipelineState> MaterialCompiler::GeneratePipelineStateObject(const PassParametersSource& passSource, PassCompiledShaders_t& shaders, ComPtr<ID3D12RootSignature>& rootSig) const
 {
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = passSource.psoDesc;
 
@@ -1132,7 +1129,7 @@ ComPtr<ID3D12PipelineState> MaterialCompiler::GeneratePipelineStateObject(const 
 	psoDesc.pRootSignature = rootSig.Get();
 	
 	// Set up shaders
-	for (const std::pair<PassSource::ShaderType, ComPtr<ID3DBlob>>& shaders : shaders)
+	for (const std::pair<PassParametersSource::ShaderType, ComPtr<ID3DBlob>>& shaders : shaders)
 	{
 		D3D12_SHADER_BYTECODE shaderByteCode = {
 			reinterpret_cast<BYTE*>(shaders.second->GetBufferPointer()),
@@ -1141,13 +1138,13 @@ ComPtr<ID3D12PipelineState> MaterialCompiler::GeneratePipelineStateObject(const 
 
 		switch (shaders.first)
 		{
-		case PassSource::Vs:
+		case PassParametersSource::Vs:
 			psoDesc.VS = shaderByteCode;
 			break;
-		case PassSource::Gs:
+		case PassParametersSource::Gs:
 			psoDesc.GS = shaderByteCode;
 			break;
-		case PassSource::Ps:
+		case PassParametersSource::Ps:
 			psoDesc.PS = shaderByteCode;
 			break;
 		default:
@@ -1167,91 +1164,91 @@ ComPtr<ID3D12PipelineState> MaterialCompiler::GeneratePipelineStateObject(const 
 	return pipelineState;
 }
 
-void MaterialCompiler::CreateResourceArguments(const PassSource& passSource, const std::vector<Resource_t>& globalRes, Pass& pass) const
+void MaterialCompiler::CreateResourceArguments(const PassParametersSource& passSource, const std::vector<Parsing::Resource_t>& globalRes, PassParameters& pass) const
 {
-	const std::vector<Resource_t>& passResources = passSource.resources;
+	const std::vector<Parsing::Resource_t>& passResources = passSource.resources;
 
-	for (int i = 0; i < passSource.rootSignature.params.size(); ++i)
+	for (int i = 0; i < passSource.rootSignature->params.size(); ++i)
 	{
-		const RootSigParseData::RootParma_t& rootParam = passSource.rootSignature.params[i];
+		const Parsing::RootParma_t& rootParam = passSource.rootSignature->params[i];
 
 		std::visit([paramIndex = i, &passResources, &pass, &globalRes](auto&& rootParam)
 		{
 			using T = std::decay_t<decltype(rootParam)>;
 
-			if constexpr (std::is_same_v<T, RootSigParseData::RootParam_ConstBuffView>)
+			if constexpr (std::is_same_v<T, Parsing::RootParam_ConstBuffView>)
 			{
-				const Resource_ConstBuff* res =
-					FindResourceForRootArgument<Resource_ConstBuff>(passResources, globalRes, rootParam.registerId);
+				const Parsing::Resource_ConstBuff* res =
+					FindResourceForRootArgument<Parsing::Resource_ConstBuff>(passResources, globalRes, rootParam.registerId);
 
 				assert(rootParam.num == 1 && "Const buffer view should always have numDescriptors 1");
 
-				AddRootArgToPass(pass, res->updateFrequency, RootArg_ConstBuffView{
+				AddRootArgToPass(pass, res->updateFrequency, RootArg::ConstBuffView{
 					paramIndex,
 					HASH(res->name.c_str()),
 					res->content,
-					BuffConst::INVALID_BUFFER_HANDLER
+					Const::INVALID_BUFFER_HANDLER
 				});
 
 			}
-			else if constexpr (std::is_same_v<T, RootSigParseData::RootParam_DescTable>)
+			else if constexpr (std::is_same_v<T, Parsing::RootParam_DescTable>)
 			{
-				RootArg_DescTable descTableArgument;
+				RootArg::DescTable descTableArgument;
 				descTableArgument.index = paramIndex;
 				//#DEBUG so far it will be updated on every entity. The idea is that everything in
 				// the same desc table should have the same update frequency. I need to find some way to validate this
 				// and enforce this stuff, and set it up
-				ResourceUpdate updateFrequency = ResourceUpdate::OnInit;
+				Parsing::ResourceUpdate updateFrequency = Parsing::ResourceUpdate::OnInit;
 
 
-				for (const RootSigParseData::DescTableEntity_t& descTableEntity : rootParam.entities) 
+				for (const Parsing::DescTableEntity_t& descTableEntity : rootParam.entities) 
 				{
 					std::visit([&descTableArgument, &updateFrequency, &passResources, &pass, &globalRes](auto&& descTableParam) 
 					{
 						using T = std::decay_t<decltype(descTableParam)>;
 
-						if constexpr (std::is_same_v<T, RootSigParseData::RootParam_ConstBuffView>)
+						if constexpr (std::is_same_v<T, Parsing::RootParam_ConstBuffView>)
 						{
 							for (int i = 0; i < descTableParam.num; ++i)
 							{
-								const Resource_ConstBuff* res =
-									FindResourceForRootArgument<Resource_ConstBuff>(passResources, globalRes, descTableParam.registerId + i);
+								const Parsing::Resource_ConstBuff* res =
+									FindResourceForRootArgument<Parsing::Resource_ConstBuff>(passResources, globalRes, descTableParam.registerId + i);
 
 								updateFrequency = res->updateFrequency;
 
-								descTableArgument.content.emplace_back(DescTableEntity_ConstBufferView{
+								descTableArgument.content.emplace_back(RootArg::DescTableEntity_ConstBufferView{
 									HASH(res->name.c_str()),
 									res->content,
-									BuffConst::INVALID_BUFFER_HANDLER,
+									Const::INVALID_BUFFER_HANDLER,
 									Const::INVALID_INDEX
 									});
 							}
 						}
-						else if constexpr (std::is_same_v<T, RootSigParseData::RootParam_TextView>)
+						else if constexpr (std::is_same_v<T, Parsing::RootParam_TextView>)
 						{
 							for (int i = 0; i < descTableParam.num; ++i)
 							{
-								const Resource_Texture* res =
-									FindResourceForRootArgument<Resource_Texture>(passResources, globalRes, descTableParam.registerId + i);
+								const Parsing::Resource_Texture* res =
+									FindResourceForRootArgument<Parsing::Resource_Texture>(passResources, globalRes, descTableParam.registerId + i);
 
 								updateFrequency = res->updateFrequency;
 
-								descTableArgument.content.emplace_back(DescTableEntity_Texture{
+								descTableArgument.content.emplace_back(RootArg::DescTableEntity_Texture{
 									HASH(res->name.c_str())						
 								});
 							}
 
 						}
-						else if constexpr (std::is_same_v<T, RootSigParseData::RootParam_SamplerView>)
+						else if constexpr (std::is_same_v<T, Parsing::RootParam_SamplerView>)
 						{
 							for (int i = 0; i < descTableParam.num; ++i)
 							{
-								const Resource_Sampler* res =
-									FindResourceForRootArgument<Resource_Sampler>(passResources, globalRes, descTableParam.registerId + i);
+								const Parsing::Resource_Sampler* res =
+									FindResourceForRootArgument<Parsing::Resource_Sampler>(passResources, globalRes, descTableParam.registerId + i);
 
 								updateFrequency = res->updateFrequency;
 
-								descTableArgument.content.emplace_back(DescTableEntity_Sampler{
+								descTableArgument.content.emplace_back(RootArg::DescTableEntity_Sampler{
 									HASH(res->name.c_str())
 									});
 							}
@@ -1276,9 +1273,9 @@ void MaterialCompiler::CreateResourceArguments(const PassSource& passSource, con
 	}
 }
 
-Pass MaterialCompiler::CompilePass(const PassSource& passSource, const std::vector<Resource_t>& globalRes) const
+PassParameters MaterialCompiler::CompilePass(const PassParametersSource& passSource, const std::vector<Parsing::Resource_t>& globalRes) const
 {
-	Pass pass;
+	PassParameters pass;
 
 	pass.input = passSource.input;
 	pass.name = passSource.name;

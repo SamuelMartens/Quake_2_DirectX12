@@ -41,8 +41,9 @@
     <ClInclude Include="dx_objects.h" />
     <ClInclude Include="dx_local.h" />
     <ClInclude Include="dx_app.h" />
+    <ClInclude Include="dx_passparameters.h" />
     <ClInclude Include="dx_rendercallbacks.h" />
-    <ClInclude Include="dx_renderstage.h" />
+    <ClInclude Include="dx_pass.h" />
     <ClInclude Include="dx_resourcemanager.h" />
     <ClInclude Include="dx_settings.h" />
     <ClInclude Include="dx_shaderdefinitions.h" />
@@ -75,7 +76,8 @@
     <ClCompile Include="dx_materialcompiler.cpp" />
     <ClCompile Include="dx_memorymanager.cpp" />
     <ClCompile Include="dx_objects.cpp" />
-    <ClCompile Include="dx_renderstage.cpp" />
+    <ClCompile Include="dx_passparameters.cpp" />
+    <ClCompile Include="dx_pass.cpp" />
     <ClCompile Include="dx_resourcemanager.cpp" />
     <ClCompile Include="dx_rmain.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>

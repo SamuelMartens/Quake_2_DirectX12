@@ -15,15 +15,14 @@
 
 using BufferHandler = uint32_t;
 
-//#DEBUG can I move this to Const:: for convinience?
-namespace BuffConst
+namespace Const
 {
 	extern const BufferHandler INVALID_BUFFER_HANDLER;
 };
 
 struct BufferPiece
 {
-	BufferHandler handler = BuffConst::INVALID_BUFFER_HANDLER;
+	BufferHandler handler = Const::INVALID_BUFFER_HANDLER;
 	int offset = Const::INVALID_OFFSET;
 };
 
@@ -91,7 +90,7 @@ public:
 	{
 		std::scoped_lock<std::mutex> lock(mutex);
 
-		assert(handler != BuffConst::INVALID_BUFFER_HANDLER && "Trying to delete invalid default buffer handler");
+		assert(handler != Const::INVALID_BUFFER_HANDLER && "Trying to delete invalid default buffer handler");
 
 		assert(m_handlers[handler] != Const::INVALID_OFFSET);
 

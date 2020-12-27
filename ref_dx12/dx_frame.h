@@ -12,7 +12,7 @@
 #include "dx_camera.h"
 #include "dx_threadingutils.h"
 #include "dx_texture.h"
-#include "dx_renderstage.h"
+#include "dx_pass.h"
 
 class Semaphore;
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Lib/crc32.h"
-#include "dx_renderstage.h"
+#include "dx_pass.h"
 #include "dx_descriptorheap.h"
 #include "dx_texture.h"
 #include "dx_app.h"
@@ -35,12 +35,12 @@ namespace RenderCallbacks
 	};
 
 	template<typename sT, typename bT>
-	void PerPassUpdateCallback(unsigned int name, sT& stage, bT& bindPoint, PerPassUpdateContext& ctx)
+	void PerPassUpdateCallback(unsigned int name, sT& pass, bT& bindPoint, PerPassUpdateContext& ctx)
 	{
 		using bindT = std::decay_t<bT>;
-		using stageT = std::decay_t<sT>;
+		using passT = std::decay_t<sT>;
 
-		if constexpr(std::is_same_v<stageT, RenderStage_UI>)
+		if constexpr(std::is_same_v<passT, Pass_UI>)
 		{
 			// All UI stages are handled here
 			switch (name)
@@ -51,7 +51,7 @@ namespace RenderCallbacks
 				{
 					// All static pass const buff data
 				}
-				else if constexpr(std::is_same_v<stageT, ResourceViewBind_t>)
+				else if constexpr(std::is_same_v<passT, ResourceViewBind_t>)
 				{
 					// All static pass view data
 				}

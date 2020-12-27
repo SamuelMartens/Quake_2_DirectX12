@@ -1,4 +1,4 @@
-#include "dx_renderstage.h"
+#include "dx_pass.h"
 
 #include <cassert>
 
@@ -11,7 +11,7 @@
 #include "dx_resourcemanager.h"
 #include "dx_memorymanager.h"
 
-void RenderStage_UI::Init()
+void Pass_UI::Init()
 {
 	ASSERT_MAIN_THREAD;
 
@@ -21,34 +21,34 @@ void RenderStage_UI::Init()
 	// Calculate amount of memory for const buffers per objects
 	assert(perObjectConstBuffMemorySize == 0 && "Per object const memory should be null");
 
-	for (const RootArg_t& rootArg : pass.perObjectRootArgsTemplate)
+	for (const RootArg::Arg_t& rootArg : passParameters.perObjectRootArgsTemplate)
 	{
 		std::visit([this](auto&& rootArg)
 		{
 			using T = std::decay_t<decltype(rootArg)>;
 
-			if constexpr (std::is_same_v<T, RootArg_RootConstant>)
+			if constexpr (std::is_same_v<T, RootArg::RootConstant>)
 			{
 				assert(false && "Root constants not implemented");
 			}
 
-			if constexpr (std::is_same_v<T, RootArg_ConstBuffView>)
+			if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
 			{
-				perObjectConstBuffMemorySize += GetConstBuffSize(rootArg);
+				perObjectConstBuffMemorySize += RootArg::GetConstBuffSize(rootArg);
 			}
 
-			if constexpr (std::is_same_v<T, RootArg_DescTable>)
+			if constexpr (std::is_same_v<T, RootArg::DescTable>)
 			{
-				for (const DescTableEntity_t& descTableEntitiy : rootArg.content)
+				for (const RootArg::DescTableEntity_t& descTableEntitiy : rootArg.content)
 				{
 					std::visit([this](auto&& descTableEntitiy)
 					{
 						using T = std::decay_t<decltype(descTableEntitiy)>;
 
-						if constexpr (std::is_same_v<T, DescTableEntity_ConstBufferView>)
+						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 						{
 							std::for_each(descTableEntitiy.content.begin(), descTableEntitiy.content.end(),
-								[this](const ConstBuffField& f)
+								[this](const RootArg::ConstBuffField& f)
 							{
 								perObjectConstBuffMemorySize += f.size;
 							});
@@ -64,17 +64,31 @@ void RenderStage_UI::Init()
 	// Calculate amount of memory for vertex buffers per objects
 	assert(perVertexMemorySize == 0 && "Per Vertex Memory should be null");
 
-	for (const VertAttrField& field : pass.vertAttr.content)
+	for (const Parsing::VertAttrField& field : passParameters.vertAttr.content)
 	{
-		perVertexMemorySize += GetParseDataTypeSize(field.type);
+		perVertexMemorySize += Parsing::GetParseDataTypeSize(field.type);
 	}
 
 	assert(perObjectVertexMemorySize == 0 && "Per Object Vertex Memory should be null");
 	// Every UI object is quad that consists of two triangles
 	perObjectVertexMemorySize = perVertexMemorySize * 6;
+
+
+	// Init inverse matrix
+
+	// Generate utils matrices
+	int drawAreaWidth = 0;
+	int drawAreaHeight = 0;
+
+	Renderer::Inst().GetDrawAreaSize(&drawAreaWidth, &drawAreaHeight);
+
+	XMMATRIX sseResultMatrix = XMMatrixIdentity();
+	sseResultMatrix.r[1] = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
+	sseResultMatrix = XMMatrixTranslation(-drawAreaWidth / 2, -drawAreaHeight / 2, 0.0f) * sseResultMatrix;
+	XMStoreFloat4x4(&yInverseAndCenterMatrix, sseResultMatrix);
 }
 
-void RenderStage_UI::Start(Context& jobCtx)
+void Pass_UI::Start(Context& jobCtx)
 {
 	const std::vector<DrawCall_UI_t>& objects = jobCtx.frame.uiDrawCalls;
 	MemoryManager::UploadBuff_t& uploadMemory =
@@ -88,7 +102,7 @@ void RenderStage_UI::Start(Context& jobCtx)
 	{
 		// Special copy routine is required here.
 		StageObj& stageObj = drawObjects.emplace_back(StageObj{ 
-			pass.perObjectRootArgsTemplate,
+			passParameters.perObjectRootArgsTemplate,
 			&objects[i] });
 
 		// Init object root args
@@ -98,33 +112,33 @@ void RenderStage_UI::Start(Context& jobCtx)
 
 		RenderCallbacks::PerObjectRegisterContext regCtx = { jobCtx };
 
-		for (RootArg_t& rootArg : stageObj.rootArgs)
+		for (RootArg::Arg_t& rootArg : stageObj.rootArgs)
 		{
 			std::visit([this, i, objectOffset, &rootArgOffset, &stageObj, &regCtx]
 			(auto&& rootArg)
 			{
 				using T = std::decay_t<decltype(rootArg)>;
 
-				if constexpr (std::is_same_v<T, RootArg_RootConstant>)
+				if constexpr (std::is_same_v<T, RootArg::RootConstant>)
 				{
 					assert(false && "Root constant is not implemented");
 				}
 
-				if constexpr (std::is_same_v<T, RootArg_ConstBuffView>)
+				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
 				{
 					rootArg.gpuMem.handler = constBuffMemory;
       					rootArg.gpuMem.offset = objectOffset + rootArgOffset;
 
-					rootArgOffset += GetConstBuffSize(rootArg);
+					rootArgOffset += RootArg::GetConstBuffSize(rootArg);
 				}
 
-				if constexpr (std::is_same_v<T, RootArg_DescTable>)
+				if constexpr (std::is_same_v<T, RootArg::DescTable>)
 				{
-					rootArg.viewIndex = AllocateDescTableView(rootArg);
+					rootArg.viewIndex = RootArg::AllocateDescTableView(rootArg);
 
 					for (int i = 0; i < rootArg.content.size(); ++i)
 					{
-						DescTableEntity_t& descTableEntitiy = rootArg.content[i];
+						RootArg::DescTableEntity_t& descTableEntitiy = rootArg.content[i];
 						const int currentViewIndex = rootArg.viewIndex + i;
 
 						std::visit([this, objectOffset, &rootArgOffset, &stageObj, &regCtx, currentViewIndex]
@@ -132,20 +146,20 @@ void RenderStage_UI::Start(Context& jobCtx)
 						{
 							using T = std::decay_t<decltype(descTableEntitiy)>;
 
-							if constexpr (std::is_same_v<T, DescTableEntity_ConstBufferView>)
+							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 							{
 								assert(false && "Desc table view is probably not implemented! Make sure it is");
 								//#DEBUG this needs view allocation
 								descTableEntitiy.gpuMem.handler = constBuffMemory;
 								descTableEntitiy.gpuMem.offset = objectOffset + rootArgOffset;
 
-								rootArgOffset += GetConstBuffSize(descTableEntitiy);
+								rootArgOffset += RootArg::GetConstBuffSize(descTableEntitiy);
 							}
 
-							if constexpr (std::is_same_v<T, DescTableEntity_Texture>)
+							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
 							{
 								RenderCallbacks::PerObjectRegisterCallback(
-									HASH(pass.name.c_str()),
+									HASH(passParameters.name.c_str()),
 									descTableEntitiy.hashedName,
 									*stageObj.originalDrawCall,
 									&currentViewIndex,
@@ -261,7 +275,7 @@ void RenderStage_UI::Start(Context& jobCtx)
 	}
 }
 
-void RenderStage_UI::UpdateDrawObjects(Context& jobCtx)
+void Pass_UI::UpdateDrawObjects(Context& jobCtx)
 {
 	RenderCallbacks::PerObjectUpdateContext updateCtx = { XMFLOAT4X4(), jobCtx };
 
@@ -269,7 +283,7 @@ void RenderStage_UI::UpdateDrawObjects(Context& jobCtx)
 
 	XMMATRIX sseViewMat = XMLoadFloat4x4(&frame.uiViewMat);
 	XMMATRIX sseProjMat = XMLoadFloat4x4(&frame.uiProjectionMat);
-	XMMATRIX sseYInverseAndCenterMat = XMLoadFloat4x4(&Renderer::Inst().m_yInverseAndCenterMatrix);
+	XMMATRIX sseYInverseAndCenterMat = XMLoadFloat4x4(&yInverseAndCenterMatrix);
 
 	XMMATRIX viewProj = sseYInverseAndCenterMat * sseViewMat * sseProjMat;
 
@@ -284,7 +298,7 @@ void RenderStage_UI::UpdateDrawObjects(Context& jobCtx)
 		// Start of the memory for the current object
 		int currentObjecOffset = i * perObjectConstBuffMemorySize;
 
-		for (RootArg_t& rootArg : obj.rootArgs)
+		for (RootArg::Arg_t& rootArg : obj.rootArgs)
 		{
 			std::visit([&updateCtx, &obj, this,  &currentObjecOffset, &cpuMem](auto&& rootArg) 
 			{
@@ -292,12 +306,12 @@ void RenderStage_UI::UpdateDrawObjects(Context& jobCtx)
 
 				Renderer& renderer = Renderer::Inst();
 
-				if constexpr (std::is_same_v<T, RootArg_RootConstant>)
+				if constexpr (std::is_same_v<T, RootArg::RootConstant>)
 				{
 					assert(false && "Root constant is not implemented");
 				};
 
-				if constexpr (std::is_same_v<T, RootArg_ConstBuffView>)
+				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
 				{
 					// Start of the memory of the current buffer
 					int currentBufferOffset = currentObjecOffset;
@@ -306,12 +320,12 @@ void RenderStage_UI::UpdateDrawObjects(Context& jobCtx)
 					//#DEBUG this is valid assumption, eh?
 					assert(currentBufferOffset == rootArg.gpuMem.offset && "Update offset for const buffer is not equal, eh?");
 
-					for (ConstBuffField& field : rootArg.content)
+					for (RootArg::ConstBuffField& field : rootArg.content)
 					{
 						std::visit([&rootArg, &updateCtx, this, &currentObjecOffset, &field, &cpuMem, &currentBufferOffset](auto&& obj)
 						{
 							RenderCallbacks::PerObjectUpdateCallback(
-								HASH(pass.name.c_str()),
+								HASH(passParameters.name.c_str()),
 								field.hashedName,
 								obj,
 								&cpuMem[currentBufferOffset],
@@ -323,19 +337,19 @@ void RenderStage_UI::UpdateDrawObjects(Context& jobCtx)
 						currentBufferOffset += field.size;
 					}
 
-					currentObjecOffset += GetConstBuffSize(rootArg);
+					currentObjecOffset += RootArg::GetConstBuffSize(rootArg);
 					assert(currentBufferOffset < currentObjecOffset && "Update error. Buffers overwrite other buffer");
 				}
 
-				if constexpr (std::is_same_v<T, RootArg_DescTable>)
+				if constexpr (std::is_same_v<T, RootArg::DescTable>)
 				{
-					for (DescTableEntity_t& descTableEntity : rootArg.content)
+					for (RootArg::DescTableEntity_t& descTableEntity : rootArg.content)
 					{
 						std::visit([](auto&& descTableEntity) 
 						{
 							using T = std::decay_t<decltype(descTableEntity)>;
 
-							if constexpr (std::is_same_v<T, DescTableEntity_ConstBufferView>)
+							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 							{
 								assert(false && "Desc table view is probably not implemented! Make sure it is");
 							}
@@ -361,21 +375,21 @@ void RenderStage_UI::UpdateDrawObjects(Context& jobCtx)
 	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-void RenderStage_UI::SetUpRenderState(Context& jobCtx)
+void Pass_UI::SetUpRenderState(Context& jobCtx)
 {
 	Frame& frame = jobCtx.frame;
 	ComPtr<ID3D12GraphicsCommandList>& commandList = jobCtx.commandList.commandList;
 
 
-	commandList->RSSetViewports(1, &pass.viewport);
+	commandList->RSSetViewports(1, &passParameters.viewport);
 	commandList->RSSetScissorRects(1, &frame.scissorRect);
 
 	Renderer& renderer = Renderer::Inst();
 
-	assert(pass.colorTargetNameHash == HASH("BACK_BUFFER") && "Custom render targets are not implemented");
+	assert(passParameters.colorTargetNameHash == HASH("BACK_BUFFER") && "Custom render targets are not implemented");
 	D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = renderer.rtvHeap->GetHandleCPU(frame.colorBufferAndView->viewIndex);
 
-	assert(pass.depthTargetNameHash == HASH("BACK_BUFFER") && "Custom render targets are not implemented");
+	assert(passParameters.depthTargetNameHash == HASH("BACK_BUFFER") && "Custom render targets are not implemented");
 	D3D12_CPU_DESCRIPTOR_HANDLE depthTargetView = renderer.dsvHeap->GetHandleCPU(frame.depthBufferViewIndex);
 
 	commandList->OMSetRenderTargets(1, &renderTargetView, true, &depthTargetView);
@@ -384,12 +398,12 @@ void RenderStage_UI::SetUpRenderState(Context& jobCtx)
 	commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
 
-	commandList->SetGraphicsRootSignature(pass.rootSingature.Get());
-	commandList->SetPipelineState(pass.pipelineState.Get());
-	commandList->IASetPrimitiveTopology(pass.primitiveTopology);
+	commandList->SetGraphicsRootSignature(passParameters.rootSingature.Get());
+	commandList->SetPipelineState(passParameters.pipelineState.Get());
+	commandList->IASetPrimitiveTopology(passParameters.primitiveTopology);
 }
 
-void RenderStage_UI::Draw(Context& jobCtx)
+void Pass_UI::Draw(Context& jobCtx)
 {
 	ComPtr<ID3D12GraphicsCommandList>& commandList = jobCtx.commandList.commandList;
 	Renderer& renderer = Renderer::Inst();
@@ -410,16 +424,16 @@ void RenderStage_UI::Draw(Context& jobCtx)
 
 		commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
 
-		for (const RootArg_t& rootArg : obj.rootArgs)
+		for (const RootArg::Arg_t& rootArg : obj.rootArgs)
 		{
-			BindRootArg(rootArg, jobCtx.commandList);
+			RootArg::Bind(rootArg, jobCtx.commandList);
 		}
 
 		commandList->DrawInstanced(perObjectVertexMemorySize / perVertexMemorySize, 1, 0, 0);
 	}
 }
 
-void RenderStage_UI::Execute(Context& context)
+void Pass_UI::Execute(Context& context)
 {
 	if (context.frame.uiDrawCalls.empty() == true)
 	{
@@ -434,21 +448,21 @@ void RenderStage_UI::Execute(Context& context)
 	Draw(context);
 }
 
-void RenderStage_UI::Finish()
+void Pass_UI::Finish()
 {
 	MemoryManager::UploadBuff_t& uploadMemory =
 		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
 
-	if (constBuffMemory != BuffConst::INVALID_BUFFER_HANDLER)
+	if (constBuffMemory != Const::INVALID_BUFFER_HANDLER)
 	{
 		uploadMemory.Delete(constBuffMemory);
-		constBuffMemory = BuffConst::INVALID_BUFFER_HANDLER;
+		constBuffMemory = Const::INVALID_BUFFER_HANDLER;
 	}
 	
-	if (vertexMemory != BuffConst::INVALID_BUFFER_HANDLER )
+	if (vertexMemory != Const::INVALID_BUFFER_HANDLER )
 	{
 		uploadMemory.Delete(vertexMemory);
-		vertexMemory = BuffConst::INVALID_BUFFER_HANDLER;
+		vertexMemory = Const::INVALID_BUFFER_HANDLER;
 	}
 	
 	drawObjects.clear();
@@ -472,39 +486,39 @@ void FrameGraph::Execute(Frame& frame)
 	// NOTE: creation order is the order in which command Lists will be submitted.
 	// Set up dependencies 
 	
-	std::vector<Context> frameStagesContexts;
-	//#DEBUG this is not even frame stage context
-	Context& beginFrameContext = frameStagesContexts.emplace_back(renderer.CreateContext(frame));
+	std::vector<Context> framePassContexts;
+	//#DEBUG this is not even frame pass context
+	Context& beginFrameContext = framePassContexts.emplace_back(renderer.CreateContext(frame));
 
-	for (RenderStage_t& stage : stages)
+	for (Pass_t& pass : passes)
 	{
-		frameStagesContexts.emplace_back(renderer.CreateContext(frame));
+		framePassContexts.emplace_back(renderer.CreateContext(frame));
 	};
 
 	Context endFrameJobContext = renderer.CreateContext(frame);
-	endFrameJobContext.CreateDependencyFrom(frameStagesContexts);
+	endFrameJobContext.CreateDependencyFrom(framePassContexts);
 
-	jobQueue.Enqueue(Job([ctx = frameStagesContexts[0], &renderer]() mutable
+	jobQueue.Enqueue(Job([ctx = framePassContexts[0], &renderer]() mutable
 	{
 		renderer.BeginFrameJob(ctx);
 	}));
 
-	for (int i = 0; i < stages.size() ; ++i)
+	for (int i = 0; i < passes.size() ; ++i)
 	{
 		std::visit([
 			&jobQueue, 
 			// i + 1 because of begin frame job
-			stageJobContext = frameStagesContexts[i + 1]](auto&& stage)
+			passJobContext = framePassContexts[i + 1]](auto&& pass)
 		{
 			jobQueue.Enqueue(Job(
-				[stageJobContext, &stage]() mutable
+				[passJobContext, &pass]() mutable
 			{
-				JOB_GUARD(stageJobContext);
+				JOB_GUARD(passJobContext);
 
-				stage.Execute(stageJobContext);
+				pass.Execute(passJobContext);
 			}));
 
-		}, stages[i]);
+		}, passes[i]);
 	}
 
 	jobQueue.Enqueue(Job([endFrameJobContext ,&renderer, this]() mutable 
@@ -515,21 +529,21 @@ void FrameGraph::Execute(Frame& frame)
 
 void FrameGraph::BuildFrameGraph(PassMaterial&& passMaterial)
 {
-	stages.clear();
+	passes.clear();
 
 	for (int i = 0; i < passMaterial.passes.size(); ++i)
 	{
-		Pass& pass = passMaterial.passes[i];
+		PassParameters& pass = passMaterial.passes[i];
 
 		switch (pass.input)
 		{
-		case PassSource::InputType::UI:
+		case PassParametersSource::InputType::UI:
 		{
-			RenderStage_t& renderStage = stages.emplace_back(RenderStage_UI{});
-			InitRenderStage(std::move(pass), renderStage);
+			Pass_t& renderStage = passes.emplace_back(Pass_UI{});
+			InitPass(std::move(pass), renderStage);
 		}
 			break;
-		case PassSource::InputType::Undefined:
+		case PassParametersSource::InputType::Undefined:
 		{
 			assert(false && "Pass with undefined input is detected");
 		}
@@ -540,13 +554,13 @@ void FrameGraph::BuildFrameGraph(PassMaterial&& passMaterial)
 	}
 }
 
-void FrameGraph::InitRenderStage(Pass&& pass, RenderStage_t& renderStage)
+void FrameGraph::InitPass(PassParameters&& passParameters, Pass_t& pass)
 {
-	std::visit([&pass](auto&& renderStage) 
+	std::visit([&passParameters](auto&& pass) 
 	{
-		renderStage.pass = std::move(pass);
+		pass.passParameters = std::move(passParameters);
 
-		renderStage.Init();
+		pass.Init();
 
-	}, renderStage);
+	}, pass);
 }
