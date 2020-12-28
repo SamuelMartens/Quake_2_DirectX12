@@ -5,11 +5,9 @@
 #include <variant>
 
 #include "dx_buffer.h"
-#include "dx_materialcompiler.h"
 #include "dx_drawcalls.h"
 #include "dx_common.h"
-#include "dx_material.h"
-
+#include "dx_passparameters.h"
 
 //#TODO
 // 1) Implement proper tex samplers handling. When I need more samplers
@@ -21,7 +19,7 @@
 // 7) Proper name generation for D3D objects
 
 //#TODO get rid of forward decl?
-struct Context;
+struct JobContext;
 
 //#INFO every frame should have pass collection. In this way I will not need to worry about multithreading handle inside stage itself
 class Pass_UI
@@ -45,7 +43,7 @@ public:
 
 	~Pass_UI() = default;
 
-	void Execute(Context& context);
+	void Execute(JobContext& context);
 	void Init();
 	void Finish();
 
@@ -54,11 +52,11 @@ public:
 
 private:
 
-	void Start(Context& jobCtx);
-	void UpdateDrawObjects(Context& jobCtx);
+	void Start(JobContext& jobCtx);
+	void UpdateDrawObjects(JobContext& jobCtx);
 
-	void SetUpRenderState(Context& jobCtx);
-	void Draw(Context& jobCtx);
+	void SetUpRenderState(JobContext& jobCtx);
+	void Draw(JobContext& jobCtx);
 
 private:
 
@@ -79,32 +77,3 @@ private:
 };
 
 using Pass_t = std::variant<Pass_UI>;
-
-//#TODO this might go into separate file /or move thisto dx_frame? 
-class Frame;
-
-class FrameGraph
-{
-public:
-
-	FrameGraph() = default;
-	
-	FrameGraph(const FrameGraph&) = default;
-	FrameGraph& operator=(const FrameGraph&) = default;
-
-	FrameGraph(FrameGraph&&) = default;
-	FrameGraph& operator=(FrameGraph&&) = default;
-
-	~FrameGraph() = default;
-
-	void Execute(Frame& frame);
-
-	/* Initialization */
-	void BuildFrameGraph(PassMaterial&& passMaterial);
-
-	std::vector<Pass_t> passes;
-private:
-
-	void InitPass(PassParameters&& passParameters, Pass_t& renderStage);
-
-};

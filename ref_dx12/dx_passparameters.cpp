@@ -4,6 +4,7 @@
 #include "dx_settings.h"
 #include "dx_app.h"
 #include "dx_memorymanager.h"
+#include "dx_framegraphbuilder.h"
 
 namespace RootArg
 {

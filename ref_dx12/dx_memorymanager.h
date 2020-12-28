@@ -33,7 +33,7 @@ public:
 
 	DEFINE_SINGLETON(MemoryManager);
 
-	void Init(Context& context);
+	void Init(JobContext& context);
 
 private:
 

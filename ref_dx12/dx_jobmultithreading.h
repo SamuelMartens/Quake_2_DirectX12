@@ -103,13 +103,13 @@ private:
 
 
 // Utilities 
-struct Context
+struct JobContext
 {
 	/* SHOULD BE SAFE TO COPY */
-	Context(Frame& frameVal, CommandList& commandListVal);
+	JobContext(Frame& frameVal, CommandList& commandListVal);
 
-	void CreateDependencyFrom(std::vector<Context*> dependsFromList);
-	void CreateDependencyFrom(std::vector<Context>& dependsFromList);
+	void CreateDependencyFrom(std::vector<JobContext*> dependsFromList);
+	void CreateDependencyFrom(std::vector<JobContext>& dependsFromList);
 	void SignalDependencies();
 
 	// This properties represent relationship between jobs that Semaphore implements.
@@ -122,5 +122,5 @@ struct Context
 	CommandList& commandList;
 };
 
-using DependenciesRAIIGuard_t = Utils::RAIIGuard<Context, 
-	nullptr, &Context::SignalDependencies>;
+using DependenciesRAIIGuard_t = Utils::RAIIGuard<JobContext, 
+	nullptr, &JobContext::SignalDependencies>;

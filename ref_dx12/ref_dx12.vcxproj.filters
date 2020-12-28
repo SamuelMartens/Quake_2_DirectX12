@@ -96,9 +96,6 @@
     <ClInclude Include="dx_settings.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="dx_materialcompiler.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Lib\peglib.h">
       <Filter>Header Files\Lib</Filter>
     </ClInclude>
@@ -118,6 +115,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="dx_pass.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dx_framegraphbuilder.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dx_framegraph.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -191,9 +194,6 @@
     <ClCompile Include="dx_settings.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="dx_materialcompiler.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="dx_memorymanager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -204,6 +204,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="dx_pass.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dx_framegraphbuilder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dx_framegraph.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

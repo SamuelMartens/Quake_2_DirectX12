@@ -88,7 +88,7 @@ void Pass_UI::Init()
 	XMStoreFloat4x4(&yInverseAndCenterMatrix, sseResultMatrix);
 }
 
-void Pass_UI::Start(Context& jobCtx)
+void Pass_UI::Start(JobContext& jobCtx)
 {
 	const std::vector<DrawCall_UI_t>& objects = jobCtx.frame.uiDrawCalls;
 	MemoryManager::UploadBuff_t& uploadMemory =
@@ -275,7 +275,7 @@ void Pass_UI::Start(Context& jobCtx)
 	}
 }
 
-void Pass_UI::UpdateDrawObjects(Context& jobCtx)
+void Pass_UI::UpdateDrawObjects(JobContext& jobCtx)
 {
 	RenderCallbacks::PerObjectUpdateContext updateCtx = { XMFLOAT4X4(), jobCtx };
 
@@ -375,7 +375,7 @@ void Pass_UI::UpdateDrawObjects(Context& jobCtx)
 	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-void Pass_UI::SetUpRenderState(Context& jobCtx)
+void Pass_UI::SetUpRenderState(JobContext& jobCtx)
 {
 	Frame& frame = jobCtx.frame;
 	ComPtr<ID3D12GraphicsCommandList>& commandList = jobCtx.commandList.commandList;
@@ -403,7 +403,7 @@ void Pass_UI::SetUpRenderState(Context& jobCtx)
 	commandList->IASetPrimitiveTopology(passParameters.primitiveTopology);
 }
 
-void Pass_UI::Draw(Context& jobCtx)
+void Pass_UI::Draw(JobContext& jobCtx)
 {
 	ComPtr<ID3D12GraphicsCommandList>& commandList = jobCtx.commandList.commandList;
 	Renderer& renderer = Renderer::Inst();
@@ -433,7 +433,7 @@ void Pass_UI::Draw(Context& jobCtx)
 	}
 }
 
-void Pass_UI::Execute(Context& context)
+void Pass_UI::Execute(JobContext& context)
 {
 	if (context.frame.uiDrawCalls.empty() == true)
 	{
@@ -468,99 +468,3 @@ void Pass_UI::Finish()
 	drawObjects.clear();
 }
 
-void FrameGraph::Execute(Frame& frame)
-{
-	ASSERT_MAIN_THREAD;
-
-	Renderer& renderer = Renderer::Inst();
-	JobQueue& jobQueue = JobSystem::Inst().GetJobQueue();
-
-	// Some preparations
-	XMMATRIX tempMat = XMMatrixIdentity();
-	XMStoreFloat4x4(&frame.uiViewMat, tempMat);
-
-	tempMat = XMMatrixOrthographicRH(frame.camera.width, frame.camera.height, 0.0f, 1.0f);
-	XMStoreFloat4x4(&frame.uiProjectionMat, tempMat);
-
-	//#TODO get rid of begin frame hack
-	// NOTE: creation order is the order in which command Lists will be submitted.
-	// Set up dependencies 
-	
-	std::vector<Context> framePassContexts;
-	//#DEBUG this is not even frame pass context
-	Context& beginFrameContext = framePassContexts.emplace_back(renderer.CreateContext(frame));
-
-	for (Pass_t& pass : passes)
-	{
-		framePassContexts.emplace_back(renderer.CreateContext(frame));
-	};
-
-	Context endFrameJobContext = renderer.CreateContext(frame);
-	endFrameJobContext.CreateDependencyFrom(framePassContexts);
-
-	jobQueue.Enqueue(Job([ctx = framePassContexts[0], &renderer]() mutable
-	{
-		renderer.BeginFrameJob(ctx);
-	}));
-
-	for (int i = 0; i < passes.size() ; ++i)
-	{
-		std::visit([
-			&jobQueue, 
-			// i + 1 because of begin frame job
-			passJobContext = framePassContexts[i + 1]](auto&& pass)
-		{
-			jobQueue.Enqueue(Job(
-				[passJobContext, &pass]() mutable
-			{
-				JOB_GUARD(passJobContext);
-
-				pass.Execute(passJobContext);
-			}));
-
-		}, passes[i]);
-	}
-
-	jobQueue.Enqueue(Job([endFrameJobContext ,&renderer, this]() mutable 
-	{
-		renderer.EndFrameJob(endFrameJobContext);
-	}));
-}
-
-void FrameGraph::BuildFrameGraph(PassMaterial&& passMaterial)
-{
-	passes.clear();
-
-	for (int i = 0; i < passMaterial.passes.size(); ++i)
-	{
-		PassParameters& pass = passMaterial.passes[i];
-
-		switch (pass.input)
-		{
-		case PassParametersSource::InputType::UI:
-		{
-			Pass_t& renderStage = passes.emplace_back(Pass_UI{});
-			InitPass(std::move(pass), renderStage);
-		}
-			break;
-		case PassParametersSource::InputType::Undefined:
-		{
-			assert(false && "Pass with undefined input is detected");
-		}
-			break;
-		default:
-			break;
-		}
-	}
-}
-
-void FrameGraph::InitPass(PassParameters&& passParameters, Pass_t& pass)
-{
-	std::visit([&passParameters](auto&& pass) 
-	{
-		pass.passParameters = std::move(passParameters);
-
-		pass.Init();
-
-	}, pass);
-}

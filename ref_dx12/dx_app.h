@@ -54,7 +54,7 @@ namespace FArg
 		const char* texName = nullptr;
 		const XMFLOAT4* pos;
 		const BufferPiece* bufferPiece;
-		Context* context;
+		JobContext* context;
 	};
 };
 
@@ -78,10 +78,10 @@ class Renderer
 	void DeleteDefaultMemoryBuffer(BufferHandler handler);
 	void DeleteUploadMemoryBuffer(BufferHandler handler);
 	
-	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, Context& context);
-	void UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context& context);
-	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, Context& context);
-	BufferHandler UpdateParticleConstantBuffer(Context& context);
+	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, JobContext& context);
+	void UpdateStaticObjectConstantBuffer(const StaticObject& obj, JobContext& context);
+	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, JobContext& context);
+	BufferHandler UpdateParticleConstantBuffer(JobContext& context);
 
 	/*--- API functions begin --- */
 
@@ -141,15 +141,15 @@ public:
 	XMFLOAT4X4 m_yInverseAndCenterMatrix;
 
 	//#TODO should belong to job System
-	Context CreateContext(Frame& frame);
+	JobContext CreateContext(Frame& frame);
 
 	/* Job  */
-	void EndFrameJob(Context& context);
-	void BeginFrameJob(Context& context);
-	void DrawUIJob(Context& context);
-	void DrawStaticGeometryJob(Context& context);
-	void DrawDynamicGeometryJob(Context& context);
-	void DrawParticleJob(Context& context);
+	void EndFrameJob(JobContext& context);
+	void BeginFrameJob(JobContext& context);
+	void DrawUIJob(JobContext& context);
+	void DrawStaticGeometryJob(JobContext& context);
+	void DrawDynamicGeometryJob(JobContext& context);
+	void DrawParticleJob(JobContext& context);
 
 private:
 
@@ -194,21 +194,21 @@ private:
 	void ShutdownWin32();
 
 	/* Factory functionality */
-	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model, Context& context);
-	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Context& frame);
-	void DecomposeGLModelNode(const model_t& model, const mnode_t& node, Context& context);
+	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model, JobContext& context);
+	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf, JobContext& frame);
+	void DecomposeGLModelNode(const model_t& model, const mnode_t& node, JobContext& context);
 	
 
 	/* Rendering */
-	void Draw(const StaticObject& object, Context& context);
-	void DrawIndiced(const StaticObject& object, Context& context);
-	void DrawIndiced(const DynamicObject& object, const entity_t& entity, Context& context);
+	void Draw(const StaticObject& object, JobContext& context);
+	void DrawIndiced(const StaticObject& object, JobContext& context);
+	void DrawIndiced(const DynamicObject& object, const entity_t& entity, JobContext& context);
 	void DrawStreaming(const FArg::DrawStreaming& args);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
-	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Context& context);
-	void Draw_Pic(int x, int y, const char* name, const BufferPiece& bufferPiece, Context& context);
-	void Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, Context& context);
-	void Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, Context& context);
+	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, JobContext& context);
+	void Draw_Pic(int x, int y, const char* name, const BufferPiece& bufferPiece, JobContext& context);
+	void Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, JobContext& context);
+	void Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, JobContext& context);
 
 	/* Utils */
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
@@ -217,13 +217,13 @@ private:
 	std::vector<int> BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const;
 
 	/* Passes */
-	void ExecuteDrawUIPass(Context& context, const PassParameters& pass);
+	void ExecuteDrawUIPass(JobContext& context, const PassParameters& pass);
 
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;
 
 	void SetMaterialAsync(const std::string& name, CommandList& commandList);
-	void SetNonMaterialState(Context& context) const;
+	void SetNonMaterialState(JobContext& context) const;
 
 	/* Frames */
 	void SubmitFrame(Frame& frame);
@@ -287,6 +287,6 @@ private:
 	int m_frameCounter = 0;
 
 	/* Level registration data */
-	std::unique_ptr<Context> m_staticModelRegContext;
-	std::unique_ptr<Context> m_dynamicModelRegContext;
+	std::unique_ptr<JobContext> m_staticModelRegContext;
+	std::unique_ptr<JobContext> m_dynamicModelRegContext;
 };

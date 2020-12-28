@@ -4,7 +4,7 @@
 #include "dx_diagnostics.h"
 #include "dx_app.h"
 
-ComPtr<ID3D12Resource> ResourceManager::CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, Context& context)
+ComPtr<ID3D12Resource> ResourceManager::CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, JobContext& context)
 {
 	// Create actual buffer 
 	D3D12_RESOURCE_DESC bufferDesc = {};
@@ -171,7 +171,7 @@ void ResourceManager::DeleteRequestedResources()
 	resourcesToDelete.obj.clear();
 }
 
-Texture* ResourceManager::FindOrCreateTexture(std::string_view textureName, Context& context)
+Texture* ResourceManager::FindOrCreateTexture(std::string_view textureName, JobContext& context)
 {
 	std::scoped_lock<std::mutex> lock(textures.mutex);
 
@@ -214,7 +214,7 @@ Texture* ResourceManager::CreateTextureFromFileDeferred(const char* name, Frame&
 	return result;
 }
 
-Texture* ResourceManager::CreateTextureFromFile(const char* name, Context& context)
+Texture* ResourceManager::CreateTextureFromFile(const char* name, JobContext& context)
 {
 	std::scoped_lock<std::mutex> lock(textures.mutex);
 
@@ -244,14 +244,14 @@ Texture* ResourceManager::CreateTextureFromDataDeferred(const std::byte* data, i
 	return result;
 }
 
-Texture* ResourceManager::CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context)
+Texture* ResourceManager::CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, JobContext& context)
 {
 	std::scoped_lock<std::mutex> lock(textures.mutex);
 
 	return _CreateTextureFromData(data, width, height, bpp, name, context);
 }
 
-void ResourceManager::CreateDeferredTextures(Context& context)
+void ResourceManager::CreateDeferredTextures(JobContext& context)
 {
 	CommandListRAIIGuard_t commandListGuard(context.commandList);
 
@@ -312,7 +312,7 @@ void ResourceManager::GetDrawTextureFullname(const char* name, char* dest, int d
 	}
 }
 
-void ResourceManager::UpdateTexture(Texture& tex, const std::byte* data, Context& context)
+void ResourceManager::UpdateTexture(Texture& tex, const std::byte* data, JobContext& context)
 {
 	Logs::Logf(Logs::Category::Textures, "Update Texture with name %s", tex.name.c_str());
 
@@ -393,7 +393,7 @@ void ResourceManager::ResampleTexture(const unsigned *in, int inwidth, int inhei
 	}
 }
 
-Texture* ResourceManager::_CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, Context& context)
+Texture* ResourceManager::_CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, JobContext& context)
 {
 	Logs::Logf(Logs::Category::Textures, "Create texture %s", name);
 
@@ -411,7 +411,7 @@ Texture* ResourceManager::_CreateTextureFromData(const std::byte* data, int widt
 	return &textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
 }
 
-Texture* ResourceManager::_CreateTextureFromFile(const char* name, Context& context)
+Texture* ResourceManager::_CreateTextureFromFile(const char* name, JobContext& context)
 {
 	if (name == nullptr)
 		return nullptr;
@@ -511,7 +511,7 @@ Texture* ResourceManager::_CreateTextureFromFile(const char* name, Context& cont
 	return createdTex;
 }
 
-void ResourceManager::_CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, Context& context, Texture& outTex)
+void ResourceManager::_CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, JobContext& context, Texture& outTex)
 {
 	CommandList& commandList = context.commandList;
 

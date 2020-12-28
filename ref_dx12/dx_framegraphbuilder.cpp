@@ -1,4 +1,4 @@
-#include "dx_materialcompiler.h"
+#include "dx_framegraphbuilder.h"
 
 #include <string_view>
 #include <fstream>
@@ -183,7 +183,7 @@ namespace
 	void InitPassParser(peg::parser& parser) 
 	{
 		// Load grammar
-		const std::string passGrammar = ReadFile(MaterialCompiler::Inst().GenPathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_PASS_FILENAME));
+		const std::string passGrammar = ReadFile(FrameGraphBuilder::Inst().GenPathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_PASS_FILENAME));
 
 		parser.log = [](size_t line, size_t col, const std::string& msg)
 		{
@@ -780,10 +780,10 @@ namespace
 		};
 	};
 
-	void InitMaterialParser(peg::parser& parser)
+	void InitFrameGraphSourceParser(peg::parser& parser)
 	{
 		// Load grammar
-		const std::string materialGrammar = ReadFile(MaterialCompiler::Inst().GenPathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_MATERIAL_FILENAME));
+		const std::string frameGraphGrammar = ReadFile(FrameGraphBuilder::Inst().GenPathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_FRAMEGRAPH_FILENAME));
 
 		parser.log = [](size_t line, size_t col, const std::string& msg)
 		{
@@ -792,12 +792,12 @@ namespace
 			assert(false && "Parsing error");
 		};
 
-		const bool loadGrammarResult = parser.load_grammar(materialGrammar.c_str());
+		const bool loadGrammarResult = parser.load_grammar(frameGraphGrammar.c_str());
 		assert(loadGrammarResult && "Can't load pass grammar");
 
-		parser["Material"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["FrameGraph"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			Parsing::MaterialContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::MaterialContext>&>(ctx);
+			Parsing::FrameGraphSourceContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::FrameGraphSourceContext>&>(ctx);
 			
 			std::for_each(sv.begin(), sv.end(),
 				[&parseCtx](const peg::any& pass) 
@@ -817,7 +817,7 @@ namespace
 }
 
 
-MaterialCompiler::PassCompiledShaders_t MaterialCompiler::CompileShaders(const PassParametersSource& pass, const std::vector<Parsing::Resource_t>& globalRes) const
+FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const PassParametersSource& pass, const std::vector<Parsing::Resource_t>& globalRes) const
 {
 	PassCompiledShaders_t passCompiledShaders;
 
@@ -910,31 +910,66 @@ MaterialCompiler::PassCompiledShaders_t MaterialCompiler::CompileShaders(const P
 	return passCompiledShaders;
 }
 
-MaterialCompiler::MaterialCompiler()
+FrameGraphBuilder::FrameGraphBuilder()
 {
 	std::string pathToThisFile = __FILE__;
 	ROOT_DIR_PATH = pathToThisFile.substr(0, pathToThisFile.rfind("\\"));
 }
 
-MaterialCompiler& MaterialCompiler::Inst()
+FrameGraphBuilder& FrameGraphBuilder::Inst()
 {
-	static MaterialCompiler* matCompiler = nullptr;
+	static FrameGraphBuilder* matCompiler = nullptr;
 
 	if (matCompiler == nullptr)
 	{
-		matCompiler = new MaterialCompiler();
+		matCompiler = new FrameGraphBuilder();
 	}
 
 	return *matCompiler;
 }
 
-PassMaterial MaterialCompiler::GenerateMaterial()
+FrameGraph FrameGraphBuilder::BuildFrameGraph()
 {
-	PassMaterial material;
+	return CompileFrameGraph(GenerateFrameGraphSource());
+}
 
-	std::shared_ptr<Parsing::MaterialContext> parseCtx = ParseMaterialFile(LoadMaterialFile());
+FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
+{
+	FrameGraph frameGraph;
 
-	std::vector<PassParameters> passes = GeneratePasses();
+	frameGraph.passes.clear();
+
+	for (int i = 0; i < source.passesParameters.size(); ++i)
+	{
+		PassParameters& passParameters = source.passesParameters[i];
+
+		switch (passParameters.input)
+		{
+		case PassParametersSource::InputType::UI:
+		{
+			Pass_t& pass = frameGraph.passes.emplace_back(Pass_UI{});
+			InitPass(std::move(passParameters), pass);
+		}
+		break;
+		case PassParametersSource::InputType::Undefined:
+		{
+			assert(false && "Pass with undefined input is detected");
+		}
+		break;
+		default:
+			break;
+		}
+	}
+
+	return frameGraph;
+}
+
+FrameGraphSource FrameGraphBuilder::GenerateFrameGraphSource() const
+{
+	FrameGraphSource frameGraphSource;
+
+	std::shared_ptr<Parsing::FrameGraphSourceContext> parseCtx = ParseFrameGraphFile(LoadFrameGraphFile());
+	std::vector<PassParameters> passes = GeneratePassesParameters();
 
 	for (const std::string& passName : parseCtx->passes)
 	{
@@ -946,35 +981,35 @@ PassMaterial MaterialCompiler::GenerateMaterial()
 
 		assert(targetPassIt != passes.cend() && "Can't generate material, target pass is not found");
 
-		material.passes.push_back(std::move(*targetPassIt));
+		frameGraphSource.passesParameters.push_back(std::move(*targetPassIt));
 	}
 
-	return material;
+	return frameGraphSource;
 }
 
-std::vector<PassParameters> MaterialCompiler::GeneratePasses() const
+std::vector<PassParameters> FrameGraphBuilder::GeneratePassesParameters() const
 {
 	std::shared_ptr<Parsing::PassParametersContext> parseCtx = ParsePassFiles(LoadPassFiles());
 
-	std::vector<PassParameters> passes;
+	std::vector<PassParameters> passesParameters;
 
 	for (const PassParametersSource& passSource : parseCtx->passSources)
 	{
-		passes.push_back(CompilePass(passSource, parseCtx->resources));
+		passesParameters.push_back(CompilePass(passSource, parseCtx->resources));
 	}
 
-	return passes;
+	return passesParameters;
 }
 
-std::unordered_map<std::string, std::string> MaterialCompiler::LoadPassFiles() const
+std::unordered_map<std::string, std::string> FrameGraphBuilder::LoadPassFiles() const
 {
 	std::unordered_map<std::string, std::string> passFiles;
 
-	for (const auto& file : std::filesystem::directory_iterator(GenPathToFile(Settings::MATERIAL_DIR)))
+	for (const auto& file : std::filesystem::directory_iterator(GenPathToFile(Settings::FRAMEGRAPH_DIR)))
 	{
 		const std::filesystem::path filePath = file.path();
 
-		if (filePath.extension() == Settings::MATERIAL_PASS_FILE_EXT)
+		if (filePath.extension() == Settings::FRAMEGRAPH_PASS_FILE_EXT)
 		{
 			std::string passFileContent = ReadFile(filePath);
 
@@ -987,17 +1022,17 @@ std::unordered_map<std::string, std::string> MaterialCompiler::LoadPassFiles() c
 	return passFiles;
 }
 
-std::string MaterialCompiler::LoadMaterialFile() const
+std::string FrameGraphBuilder::LoadFrameGraphFile() const
 {
-	for (const auto& file : std::filesystem::directory_iterator(GenPathToFile(Settings::MATERIAL_DIR)))
+	for (const auto& file : std::filesystem::directory_iterator(GenPathToFile(Settings::FRAMEGRAPH_DIR)))
 	{
 		const std::filesystem::path filePath = file.path();
 
-		if (filePath.extension() == Settings::MATERIAL_FILE_EXT)
+		if (filePath.extension() == Settings::FRAMEGRAPH_FILE_EXT)
 		{
-			std::string materialFileContent = ReadFile(filePath);
+			std::string frameGraphFileContent = ReadFile(filePath);
 
-			return materialFileContent;
+			return frameGraphFileContent;
 		}
 	}
 
@@ -1006,13 +1041,13 @@ std::string MaterialCompiler::LoadMaterialFile() const
 	return std::string();
 }
 
-void MaterialCompiler::PreprocessPassFiles(const std::vector<std::string>& fileList)
+void FrameGraphBuilder::PreprocessPassFiles(const std::vector<std::string>& fileList)
 {
 	//#DEBUG going to make it work without preprocess first. And the add preprocessing
 }
 
 //#DEBUG not sure returning context is fine
-std::shared_ptr<Parsing::PassParametersContext> MaterialCompiler::ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles) const
+std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles) const
 {
 	peg::parser parser;
 	InitPassParser(parser);
@@ -1040,20 +1075,20 @@ std::shared_ptr<Parsing::PassParametersContext> MaterialCompiler::ParsePassFiles
 	return context;
 }
 
-std::shared_ptr<Parsing::MaterialContext> MaterialCompiler::ParseMaterialFile(const std::string& materialFileContent) const
+std::shared_ptr<Parsing::FrameGraphSourceContext> FrameGraphBuilder::ParseFrameGraphFile(const std::string& frameGraphSourceFileContent) const
 {
 	peg::parser parser;
-	InitMaterialParser(parser);
+	InitFrameGraphSourceParser(parser);
 
-	std::shared_ptr<Parsing::MaterialContext> context = std::make_shared<Parsing::MaterialContext>();
+	std::shared_ptr<Parsing::FrameGraphSourceContext> context = std::make_shared<Parsing::FrameGraphSourceContext>();
 	peg::any ctx = context;
 
-	parser.parse(materialFileContent.c_str(), ctx);
+	parser.parse(frameGraphSourceFileContent.c_str(), ctx);
 
 	return context;
 }
 
-std::vector<D3D12_INPUT_ELEMENT_DESC> MaterialCompiler::GenerateInputLayout(const PassParametersSource& pass) const
+std::vector<D3D12_INPUT_ELEMENT_DESC> FrameGraphBuilder::GenerateInputLayout(const PassParametersSource& pass) const
 {
 	const Parsing::VertAttr& vertAttr = GetPassInputVertAttr(pass);
 
@@ -1095,7 +1130,7 @@ std::vector<D3D12_INPUT_ELEMENT_DESC> MaterialCompiler::GenerateInputLayout(cons
 	return inputLayout;
 }
 
-const Parsing::VertAttr& MaterialCompiler::GetPassInputVertAttr(const PassParametersSource& pass) const
+const Parsing::VertAttr& FrameGraphBuilder::GetPassInputVertAttr(const PassParametersSource& pass) const
 {
 	const std::string& inputName = pass.inputVertAttr;
 
@@ -1107,7 +1142,7 @@ const Parsing::VertAttr& MaterialCompiler::GetPassInputVertAttr(const PassParame
 	return *attrIt;
 }
 
-ComPtr<ID3D12RootSignature> MaterialCompiler::GenerateRootSignature(const PassParametersSource& pass, const PassCompiledShaders_t& shaders) const
+ComPtr<ID3D12RootSignature> FrameGraphBuilder::GenerateRootSignature(const PassParametersSource& pass, const PassCompiledShaders_t& shaders) const
 {
 	assert(shaders.empty() == false && "Can't generate root signature with not shaders");
 
@@ -1121,7 +1156,7 @@ ComPtr<ID3D12RootSignature> MaterialCompiler::GenerateRootSignature(const PassPa
 	return rootSig;
 }
 
-ComPtr<ID3D12PipelineState> MaterialCompiler::GeneratePipelineStateObject(const PassParametersSource& passSource, PassCompiledShaders_t& shaders, ComPtr<ID3D12RootSignature>& rootSig) const
+ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const PassParametersSource& passSource, PassCompiledShaders_t& shaders, ComPtr<ID3D12RootSignature>& rootSig) const
 {
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = passSource.psoDesc;
 
@@ -1164,7 +1199,7 @@ ComPtr<ID3D12PipelineState> MaterialCompiler::GeneratePipelineStateObject(const 
 	return pipelineState;
 }
 
-void MaterialCompiler::CreateResourceArguments(const PassParametersSource& passSource, const std::vector<Parsing::Resource_t>& globalRes, PassParameters& pass) const
+void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& passSource, const std::vector<Parsing::Resource_t>& globalRes, PassParameters& pass) const
 {
 	const std::vector<Parsing::Resource_t>& passResources = passSource.resources;
 
@@ -1273,7 +1308,7 @@ void MaterialCompiler::CreateResourceArguments(const PassParametersSource& passS
 	}
 }
 
-PassParameters MaterialCompiler::CompilePass(const PassParametersSource& passSource, const std::vector<Parsing::Resource_t>& globalRes) const
+PassParameters FrameGraphBuilder::CompilePass(const PassParametersSource& passSource, const std::vector<Parsing::Resource_t>& globalRes) const
 {
 	PassParameters pass;
 
@@ -1293,7 +1328,18 @@ PassParameters MaterialCompiler::CompilePass(const PassParametersSource& passSou
 	return pass;
 }
 
-std::filesystem::path MaterialCompiler::GenPathToFile(const std::string fileName) const
+void FrameGraphBuilder::InitPass(PassParameters&& passParameters, Pass_t& pass) const
+{
+	std::visit([&passParameters](auto&& pass)
+	{
+		pass.passParameters = std::move(passParameters);
+
+		pass.Init();
+
+	}, pass);
+}
+
+std::filesystem::path FrameGraphBuilder::GenPathToFile(const std::string fileName) const
 {
 	std::filesystem::path path = ROOT_DIR_PATH;
 	path.append(fileName);

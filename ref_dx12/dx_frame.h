@@ -13,6 +13,7 @@
 #include "dx_threadingutils.h"
 #include "dx_texture.h"
 #include "dx_pass.h"
+#include "dx_framegraph.h"
 
 class Semaphore;
 

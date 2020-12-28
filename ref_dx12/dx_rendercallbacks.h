@@ -26,12 +26,12 @@ namespace RenderCallbacks
 	struct PerObjectUpdateContext
 	{
 		XMFLOAT4X4 viewProjMat;
-		Context& jobCtx;
+		JobContext& jobCtx;
 	};
 
 	struct PerObjectRegisterContext
 	{
-		Context& jobCtx;
+		JobContext& jobCtx;
 	};
 
 	template<typename sT, typename bT>

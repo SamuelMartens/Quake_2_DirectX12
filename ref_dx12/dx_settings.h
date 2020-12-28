@@ -39,11 +39,11 @@ namespace Settings
 
 	extern const std::string	 GRAMMAR_DIR;
 	extern const std::string	 GRAMMAR_PASS_FILENAME;
-	extern const std::string	 GRAMMAR_MATERIAL_FILENAME;
+	extern const std::string	 GRAMMAR_FRAMEGRAPH_FILENAME;
 
-	extern const std::string	 MATERIAL_DIR;
-	extern const std::string	 MATERIAL_PASS_FILE_EXT;
-	extern const std::string	 MATERIAL_FILE_EXT;
+	extern const std::string	 FRAMEGRAPH_DIR;
+	extern const std::string	 FRAMEGRAPH_PASS_FILE_EXT;
+	extern const std::string	 FRAMEGRAPH_FILE_EXT;
 
 #ifdef _DEBUG
 	constexpr UINT		SHADER_COMPILATION_FLAGS = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;

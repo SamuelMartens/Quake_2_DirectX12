@@ -75,12 +75,12 @@ JobQueue& JobSystem::GetJobQueue()
 	return jobQueue;
 }
 
-Context::Context(Frame& frameVal, CommandList& commandListVal):
+JobContext::JobContext(Frame& frameVal, CommandList& commandListVal):
 	frame(frameVal),
 	commandList(commandListVal)
 {}
 
-void Context::CreateDependencyFrom(std::vector<Context*> dependsFromList)
+void JobContext::CreateDependencyFrom(std::vector<JobContext*> dependsFromList)
 {
 	ASSERT_MAIN_THREAD;
 
@@ -89,19 +89,19 @@ void Context::CreateDependencyFrom(std::vector<Context*> dependsFromList)
 
 	waitDependancy = std::make_shared<Semaphore>(dependsFromList.size());
 
-	for (Context* dependency : dependsFromList)
+	for (JobContext* dependency : dependsFromList)
 	{
 		dependency->signalDependencies.push_back(waitDependancy);
 	}
 	
 }
 
-void Context::CreateDependencyFrom(std::vector<Context>& dependsFromList)
+void JobContext::CreateDependencyFrom(std::vector<JobContext>& dependsFromList)
 {
-	std::vector<Context*> dependsFromListPtrs;
+	std::vector<JobContext*> dependsFromListPtrs;
 	dependsFromListPtrs.reserve(dependsFromList.size());
 
-	for (Context& ctx : dependsFromList)
+	for (JobContext& ctx : dependsFromList)
 	{
 		dependsFromListPtrs.push_back(&ctx);
 	}
@@ -109,7 +109,7 @@ void Context::CreateDependencyFrom(std::vector<Context>& dependsFromList)
 	CreateDependencyFrom(std::move(dependsFromListPtrs));
 }
 
-void Context::SignalDependencies()
+void JobContext::SignalDependencies()
 {
 	for (std::shared_ptr<Semaphore>& dep : signalDependencies)
 	{

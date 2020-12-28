@@ -4,7 +4,7 @@
 #include "dx_resourcemanager.h"
 #include "dx_diagnostics.h"
 
-void MemoryManager::Init(Context& context)
+void MemoryManager::Init(JobContext& context)
 {
 	DefaultBuff_t& defaultBuff = GetBuff<Default>();
 	

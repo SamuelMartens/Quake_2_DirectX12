@@ -19,7 +19,7 @@
 #include "dx_diagnostics.h"
 #include "dx_infrastructure.h"
 #include "dx_settings.h"
-#include "dx_materialcompiler.h"
+#include "dx_framegraphbuilder.h"
 #include "dx_resourcemanager.h"
 #include "dx_memorymanager.h"
 
@@ -304,7 +304,7 @@ void Renderer::InitDx()
 
 	// ------- Open init command list -----
 	AcquireCurrentFrame();
-	Context initContext = CreateContext(GetCurrentFrame());
+	JobContext initContext = CreateContext(GetCurrentFrame());
 
 	initContext.commandList.Open();
 
@@ -407,8 +407,7 @@ void Renderer::InitFrames()
 {
 	assert(Settings::SWAP_CHAIN_BUFFER_COUNT == Settings::FRAMES_NUM && "Swap chain buffer count shall be equal to frames num");
 
-	FrameGraph frameGraph;
-	frameGraph.BuildFrameGraph(MaterialCompiler::Inst().GenerateMaterial());
+	FrameGraph frameGraph = FrameGraphBuilder::Inst().BuildFrameGraph();
 
 	for (int i = 0; i < Settings::FRAMES_NUM; ++i)
 	{
@@ -703,7 +702,7 @@ void Renderer::SetMaterialAsync(const std::string& name, CommandList& commandLis
 	commandList.commandList->IASetPrimitiveTopology(materialIt->primitiveTopology);
 }
 
-void Renderer::SetNonMaterialState(Context& context) const
+void Renderer::SetNonMaterialState(JobContext& context) const
 {
 	CommandList& commandList = context.commandList;
 	Frame& frame = context.frame;
@@ -1052,7 +1051,7 @@ std::vector<int> Renderer::BuildObjectsInFrustumList(const Camera& camera, const
 	return res;
 }
 
-void Renderer::EndFrameJob(Context& context)
+void Renderer::EndFrameJob(JobContext& context)
 {
 	Logs::Logf(Logs::Category::Job, "EndFrame job started frame %d", context.frame.frameNumber);
 
@@ -1095,7 +1094,7 @@ void Renderer::EndFrameJob(Context& context)
 	Logs::Log(Logs::Category::Job, "EndFrame job ended");
 }
 
-void Renderer::BeginFrameJob(Context& context)
+void Renderer::BeginFrameJob(JobContext& context)
 {
 	Logs::Logf(Logs::Category::Job, "BeginFrame job started frame %d", context.frame.frameNumber);
 
@@ -1130,7 +1129,7 @@ void Renderer::BeginFrameJob(Context& context)
 	Logs::Logf(Logs::Category::Job, "BeginFrame job ended frame %d", frame.frameNumber);
 }
 
-void Renderer::DrawUIJob(Context& context)
+void Renderer::DrawUIJob(JobContext& context)
 {
 	JOB_GUARD(context);
 	Logs::Logf(Logs::Category::Job, "DrawUI job started frame %d", context.frame.frameNumber);
@@ -1205,7 +1204,7 @@ void Renderer::DrawUIJob(Context& context)
 	Logs::Logf(Logs::Category::Job, "DrawUI job ended frame %d", frame.frameNumber);
 }
 
-void Renderer::DrawStaticGeometryJob(Context& context)
+void Renderer::DrawStaticGeometryJob(JobContext& context)
 {
 	JOB_GUARD(context);
 
@@ -1242,7 +1241,7 @@ void Renderer::DrawStaticGeometryJob(Context& context)
 	Logs::Logf(Logs::Category::Job, "Static job ended frame %d", context.frame.frameNumber);
 }
 
-void Renderer::DrawDynamicGeometryJob(Context& context)
+void Renderer::DrawDynamicGeometryJob(JobContext& context)
 {
 	JOB_GUARD(context);
 
@@ -1289,7 +1288,7 @@ void Renderer::DrawDynamicGeometryJob(Context& context)
 	Logs::Logf(Logs::Category::Job, "Dynamic job ended frame %d", context.frame.frameNumber);
 }
 
-void Renderer::DrawParticleJob(Context& context)
+void Renderer::DrawParticleJob(JobContext& context)
 {
 	JOB_GUARD(context);
 
@@ -1333,7 +1332,7 @@ void Renderer::DrawParticleJob(Context& context)
 	Logs::Logf(Logs::Category::Job, "Particle job ended frame %d", context.frame.frameNumber);
 }
 
-void Renderer::ExecuteDrawUIPass(Context& context, const PassParameters& pass)
+void Renderer::ExecuteDrawUIPass(JobContext& context, const PassParameters& pass)
 {
 	JOB_GUARD(context);
 
@@ -1370,7 +1369,7 @@ void Renderer::ShutdownWin32()
 	m_hWindows = NULL;
 }
 
-DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t* model, Context& context)
+DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t* model, JobContext& context)
 {
 	DynamicObjectModel object;
 
@@ -1491,7 +1490,7 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	return object;
 }
 
-void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Context& context)
+void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, JobContext& context)
 {
 	// Fill up vertex buffer
 	std::vector<ShDef::Vert::PosTexCoord> vertices;
@@ -1584,7 +1583,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, Contex
 
 }
 
-void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, Context& context)
+void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, JobContext& context)
 {
 	// Looks like if leaf return, leafs don't contain any geom
 	if (node.contents != -1)
@@ -1611,17 +1610,17 @@ void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, C
 	}
 }
 
-Context Renderer::CreateContext(Frame& frame)
+JobContext Renderer::CreateContext(Frame& frame)
 {
 	ASSERT_MAIN_THREAD;
 
 	const int commandListIndex = m_commandListBuffer.allocator.Allocate();
 	frame.acquiredCommandListsIndices.push_back(commandListIndex);
 
-	return Context(frame, m_commandListBuffer.commandLists[commandListIndex]);
+	return JobContext(frame, m_commandListBuffer.commandLists[commandListIndex]);
 }
 
-void Renderer::Draw(const StaticObject& object, Context& context)
+void Renderer::Draw(const StaticObject& object, JobContext& context)
 {
 	MemoryManager::DefaultBuff_t& defaultMemory =
 		MemoryManager::Inst().GetBuff<MemoryManager::Default>();
@@ -1664,7 +1663,7 @@ void Renderer::Draw(const StaticObject& object, Context& context)
 	commandList.commandList->DrawInstanced(vertBuffView.SizeInBytes / vertBuffView.StrideInBytes, 1, 0, 0);
 }
 
-void Renderer::DrawIndiced(const StaticObject& object, Context& context)
+void Renderer::DrawIndiced(const StaticObject& object, JobContext& context)
 {
 	assert(object.indices != Const::INVALID_BUFFER_HANDLER && "Trying to draw indexed object without index buffer");
 
@@ -1718,7 +1717,7 @@ void Renderer::DrawIndiced(const StaticObject& object, Context& context)
 	commandList.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
 }
 
-void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, Context& context)
+void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, JobContext& context)
 {
 	CommandList& commandList = context.commandList;
 
@@ -1903,7 +1902,7 @@ void Renderer::AddParticleToDrawList(const particle_t& particle, BufferHandler v
 	ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
 }
 
-void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, Context& context)
+void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, JobContext& context)
 {
 	CommandList& commandList = context.commandList;
 	constexpr int vertexStrideInBytes = sizeof(ShDef::Vert::PosCol);
@@ -2080,7 +2079,7 @@ void Renderer::DeleteUploadMemoryBuffer(BufferHandler handler)
 	MemoryManager::Inst().GetBuff<MemoryManager::Upload>().Delete(handler);
 }
 
-void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, Context& context)
+void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, JobContext& context)
 {
 	assert(bufferPiece.handler != Const::INVALID_BUFFER_HANDLER &&
 		bufferPiece.offset != Const::INVALID_OFFSET &&
@@ -2120,7 +2119,7 @@ void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, 
 	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context& context)
+void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, JobContext& context)
 {
 	const Camera& camera = context.frame.camera;
 	
@@ -2142,7 +2141,7 @@ void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, Context
 	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, Context& context)
+void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, JobContext& context)
 {
 	const Camera& camera = context.frame.camera;
 
@@ -2192,7 +2191,7 @@ void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entit
 	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-BufferHandler Renderer::UpdateParticleConstantBuffer(Context& context)
+BufferHandler Renderer::UpdateParticleConstantBuffer(JobContext& context)
 {
 	const Camera& camera = context.frame.camera;
 
@@ -2326,7 +2325,7 @@ void Renderer::EndLevelLoading()
 
 	m_dynamicModelRegContext->commandList.Close();
 	
-	Context createDeferredTextureContext = CreateContext(frame);
+	JobContext createDeferredTextureContext = CreateContext(frame);
 	ResourceManager::Inst().CreateDeferredTextures(createDeferredTextureContext);
 	
 	CloseFrame(frame);
@@ -2384,7 +2383,7 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 	GetCurrentFrame().uiDrawCalls.push_back(std::move(drawCall));
 }
 
-void Renderer::Draw_Pic(int x, int y, const char* name, const BufferPiece& bufferPiece, Context& context)
+void Renderer::Draw_Pic(int x, int y, const char* name, const BufferPiece& bufferPiece, JobContext& context)
 {
 	std::array<char, MAX_QPATH> texFullName;
 	ResourceManager::Inst().GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
@@ -2413,7 +2412,7 @@ void Renderer::Draw_Pic(int x, int y, const char* name, const BufferPiece& buffe
 	DrawStreaming(drawArgs);
 }
 
-void Renderer::Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, Context& context)
+void Renderer::Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, JobContext& context)
 {
 	num &= 0xFF;
 
@@ -2465,7 +2464,7 @@ void Renderer::Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, 
 	 DrawStreaming(drawArgs);
 }
 
-void Renderer::Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, Context& context)
+void Renderer::Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, JobContext& context)
 {
 	// If there is no data, then texture is requested to be created for this frame. So no need to update
 	if (drawCall.data.empty() == false)
@@ -2549,7 +2548,7 @@ void Renderer::EndFrame()
 
 	if (frame.texCreationRequests.empty() == false)
 	{
-		Context createDeferredTextureContext = CreateContext(frame);
+		JobContext createDeferredTextureContext = CreateContext(frame);
 		ResourceManager::Inst().CreateDeferredTextures(createDeferredTextureContext);
 	}
 
@@ -2558,17 +2557,17 @@ void Renderer::EndFrame()
 
 	// Create contexts
 	// NOTE: creation order is the order in which command Lists will be submitted.
-	Context beginFrameContext = CreateContext(frame);
+	JobContext beginFrameContext = CreateContext(frame);
 
-	Context drawStaticObjectsContext = CreateContext(frame);
+	JobContext drawStaticObjectsContext = CreateContext(frame);
 	
-	Context drawDynamicObjectsContext = CreateContext(frame);
+	JobContext drawDynamicObjectsContext = CreateContext(frame);
 
-	Context drawParticlesContext = CreateContext(frame);
+	JobContext drawParticlesContext = CreateContext(frame);
 
-	Context drawUIContext = CreateContext(frame);
+	JobContext drawUIContext = CreateContext(frame);
 	
-	Context endFrameContext = CreateContext(frame);
+	JobContext endFrameContext = CreateContext(frame);
 
 	// Set up dependencies
 	
@@ -2642,7 +2641,7 @@ void Renderer::EndFrame_Material()
 
 	if (frame.texCreationRequests.empty() == false)
 	{
-		Context createDeferredTextureContext = CreateContext(frame);
+		JobContext createDeferredTextureContext = CreateContext(frame);
 		ResourceManager::Inst().CreateDeferredTextures(createDeferredTextureContext);
 	}
 
@@ -2687,8 +2686,8 @@ void Renderer::RegisterWorldModel(const char* model)
 	AcquireCurrentFrame();
 	Frame& frame = GetCurrentFrame();
 
-	Context context = CreateContext(frame);
-	m_staticModelRegContext = std::make_unique<Context>(context);
+	JobContext context = CreateContext(frame);
+	m_staticModelRegContext = std::make_unique<JobContext>(context);
 
 	context.commandList.Open();
 
@@ -2742,7 +2741,7 @@ void Renderer::BeginLevelLoading(const char* mapName)
 	AcquireCurrentFrame();
 	Frame& frame = GetCurrentFrame();
 
-	m_dynamicModelRegContext = std::make_unique<Context>(CreateContext(frame));
+	m_dynamicModelRegContext = std::make_unique<JobContext>(CreateContext(frame));
 	m_dynamicModelRegContext->commandList.Open();
 
 	DetachCurrentFrame();

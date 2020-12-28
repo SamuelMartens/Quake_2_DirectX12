@@ -1,4 +1,4 @@
-Material <- Pass+ 
+FrameGraph <- Pass+ 
 
 Pass 	<-  ( _ < [a-zA-Z][a-zA-Z0-9]* > _ )
 

@@ -84,21 +84,3 @@ public:
 	D3D_PRIMITIVE_TOPOLOGY primitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
 };
 
-
-//#DEBUG rename this to just materials
-class PassMaterial
-{
-public:
-
-	PassMaterial() = default;
-
-	PassMaterial(const PassMaterial&) = default;
-	PassMaterial& operator=(const PassMaterial&) = default;
-
-	PassMaterial(PassMaterial&&) = default;
-	PassMaterial& operator=(PassMaterial&&) = default;
-
-	~PassMaterial() = default;
-
-	std::vector<PassParameters> passes;
-};
