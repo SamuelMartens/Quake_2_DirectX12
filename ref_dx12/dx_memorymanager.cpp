@@ -4,7 +4,7 @@
 #include "dx_resourcemanager.h"
 #include "dx_diagnostics.h"
 
-void MemoryManager::Init(JobContext& context)
+void MemoryManager::Init(GPUJobContext& context)
 {
 	DefaultBuff_t& defaultBuff = GetBuff<Default>();
 	

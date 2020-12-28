@@ -33,7 +33,7 @@ public:
 
 	DEFINE_SINGLETON(MemoryManager);
 
-	void Init(JobContext& context);
+	void Init(GPUJobContext& context);
 
 private:
 

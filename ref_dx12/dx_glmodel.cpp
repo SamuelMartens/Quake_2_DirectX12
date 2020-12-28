@@ -8,9 +8,9 @@
 model_t	*loadmodel;
 int		modfilelen;
 
-void Mod_LoadSpriteModel(model_t *mod, void *buffer, JobContext& context);
-void Mod_LoadBrushModel(model_t *mod, void *buffer, JobContext& context);
-void Mod_LoadAliasModel(model_t *mod, void *buffer, JobContext& context);
+void Mod_LoadSpriteModel(model_t *mod, void *buffer, GPUJobContext& context);
+void Mod_LoadBrushModel(model_t *mod, void *buffer, GPUJobContext& context);
+void Mod_LoadAliasModel(model_t *mod, void *buffer, GPUJobContext& context);
 
 byte	mod_novis[MAX_MAP_LEAFS/8];
 
@@ -254,7 +254,7 @@ Loads in a model for the given name
 ==================
 */
 
-model_t * Mod_ForName(char *name, qboolean crash, JobContext& context)
+model_t * Mod_ForName(char *name, qboolean crash, GPUJobContext& context)
 {
 	model_t	*mod;
 	unsigned *buf;
@@ -556,7 +556,7 @@ Mod_LoadTexinfo
 =================
 */
 
-void Mod_LoadTexinfo(lump_t *l, JobContext& context)
+void Mod_LoadTexinfo(lump_t *l, GPUJobContext& context)
 {
 	texinfo_t *in;
 	mtexinfo_t *out, *step;
@@ -1019,7 +1019,7 @@ Mod_LoadBrushModel
 =================
 */
 
-void Mod_LoadBrushModel(model_t *mod, void *buffer, JobContext& context)
+void Mod_LoadBrushModel(model_t *mod, void *buffer, GPUJobContext& context)
 {
 	int			i;
 	dheader_t	*header;
@@ -1115,7 +1115,7 @@ Mod_LoadAliasModel
 =================
 */
 
-void Mod_LoadAliasModel(model_t *mod, void *buffer, JobContext& context)
+void Mod_LoadAliasModel(model_t *mod, void *buffer, GPUJobContext& context)
 {
 	int					i, j;
 	dmdl_t				*pinmodel, *pheader;
@@ -1271,7 +1271,7 @@ Mod_LoadSpriteModel
 =================
 */
 
-void Mod_LoadSpriteModel(model_t *mod, void *buffer, JobContext& context)
+void Mod_LoadSpriteModel(model_t *mod, void *buffer, GPUJobContext& context)
 {
 	dsprite_t	*sprin, *sprout;
 	int			i;

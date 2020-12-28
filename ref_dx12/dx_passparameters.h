@@ -278,13 +278,8 @@ public:
 
 	std::vector<RootArg::Arg_t> perObjectRootArgsTemplate;
 
-	// I do need this if I want callback style handling of vertex attributes
-	// Maybe not everything from this tho. Like rawView is not required. 
-	// Will refactor this if I will ever do callbacks for vertex attribute handling
-	//#DEBUG rework this on something that I actually need
 	Parsing::VertAttr vertAttr;
 
-	//#TODO this doesn't belongs to pass, as pass type is what defines information for that
 	PassParametersSource::InputType input = PassParametersSource::InputType::Undefined;
 
 	ComPtr<ID3D12PipelineState>		  pipelineState;

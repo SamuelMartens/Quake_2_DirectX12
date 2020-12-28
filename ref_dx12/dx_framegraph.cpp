@@ -17,20 +17,17 @@ void FrameGraph::Execute(Frame& frame)
 	tempMat = XMMatrixOrthographicRH(frame.camera.width, frame.camera.height, 0.0f, 1.0f);
 	XMStoreFloat4x4(&frame.uiProjectionMat, tempMat);
 
-	//#TODO get rid of begin frame hack
 	// NOTE: creation order is the order in which command Lists will be submitted.
 	// Set up dependencies 
-
-	std::vector<JobContext> framePassContexts;
-	//#DEBUG this is not even frame pass context
-	JobContext& beginFrameContext = framePassContexts.emplace_back(renderer.CreateContext(frame));
+	std::vector<GPUJobContext> framePassContexts;
+	GPUJobContext& beginFrameContext = framePassContexts.emplace_back(renderer.CreateContext(frame));
 
 	for (Pass_t& pass : passes)
 	{
 		framePassContexts.emplace_back(renderer.CreateContext(frame));
 	};
 
-	JobContext endFrameJobContext = renderer.CreateContext(frame);
+	GPUJobContext endFrameJobContext = renderer.CreateContext(frame);
 	endFrameJobContext.CreateDependencyFrom(framePassContexts);
 
 	jobQueue.Enqueue(Job([ctx = framePassContexts[0], &renderer]() mutable

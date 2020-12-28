@@ -9,9 +9,6 @@
 #include <vector>
 #include <unordered_map>
 
-#include "dx_frame.h"
-#include "dx_commandlist.h"
-#include "dx_threadingutils.h"
 #include "dx_utils.h"
 
 // Core job stuff
@@ -99,28 +96,3 @@ private:
 
 	std::vector<WorkerThread> workerThreads;
 };
-
-
-
-// Utilities 
-struct JobContext
-{
-	/* SHOULD BE SAFE TO COPY */
-	JobContext(Frame& frameVal, CommandList& commandListVal);
-
-	void CreateDependencyFrom(std::vector<JobContext*> dependsFromList);
-	void CreateDependencyFrom(std::vector<JobContext>& dependsFromList);
-	void SignalDependencies();
-
-	// This properties represent relationship between jobs that Semaphore implements.
-	// Which is one to many, Which means one job can wait for multiple jobs to be finished,
-	// each one will increment semaphore by one.
-	std::vector<std::shared_ptr<Semaphore>> signalDependencies;
-	std::shared_ptr<Semaphore> waitDependancy;
-
-	Frame& frame;
-	CommandList& commandList;
-};
-
-using DependenciesRAIIGuard_t = Utils::RAIIGuard<JobContext, 
-	nullptr, &JobContext::SignalDependencies>;

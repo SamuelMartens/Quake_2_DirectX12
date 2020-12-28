@@ -11,9 +11,11 @@
 #include "dx_resourcemanager.h"
 #include "dx_memorymanager.h"
 
-void Pass_UI::Init()
+void Pass_UI::Init(PassParameters&& parameters)
 {
 	ASSERT_MAIN_THREAD;
+
+	passParameters = std::move(parameters);
 
 	// UI uses streaming objects. So we need to preallocate piece of memory that will be
 	// used for each run
@@ -88,7 +90,7 @@ void Pass_UI::Init()
 	XMStoreFloat4x4(&yInverseAndCenterMatrix, sseResultMatrix);
 }
 
-void Pass_UI::Start(JobContext& jobCtx)
+void Pass_UI::Start(GPUJobContext& jobCtx)
 {
 	const std::vector<DrawCall_UI_t>& objects = jobCtx.frame.uiDrawCalls;
 	MemoryManager::UploadBuff_t& uploadMemory =
@@ -149,7 +151,7 @@ void Pass_UI::Start(JobContext& jobCtx)
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 							{
 								assert(false && "Desc table view is probably not implemented! Make sure it is");
-								//#DEBUG this needs view allocation
+								//#TODO make view allocation
 								descTableEntitiy.gpuMem.handler = constBuffMemory;
 								descTableEntitiy.gpuMem.offset = objectOffset + rootArgOffset;
 
@@ -275,7 +277,7 @@ void Pass_UI::Start(JobContext& jobCtx)
 	}
 }
 
-void Pass_UI::UpdateDrawObjects(JobContext& jobCtx)
+void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 {
 	RenderCallbacks::PerObjectUpdateContext updateCtx = { XMFLOAT4X4(), jobCtx };
 
@@ -295,12 +297,9 @@ void Pass_UI::UpdateDrawObjects(JobContext& jobCtx)
 	{
 		StageObj& obj = drawObjects[i];
 
-		// Start of the memory for the current object
-		int currentObjecOffset = i * perObjectConstBuffMemorySize;
-
 		for (RootArg::Arg_t& rootArg : obj.rootArgs)
 		{
-			std::visit([&updateCtx, &obj, this,  &currentObjecOffset, &cpuMem](auto&& rootArg) 
+			std::visit([&updateCtx, &obj, this, &cpuMem](auto&& rootArg) 
 			{
 				using T = std::decay_t<decltype(rootArg)>;
 
@@ -314,31 +313,24 @@ void Pass_UI::UpdateDrawObjects(JobContext& jobCtx)
 				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
 				{
 					// Start of the memory of the current buffer
-					int currentBufferOffset = currentObjecOffset;
-
-					// If this is true, which it should be, some offset calculation here could be greatly simplified.
-					//#DEBUG this is valid assumption, eh?
-					assert(currentBufferOffset == rootArg.gpuMem.offset && "Update offset for const buffer is not equal, eh?");
+					int fieldOffset = rootArg.gpuMem.offset;
 
 					for (RootArg::ConstBuffField& field : rootArg.content)
 					{
-						std::visit([&rootArg, &updateCtx, this, &currentObjecOffset, &field, &cpuMem, &currentBufferOffset](auto&& obj)
+						std::visit([&rootArg, &updateCtx, this, &field, &cpuMem, &fieldOffset](auto&& obj)
 						{
 							RenderCallbacks::PerObjectUpdateCallback(
 								HASH(passParameters.name.c_str()),
 								field.hashedName,
 								obj,
-								&cpuMem[currentBufferOffset],
+								&cpuMem[fieldOffset],
 								updateCtx);
 
 						}, *obj.originalDrawCall);
 
 						// Proceed to next buffer
-						currentBufferOffset += field.size;
+						fieldOffset += field.size;
 					}
-
-					currentObjecOffset += RootArg::GetConstBuffSize(rootArg);
-					assert(currentBufferOffset < currentObjecOffset && "Update error. Buffers overwrite other buffer");
 				}
 
 				if constexpr (std::is_same_v<T, RootArg::DescTable>)
@@ -359,8 +351,6 @@ void Pass_UI::UpdateDrawObjects(JobContext& jobCtx)
 
 			}, rootArg);
 		}
-
-		assert(currentObjecOffset <= (i + 1) * perObjectConstBuffMemorySize && "Update error. Per object const buff offset overwrites next obj memory");
 	}
 
 	auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
@@ -375,7 +365,7 @@ void Pass_UI::UpdateDrawObjects(JobContext& jobCtx)
 	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-void Pass_UI::SetUpRenderState(JobContext& jobCtx)
+void Pass_UI::SetUpRenderState(GPUJobContext& jobCtx)
 {
 	Frame& frame = jobCtx.frame;
 	ComPtr<ID3D12GraphicsCommandList>& commandList = jobCtx.commandList.commandList;
@@ -403,7 +393,7 @@ void Pass_UI::SetUpRenderState(JobContext& jobCtx)
 	commandList->IASetPrimitiveTopology(passParameters.primitiveTopology);
 }
 
-void Pass_UI::Draw(JobContext& jobCtx)
+void Pass_UI::Draw(GPUJobContext& jobCtx)
 {
 	ComPtr<ID3D12GraphicsCommandList>& commandList = jobCtx.commandList.commandList;
 	Renderer& renderer = Renderer::Inst();
@@ -433,7 +423,7 @@ void Pass_UI::Draw(JobContext& jobCtx)
 	}
 }
 
-void Pass_UI::Execute(JobContext& context)
+void Pass_UI::Execute(GPUJobContext& context)
 {
 	if (context.frame.uiDrawCalls.empty() == true)
 	{

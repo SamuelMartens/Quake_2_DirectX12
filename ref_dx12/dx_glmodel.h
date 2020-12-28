@@ -14,7 +14,7 @@ extern "C"
 
 
 #include "dx_texture.h"
-#include "dx_jobmultithreading.h"
+#include "dx_threadingutils.h"
 
 /*
 ==============================================================================
@@ -237,7 +237,7 @@ typedef struct model_s
 
 void	Mod_Init(void);
 void	Mod_ClearAll(void);
-model_t *Mod_ForName(char *name, qboolean crash, JobContext& context);
+model_t *Mod_ForName(char *name, qboolean crash, GPUJobContext& context);
 mleaf_t *Mod_PointInLeaf(float *p, model_t *model);
 byte	*Mod_ClusterPVS(int cluster, model_t *model);
 

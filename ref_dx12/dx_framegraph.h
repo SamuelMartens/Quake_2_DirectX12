@@ -2,6 +2,8 @@
 
 #include "dx_pass.h"
 
+// FrameGraph is a functional part of the frame. 
+// If a Frame is an object, FrameGraph is a Function that accept that object as argument
 class FrameGraphSource
 {
 public:

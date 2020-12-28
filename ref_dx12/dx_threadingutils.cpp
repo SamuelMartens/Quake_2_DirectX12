@@ -1,6 +1,8 @@
 #include "dx_threadingutils.h"
 
 #include "dx_diagnostics.h"
+#include "dx_frame.h"
+#include "dx_commandlist.h"
 
 #ifdef _DEBUG
 	#define SEMAPHORE_TIME_OUT 10000
@@ -107,3 +109,47 @@ void ThreadingUtils::AssertMainThread()
 {
 	assert(std::this_thread::get_id() == gMainThreadId && "This supposed to be executed in main thread only.");
 }
+
+
+GPUJobContext::GPUJobContext(Frame& frameVal, CommandList& commandListVal) :
+	frame(frameVal),
+	commandList(commandListVal)
+{}
+
+void GPUJobContext::CreateDependencyFrom(std::vector<GPUJobContext*> dependsFromList)
+{
+	ASSERT_MAIN_THREAD;
+
+	assert(dependsFromList.empty() == false && "Trying to create dependency from empty list");
+	assert(waitDependancy == nullptr && "Trying to create dependency to job that already has it");
+
+	waitDependancy = std::make_shared<Semaphore>(dependsFromList.size());
+
+	for (GPUJobContext* dependency : dependsFromList)
+	{
+		dependency->signalDependencies.push_back(waitDependancy);
+	}
+
+}
+
+void GPUJobContext::CreateDependencyFrom(std::vector<GPUJobContext>& dependsFromList)
+{
+	std::vector<GPUJobContext*> dependsFromListPtrs;
+	dependsFromListPtrs.reserve(dependsFromList.size());
+
+	for (GPUJobContext& ctx : dependsFromList)
+	{
+		dependsFromListPtrs.push_back(&ctx);
+	}
+
+	CreateDependencyFrom(std::move(dependsFromListPtrs));
+}
+
+void GPUJobContext::SignalDependencies()
+{
+	for (std::shared_ptr<Semaphore>& dep : signalDependencies)
+	{
+		dep->Signal();
+	}
+}
+

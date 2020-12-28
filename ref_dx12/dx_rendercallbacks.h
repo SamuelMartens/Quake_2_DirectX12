@@ -15,10 +15,6 @@ extern "C"
 
 namespace RenderCallbacks
 {
-	using ConstBuffBind_t = std::byte;
-	//#DEBUG int is a bit too generic. Need to think about something better
-	using ResourceViewBind_t = int;
-
 	struct PerPassUpdateContext
 	{
 	};
@@ -26,18 +22,17 @@ namespace RenderCallbacks
 	struct PerObjectUpdateContext
 	{
 		XMFLOAT4X4 viewProjMat;
-		JobContext& jobCtx;
+		GPUJobContext& jobCtx;
 	};
 
 	struct PerObjectRegisterContext
 	{
-		JobContext& jobCtx;
+		GPUJobContext& jobCtx;
 	};
 
 	template<typename sT, typename bT>
 	void PerPassUpdateCallback(unsigned int name, sT& pass, bT& bindPoint, PerPassUpdateContext& ctx)
 	{
-		using bindT = std::decay_t<bT>;
 		using passT = std::decay_t<sT>;
 
 		if constexpr(std::is_same_v<passT, Pass_UI>)
@@ -47,14 +42,6 @@ namespace RenderCallbacks
 			{
 			case HASH("UI"):
 			{
-				if constexpr (std::is_same_v<bindT, ConstBuffBind_t>)
-				{
-					// All static pass const buff data
-				}
-				else if constexpr(std::is_same_v<passT, ResourceViewBind_t>)
-				{
-					// All static pass view data
-				}
 			}
 				break;
 			default:
@@ -66,7 +53,6 @@ namespace RenderCallbacks
 	template<typename oT, typename bT>
 	void PerObjectUpdateCallback(unsigned int passName, unsigned int paramName, const oT& obj, bT* bindPoint, PerObjectUpdateContext& ctx)
 	{
-		using bindT = std::decay_t<bT>;
 		using objT = std::decay_t<oT>;
 
 		if constexpr(std::is_same_v<objT, DrawCall_Char> ||
@@ -79,30 +65,18 @@ namespace RenderCallbacks
 			{
 			case HASH("UI"):
 			{
-				if constexpr (std::is_same_v < bindT, ConstBuffBind_t>)
+				// All static pass const buff data
+				switch (paramName)
 				{
-					// All static pass const buff data
-					switch (paramName)
-					{
-					case HASH("gWorldViewProj"):
-					{
-						XMMATRIX mvpMat = XMMatrixTranslation(obj.x, obj.y, 0.0f);
-						
-						XMStoreFloat4x4(reinterpret_cast<XMFLOAT4X4*>(bindPoint), mvpMat * XMLoadFloat4x4(&ctx.viewProjMat));
-					}
-						break;
-					default:
-						break;
-					}
+				case HASH("gWorldViewProj"):
+				{
+					XMMATRIX mvpMat = XMMatrixTranslation(obj.x, obj.y, 0.0f);
+
+					XMStoreFloat4x4(reinterpret_cast<XMFLOAT4X4*>(bindPoint), mvpMat * XMLoadFloat4x4(&ctx.viewProjMat));
 				}
-				else if constexpr (std::is_same_v<bindT, ResourceViewBind_t>)
-				{
-					// All static pass view data
-					switch (paramName)
-					{
-					default:
-						break;
-					}
+				break;
+				default:
+					break;
 				}
 			}
 			break;
@@ -116,7 +90,6 @@ namespace RenderCallbacks
 	template<typename oT, typename bT>
 	void PerObjectRegisterCallback(unsigned int passName, unsigned int paramName, oT& obj, bT* bindPoint, PerObjectRegisterContext& ctx) 
 	{
-		using bindT = std::decay_t<bT>;
 		using objT = std::decay_t<oT>;
 
 		if constexpr (std::is_same_v<objT, DrawCall_UI_t>)
@@ -127,118 +100,76 @@ namespace RenderCallbacks
 			{
 			case HASH("UI"):
 			{
-				if constexpr (std::is_same_v < bindT, ConstBuffBind_t>)
+				// All static pass view data
+				switch (paramName)
 				{
-					// All static pass const buff data
-					switch (paramName)
-					{
-					default:
-						break;
-					}
-				}
-				else if constexpr (std::is_same_v<bindT, ResourceViewBind_t>)
+				case HASH("gDiffuseMap"):
 				{
-					// All static pass view data
-					switch (paramName)
+					std::visit([&ctx, bindPoint](auto&& drawCall)
 					{
-					case HASH("gDiffuseMap"):
-					{
-						std::visit([&ctx, bindPoint](auto&& drawCall) 
+						using drawCallT = std::decay_t<decltype(drawCall)>;
+
+						if constexpr (std::is_same_v<drawCallT, DrawCall_Pic>)
 						{
-							using drawCallT = std::decay_t<decltype(drawCall)>;
+							Renderer& renderer = Renderer::Inst();
 
-							if constexpr (std::is_same_v<drawCallT ,DrawCall_Pic>)
+							std::array<char, MAX_QPATH> texFullName;
+							ResourceManager::Inst().GetDrawTextureFullname(drawCall.name.c_str(), texFullName.data(), texFullName.size());
+
+							Texture* tex = ResourceManager::Inst().FindOrCreateTexture(texFullName.data(), ctx.jobCtx);
+
+							renderer.cbvSrvHeap->AllocateDescriptor(*bindPoint, tex->buffer.Get(), nullptr);
+
+						}
+
+						if constexpr (std::is_same_v<drawCallT, DrawCall_Char>)
+						{
+							std::array<char, MAX_QPATH> texFullName;
+							ResourceManager& resMan = ResourceManager::Inst();
+
+							resMan.GetDrawTextureFullname(Texture::FONT_TEXTURE_NAME, texFullName.data(), texFullName.size());
+
+							Texture* tex = resMan.FindTexture(texFullName.data());
+							if (tex == nullptr)
 							{
-								Renderer& renderer = Renderer::Inst();
-
-								std::array<char, MAX_QPATH> texFullName;
-								ResourceManager::Inst().GetDrawTextureFullname(drawCall.name.c_str(), texFullName.data(), texFullName.size());
-
-								Texture* tex = ResourceManager::Inst().FindOrCreateTexture(texFullName.data(), ctx.jobCtx);
-								//#DEBUG this might be nullptr and texture will be the same as base texture?
-								DescriptorHeap::Desc_t srvDescription = D3D12_SHADER_RESOURCE_VIEW_DESC{};
-								D3D12_SHADER_RESOURCE_VIEW_DESC& srvDescriptionRef = std::get<D3D12_SHADER_RESOURCE_VIEW_DESC>(srvDescription);
-								srvDescriptionRef.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-								//#DEBUG format should be part of texture
-								srvDescriptionRef.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-								srvDescriptionRef.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-								srvDescriptionRef.Texture2D.MostDetailedMip = 0;
-								srvDescriptionRef.Texture2D.MipLevels = 1;
-								srvDescriptionRef.Texture2D.ResourceMinLODClamp = 0.0f;
-
-								renderer.cbvSrvHeap->AllocateDescriptor(*bindPoint ,tex->buffer.Get(), &srvDescription);
-								
+								tex = resMan.CreateTextureFromFile(texFullName.data(), ctx.jobCtx);
 							}
 
-							if constexpr (std::is_same_v<drawCallT, DrawCall_Char>)
+							Renderer::Inst().cbvSrvHeap->AllocateDescriptor(*bindPoint, tex->buffer.Get(), nullptr);
+
+						}
+
+						if constexpr (std::is_same_v<drawCallT, DrawCall_StretchRaw>)
+						{
+							Texture* tex = ResourceManager::Inst().FindTexture(Texture::RAW_TEXTURE_NAME);
+							assert(tex != nullptr && "Draw_RawPic texture doesn't exist");
+
+							// If there is no data, then texture is requested to be created for this frame. So no need to update
+							if (drawCall.data.empty() == false)
 							{
-								std::array<char, MAX_QPATH> texFullName;
-								ResourceManager& resMan = ResourceManager::Inst();
+								const int textureSize = drawCall.textureWidth * drawCall.textureHeight;
 
-								resMan.GetDrawTextureFullname(Texture::FONT_TEXTURE_NAME, texFullName.data(), texFullName.size());
+								CommandList& commandList = ctx.jobCtx.commandList;
 
+								std::vector<unsigned int> texture(textureSize, 0);
+								const std::array<unsigned int, 256>&  rawPalette = Renderer::Inst().GetRawPalette();
 
-								Texture* tex = resMan.FindTexture(texFullName.data());
-								if (tex == nullptr)
+								for (int i = 0; i < textureSize; ++i)
 								{
-									tex = resMan.CreateTextureFromFile(texFullName.data(), ctx.jobCtx);
+									texture[i] = rawPalette[std::to_integer<int>(drawCall.data[i])];
 								}
 
-								DescriptorHeap::Desc_t srvDescription = D3D12_SHADER_RESOURCE_VIEW_DESC{};
-								D3D12_SHADER_RESOURCE_VIEW_DESC& srvDescriptionRef = std::get<D3D12_SHADER_RESOURCE_VIEW_DESC>(srvDescription);
-								srvDescriptionRef.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-								srvDescriptionRef.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-								srvDescriptionRef.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-								srvDescriptionRef.Texture2D.MostDetailedMip = 0;
-								srvDescriptionRef.Texture2D.MipLevels = 1;
-								srvDescriptionRef.Texture2D.ResourceMinLODClamp = 0.0f;
-
-								Renderer::Inst().cbvSrvHeap->AllocateDescriptor(*bindPoint , tex->buffer.Get(), &srvDescription);
-
+								ResourceManager::Inst().UpdateTexture(*tex, reinterpret_cast<std::byte*>(texture.data()), ctx.jobCtx);
 							}
 
-							if constexpr (std::is_same_v<drawCallT, DrawCall_StretchRaw>)
-							{
-								Texture* tex = ResourceManager::Inst().FindTexture(Texture::RAW_TEXTURE_NAME);
-								assert(tex != nullptr && "Draw_RawPic texture doesn't exist");
+							Renderer::Inst().cbvSrvHeap->AllocateDescriptor(*bindPoint, tex->buffer.Get(), nullptr);
+						}
 
-								// If there is no data, then texture is requested to be created for this frame. So no need to update
-								if (drawCall.data.empty() == false)
-								{
-									const int textureSize = drawCall.textureWidth * drawCall.textureHeight;
-
-									CommandList& commandList = ctx.jobCtx.commandList;
-
-									std::vector<unsigned int> texture(textureSize, 0);
-									const std::array<unsigned int, 256>&  rawPalette = Renderer::Inst().GetRawPalette();
-
-									for (int i = 0; i < textureSize; ++i)
-									{
-										texture[i] =  rawPalette[std::to_integer<int>(drawCall.data[i])];
-									}
-
-									ResourceManager::Inst().UpdateTexture(*tex, reinterpret_cast<std::byte*>(texture.data()), ctx.jobCtx);
-								}
-
-								//#DEBUG MAKE PROPER DELETION OF HANDLES AND VIEW
-								DescriptorHeap::Desc_t srvDescription = D3D12_SHADER_RESOURCE_VIEW_DESC{};
-								D3D12_SHADER_RESOURCE_VIEW_DESC& srvDescriptionRef = std::get<D3D12_SHADER_RESOURCE_VIEW_DESC>(srvDescription);
-								srvDescriptionRef.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-								srvDescriptionRef.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-								srvDescriptionRef.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-								srvDescriptionRef.Texture2D.MostDetailedMip = 0;
-								srvDescriptionRef.Texture2D.MipLevels = 1;
-								srvDescriptionRef.Texture2D.ResourceMinLODClamp = 0.0f;
-
-								Renderer::Inst().cbvSrvHeap->AllocateDescriptor(*bindPoint , tex->buffer.Get(), &srvDescription);
-							}
-
-						}, obj);
-					}
-						break;
-					default:
-						break;
-					}
+					}, obj);
+				}
+				break;
+				default:
+					break;
 				}
 			}
 			break;

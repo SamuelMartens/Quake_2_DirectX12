@@ -54,7 +54,7 @@ namespace FArg
 		const char* texName = nullptr;
 		const XMFLOAT4* pos;
 		const BufferPiece* bufferPiece;
-		JobContext* context;
+		GPUJobContext* context;
 	};
 };
 
@@ -78,10 +78,10 @@ class Renderer
 	void DeleteDefaultMemoryBuffer(BufferHandler handler);
 	void DeleteUploadMemoryBuffer(BufferHandler handler);
 	
-	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, JobContext& context);
-	void UpdateStaticObjectConstantBuffer(const StaticObject& obj, JobContext& context);
-	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, JobContext& context);
-	BufferHandler UpdateParticleConstantBuffer(JobContext& context);
+	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, GPUJobContext& context);
+	void UpdateStaticObjectConstantBuffer(const StaticObject& obj, GPUJobContext& context);
+	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, GPUJobContext& context);
+	BufferHandler UpdateParticleConstantBuffer(GPUJobContext& context);
 
 	/*--- API functions begin --- */
 
@@ -140,16 +140,15 @@ public:
 	// so we need to center content to the screen center
 	XMFLOAT4X4 m_yInverseAndCenterMatrix;
 
-	//#TODO should belong to job System
-	JobContext CreateContext(Frame& frame);
+	GPUJobContext CreateContext(Frame& frame);
 
 	/* Job  */
-	void EndFrameJob(JobContext& context);
-	void BeginFrameJob(JobContext& context);
-	void DrawUIJob(JobContext& context);
-	void DrawStaticGeometryJob(JobContext& context);
-	void DrawDynamicGeometryJob(JobContext& context);
-	void DrawParticleJob(JobContext& context);
+	void EndFrameJob(GPUJobContext& context);
+	void BeginFrameJob(GPUJobContext& context);
+	void DrawUIJob(GPUJobContext& context);
+	void DrawStaticGeometryJob(GPUJobContext& context);
+	void DrawDynamicGeometryJob(GPUJobContext& context);
+	void DrawParticleJob(GPUJobContext& context);
 
 private:
 
@@ -194,21 +193,21 @@ private:
 	void ShutdownWin32();
 
 	/* Factory functionality */
-	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model, JobContext& context);
-	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf, JobContext& frame);
-	void DecomposeGLModelNode(const model_t& model, const mnode_t& node, JobContext& context);
+	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model, GPUJobContext& context);
+	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJobContext& frame);
+	void DecomposeGLModelNode(const model_t& model, const mnode_t& node, GPUJobContext& context);
 	
 
 	/* Rendering */
-	void Draw(const StaticObject& object, JobContext& context);
-	void DrawIndiced(const StaticObject& object, JobContext& context);
-	void DrawIndiced(const DynamicObject& object, const entity_t& entity, JobContext& context);
+	void Draw(const StaticObject& object, GPUJobContext& context);
+	void DrawIndiced(const StaticObject& object, GPUJobContext& context);
+	void DrawIndiced(const DynamicObject& object, const entity_t& entity, GPUJobContext& context);
 	void DrawStreaming(const FArg::DrawStreaming& args);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
-	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, JobContext& context);
-	void Draw_Pic(int x, int y, const char* name, const BufferPiece& bufferPiece, JobContext& context);
-	void Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, JobContext& context);
-	void Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, JobContext& context);
+	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, GPUJobContext& context);
+	void Draw_Pic(int x, int y, const char* name, const BufferPiece& bufferPiece, GPUJobContext& context);
+	void Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, GPUJobContext& context);
+	void Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, GPUJobContext& context);
 
 	/* Utils */
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
@@ -217,13 +216,13 @@ private:
 	std::vector<int> BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const;
 
 	/* Passes */
-	void ExecuteDrawUIPass(JobContext& context, const PassParameters& pass);
+	void ExecuteDrawUIPass(GPUJobContext& context, const PassParameters& pass);
 
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;
 
 	void SetMaterialAsync(const std::string& name, CommandList& commandList);
-	void SetNonMaterialState(JobContext& context) const;
+	void SetNonMaterialState(GPUJobContext& context) const;
 
 	/* Frames */
 	void SubmitFrame(Frame& frame);
@@ -238,10 +237,15 @@ private:
 	void CloseFrame(Frame& frame);
 	void ReleaseFrameResources(Frame& frame);
 
-	// Frame ownership
-	Frame& GetCurrentFrame();
-	void AcquireCurrentFrame();
-	void DetachCurrentFrame();
+	/* Frame ownership */
+	// Main thread will get some free frame, and execute everything that can't be done as a job.
+	Frame& GetMainThreadFrame();
+	void AcquireMainThreadFrame();
+	void DetachMainThreadFrame();
+
+	// As soon as main thread is done with some frame it will Detach it and pass along to job system.
+	// When all jobs associated with this frame are done, the frame will be released ans later picked up
+	// by main thread again
 	void ReleaseFrame(Frame& frame);
 
 	int GenerateFenceValue();
@@ -287,6 +291,6 @@ private:
 	int m_frameCounter = 0;
 
 	/* Level registration data */
-	std::unique_ptr<JobContext> m_staticModelRegContext;
-	std::unique_ptr<JobContext> m_dynamicModelRegContext;
+	std::unique_ptr<GPUJobContext> m_staticModelRegContext;
+	std::unique_ptr<GPUJobContext> m_dynamicModelRegContext;
 };

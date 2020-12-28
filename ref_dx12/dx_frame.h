@@ -17,6 +17,8 @@
 
 class Semaphore;
 
+// Frame is like a container that keep all jobs related to the same frame. 
+// It also serves as a black board, i.e. it can be used for jobs to communicate between each other.
 class Frame
 {
 public:

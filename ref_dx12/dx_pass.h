@@ -8,6 +8,7 @@
 #include "dx_drawcalls.h"
 #include "dx_common.h"
 #include "dx_passparameters.h"
+#include "dx_threadingutils.h"
 
 //#TODO
 // 1) Implement proper tex samplers handling. When I need more samplers
@@ -18,10 +19,6 @@
 // 6) Do proper logging for parsing and execution
 // 7) Proper name generation for D3D objects
 
-//#TODO get rid of forward decl?
-struct JobContext;
-
-//#INFO every frame should have pass collection. In this way I will not need to worry about multithreading handle inside stage itself
 class Pass_UI
 {
 public:
@@ -43,22 +40,21 @@ public:
 
 	~Pass_UI() = default;
 
-	void Execute(JobContext& context);
-	void Init();
+	void Execute(GPUJobContext& context);
+	void Init(PassParameters&& parameters);
 	void Finish();
 
-	//#TODO shouldn't be public
+private:
+
+	void Start(GPUJobContext& jobCtx);
+	void UpdateDrawObjects(GPUJobContext& jobCtx);
+
+	void SetUpRenderState(GPUJobContext& jobCtx);
+	void Draw(GPUJobContext& jobCtx);
+
+private:
+
 	PassParameters passParameters;
-
-private:
-
-	void Start(JobContext& jobCtx);
-	void UpdateDrawObjects(JobContext& jobCtx);
-
-	void SetUpRenderState(JobContext& jobCtx);
-	void Draw(JobContext& jobCtx);
-
-private:
 
 	unsigned int perObjectConstBuffMemorySize = 0;
 	unsigned int perObjectVertexMemorySize = 0;

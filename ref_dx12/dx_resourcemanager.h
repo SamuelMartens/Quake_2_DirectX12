@@ -5,7 +5,7 @@
 
 #include "dx_utils.h"
 #include "dx_common.h"
-#include "dx_jobmultithreading.h"
+#include "dx_threadingutils.h"
 #include "dx_texture.h"
 
 namespace FArg 
@@ -26,7 +26,7 @@ namespace FArg
 		const void* data = nullptr;
 		int byteSize = Const::INVALID_SIZE;
 		int alignment = -1;
-		JobContext* context = nullptr;
+		GPUJobContext* context = nullptr;
 	};
 };
 
@@ -37,7 +37,7 @@ public:
 	DEFINE_SINGLETON(ResourceManager);
 
 	/* Buffers */
-	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, JobContext& context);
+	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, GPUJobContext& context);
 	ComPtr<ID3D12Resource> CreateUploadHeapBuffer(UINT64 byteSize) const;
 	void UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const;
 	void UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args);
@@ -47,25 +47,25 @@ public:
 	void DeleteRequestedResources();
 
 	/* Textures */
-	Texture* FindOrCreateTexture(std::string_view textureName, JobContext& context);
+	Texture* FindOrCreateTexture(std::string_view textureName, GPUJobContext& context);
 	Texture* FindTexture(std::string_view textureName);
 	
 	Texture* CreateTextureFromFileDeferred(const char* name, Frame& frame);
-	Texture* CreateTextureFromFile(const char* name, JobContext& context);
+	Texture* CreateTextureFromFile(const char* name, GPUJobContext& context);
 	Texture* CreateTextureFromDataDeferred(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame);
-	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, JobContext& context);
-	void CreateDeferredTextures(JobContext& context);
+	Texture* CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, GPUJobContext& context);
+	void CreateDeferredTextures(GPUJobContext& context);
 
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
-	void UpdateTexture(Texture& tex, const std::byte* data, JobContext& context);
+	void UpdateTexture(Texture& tex, const std::byte* data, GPUJobContext& context);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 
 private:
 
 	/* Textures */
-	Texture* _CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, JobContext& context);
-	Texture* _CreateTextureFromFile(const char* name, JobContext& context);
-	void _CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, JobContext& context, Texture& outTex);
+	Texture* _CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, GPUJobContext& context);
+	Texture* _CreateTextureFromFile(const char* name, GPUJobContext& context);
+	void _CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, GPUJobContext& context, Texture& outTex);
 
 
 private:

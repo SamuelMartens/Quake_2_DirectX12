@@ -40,7 +40,6 @@ public:
 	int height = 0;
 	// bits per pixel
 	int bpp = 0;
-
 };
 
 

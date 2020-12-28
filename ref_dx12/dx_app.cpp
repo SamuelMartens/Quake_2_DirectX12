@@ -303,8 +303,8 @@ void Renderer::InitDx()
 	InitFrames();
 
 	// ------- Open init command list -----
-	AcquireCurrentFrame();
-	JobContext initContext = CreateContext(GetCurrentFrame());
+	AcquireMainThreadFrame();
+	GPUJobContext initContext = CreateContext(GetMainThreadFrame());
 
 	initContext.commandList.Open();
 
@@ -322,7 +322,7 @@ void Renderer::InitDx()
 
 	// We are done with that frame
 	ReleaseFrame(initContext.frame);
-	DetachCurrentFrame();
+	DetachMainThreadFrame();
 
 	Logs::Log(Logs::Category::Generic, "Dx Init finished");
 }
@@ -702,7 +702,7 @@ void Renderer::SetMaterialAsync(const std::string& name, CommandList& commandLis
 	commandList.commandList->IASetPrimitiveTopology(materialIt->primitiveTopology);
 }
 
-void Renderer::SetNonMaterialState(JobContext& context) const
+void Renderer::SetNonMaterialState(GPUJobContext& context) const
 {
 	CommandList& commandList = context.commandList;
 	Frame& frame = context.frame;
@@ -729,7 +729,7 @@ void Renderer::SetNonMaterialState(JobContext& context) const
 	commandList.commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 }
 
-Frame& Renderer::GetCurrentFrame()
+Frame& Renderer::GetMainThreadFrame()
 {
 	ASSERT_MAIN_THREAD;
 	assert(m_currentFrameIndex != Const::INVALID_INDEX && "Trying to get current frame which is invalid");
@@ -826,15 +826,12 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	}
 }
 
-void Renderer::AcquireCurrentFrame()
+void Renderer::AcquireMainThreadFrame()
 {
 	ASSERT_MAIN_THREAD;
 
 	assert(m_currentFrameIndex == Const::INVALID_INDEX && "Trying to acquire frame, while there is already frame acquired.");
 
-	//#TODO this is bad. Acquire release frame should be explicit, if it is possible.
-	// Also, is there better way than just manipulating m_currentFrameIndex and isInUse? 
-	// Remember meaning of these things ( maybe I need at at least rename it?)
 	// m_currentFrameIndex - is basically means index of frame that is used by main thread.
 	//						 and also indicates if new frame shall be used
 	// isInUse - is in general means, if any thread is using this frame.
@@ -885,7 +882,7 @@ void Renderer::AcquireCurrentFrame()
 	Logs::Logf(Logs::Category::FrameSubmission, "Frame with index %d acquired", m_currentFrameIndex);
 }
 
-void Renderer::DetachCurrentFrame()
+void Renderer::DetachMainThreadFrame()
 {
 	ASSERT_MAIN_THREAD;
 
@@ -1051,7 +1048,7 @@ std::vector<int> Renderer::BuildObjectsInFrustumList(const Camera& camera, const
 	return res;
 }
 
-void Renderer::EndFrameJob(JobContext& context)
+void Renderer::EndFrameJob(GPUJobContext& context)
 {
 	Logs::Logf(Logs::Category::Job, "EndFrame job started frame %d", context.frame.frameNumber);
 
@@ -1094,7 +1091,7 @@ void Renderer::EndFrameJob(JobContext& context)
 	Logs::Log(Logs::Category::Job, "EndFrame job ended");
 }
 
-void Renderer::BeginFrameJob(JobContext& context)
+void Renderer::BeginFrameJob(GPUJobContext& context)
 {
 	Logs::Logf(Logs::Category::Job, "BeginFrame job started frame %d", context.frame.frameNumber);
 
@@ -1129,7 +1126,7 @@ void Renderer::BeginFrameJob(JobContext& context)
 	Logs::Logf(Logs::Category::Job, "BeginFrame job ended frame %d", frame.frameNumber);
 }
 
-void Renderer::DrawUIJob(JobContext& context)
+void Renderer::DrawUIJob(GPUJobContext& context)
 {
 	JOB_GUARD(context);
 	Logs::Logf(Logs::Category::Job, "DrawUI job started frame %d", context.frame.frameNumber);
@@ -1204,7 +1201,7 @@ void Renderer::DrawUIJob(JobContext& context)
 	Logs::Logf(Logs::Category::Job, "DrawUI job ended frame %d", frame.frameNumber);
 }
 
-void Renderer::DrawStaticGeometryJob(JobContext& context)
+void Renderer::DrawStaticGeometryJob(GPUJobContext& context)
 {
 	JOB_GUARD(context);
 
@@ -1241,7 +1238,7 @@ void Renderer::DrawStaticGeometryJob(JobContext& context)
 	Logs::Logf(Logs::Category::Job, "Static job ended frame %d", context.frame.frameNumber);
 }
 
-void Renderer::DrawDynamicGeometryJob(JobContext& context)
+void Renderer::DrawDynamicGeometryJob(GPUJobContext& context)
 {
 	JOB_GUARD(context);
 
@@ -1288,7 +1285,7 @@ void Renderer::DrawDynamicGeometryJob(JobContext& context)
 	Logs::Logf(Logs::Category::Job, "Dynamic job ended frame %d", context.frame.frameNumber);
 }
 
-void Renderer::DrawParticleJob(JobContext& context)
+void Renderer::DrawParticleJob(GPUJobContext& context)
 {
 	JOB_GUARD(context);
 
@@ -1332,7 +1329,7 @@ void Renderer::DrawParticleJob(JobContext& context)
 	Logs::Logf(Logs::Category::Job, "Particle job ended frame %d", context.frame.frameNumber);
 }
 
-void Renderer::ExecuteDrawUIPass(JobContext& context, const PassParameters& pass)
+void Renderer::ExecuteDrawUIPass(GPUJobContext& context, const PassParameters& pass)
 {
 	JOB_GUARD(context);
 
@@ -1369,7 +1366,7 @@ void Renderer::ShutdownWin32()
 	m_hWindows = NULL;
 }
 
-DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t* model, JobContext& context)
+DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t* model, GPUJobContext& context)
 {
 	DynamicObjectModel object;
 
@@ -1490,7 +1487,7 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	return object;
 }
 
-void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, JobContext& context)
+void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJobContext& context)
 {
 	// Fill up vertex buffer
 	std::vector<ShDef::Vert::PosTexCoord> vertices;
@@ -1583,7 +1580,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, JobCon
 
 }
 
-void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, JobContext& context)
+void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, GPUJobContext& context)
 {
 	// Looks like if leaf return, leafs don't contain any geom
 	if (node.contents != -1)
@@ -1610,17 +1607,17 @@ void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, J
 	}
 }
 
-JobContext Renderer::CreateContext(Frame& frame)
+GPUJobContext Renderer::CreateContext(Frame& frame)
 {
 	ASSERT_MAIN_THREAD;
 
 	const int commandListIndex = m_commandListBuffer.allocator.Allocate();
 	frame.acquiredCommandListsIndices.push_back(commandListIndex);
 
-	return JobContext(frame, m_commandListBuffer.commandLists[commandListIndex]);
+	return GPUJobContext(frame, m_commandListBuffer.commandLists[commandListIndex]);
 }
 
-void Renderer::Draw(const StaticObject& object, JobContext& context)
+void Renderer::Draw(const StaticObject& object, GPUJobContext& context)
 {
 	MemoryManager::DefaultBuff_t& defaultMemory =
 		MemoryManager::Inst().GetBuff<MemoryManager::Default>();
@@ -1663,7 +1660,7 @@ void Renderer::Draw(const StaticObject& object, JobContext& context)
 	commandList.commandList->DrawInstanced(vertBuffView.SizeInBytes / vertBuffView.StrideInBytes, 1, 0, 0);
 }
 
-void Renderer::DrawIndiced(const StaticObject& object, JobContext& context)
+void Renderer::DrawIndiced(const StaticObject& object, GPUJobContext& context)
 {
 	assert(object.indices != Const::INVALID_BUFFER_HANDLER && "Trying to draw indexed object without index buffer");
 
@@ -1717,7 +1714,7 @@ void Renderer::DrawIndiced(const StaticObject& object, JobContext& context)
 	commandList.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
 }
 
-void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, JobContext& context)
+void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, GPUJobContext& context)
 {
 	CommandList& commandList = context.commandList;
 
@@ -1902,7 +1899,7 @@ void Renderer::AddParticleToDrawList(const particle_t& particle, BufferHandler v
 	ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
 }
 
-void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, JobContext& context)
+void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, GPUJobContext& context)
 {
 	CommandList& commandList = context.commandList;
 	constexpr int vertexStrideInBytes = sizeof(ShDef::Vert::PosCol);
@@ -2079,7 +2076,7 @@ void Renderer::DeleteUploadMemoryBuffer(BufferHandler handler)
 	MemoryManager::Inst().GetBuff<MemoryManager::Upload>().Delete(handler);
 }
 
-void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, JobContext& context)
+void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, GPUJobContext& context)
 {
 	assert(bufferPiece.handler != Const::INVALID_BUFFER_HANDLER &&
 		bufferPiece.offset != Const::INVALID_OFFSET &&
@@ -2119,7 +2116,7 @@ void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, 
 	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, JobContext& context)
+void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, GPUJobContext& context)
 {
 	const Camera& camera = context.frame.camera;
 	
@@ -2141,7 +2138,7 @@ void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, JobCont
 	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, JobContext& context)
+void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, GPUJobContext& context)
 {
 	const Camera& camera = context.frame.camera;
 
@@ -2191,7 +2188,7 @@ void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entit
 	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
-BufferHandler Renderer::UpdateParticleConstantBuffer(JobContext& context)
+BufferHandler Renderer::UpdateParticleConstantBuffer(GPUJobContext& context)
 {
 	const Camera& camera = context.frame.camera;
 
@@ -2325,7 +2322,7 @@ void Renderer::EndLevelLoading()
 
 	m_dynamicModelRegContext->commandList.Close();
 	
-	JobContext createDeferredTextureContext = CreateContext(frame);
+	GPUJobContext createDeferredTextureContext = CreateContext(frame);
 	ResourceManager::Inst().CreateDeferredTextures(createDeferredTextureContext);
 	
 	CloseFrame(frame);
@@ -2368,7 +2365,7 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 	{
 		constexpr int textureBitsPerPixel = 32;
 		rawTex = ResourceManager::Inst().CreateTextureFromDataDeferred(data,
-			textureWidth, textureHeight, textureBitsPerPixel, Texture::RAW_TEXTURE_NAME, GetCurrentFrame());
+			textureWidth, textureHeight, textureBitsPerPixel, Texture::RAW_TEXTURE_NAME, GetMainThreadFrame());
 	}
 	else
 	{
@@ -2380,10 +2377,10 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 		memcpy(drawCall.data.data(), data, textureSize);
 	}
 
-	GetCurrentFrame().uiDrawCalls.push_back(std::move(drawCall));
+	GetMainThreadFrame().uiDrawCalls.push_back(std::move(drawCall));
 }
 
-void Renderer::Draw_Pic(int x, int y, const char* name, const BufferPiece& bufferPiece, JobContext& context)
+void Renderer::Draw_Pic(int x, int y, const char* name, const BufferPiece& bufferPiece, GPUJobContext& context)
 {
 	std::array<char, MAX_QPATH> texFullName;
 	ResourceManager::Inst().GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
@@ -2412,7 +2409,7 @@ void Renderer::Draw_Pic(int x, int y, const char* name, const BufferPiece& buffe
 	DrawStreaming(drawArgs);
 }
 
-void Renderer::Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, JobContext& context)
+void Renderer::Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, GPUJobContext& context)
 {
 	num &= 0xFF;
 
@@ -2464,7 +2461,7 @@ void Renderer::Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, 
 	 DrawStreaming(drawArgs);
 }
 
-void Renderer::Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, JobContext& context)
+void Renderer::Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, GPUJobContext& context)
 {
 	// If there is no data, then texture is requested to be created for this frame. So no need to update
 	if (drawCall.data.empty() == false)
@@ -2513,22 +2510,22 @@ void Renderer::AddDrawCall_Pic(int x, int y, const char* name)
 {
 	Logs::Logf(Logs::Category::Generic, "API: AddDrawCall_Pic %s", name);
 
-	GetCurrentFrame().uiDrawCalls.emplace_back(DrawCall_Pic{ x, y, std::string(name) });
+	GetMainThreadFrame().uiDrawCalls.emplace_back(DrawCall_Pic{ x, y, std::string(name) });
 }
 
 void Renderer::AddDrawCall_Char(int x, int y, int num)
 {
 	Logs::Log(Logs::Category::Generic, "API: AddDrawCall_Char");
 
-	GetCurrentFrame().uiDrawCalls.emplace_back(DrawCall_Char{ x, y, num });
+	GetMainThreadFrame().uiDrawCalls.emplace_back(DrawCall_Char{ x, y, num });
 }
 
 void Renderer::BeginFrame()
 {
 	Logs::Log(Logs::Category::Generic, "API: Begin frame");
 
-	AcquireCurrentFrame();
-	Frame& frame = GetCurrentFrame();
+	AcquireMainThreadFrame();
+	Frame& frame = GetMainThreadFrame();
 
 	frame.colorBufferAndView = &GetNextSwapChainBufferAndView();
 	frame.scissorRect = m_scissorRect;
@@ -2544,30 +2541,30 @@ void Renderer::EndFrame()
 
 	// All heavy lifting is here
 
-	Frame& frame = GetCurrentFrame();
+	Frame& frame = GetMainThreadFrame();
 
 	if (frame.texCreationRequests.empty() == false)
 	{
-		JobContext createDeferredTextureContext = CreateContext(frame);
+		GPUJobContext createDeferredTextureContext = CreateContext(frame);
 		ResourceManager::Inst().CreateDeferredTextures(createDeferredTextureContext);
 	}
 
 	// Proceed to next frame
-	DetachCurrentFrame();
+	DetachMainThreadFrame();
 
 	// Create contexts
 	// NOTE: creation order is the order in which command Lists will be submitted.
-	JobContext beginFrameContext = CreateContext(frame);
+	GPUJobContext beginFrameContext = CreateContext(frame);
 
-	JobContext drawStaticObjectsContext = CreateContext(frame);
+	GPUJobContext drawStaticObjectsContext = CreateContext(frame);
 	
-	JobContext drawDynamicObjectsContext = CreateContext(frame);
+	GPUJobContext drawDynamicObjectsContext = CreateContext(frame);
 
-	JobContext drawParticlesContext = CreateContext(frame);
+	GPUJobContext drawParticlesContext = CreateContext(frame);
 
-	JobContext drawUIContext = CreateContext(frame);
+	GPUJobContext drawUIContext = CreateContext(frame);
 	
-	JobContext endFrameContext = CreateContext(frame);
+	GPUJobContext endFrameContext = CreateContext(frame);
 
 	// Set up dependencies
 	
@@ -2637,18 +2634,17 @@ void Renderer::EndFrame_Material()
 
 	// All heavy lifting is here
 
-	Frame& frame = GetCurrentFrame();
+	Frame& frame = GetMainThreadFrame();
 
 	if (frame.texCreationRequests.empty() == false)
 	{
-		JobContext createDeferredTextureContext = CreateContext(frame);
+		GPUJobContext createDeferredTextureContext = CreateContext(frame);
 		ResourceManager::Inst().CreateDeferredTextures(createDeferredTextureContext);
 	}
 
 	// Proceed to next frame
-	DetachCurrentFrame();
+	DetachMainThreadFrame();
 
-	//#TODO a bit silly. Should Execute be part of frame func?
 	frame.frameGraph.Execute(frame);
 }
 
@@ -2664,7 +2660,7 @@ Texture* Renderer::RegisterDrawPic(const char* name)
 
 	// If dynamic model registration context exists, then we are in the middle of the level loading. At this point
 	// current frame is most likely invalid
-	Frame& frame = m_dynamicModelRegContext != nullptr ? m_dynamicModelRegContext->frame : GetCurrentFrame();
+	Frame& frame = m_dynamicModelRegContext != nullptr ? m_dynamicModelRegContext->frame : GetMainThreadFrame();
 	ResourceManager& resMan = ResourceManager::Inst();
 
 	std::array<char, MAX_QPATH> texFullName;
@@ -2683,11 +2679,11 @@ void Renderer::RegisterWorldModel(const char* model)
 	// model, so you don't load it twice). Currently it doesn't make sense to do anything
 	// with this, because I will have other models in game and I want to handle world model 
 	// as part of this system. Maybe I should leave it as it is and just use old system?
-	AcquireCurrentFrame();
-	Frame& frame = GetCurrentFrame();
+	AcquireMainThreadFrame();
+	Frame& frame = GetMainThreadFrame();
 
-	JobContext context = CreateContext(frame);
-	m_staticModelRegContext = std::make_unique<JobContext>(context);
+	GPUJobContext context = CreateContext(frame);
+	m_staticModelRegContext = std::make_unique<GPUJobContext>(context);
 
 	context.commandList.Open();
 
@@ -2713,7 +2709,7 @@ void Renderer::RegisterWorldModel(const char* model)
 
 	// Submit frame
 	context.commandList.Close();
-	DetachCurrentFrame();
+	DetachMainThreadFrame();
 
 	JobSystem::Inst().GetJobQueue().Enqueue(Job(
 		[context, this] () mutable 
@@ -2738,13 +2734,13 @@ void Renderer::BeginLevelLoading(const char* mapName)
 
 	RegisterWorldModel(mapName);
 
-	AcquireCurrentFrame();
-	Frame& frame = GetCurrentFrame();
+	AcquireMainThreadFrame();
+	Frame& frame = GetMainThreadFrame();
 
-	m_dynamicModelRegContext = std::make_unique<JobContext>(CreateContext(frame));
+	m_dynamicModelRegContext = std::make_unique<GPUJobContext>(CreateContext(frame));
 	m_dynamicModelRegContext->commandList.Open();
 
-	DetachCurrentFrame();
+	DetachMainThreadFrame();
 }
 
 model_s* Renderer::RegisterModel(const char* name)
@@ -2809,7 +2805,7 @@ void Renderer::UpdateFrame(const refdef_t& updateData)
 {
 	Logs::Log(Logs::Category::Generic, "API: Update frame");
 
-	Frame& frame = GetCurrentFrame();
+	Frame& frame = GetMainThreadFrame();
 
 	frame.camera.Update(updateData);
 	frame.camera.GenerateViewProjMat();

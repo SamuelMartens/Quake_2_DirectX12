@@ -117,7 +117,8 @@ void DescriptorHeap::AllocateDescriptor(int allocatedIndex, ID3D12Resource* reso
 	{
 		assert(resource != nullptr && "UAV allocation failure. Resource shall not be nullptr");
 
-		//#DEBUG this works only with Shader resource view, but not CBV. Which requires different handle D3D12_CONSTANT_BUFFER_VIEW_DESC
+		//#TODO implement CBV
+		// this works only with Shader resource view, but not CBV. Which requires different handle D3D12_CONSTANT_BUFFER_VIEW_DESC
 		D3D12_SHADER_RESOURCE_VIEW_DESC* cbvSrvDesc = (desc == nullptr) ?
 			nullptr : &std::get<D3D12_SHADER_RESOURCE_VIEW_DESC>(*desc);
 

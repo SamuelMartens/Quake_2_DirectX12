@@ -547,7 +547,6 @@ namespace
 
 		parser["Resource"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			//#DEBUG ignore ResourceUpdate for now. Handle Scope only. Do debug validation
 			std::tuple<PassParametersSource::ResourceScope, Parsing::ResourceUpdate> resourceAttr =
 				peg::any_cast<std::tuple<PassParametersSource::ResourceScope, Parsing::ResourceUpdate>>(sv[0]);
 
@@ -995,7 +994,7 @@ std::vector<PassParameters> FrameGraphBuilder::GeneratePassesParameters() const
 
 	for (const PassParametersSource& passSource : parseCtx->passSources)
 	{
-		passesParameters.push_back(CompilePass(passSource, parseCtx->resources));
+		passesParameters.push_back(CompilePassParameters(passSource, parseCtx->resources));
 	}
 
 	return passesParameters;
@@ -1043,10 +1042,9 @@ std::string FrameGraphBuilder::LoadFrameGraphFile() const
 
 void FrameGraphBuilder::PreprocessPassFiles(const std::vector<std::string>& fileList)
 {
-	//#DEBUG going to make it work without preprocess first. And the add preprocessing
+
 }
 
-//#DEBUG not sure returning context is fine
 std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles) const
 {
 	peg::parser parser;
@@ -1230,11 +1228,8 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 			{
 				RootArg::DescTable descTableArgument;
 				descTableArgument.index = paramIndex;
-				//#DEBUG so far it will be updated on every entity. The idea is that everything in
-				// the same desc table should have the same update frequency. I need to find some way to validate this
-				// and enforce this stuff, and set it up
-				Parsing::ResourceUpdate updateFrequency = Parsing::ResourceUpdate::OnInit;
-
+				
+				std::optional<Parsing::ResourceUpdate> updateFrequency;
 
 				for (const Parsing::DescTableEntity_t& descTableEntity : rootParam.entities) 
 				{
@@ -1249,8 +1244,16 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 								const Parsing::Resource_ConstBuff* res =
 									FindResourceForRootArgument<Parsing::Resource_ConstBuff>(passResources, globalRes, descTableParam.registerId + i);
 
-								updateFrequency = res->updateFrequency;
-
+								// Set or validate update frequency
+								if (updateFrequency.has_value() == false)
+								{
+									updateFrequency = res->updateFrequency;
+								}
+								else
+								{
+									assert(*updateFrequency == res->updateFrequency && "All resources in desc table should have the same update frequency");
+								}
+								
 								descTableArgument.content.emplace_back(RootArg::DescTableEntity_ConstBufferView{
 									HASH(res->name.c_str()),
 									res->content,
@@ -1266,7 +1269,15 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 								const Parsing::Resource_Texture* res =
 									FindResourceForRootArgument<Parsing::Resource_Texture>(passResources, globalRes, descTableParam.registerId + i);
 
-								updateFrequency = res->updateFrequency;
+								// Set or validate update frequency
+								if (updateFrequency.has_value() == false)
+								{
+									updateFrequency = res->updateFrequency;
+								}
+								else
+								{
+									assert(*updateFrequency == res->updateFrequency && "All resources in desc table should have the same update frequency");
+								}
 
 								descTableArgument.content.emplace_back(RootArg::DescTableEntity_Texture{
 									HASH(res->name.c_str())						
@@ -1281,7 +1292,15 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 								const Parsing::Resource_Sampler* res =
 									FindResourceForRootArgument<Parsing::Resource_Sampler>(passResources, globalRes, descTableParam.registerId + i);
 
-								updateFrequency = res->updateFrequency;
+								// Set or validate update frequency
+								if (updateFrequency.has_value() == false)
+								{
+									updateFrequency = res->updateFrequency;
+								}
+								else
+								{
+									assert(*updateFrequency == res->updateFrequency && "All resources in desc table should have the same update frequency");
+								}
 
 								descTableArgument.content.emplace_back(RootArg::DescTableEntity_Sampler{
 									HASH(res->name.c_str())
@@ -1296,7 +1315,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 					}, descTableEntity);
 				}
 
-				AddRootArgToPass(pass, updateFrequency, descTableArgument);
+				AddRootArgToPass(pass, *updateFrequency, descTableArgument);
 			}
 			else
 			{
@@ -1308,7 +1327,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 	}
 }
 
-PassParameters FrameGraphBuilder::CompilePass(const PassParametersSource& passSource, const std::vector<Parsing::Resource_t>& globalRes) const
+PassParameters FrameGraphBuilder::CompilePassParameters(const PassParametersSource& passSource, const std::vector<Parsing::Resource_t>& globalRes) const
 {
 	PassParameters pass;
 
@@ -1332,9 +1351,7 @@ void FrameGraphBuilder::InitPass(PassParameters&& passParameters, Pass_t& pass) 
 {
 	std::visit([&passParameters](auto&& pass)
 	{
-		pass.passParameters = std::move(passParameters);
-
-		pass.Init();
+		pass.Init(std::move(passParameters));
 
 	}, pass);
 }
