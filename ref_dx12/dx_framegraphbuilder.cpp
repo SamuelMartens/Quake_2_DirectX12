@@ -95,10 +95,13 @@ namespace
 			}
 
 			// Check against other globals
+			// Global resources will be redefined in a few files, so naturally there will be duplicates.
+			// But we need to make sure that there are no resources with similar name but different content
 			assert(std::find_if(parseCtx.resources.cbegin(), parseCtx.resources.cend(),
-				[resourceName](const Parsing::Resource_t& existingRes)
+				[&resource, resourceName](const Parsing::Resource_t& existingRes)
 			{
-				return resourceName == PassParametersSource::GetResourceName(existingRes);
+				return resourceName == PassParametersSource::GetResourceName(existingRes) &&
+					IsEqual(resource, existingRes) == false;
 
 			}) == parseCtx.resources.cend() &&
 				"Global to global resource name collision");
@@ -140,13 +143,13 @@ namespace
 		return nullptr;
 	}
 
-	template<typename T1>
-	const T1* FindResourceForRootArgument(const std::vector<Parsing::Resource_t>& passResources, const std::vector<Parsing::Resource_t>& globalRes, int registerId)
+	template<typename T>
+	const T* FindResourceForRootArgument(const std::vector<Parsing::Resource_t>& passResources, const std::vector<Parsing::Resource_t>& globalRes, int registerId)
 	{
-		const T1* res = FindResourceOfTypeAndRegId<T1>(passResources, registerId);
+		const T* res = FindResourceOfTypeAndRegId<T>(passResources, registerId);
 		if (res == nullptr)
 		{
-			res = FindResourceOfTypeAndRegId<T1>(globalRes, registerId);
+			res = FindResourceOfTypeAndRegId<T>(globalRes, registerId);
 		}
 
 		assert(res != nullptr && "Can't find resource for root argument");
@@ -155,28 +158,28 @@ namespace
 	}
 
 	template<typename T>
-	void AddRootArgToPass(PassParameters& pass, Parsing::ResourceUpdate updateFrequency, T&& res)
+	void AddRootArgToPass(PassParameters& pass, Parsing::ResourceBindFrequency updateFrequency, T&& res)
 	{
 		switch (updateFrequency)
 		{
-		case Parsing::ResourceUpdate::PerObject:
+		case Parsing::ResourceBindFrequency::PerObject:
 			pass.perObjectRootArgsTemplate.push_back(std::move(res));
 			break;
-		case Parsing::ResourceUpdate::PerPass:
+		case Parsing::ResourceBindFrequency::PerPass:
 			pass.passRootArgs.push_back(std::move(res));
 			break;
-		case Parsing::ResourceUpdate::OnInit:
+		case Parsing::ResourceBindFrequency::Undefined:
 		default:
-			assert(false && "Unimplemented update frequency handling in add root arg pass");
+			assert(false && "Undefined bind frequency handling in add root arg pass");
 			break;
 		}
 	}
 
-	void SetResourceUpdateFrequency(Parsing::Resource_t& r, Parsing::ResourceUpdate update)
+	void SetResourceBindFrequency(Parsing::Resource_t& r, Parsing::ResourceBindFrequency bind)
 	{
-		std::visit([update](auto&& resource) 
+		std::visit([bind](auto&& resource) 
 		{
-			resource.updateFrequency = update;
+			resource.bindFrequency = bind;
 		}, r);
 	}
 
@@ -547,8 +550,8 @@ namespace
 
 		parser["Resource"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			std::tuple<PassParametersSource::ResourceScope, Parsing::ResourceUpdate> resourceAttr =
-				peg::any_cast<std::tuple<PassParametersSource::ResourceScope, Parsing::ResourceUpdate>>(sv[0]);
+			std::tuple<PassParametersSource::ResourceScope, Parsing::ResourceBindFrequency> resourceAttr =
+				peg::any_cast<std::tuple<PassParametersSource::ResourceScope, Parsing::ResourceBindFrequency>>(sv[0]);
 
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
@@ -577,7 +580,7 @@ namespace
 					assert(false && "Resource callback invalid type. Local scope");
 				}
 
-				SetResourceUpdateFrequency(currentPass.resources.back(), std::get<Parsing::ResourceUpdate>(resourceAttr));
+				SetResourceBindFrequency(currentPass.resources.back(), std::get<Parsing::ResourceBindFrequency>(resourceAttr));
 
 				break;
 			}
@@ -603,7 +606,7 @@ namespace
 					assert(false && "Resource callback invalid type. Global scope");
 				}
 
-				SetResourceUpdateFrequency(parseCtx.resources.back(), std::get<Parsing::ResourceUpdate>(resourceAttr));
+				SetResourceBindFrequency(parseCtx.resources.back(), std::get<Parsing::ResourceBindFrequency>(resourceAttr));
 
 				break;
 			}
@@ -618,7 +621,7 @@ namespace
 		{
 			return Parsing::Resource_ConstBuff{
 				peg::any_cast<std::string>(sv[0]),
-				Parsing::ResourceUpdate::OnInit,
+				Parsing::ResourceBindFrequency::Undefined,
 				peg::any_cast<int>(sv[1]),
 				peg::any_cast<std::vector<RootArg::ConstBuffField>>(sv[2]),
 				sv.str()};
@@ -628,7 +631,7 @@ namespace
 		{
 			return Parsing::Resource_Texture{
 				peg::any_cast<std::string>(sv[0]),
-				Parsing::ResourceUpdate::OnInit,
+				Parsing::ResourceBindFrequency::Undefined,
 				peg::any_cast<int>(sv[1]),
 				sv.str()};
 		};
@@ -638,7 +641,7 @@ namespace
 		{
 			return Parsing::Resource_Sampler{
 				peg::any_cast<std::string>(sv[0]),
-				Parsing::ResourceUpdate::OnInit,
+				Parsing::ResourceBindFrequency::Undefined,
 				peg::any_cast<int>(sv[1]),
 				sv.str()};
 		};
@@ -647,7 +650,7 @@ namespace
 		{
 			return std::make_tuple(
 				peg::any_cast<PassParametersSource::ResourceScope>(sv[0]),
-				peg::any_cast<Parsing::ResourceUpdate>(sv[1]));
+				peg::any_cast<Parsing::ResourceBindFrequency>(sv[1]));
 		};
 
 		parser["ResourceScope"] = [](const peg::SemanticValues& sv)
@@ -657,7 +660,7 @@ namespace
 
 		parser["ResourceUpdate"] = [](const peg::SemanticValues& sv)
 		{
-			return static_cast<Parsing::ResourceUpdate>(sv.choice());
+			return static_cast<Parsing::ResourceBindFrequency>(sv.choice());
 		};
 
 		parser["ConstBuffContent"] = [](const peg::SemanticValues& sv)
@@ -1054,7 +1057,7 @@ std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFile
 
 	for (const auto& passFile : passFiles)
 	{
-		//#DEBUG
+		//#DEBUG only UI
 		std::string passName = passFile.first.substr(0, passFile.first.rfind('.'));
 
 		if (passName != "UI")
@@ -1216,7 +1219,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 
 				assert(rootParam.num == 1 && "Const buffer view should always have numDescriptors 1");
 
-				AddRootArgToPass(pass, res->updateFrequency, RootArg::ConstBuffView{
+				AddRootArgToPass(pass, res->bindFrequency, RootArg::ConstBuffView{
 					paramIndex,
 					HASH(res->name.c_str()),
 					res->content,
@@ -1227,9 +1230,9 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 			else if constexpr (std::is_same_v<T, Parsing::RootParam_DescTable>)
 			{
 				RootArg::DescTable descTableArgument;
-				descTableArgument.index = paramIndex;
+				descTableArgument.bindIndex = paramIndex;
 				
-				std::optional<Parsing::ResourceUpdate> updateFrequency;
+				std::optional<Parsing::ResourceBindFrequency> updateFrequency;
 
 				for (const Parsing::DescTableEntity_t& descTableEntity : rootParam.entities) 
 				{
@@ -1247,11 +1250,11 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 								// Set or validate update frequency
 								if (updateFrequency.has_value() == false)
 								{
-									updateFrequency = res->updateFrequency;
+									updateFrequency = res->bindFrequency;
 								}
 								else
 								{
-									assert(*updateFrequency == res->updateFrequency && "All resources in desc table should have the same update frequency");
+									assert(*updateFrequency == res->bindFrequency && "All resources in desc table should have the same update frequency");
 								}
 								
 								descTableArgument.content.emplace_back(RootArg::DescTableEntity_ConstBufferView{
@@ -1272,11 +1275,11 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 								// Set or validate update frequency
 								if (updateFrequency.has_value() == false)
 								{
-									updateFrequency = res->updateFrequency;
+									updateFrequency = res->bindFrequency;
 								}
 								else
 								{
-									assert(*updateFrequency == res->updateFrequency && "All resources in desc table should have the same update frequency");
+									assert(*updateFrequency == res->bindFrequency && "All resources in desc table should have the same update frequency");
 								}
 
 								descTableArgument.content.emplace_back(RootArg::DescTableEntity_Texture{
@@ -1295,11 +1298,11 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 								// Set or validate update frequency
 								if (updateFrequency.has_value() == false)
 								{
-									updateFrequency = res->updateFrequency;
+									updateFrequency = res->bindFrequency;
 								}
 								else
 								{
-									assert(*updateFrequency == res->updateFrequency && "All resources in desc table should have the same update frequency");
+									assert(*updateFrequency == res->bindFrequency && "All resources in desc table should have the same update frequency");
 								}
 
 								descTableArgument.content.emplace_back(RootArg::DescTableEntity_Sampler{

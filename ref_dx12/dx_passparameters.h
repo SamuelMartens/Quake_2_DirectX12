@@ -16,7 +16,7 @@ namespace RootArg
 {
 	struct RootConstant
 	{
-		int index = Const::INVALID_INDEX;
+		int bindIndex = Const::INVALID_INDEX;
 		unsigned int size = Const::INVALID_SIZE;
 		unsigned int hashedName = 0;
 	};
@@ -25,11 +25,13 @@ namespace RootArg
 	{
 		unsigned int size = Const::INVALID_SIZE;
 		unsigned int hashedName = 0;
+
+		bool IsEqual(const ConstBuffField& other) const;
 	};
 
 	struct ConstBuffView
 	{
-		int index = Const::INVALID_INDEX;
+		int bindIndex = Const::INVALID_INDEX;
 		unsigned int hashedName = 0;
 		std::vector<RootArg::ConstBuffField> content;
 		// Doesn't own memory in this buffer, so no need to dealloc in destructor
@@ -70,7 +72,7 @@ namespace RootArg
 
 		~DescTable();
 
-		int index = Const::INVALID_INDEX;
+		int bindIndex = Const::INVALID_INDEX;
 		std::vector<DescTableEntity_t> content;
 		int viewIndex = Const::INVALID_INDEX;
 	};
@@ -102,15 +104,11 @@ namespace Parsing
 {
 	struct RootSignature;
 
-	//#TODO implement PerFrame
-	// Remove on init. This is actually not update? Rebind maybe?
-	// Think about good name
-	enum class ResourceUpdate
+	enum class ResourceBindFrequency
 	{
 		PerObject,
 		PerPass,
-		//	PerFrame,
-		OnInit
+		Undefined
 	};
 
 	enum class DataType
@@ -146,32 +144,40 @@ namespace Parsing
 	struct Resource_ConstBuff
 	{
 		std::string name;
-		ResourceUpdate updateFrequency = ResourceUpdate::OnInit;
+		ResourceBindFrequency bindFrequency = ResourceBindFrequency::Undefined;
 		int registerId = Const::INVALID_INDEX;
 		std::vector<RootArg::ConstBuffField> content;
 		std::string rawView;
+
+		bool IsEqual(const Resource_ConstBuff& other) const;
 	};
 
 	struct Resource_Texture
 	{
 		std::string name;
-		ResourceUpdate updateFrequency = ResourceUpdate::OnInit;
+		ResourceBindFrequency bindFrequency = ResourceBindFrequency::Undefined;
 		int registerId = Const::INVALID_INDEX;
 		std::string rawView;
+
+		bool IsEqual(const Resource_Texture& other) const;
 	};
 
 	struct Resource_Sampler
 	{
 		std::string name;
-		ResourceUpdate updateFrequency = ResourceUpdate::OnInit;
+		ResourceBindFrequency bindFrequency = ResourceBindFrequency::Undefined;
 		int registerId = Const::INVALID_INDEX;
 		std::string rawView;
+
+		bool IsEqual(const Resource_Sampler& other) const;
 	};
 
 	using  Resource_t = std::variant<
 		Resource_ConstBuff, 
 		Resource_Texture,
 		Resource_Sampler>;
+
+	bool IsEqual(const Resource_t& res1, const Resource_t& res2);
 };
 
 
@@ -197,6 +203,7 @@ public:
 		Undefined
 	};
 
+	//#DEBUG move this to bind frequency
 	enum class ResourceScope
 	{
 		Local,

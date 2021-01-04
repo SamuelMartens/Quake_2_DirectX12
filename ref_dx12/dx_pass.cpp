@@ -103,7 +103,9 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 	for (int i = 0; i < objects.size(); ++i)
 	{
 		// Special copy routine is required here.
-		StageObj& stageObj = drawObjects.emplace_back(StageObj{ 
+		//#DEBUG this is first major slow down. I can beat it by reusing
+		// pass objects rather than recreating them
+		PassObj& passObj = drawObjects.emplace_back(PassObj{
 			passParameters.perObjectRootArgsTemplate,
 			&objects[i] });
 
@@ -114,9 +116,9 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 
 		RenderCallbacks::PerObjectRegisterContext regCtx = { jobCtx };
 
-		for (RootArg::Arg_t& rootArg : stageObj.rootArgs)
+		for (RootArg::Arg_t& rootArg : passObj.rootArgs)
 		{
-			std::visit([this, i, objectOffset, &rootArgOffset, &stageObj, &regCtx]
+			std::visit([this, i, objectOffset, &rootArgOffset, &passObj, &regCtx]
 			(auto&& rootArg)
 			{
 				using T = std::decay_t<decltype(rootArg)>;
@@ -136,6 +138,7 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 
 				if constexpr (std::is_same_v<T, RootArg::DescTable>)
 				{
+					//#DEBUG second major slow down that kills performance
 					rootArg.viewIndex = RootArg::AllocateDescTableView(rootArg);
 
 					for (int i = 0; i < rootArg.content.size(); ++i)
@@ -143,7 +146,7 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 						RootArg::DescTableEntity_t& descTableEntitiy = rootArg.content[i];
 						const int currentViewIndex = rootArg.viewIndex + i;
 
-						std::visit([this, objectOffset, &rootArgOffset, &stageObj, &regCtx, currentViewIndex]
+						std::visit([this, objectOffset, &rootArgOffset, &passObj, &regCtx, currentViewIndex]
 						(auto&& descTableEntitiy)
 						{
 							using T = std::decay_t<decltype(descTableEntitiy)>;
@@ -163,7 +166,7 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 								RenderCallbacks::PerObjectRegisterCallback(
 									HASH(passParameters.name.c_str()),
 									descTableEntitiy.hashedName,
-									*stageObj.originalDrawCall,
+									*passObj.originalDrawCall,
 									&currentViewIndex,
 									regCtx
 								);
@@ -178,7 +181,6 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 	}
 
 	// Init vertex data
-
 	for (int i = 0; i < objects.size(); ++i)
 	{
 		std::visit([i, this](auto&& drawCall) 
@@ -295,7 +297,7 @@ void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 
 	for (int i = 0; i < drawObjects.size(); ++i)
 	{
-		StageObj& obj = drawObjects[i];
+		PassObj& obj = drawObjects[i];
 
 		for (RootArg::Arg_t& rootArg : obj.rootArgs)
 		{
@@ -407,7 +409,7 @@ void Pass_UI::Draw(GPUJobContext& jobCtx)
 
 	for (int i = 0; i < drawObjects.size(); ++i)
 	{
-		const StageObj& obj = drawObjects[i];
+		const PassObj& obj = drawObjects[i];
 
 		vertexBufferView.BufferLocation = uploadMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress() +
 			uploadMemory.GetOffset(vertexMemory) + i * perObjectVertexMemorySize;
@@ -429,7 +431,7 @@ void Pass_UI::Execute(GPUJobContext& context)
 	{
 		return;
 	}
-
+	
 	Start(context);
 	
 	UpdateDrawObjects(context);

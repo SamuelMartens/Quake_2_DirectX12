@@ -39,6 +39,5 @@ public:
 
 	void Execute(Frame& frame);
 
-
 	std::vector<Pass_t> passes;
 };

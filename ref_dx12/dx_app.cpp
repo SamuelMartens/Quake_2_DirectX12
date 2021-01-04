@@ -22,6 +22,7 @@
 #include "dx_framegraphbuilder.h"
 #include "dx_resourcemanager.h"
 #include "dx_memorymanager.h"
+#include "dx_jobmultithreading.h"
 
 #ifdef max
 #undef max

@@ -60,13 +60,13 @@ namespace RootArg
 				D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
 
 				cbAddress += uploadMemory.GetOffset(rootArg.gpuMem.handler) + rootArg.gpuMem.offset;
-				commandList.commandList->SetGraphicsRootConstantBufferView(rootArg.index, cbAddress);
+				commandList.commandList->SetGraphicsRootConstantBufferView(rootArg.bindIndex, cbAddress);
 			}
 			else if constexpr (std::is_same_v<T, DescTable>)
 			{
 				assert(rootArg.content.empty() == false && "Trying to bind empty desc table");
 
-				commandList.commandList->SetGraphicsRootDescriptorTable(rootArg.index,
+				commandList.commandList->SetGraphicsRootDescriptorTable(rootArg.bindIndex,
 					renderer.GetDescTableHeap(rootArg)->GetHandleGPU(rootArg.viewIndex));
 			}
 
@@ -87,7 +87,7 @@ namespace RootArg
 	{
 		assert(viewIndex == Const::INVALID_INDEX && "Trying to copy non empty root arg. Is this intended?");
 
-		index = other.index;
+		bindIndex = other.bindIndex;
 		content = other.content;
 		viewIndex = other.viewIndex;
 
@@ -98,8 +98,8 @@ namespace RootArg
 	{
 		PREVENT_SELF_MOVE_ASSIGN;
 
-		index = other.index;
-		other.index = Const::INVALID_INDEX;
+		bindIndex = other.bindIndex;
+		other.bindIndex = Const::INVALID_INDEX;
 
 		content = std::move(other.content);
 
@@ -130,6 +130,12 @@ namespace RootArg
 			}
 
 		}, content[0]);
+	}
+
+	bool ConstBuffField::IsEqual(const ConstBuffField& other) const
+	{
+		return size == other.size &&
+			hashedName == other.hashedName;
 	}
 }
 
@@ -175,6 +181,52 @@ namespace Parsing
 		}
 
 		return DXGI_FORMAT_R32G32B32A32_FLOAT;
+	}
+
+	bool IsEqual(const Resource_t& res1, const Resource_t& res2)
+	{
+		return std::visit([](auto&& res1, auto&& res2) 
+		{
+			using T1 = std::decay_t<decltype(res1)>;
+			using T2 = std::decay_t<decltype(res2)>;
+
+			if constexpr (std::is_same_v<T1, T2> == false)
+			{
+				return false;
+			}
+			else
+			{
+				return res1.IsEqual(res2);
+			}
+
+		}, res1, res2);
+	}
+
+	bool Resource_ConstBuff::IsEqual(const Resource_ConstBuff& other) const
+	{
+		return name == other.name &&
+			bindFrequency == other.bindFrequency &&
+			registerId == other.registerId &&
+			std::equal(content.cbegin(), content.cend(), other.content.cbegin(),
+				[](const RootArg::ConstBuffField& f1, const RootArg::ConstBuffField& r2) 
+		{
+			return f1.IsEqual(r2);
+		});
+		
+	}
+
+	bool Resource_Texture::IsEqual(const Resource_Texture& other) const
+	{
+		return name == other.name &&
+			bindFrequency == other.bindFrequency &&
+			registerId == other.registerId;
+	}
+
+	bool Resource_Sampler::IsEqual(const Resource_Sampler& other) const
+	{
+		return name == other.name &&
+			bindFrequency == other.bindFrequency &&
+			registerId == other.registerId;
 	}
 
 }

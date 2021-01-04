@@ -6,12 +6,13 @@
 #include "dx_utils.h"
 #include "dx_settings.h"
 #include "dx_buffer.h"
-#include "dx_jobmultithreading.h"
 
 /*
 	Controls preallocated GPU memory. It still possible to create separate 
 	buffer via ResourceManager, but not recommended.
 */
+
+struct GPUJobContext;
 
 class MemoryManager
 {

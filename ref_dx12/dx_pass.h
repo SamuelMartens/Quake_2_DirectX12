@@ -22,7 +22,7 @@
 class Pass_UI
 {
 public:
-	struct StageObj
+	struct PassObj
 	{
 		std::vector<RootArg::Arg_t> rootArgs;
 		const DrawCall_UI_t* originalDrawCall = nullptr;
@@ -63,7 +63,7 @@ private:
 	BufferHandler constBuffMemory = Const::INVALID_BUFFER_HANDLER;
 	BufferHandler vertexMemory = Const::INVALID_BUFFER_HANDLER;
 
-	std::vector<StageObj> drawObjects;
+	std::vector<PassObj> drawObjects;
 
 	// DirectX and OpenGL have different directions for Y axis,
 	// this matrix is required to fix this. Also I am using wrong projection matrix
