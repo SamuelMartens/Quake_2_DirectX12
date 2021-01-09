@@ -23,44 +23,9 @@ void Pass_UI::Init(PassParameters&& parameters)
 	// Calculate amount of memory for const buffers per objects
 	assert(perObjectConstBuffMemorySize == 0 && "Per object const memory should be null");
 
-	for (const RootArg::Arg_t& rootArg : passParameters.perObjectRootArgsTemplate)
+	for (const RootArg::Arg_t& rootArg : passParameters.perObjectLocalRootArgsTemplate)
 	{
-		std::visit([this](auto&& rootArg)
-		{
-			using T = std::decay_t<decltype(rootArg)>;
-
-			if constexpr (std::is_same_v<T, RootArg::RootConstant>)
-			{
-				assert(false && "Root constants not implemented");
-			}
-
-			if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
-			{
-				perObjectConstBuffMemorySize += RootArg::GetConstBuffSize(rootArg);
-			}
-
-			if constexpr (std::is_same_v<T, RootArg::DescTable>)
-			{
-				for (const RootArg::DescTableEntity_t& descTableEntitiy : rootArg.content)
-				{
-					std::visit([this](auto&& descTableEntitiy)
-					{
-						using T = std::decay_t<decltype(descTableEntitiy)>;
-
-						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
-						{
-							std::for_each(descTableEntitiy.content.begin(), descTableEntitiy.content.end(),
-								[this](const RootArg::ConstBuffField& f)
-							{
-								perObjectConstBuffMemorySize += f.size;
-							});
-						}
-
-					}, descTableEntitiy);
-				}
-			}
-
-		}, rootArg);
+		perObjectConstBuffMemorySize += GetSize(rootArg);
 	}
 
 	// Calculate amount of memory for vertex buffers per objects
@@ -106,7 +71,7 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 		//#DEBUG this is first major slow down. I can beat it by reusing
 		// pass objects rather than recreating them
 		PassObj& passObj = drawObjects.emplace_back(PassObj{
-			passParameters.perObjectRootArgsTemplate,
+			passParameters.perObjectLocalRootArgsTemplate,
 			&objects[i] });
 
 		// Init object root args
@@ -114,7 +79,7 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 		const int objectOffset = i * perObjectConstBuffMemorySize;
 		int rootArgOffset = 0;
 
-		RenderCallbacks::PerObjectRegisterContext regCtx = { jobCtx };
+		RenderCallbacks::RegisterLocalObjectContext regCtx = { jobCtx };
 
 		for (RootArg::Arg_t& rootArg : passObj.rootArgs)
 		{
@@ -131,9 +96,9 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
 				{
 					rootArg.gpuMem.handler = constBuffMemory;
-      					rootArg.gpuMem.offset = objectOffset + rootArgOffset;
+      				rootArg.gpuMem.offset = objectOffset + rootArgOffset;
 
-					rootArgOffset += RootArg::GetConstBuffSize(rootArg);
+					rootArgOffset += RootArg::GetConstBufftSize(rootArg);
 				}
 
 				if constexpr (std::is_same_v<T, RootArg::DescTable>)
@@ -158,15 +123,15 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 								descTableEntitiy.gpuMem.handler = constBuffMemory;
 								descTableEntitiy.gpuMem.offset = objectOffset + rootArgOffset;
 
-								rootArgOffset += RootArg::GetConstBuffSize(descTableEntitiy);
+								rootArgOffset += RootArg::GetConstBufftSize(descTableEntitiy);
 							}
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
 							{
-								RenderCallbacks::PerObjectRegisterCallback(
+								RenderCallbacks::RegisterLocalObject(
 									HASH(passParameters.name.c_str()),
 									descTableEntitiy.hashedName,
-									*passObj.originalDrawCall,
+									passObj.originalDrawCall,
 									&currentViewIndex,
 									regCtx
 								);
@@ -281,9 +246,9 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 
 void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 {
-	RenderCallbacks::PerObjectUpdateContext updateCtx = { XMFLOAT4X4(), jobCtx };
+	RenderCallbacks::UpdateLocalObjectContext updateCtx = { XMFLOAT4X4(), jobCtx };
 
-	Frame& frame = updateCtx.jobCtx.frame;
+	Frame& frame = updateCtx.jobContext.frame;
 
 	XMMATRIX sseViewMat = XMLoadFloat4x4(&frame.uiViewMat);
 	XMMATRIX sseProjMat = XMLoadFloat4x4(&frame.uiProjectionMat);
@@ -305,8 +270,6 @@ void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 			{
 				using T = std::decay_t<decltype(rootArg)>;
 
-				Renderer& renderer = Renderer::Inst();
-
 				if constexpr (std::is_same_v<T, RootArg::RootConstant>)
 				{
 					assert(false && "Root constant is not implemented");
@@ -319,12 +282,12 @@ void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 
 					for (RootArg::ConstBuffField& field : rootArg.content)
 					{
-						std::visit([&rootArg, &updateCtx, this, &field, &cpuMem, &fieldOffset](auto&& obj)
+						std::visit([this, &updateCtx, &field, &cpuMem, &fieldOffset](auto&& obj)
 						{
-							RenderCallbacks::PerObjectUpdateCallback(
+							RenderCallbacks::UpdateLocalObject(
 								HASH(passParameters.name.c_str()),
 								field.hashedName,
-								obj,
+								&obj,
 								&cpuMem[fieldOffset],
 								updateCtx);
 

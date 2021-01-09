@@ -40,6 +40,65 @@ namespace RootArg
 		}, descTable.content[0]);
 	}
 
+	int FindArg(const std::vector<Arg_t>& args, const Arg_t& arg)
+	{
+		int res = Const::INVALID_INDEX;
+
+		for (int i = 0; i < args.size(); ++i)
+		{
+			const Arg_t& currentArg = args[i];
+
+			if (std::visit([](auto&& currentArg, auto&& arg)
+			{
+				using currentArgT = std::decay_t<decltype(currentArg)>;
+				using argT = std::decay_t<decltype(arg)>;
+
+				if constexpr (std::is_same_v<currentArgT, argT> == true)
+				{
+					if constexpr (std::is_same_v<argT, DescTable>)
+					{
+						return std::equal(currentArg.content.cbegin(), currentArg.content.cend(), arg.content.cbegin(),
+							[](const DescTableEntity_t& e1, const DescTableEntity_t& e2)
+						{
+							return std::visit([](auto&& e1, auto&& e2)
+							{
+
+								using e1T = std::decay_t<decltype(e1)>;
+								using e2T = std::decay_t<decltype(e2)>;
+
+								if constexpr (std::is_same_v<e1T, e2T>)
+								{
+									return e1.hashedName == e2.hashedName;
+								}
+								else
+								{
+									return false;
+								}
+
+							}, e1, e2);
+
+						});
+					}
+					else
+					{
+						return arg.hashedName == currentArg.hashedName;
+					}
+				}
+				else
+				{
+					return false;
+				}
+
+			}, currentArg, arg)) 
+
+			{
+				res = i;
+				break;
+			};
+		}
+
+		return res;
+	}
 
 	void Bind(const Arg_t& rootArg, CommandList& commandList)
 	{

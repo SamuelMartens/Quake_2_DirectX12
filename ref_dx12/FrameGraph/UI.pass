@@ -16,19 +16,13 @@ Topology	 : Triangle
 // Root signature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-DescriptorTable(SRV(t0)),
+DescriptorTable(SRV(t0, numDescriptors = 3)),
 DescriptorTable(Sampler(s0)),
-CBV(b0, visibility = SHADER_VISIBILITY_VERTEX)
+CBV(b0)
 }
 
-// Resources 
 
-[Global, PerObject]
-cbuffer cbPerObject : register(b0)
-{
-	float4x4 gWorldViewProj;
-}
-
+// Attributes
 
 struct VertexIn
 {
@@ -43,10 +37,25 @@ struct VertexOut
 	float2 Tex : TEXCOORD;
 }
 
+// Resources 
+
+[Global, PerObject]
+cbuffer cbPerObject : register(b0)
+{
+	float4x4 gWorldViewProj;
+	int type;
+}
+
 [Global, PerObject]
 Texture2D gDiffuseMap : register(t0)
 
-[Global, PerObject]
+[Global, PerPass]
+Texture2D gFontTex : register(t1)
+
+[Global, PerPass]
+Texture2D gMovieTex : register(t2)
+
+[Global, PerPass]
 SamplerState gSamLinearWrap : register(s0)
 
 // Shaders
@@ -71,7 +80,24 @@ External : gDiffuseMap, gSamLinearWrap, VertexOut
 <[
 float4 main(VertexOut vOut) : SV_Target
 {
-	float4 color = gDiffuseMap.Sample(gSamLinearWrap, vOut.Tex);
+	float4 color = float4(0.0, 0.0, 0.0, 1.0);
+	
+	// Picture object
+	if (type == 0)
+	{
+		color =	gDiffuseMap.Sample(gSamLinearWrap, vOut.Tex);
+	}
+	// Text
+	else if (type == 1)
+	{
+		color =	gFontTex.Sample(gSamLinearWrap, vOut.Tex);
+	}
+	// Movie
+	else if (type == 2)
+	{
+		color =	gMovieTex.Sample(gSamLinearWrap, vOut.Tex);
+	}
+	
     
     if (color.a == 0)
     {

@@ -23,6 +23,7 @@
 #include "dx_resourcemanager.h"
 #include "dx_memorymanager.h"
 #include "dx_jobmultithreading.h"
+#include "dx_rendercallbacks.h"
 
 #ifdef max
 #undef max
@@ -1089,6 +1090,8 @@ void Renderer::EndFrameJob(GPUJobContext& context)
 	// Delete shared resources marked for deletion
 	ResourceManager::Inst().DeleteRequestedResources();
 
+	context.frame.frameGraph.EndFrame(context);
+
 	Logs::Log(Logs::Category::Job, "EndFrame job ended");
 }
 
@@ -1097,6 +1100,10 @@ void Renderer::BeginFrameJob(GPUJobContext& context)
 	Logs::Logf(Logs::Category::Job, "BeginFrame job started frame %d", context.frame.frameNumber);
 
 	JOB_GUARD(context);
+
+	//#DEBUG HOPE THIS HACK WORKS
+	context.frame.frameGraph.BeginFrame(context);
+	//END
 
 	CommandList& commandList = context.commandList;
 	Frame& frame = context.frame;

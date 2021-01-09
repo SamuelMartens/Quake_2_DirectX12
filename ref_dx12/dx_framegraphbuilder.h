@@ -69,6 +69,7 @@ namespace Parsing
 	struct PassParametersContext
 	{
 		std::vector<PassParametersSource> passSources;
+		//#DEBUG remove this
 		std::vector<Parsing::Resource_t> resources;
 	};
 
@@ -109,7 +110,7 @@ private:
 	FrameGraph CompileFrameGraph(FrameGraphSource&& source) const;
 	FrameGraphSource GenerateFrameGraphSource() const;
 	
-	std::vector<PassParameters> GeneratePassesParameters() const;
+	std::vector<PassParametersSource> GeneratePassesParameterSources() const;
 
 	std::unordered_map<std::string, std::string> LoadPassFiles() const;
 	std::string	LoadFrameGraphFile() const;
@@ -119,7 +120,7 @@ private:
 	std::shared_ptr<Parsing::PassParametersContext> ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles) const;
 	std::shared_ptr<Parsing::FrameGraphSourceContext> ParseFrameGraphFile(const std::string& materialFileContent) const;
 
-	PassCompiledShaders_t CompileShaders(const PassParametersSource& pass, const std::vector<Parsing::Resource_t>& globalRes) const;
+	PassCompiledShaders_t CompileShaders(const PassParametersSource& pass) const;
 	std::vector<D3D12_INPUT_ELEMENT_DESC> GenerateInputLayout(const PassParametersSource& pass) const;
 	const Parsing::VertAttr& GetPassInputVertAttr(const PassParametersSource& pass) const;
 
@@ -128,9 +129,9 @@ private:
 		const PassParametersSource& passSource,
 		PassCompiledShaders_t& shaders,
 		ComPtr<ID3D12RootSignature>& rootSig) const;
-	void CreateResourceArguments(const PassParametersSource& passSource, const std::vector<Parsing::Resource_t>& globalRes, PassParameters& pass) const;
+	void CreateResourceArguments(const PassParametersSource& passSource, FrameGraph& frameGraph, PassParameters& pass) const;
 
-	PassParameters CompilePassParameters(const PassParametersSource& passSource, const std::vector<Parsing::Resource_t>& globalRes) const;
+	PassParameters CompilePassParameters(PassParametersSource&& passSource, FrameGraph& frameGraph) const;
 
 	void InitPass(PassParameters&& passParameters, Pass_t& pass) const;
 

@@ -79,12 +79,14 @@ namespace RootArg
 
 	using Arg_t = std::variant<RootConstant, ConstBuffView, DescTable>;
 
+	int FindArg(const std::vector<Arg_t>& args, const Arg_t& arg);
+
 	void Bind(const Arg_t& rootArg, CommandList& commandList);
 
 	int AllocateDescTableView(const DescTable& descTable);
 
 	template<typename T>
-	int GetConstBuffSize(const T& cb)
+	int GetConstBufftSize(const T& cb)
 	{
 		int size = 0;
 
@@ -97,6 +99,53 @@ namespace RootArg
 		return Utils::Align(size, Settings::CONST_BUFFER_ALIGNMENT);
 	}
 
+	int GetDescTableSize(const DescTable& descTable)
+	{
+		int size = 0;
+
+		for (const RootArg::DescTableEntity_t& descTableEntitiy : descTable.content)
+		{
+			std::visit([&size](auto&& descTableEntitiy)
+			{
+				using T = std::decay_t<decltype(descTableEntitiy)>;
+
+				if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
+				{
+					std::for_each(descTableEntitiy.content.begin(), descTableEntitiy.content.end(),
+						[&size](const RootArg::ConstBuffField& f)
+					{
+						size += f.size;
+					});
+				}
+
+			}, descTableEntitiy);
+		}
+
+		return size;
+	}
+
+	int GetSize(const Arg_t& arg)
+	{
+		return std::visit([](auto&& arg)
+		{
+			using T = std::decay_t<decltype(arg)>;
+
+			if constexpr (std::is_same_v<T, ConstBuffView>)
+			{
+				return GetConstBufftSize(arg);
+			}
+			else if constexpr (std::is_same_v<T, DescTable>)
+			{
+				return GetDescTableSize(arg);
+			}
+			else
+			{
+				assert(false && "RootArgGetSize, not implemented type");
+				return 0;
+			}
+
+		}, arg);
+	}
 };
 
 
@@ -108,6 +157,13 @@ namespace Parsing
 	{
 		PerObject,
 		PerPass,
+		Undefined
+	};
+
+	enum class ResourceScope
+	{
+		Local,
+		Global,
 		Undefined
 	};
 
@@ -144,7 +200,10 @@ namespace Parsing
 	struct Resource_ConstBuff
 	{
 		std::string name;
+
 		ResourceBindFrequency bindFrequency = ResourceBindFrequency::Undefined;
+		ResourceScope scope = ResourceScope::Undefined;
+
 		int registerId = Const::INVALID_INDEX;
 		std::vector<RootArg::ConstBuffField> content;
 		std::string rawView;
@@ -155,7 +214,10 @@ namespace Parsing
 	struct Resource_Texture
 	{
 		std::string name;
+
 		ResourceBindFrequency bindFrequency = ResourceBindFrequency::Undefined;
+		ResourceScope scope = ResourceScope::Undefined;
+
 		int registerId = Const::INVALID_INDEX;
 		std::string rawView;
 
@@ -165,7 +227,10 @@ namespace Parsing
 	struct Resource_Sampler
 	{
 		std::string name;
+
 		ResourceBindFrequency bindFrequency = ResourceBindFrequency::Undefined;
+		ResourceScope scope = ResourceScope::Undefined;
+
 		int registerId = Const::INVALID_INDEX;
 		std::string rawView;
 
@@ -193,6 +258,7 @@ public:
 		SIZE
 	};
 
+	//#DEBUG move this to some other namespace
 	enum class InputType
 	{
 		Static,
@@ -200,14 +266,8 @@ public:
 		Particles,
 		UI,
 		PostProcess,
+		SIZE,
 		Undefined
-	};
-
-	//#DEBUG move this to bind frequency
-	enum class ResourceScope
-	{
-		Local,
-		Global
 	};
 
 	struct ShaderSource
@@ -282,8 +342,8 @@ public:
 
 	D3D12_VIEWPORT viewport = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
 
-
-	std::vector<RootArg::Arg_t> perObjectRootArgsTemplate;
+	std::vector<RootArg::Arg_t> perObjectLocalRootArgsTemplate;
+	std::vector<int> perObjGlobalRootArgsIndices;
 
 	Parsing::VertAttr vertAttr;
 
@@ -297,5 +357,6 @@ public:
 	/*  Owned by pass */
 
 	std::vector<RootArg::Arg_t> passRootArgs;
+	std::vector<int> passGlobalRootArgsIndices;
 
 };
