@@ -12,7 +12,7 @@ namespace FArg
 {
 	struct UpdateUploadHeapBuff
 	{
-		ComPtr<ID3D12Resource> buffer;
+		ID3D12Resource* buffer = nullptr;
 		int offset = Const::INVALID_OFFSET;
 		const void* data = nullptr;
 		int byteSize = Const::INVALID_SIZE;
@@ -21,7 +21,7 @@ namespace FArg
 
 	struct UpdateDefaultHeapBuff
 	{
-		ComPtr<ID3D12Resource> buffer;
+		ID3D12Resource* buffer = nullptr;
 		int offset = Const::INVALID_OFFSET;
 		const void* data = nullptr;
 		int byteSize = Const::INVALID_SIZE;

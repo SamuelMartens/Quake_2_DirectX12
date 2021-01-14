@@ -62,7 +62,7 @@ ConstBuff           <- T( 'cbuffer' < Ident ':' RegisterDecl  '{' ConstBuffConte
 Texture             <- T( 'Texture2D' < Ident ':' RegisterDecl > )
 Sampler             <- T( 'SamplerState' < Ident ':' RegisterDecl > )
 ResourceAttr        <- T( '[' < ResourceScope ',' ResourceUpdate > ']' )
-ResourceScope       <- _ 'Global' _ / _ 'Local' _
+ResourceScope       <- _ 'Local' _ / _ 'Global' _
 ResourceUpdate      <- _ 'PerObject' _ / _ 'PerPass' _
 
 ConstBuffContent	<- T( ConstBuffField* )

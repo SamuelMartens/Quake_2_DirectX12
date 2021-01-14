@@ -14,39 +14,35 @@
 
 struct GPUJobContext;
 
+using UploadBuffer_t = HandlerBuffer<
+	Settings::UPLOAD_MEMORY_BUFFER_SIZE,
+	Settings::UPLOAD_MEMORY_BUFFER_HANDLERS_NUM,
+	MemoryType::Upload,
+	Settings::CONST_BUFFER_ALIGNMENT>;
+
+using DefaultBuffer_t = HandlerBuffer<
+	Settings::DEFAULT_MEMORY_BUFFER_SIZE,
+	Settings::DEFAULT_MEMORY_BUFFER_HANDLERS_NUM,
+	MemoryType::Default>;
+
 class MemoryManager
 {
 public:
-	using UploadBuff_t = HandlerBuffer<
-		Settings::UPLOAD_MEMORY_BUFFER_SIZE,
-		Settings::UPLOAD_MEMORY_BUFFER_HANDLERS_NUM,
-		Settings::CONST_BUFFER_ALIGNMENT>;
-
-	using DefaultBuff_t = HandlerBuffer<
-		Settings::DEFAULT_MEMORY_BUFFER_SIZE,
-		Settings::DEFAULT_MEMORY_BUFFER_HANDLERS_NUM>;
-
-	enum Type
-	{
-		Upload,
-		Default
-	};
-
+	
 	DEFINE_SINGLETON(MemoryManager);
 
 	void Init(GPUJobContext& context);
 
 private:
 
-	std::tuple<UploadBuff_t, DefaultBuff_t> buffers;
+	std::tuple<UploadBuffer_t, DefaultBuffer_t> buffers;
 
 public:
 
-	// The reason enum is used here but not buffer type, is because buffers are essentially the same template types,
-	// so there is a chance of collision if we use types for getting buffer
-	template<Type t>
-	auto GetBuff() ->std::add_lvalue_reference_t<std::tuple_element_t<t, decltype(buffers)>>
+
+	template<typename T>
+	T& GetBuff()
 	{
-		return std::get<t>(buffers);
+		return std::get<T>(buffers);
 	}
 };

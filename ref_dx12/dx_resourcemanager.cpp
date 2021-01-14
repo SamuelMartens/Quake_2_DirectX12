@@ -135,24 +135,24 @@ void ResourceManager::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
 
 	FArg::UpdateUploadHeapBuff uploadHeapBuffArgs;
 	uploadHeapBuffArgs.alignment = 0;
-	uploadHeapBuffArgs.buffer = uploadBuffer;
+	uploadHeapBuffArgs.buffer = uploadBuffer.Get();
 	uploadHeapBuffArgs.byteSize = args.byteSize;
 	uploadHeapBuffArgs.data = args.data;
 	uploadHeapBuffArgs.offset = 0;
 	UpdateUploadHeapBuff(uploadHeapBuffArgs);
 
 	commandList.commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		args.buffer.Get(),
+		args.buffer,
 		D3D12_RESOURCE_STATE_GENERIC_READ,
 		D3D12_RESOURCE_STATE_COPY_DEST
 	));
 
 	// Last argument is intentionally args.byteSize, cause that's how much data we pass to this function
 	// we don't want to read out of range
-	commandList.commandList->CopyBufferRegion(args.buffer.Get(), args.offset, uploadBuffer.Get(), 0, args.byteSize);
+	commandList.commandList->CopyBufferRegion(args.buffer, args.offset, uploadBuffer.Get(), 0, args.byteSize);
 
 	commandList.commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		args.buffer.Get(),
+		args.buffer,
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		D3D12_RESOURCE_STATE_GENERIC_READ
 	));

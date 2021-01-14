@@ -40,6 +40,54 @@ namespace RootArg
 		}, descTable.content[0]);
 	}
 
+	int GetDescTableSize(const DescTable& descTable)
+	{
+		int size = 0;
+
+		for (const RootArg::DescTableEntity_t& descTableEntitiy : descTable.content)
+		{
+			std::visit([&size](auto&& descTableEntitiy)
+			{
+				using T = std::decay_t<decltype(descTableEntitiy)>;
+
+				if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
+				{
+					std::for_each(descTableEntitiy.content.begin(), descTableEntitiy.content.end(),
+						[&size](const RootArg::ConstBuffField& f)
+					{
+						size += f.size;
+					});
+				}
+
+			}, descTableEntitiy);
+		}
+
+		return size;
+	}
+
+	int GetSize(const Arg_t& arg)
+	{
+		return std::visit([](auto&& arg)
+		{
+			using T = std::decay_t<decltype(arg)>;
+
+			if constexpr (std::is_same_v<T, ConstBuffView>)
+			{
+				return GetConstBufftSize(arg);
+			}
+			else if constexpr (std::is_same_v<T, DescTable>)
+			{
+				return GetDescTableSize(arg);
+			}
+			else
+			{
+				assert(false && "RootArgGetSize, not implemented type");
+				return 0;
+			}
+
+		}, arg);
+	}
+
 	int FindArg(const std::vector<Arg_t>& args, const Arg_t& arg)
 	{
 		int res = Const::INVALID_INDEX;
@@ -57,7 +105,8 @@ namespace RootArg
 				{
 					if constexpr (std::is_same_v<argT, DescTable>)
 					{
-						return std::equal(currentArg.content.cbegin(), currentArg.content.cend(), arg.content.cbegin(),
+						return currentArg.content.size() == arg.content.size() && 
+							std::equal(currentArg.content.cbegin(), currentArg.content.cend(), arg.content.cbegin(),
 							[](const DescTableEntity_t& e1, const DescTableEntity_t& e2)
 						{
 							return std::visit([](auto&& e1, auto&& e2)
@@ -107,8 +156,10 @@ namespace RootArg
 			using T = std::decay_t<decltype(rootArg)>;
 			Renderer& renderer = Renderer::Inst();
 
-			MemoryManager::UploadBuff_t& uploadMemory =
-				MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+			auto& uploadMemory =
+				MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+
+			assert(rootArg.bindIndex != Const::INVALID_INDEX && "Can't bind RootArg, invalid index");
 
 			if constexpr (std::is_same_v<T, RootConstant>)
 			{
@@ -116,7 +167,7 @@ namespace RootArg
 			}
 			if constexpr (std::is_same_v<T, ConstBuffView>)
 			{
-				D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+				D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
 
 				cbAddress += uploadMemory.GetOffset(rootArg.gpuMem.handler) + rootArg.gpuMem.offset;
 				commandList.commandList->SetGraphicsRootConstantBufferView(rootArg.bindIndex, cbAddress);
@@ -124,6 +175,7 @@ namespace RootArg
 			else if constexpr (std::is_same_v<T, DescTable>)
 			{
 				assert(rootArg.content.empty() == false && "Trying to bind empty desc table");
+				assert(rootArg.viewIndex != Const::INVALID_INDEX && "Invalid view index. Can't bind root arg");
 
 				commandList.commandList->SetGraphicsRootDescriptorTable(rootArg.bindIndex,
 					renderer.GetDescTableHeap(rootArg)->GetHandleGPU(rootArg.viewIndex));

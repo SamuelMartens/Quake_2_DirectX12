@@ -5,11 +5,29 @@
 #include "dx_memorymanager.h"
 #include "dx_rendercallbacks.h"
 
+FrameGraph::FrameGraph()
+{
+	for (BufferHandler& handler : objGlobalResMemory)
+	{
+		handler = Const::INVALID_BUFFER_HANDLER;
+	}
+}
+
 FrameGraph::~FrameGraph()
 {
+	auto& uploadBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+
 	if (passGlobalMemory != Const::INVALID_BUFFER_HANDLER)
 	{
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>().allocBuffer.allocator.Delete(passGlobalMemory);
+		uploadBuff.Delete(passGlobalMemory);
+	}
+
+	for (BufferHandler handler : objGlobalResMemory)
+	{
+		if (handler != Const::INVALID_BUFFER_HANDLER)
+		{
+			uploadBuff.Delete(handler);
+		}
 	}
 }
 
@@ -29,16 +47,29 @@ void FrameGraph::Execute(Frame& frame)
 
 	// NOTE: creation order is the order in which command Lists will be submitted.
 	// Set up dependencies 
+
+	GPUJobContext initFrameGraphJobContext = renderer.CreateContext(frame);
+
 	std::vector<GPUJobContext> framePassContexts;
-	GPUJobContext& beginFrameContext = framePassContexts.emplace_back(renderer.CreateContext(frame));
+	framePassContexts.emplace_back(renderer.CreateContext(frame));
 
 	for (Pass_t& pass : passes)
 	{
 		framePassContexts.emplace_back(renderer.CreateContext(frame));
+
+		framePassContexts.back().CreateDependencyFrom({&initFrameGraphJobContext});
 	};
 
 	GPUJobContext endFrameJobContext = renderer.CreateContext(frame);
 	endFrameJobContext.CreateDependencyFrom(framePassContexts);
+
+	jobQueue.Enqueue(Job([initFrameGraphJobContext, &renderer]() mutable
+	{
+		JOB_GUARD(initFrameGraphJobContext);
+		//#DEBUG Wait is not called automatically
+		initFrameGraphJobContext.frame.frameGraph.BeginFrame(initFrameGraphJobContext);
+
+	}));
 
 	jobQueue.Enqueue(Job([ctx = framePassContexts[0], &renderer]() mutable
 	{
@@ -57,6 +88,16 @@ void FrameGraph::Execute(Frame& frame)
 				{
 					JOB_GUARD(passJobContext);
 
+					//#DEBUG. Actually I need to figure out dependency stuff.
+					// First of all it should be not CreateDependency but rather AddDependency
+					// Secondly UI passes ore dependent on UI update. So they are defently should wait for it
+					// Finally BeginFRameJob doesn't depend on this routine actually.
+					// Is there a way I can handle this with resoure barrier?
+					// In ideal world where I am a good programmer, FrameGraph actually meant to handle,
+					// these sort of crap
+					passJobContext.waitDependancy->Wait();
+					//END
+
 					pass.Execute(passJobContext);
 				}));
 
@@ -74,6 +115,24 @@ void FrameGraph::Init(GPUJobContext& context)
 	RegisterGlobaPasslRes(context);
 }
 
+void FrameGraph::BindPassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const
+{
+	for (const int index : resIndices)
+	{
+		RootArg::Bind(passesGlobalRes[index], commandList);
+	}
+}
+
+void FrameGraph::BindObjGlobalRes(const std::vector<int>& resIndices, int objIndex, CommandList& commandList, PassParametersSource::InputType objType) const
+{
+	const std::vector<RootArg::Arg_t>& objRes = objGlobalRes[static_cast<int>(objType)][objIndex];
+
+	for (const int index : resIndices)
+	{
+		RootArg::Bind(objRes[index], commandList);
+	}
+}
+
 void FrameGraph::BeginFrame(GPUJobContext& context)
 {
 	if (isInitalized == false)
@@ -82,26 +141,30 @@ void FrameGraph::BeginFrame(GPUJobContext& context)
 
 		isInitalized = true;
 	}
-
-	RegisterGlobalObjectsResUI(context);
 	
-	UpdateGlobalPasslRes(context);
+	//#DEBUG should it be inside?
+	if (context.frame.uiDrawCalls.empty() == false)
+	{
+		RegisterGlobalObjectsResUI(context);
+		UpdateGlobalObjectsResUI(context);
+	}
 
-	UpdateGlobalObjectsResUI(context);
+	UpdateGlobalPasslRes(context);
 }
 
 void FrameGraph::EndFrame(GPUJobContext& context)
 {
 	objGlobalRes[static_cast<int>(PassParametersSource::InputType::UI)].clear();
 
-	auto& updateBuff = MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	auto& updateBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
-	BufferHandler perObjectGlobalMemoryUI = 
+	BufferHandler& perObjectGlobalMemoryUI = 
 		objGlobalResMemory[static_cast<int>(PassParametersSource::InputType::UI)];
 
 	if (perObjectGlobalMemoryUI != Const::INVALID_BUFFER_HANDLER)
 	{
-		updateBuff.allocBuffer.allocator.Delete(perObjectGlobalMemoryUI);
+		updateBuff.Delete(perObjectGlobalMemoryUI);
+		perObjectGlobalMemoryUI = Const::INVALID_BUFFER_HANDLER;
 	}
 }
 
@@ -109,22 +172,19 @@ void FrameGraph::RegisterGlobalObjectsResUI(GPUJobContext& context)
 {
 	std::vector<DrawCall_UI_t>& drawCalls = context.frame.uiDrawCalls;
 
-	if (drawCalls.empty() == true)
-	{
-		return;
-	}
-
 	// Allocate memory
-	BufferHandler objectGlobalMemUI = objGlobalResMemory[static_cast<int>(PassParametersSource::InputType::UI)];
+	BufferHandler& objectGlobalMemUI = objGlobalResMemory[static_cast<int>(PassParametersSource::InputType::UI)];
 
 	assert(objectGlobalMemUI == Const::INVALID_BUFFER_HANDLER && "UI per object global mem should is not deallocated");
 
-	objectGlobalMemUI = MemoryManager::Inst().GetBuff<MemoryManager::Upload>().allocBuffer.allocator.
-		Allocate(perObjectGlobalMemoryUISize * drawCalls.size());
+	if (perObjectGlobalMemoryUISize != 0)
+	{
+		objectGlobalMemUI = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(perObjectGlobalMemoryUISize * drawCalls.size());
+	}
 
 	// Get references on used data
-	const std::vector<RootArg::Arg_t>& objResTemplate = objGlobalResTemplate[static_cast<int>(PassParametersSource::InputType::SIZE)];
-	std::vector<std::vector<RootArg::Arg_t>>& objlResources = objGlobalRes[static_cast<int>(PassParametersSource::InputType::SIZE)];
+	const std::vector<RootArg::Arg_t>& objResTemplate = objGlobalResTemplate[static_cast<int>(PassParametersSource::InputType::UI)];
+	std::vector<std::vector<RootArg::Arg_t>>& objlResources = objGlobalRes[static_cast<int>(PassParametersSource::InputType::UI)];
 	
 	RenderCallbacks::RegisterGlobalObjectContext regContext = { context };
 
@@ -203,12 +263,28 @@ void FrameGraph::RegisterGlobalObjectsResUI(GPUJobContext& context)
 
 void FrameGraph::UpdateGlobalObjectsResUI(GPUJobContext& context)
 {
-	if (context.frame.uiDrawCalls.empty() == true)
-	{
-		return;
-	}
+	
+	//#DEBUG this should belong to frame (matrix I mean)
+	// And delete it in UI pass
+	int drawAreaWidth = 0;
+	int drawAreaHeight = 0;
+	Renderer::Inst().GetDrawAreaSize(&drawAreaWidth, &drawAreaHeight);
 
-	RenderCallbacks::UpdateGlobalObjectContext updateContext = { context };
+	XMMATRIX sseYInverseAndCenterMat = XMMatrixIdentity();
+	sseYInverseAndCenterMat.r[1] = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
+	sseYInverseAndCenterMat = XMMatrixTranslation(-drawAreaWidth / 2, -drawAreaHeight / 2, 0.0f) * sseYInverseAndCenterMat;
+
+	Frame& frame = context.frame;
+
+	XMMATRIX sseViewMat = XMLoadFloat4x4(&frame.uiViewMat);
+	XMMATRIX sseProjMat = XMLoadFloat4x4(&frame.uiProjectionMat);
+
+	XMMATRIX viewProj = sseYInverseAndCenterMat * sseViewMat * sseProjMat;
+
+	XMFLOAT4X4 yInverseAndCenterMat;
+	XMStoreFloat4x4(&yInverseAndCenterMat, viewProj);
+
+	RenderCallbacks::UpdateGlobalObjectContext updateContext = { yInverseAndCenterMat, context };
 
 	std::vector<std::vector<RootArg::Arg_t>>& objGlobalResUI = objGlobalRes[static_cast<int>(PassParametersSource::InputType::UI)];
 
@@ -272,20 +348,34 @@ void FrameGraph::UpdateGlobalObjectsResUI(GPUJobContext& context)
 		}
 	}
 
-	auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	if (perObjectGlobalMemoryUISize != 0)
+	{
+		auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
-	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	updateConstBufferArgs.buffer = uploadMemoryBuff.allocBuffer.gpuBuffer;
-	updateConstBufferArgs.offset = uploadMemoryBuff.GetOffset(constBuffMemory);
-	updateConstBufferArgs.data = cpuMem.data();
-	updateConstBufferArgs.byteSize = cpuMem.size();
-	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
+		BufferHandler objGlobalMemoryUI = objGlobalResMemory[static_cast<int>(PassParametersSource::InputType::UI)];
 
-	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
+		FArg::UpdateUploadHeapBuff updateConstBufferArgs;
+		updateConstBufferArgs.buffer = uploadMemoryBuff.GetGpuBuffer();
+		updateConstBufferArgs.offset = uploadMemoryBuff.GetOffset(objGlobalMemoryUI);
+		updateConstBufferArgs.data = cpuMem.data();
+		updateConstBufferArgs.byteSize = cpuMem.size();
+		updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
+
+		ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
+	}
 }
 
 void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 {
+
+	assert(passGlobalMemory == Const::INVALID_BUFFER_HANDLER && "Pass Global Memory shouldn't be preallocated");
+
+	if (passGlobalMemorySize != 0)
+	{
+		passGlobalMemory =
+			MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(passGlobalMemorySize);
+	}
+
 	RenderCallbacks::RegisterGlobalPassContext globalPassContext = { context };
 
 	int offset = 0;
@@ -316,9 +406,9 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 				for (int i = 0; i < arg.content.size(); ++i)
 				{
 					RootArg::DescTableEntity_t& descTableEntitiy = arg.content[i];
-					const int currentViewIndex = arg.viewIndex + i;
-
-					std::visit([this, &offset, currentViewIndex, &globalPassContext]
+					int currentViewIndex = arg.viewIndex + i;
+					
+					std::visit([this, &offset, &currentViewIndex, &globalPassContext]
 					(auto&& descTableEntitiy)
 					{
 						using T = std::decay_t<decltype(descTableEntitiy)>;
@@ -385,9 +475,12 @@ void FrameGraph::UpdateGlobalPasslRes(GPUJobContext& context)
 
 			if constexpr (std::is_same_v<T, RootArg::DescTable>)
 			{
-				for (RootArg::DescTableEntity_t& descTableEntity : arg.content)
+				for (int i = 0 ; i < arg.content.size(); ++i)
 				{
-					std::visit([&globalPassContext, &cpuMem](auto&& descTableEntity)
+					RootArg::DescTableEntity_t& descTableEntity = arg.content[i];
+					int currentViewIndex = arg.viewIndex + i;
+
+					std::visit([&globalPassContext, &cpuMem, &currentViewIndex](auto&& descTableEntity)
 					{
 						using T = std::decay_t<decltype(descTableEntity)>;
 
@@ -396,21 +489,34 @@ void FrameGraph::UpdateGlobalPasslRes(GPUJobContext& context)
 							assert(false && "Desc table view is probably not implemented! Make sure it is");
 						}
 
+						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
+						{
+							RenderCallbacks::UpdateGlobalPass(
+								descTableEntity.hashedName,
+								&currentViewIndex,
+								globalPassContext
+							);
+						}
+
 					}, descTableEntity);
+
 				}
 			}
 
 		}, arg);
 	}
 
-	auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	if (passGlobalMemorySize != 0)
+	{
+		auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
-	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	updateConstBufferArgs.buffer = uploadMemoryBuff.allocBuffer.gpuBuffer;
-	updateConstBufferArgs.offset = uploadMemoryBuff.GetOffset(passGlobalMemory);
-	updateConstBufferArgs.data = cpuMem.data();
-	updateConstBufferArgs.byteSize = cpuMem.size();
-	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
+		FArg::UpdateUploadHeapBuff updateConstBufferArgs;
+		updateConstBufferArgs.buffer = uploadMemoryBuff.GetGpuBuffer();
+		updateConstBufferArgs.offset = uploadMemoryBuff.GetOffset(passGlobalMemory);
+		updateConstBufferArgs.data = cpuMem.data();
+		updateConstBufferArgs.byteSize = cpuMem.size();
+		updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
 
-	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
+		ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
+	}
 }

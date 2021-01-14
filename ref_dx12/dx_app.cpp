@@ -794,8 +794,8 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 
 	DO_IN_LOCK(frame.uploadResources, clear());
 
-	MemoryManager::UploadBuff_t& uploadMemory = 
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	auto& uploadMemory = 
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	// Streaming drawing stuff
 	frame.streamingObjectsHandlers.mutex.lock();
@@ -1012,7 +1012,7 @@ DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
 			Utils::Align(sizeof(ShDef::ConstBuff::AnimInterpTranstMap), Settings::CONST_BUFFER_ALIGNMENT);
 
 		resIt->constantBufferHandler = 
-			MemoryManager::Inst().GetBuff<MemoryManager::Upload>().Allocate(DynamicObjectConstSize);
+			MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(DynamicObjectConstSize);
 	}
 
 	return *resIt;
@@ -1081,6 +1081,8 @@ void Renderer::EndFrameJob(GPUJobContext& context)
 	PresentAndSwapBuffers(frame);
 
 	ReleaseFrameResources(frame);
+	//#DEBUG this stuff mostly releases resources. Make separate function for it and put it into ReleaseFrameResources
+	context.frame.frameGraph.EndFrame(context);
 
 	ReleaseFrame(frame);
 
@@ -1090,8 +1092,6 @@ void Renderer::EndFrameJob(GPUJobContext& context)
 	// Delete shared resources marked for deletion
 	ResourceManager::Inst().DeleteRequestedResources();
 
-	context.frame.frameGraph.EndFrame(context);
-
 	Logs::Log(Logs::Category::Job, "EndFrame job ended");
 }
 
@@ -1100,10 +1100,6 @@ void Renderer::BeginFrameJob(GPUJobContext& context)
 	Logs::Logf(Logs::Category::Job, "BeginFrame job started frame %d", context.frame.frameNumber);
 
 	JOB_GUARD(context);
-
-	//#DEBUG HOPE THIS HACK WORKS
-	context.frame.frameGraph.BeginFrame(context);
-	//END
 
 	CommandList& commandList = context.commandList;
 	Frame& frame = context.frame;
@@ -1157,7 +1153,7 @@ void Renderer::DrawUIJob(GPUJobContext& context)
 	const int requiredMemoryAlloc = context.frame.uiDrawCalls.size() * perDrawCallMemoryRequired;
 
 	BufferHandler memoryBufferHandle = 
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>().Allocate(requiredMemoryAlloc);
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(requiredMemoryAlloc);
 	DO_IN_LOCK(frame.streamingObjectsHandlers, push_back(memoryBufferHandle));
 
 	BufferPiece currentBufferPiece = {memoryBufferHandle, 0};
@@ -1316,7 +1312,7 @@ void Renderer::DrawParticleJob(GPUJobContext& context)
 		constexpr int singleParticleSize = sizeof(ShDef::Vert::PosCol);
 		const int vertexBufferSize = singleParticleSize * particlesToDraw.size();
 		const BufferHandler particleVertexBufferHandler = 
-			MemoryManager::Inst().GetBuff<MemoryManager::Upload>().Allocate(vertexBufferSize);
+			MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(vertexBufferSize);
 		DO_IN_LOCK(context.frame.streamingObjectsHandlers, push_back(particleVertexBufferHandler));
 
 		assert(particleVertexBufferHandler != Const::INVALID_BUFFER_HANDLER && "Failed to allocate particle vertex buffer");
@@ -1442,8 +1438,8 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 
 	}
 
-	MemoryManager::DefaultBuff_t& defaultMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Default>();
+	auto& defaultMemory =
+		MemoryManager::Inst().GetBuff<DefaultBuffer_t>();
 
 	// Load GPU buffers
 	const int vertexBufferSize = vertexBuffer.size() * sizeof(XMFLOAT4);
@@ -1459,7 +1455,7 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	// Get vertices in
 	FArg::UpdateDefaultHeapBuff updateArgs;
 	updateArgs.alignment = 0;
-	updateArgs.buffer = defaultMemory.allocBuffer.gpuBuffer;
+	updateArgs.buffer = defaultMemory.GetGpuBuffer();
 	updateArgs.byteSize = vertexBufferSize;
 	updateArgs.data = reinterpret_cast<const void*>(vertexBuffer.data());
 	updateArgs.offset = defaultMemory.GetOffset(object.vertices);
@@ -1468,7 +1464,7 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 
 	// Get indices in
 	updateArgs.alignment = 0;
-	updateArgs.buffer = defaultMemory.allocBuffer.gpuBuffer;
+	updateArgs.buffer = defaultMemory.GetGpuBuffer();
 	updateArgs.byteSize = indexBufferSize;
 	updateArgs.data = reinterpret_cast<const void*>(normalizedIndexBuffer.data());
 	updateArgs.offset = defaultMemory.GetOffset(object.indices);
@@ -1477,7 +1473,7 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 
 	// Get tex coords in
 	updateArgs.alignment = 0;
-	updateArgs.buffer = defaultMemory.allocBuffer.gpuBuffer;
+	updateArgs.buffer = defaultMemory.GetGpuBuffer();
 	updateArgs.byteSize = texCoordsBufferSize;
 	updateArgs.data = reinterpret_cast<const void*>(normalizedTexCoordsBuffer.data());
 	updateArgs.offset = defaultMemory.GetOffset(object.textureCoords);
@@ -1523,8 +1519,8 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	StaticObject& obj = m_staticObjects.emplace_back(StaticObject());
 	Utils::AABB& objCulling = m_staticObjectsAABB.emplace_back();
 
-	MemoryManager::DefaultBuff_t& defaultMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Default>();
+	auto& defaultMemory =
+		MemoryManager::Inst().GetBuff<DefaultBuffer_t>();
 
 	// Set the texture name
 	obj.textureKey = surf.texinfo->image->name;
@@ -1533,7 +1529,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	obj.vertices = defaultMemory.Allocate(obj.verticesSizeInBytes);
 
 	FArg::UpdateDefaultHeapBuff updateBuffArg;
-	updateBuffArg.buffer = defaultMemory.allocBuffer.gpuBuffer;
+	updateBuffArg.buffer = defaultMemory.GetGpuBuffer();
 	updateBuffArg.offset = defaultMemory.GetOffset(obj.vertices);
 	updateBuffArg.byteSize = obj.verticesSizeInBytes;
 	updateBuffArg.data = vertices.data();
@@ -1552,7 +1548,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	obj.indicesSizeInBytes = sizeof(uint32_t) * indices.size();
 	obj.indices = defaultMemory.Allocate(obj.indicesSizeInBytes);
 
-	updateBuffArg.buffer = defaultMemory.allocBuffer.gpuBuffer;
+	updateBuffArg.buffer = defaultMemory.GetGpuBuffer();
 	updateBuffArg.offset = defaultMemory.GetOffset(obj.indices);
 	updateBuffArg.byteSize = obj.indicesSizeInBytes;
 	updateBuffArg.data = indices.data();
@@ -1564,8 +1560,8 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	const unsigned int PictureObjectConstSize = Utils::Align(sizeof(ShDef::ConstBuff::TransMat), 
 		Settings::CONST_BUFFER_ALIGNMENT);
 
-	MemoryManager::UploadBuff_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	auto& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	// Init frame data
 	for (int i = 0; i < obj.frameData.size(); ++i)
@@ -1627,21 +1623,21 @@ GPUJobContext Renderer::CreateContext(Frame& frame)
 
 void Renderer::Draw(const StaticObject& object, GPUJobContext& context)
 {
-	MemoryManager::DefaultBuff_t& defaultMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Default>();
+	DefaultBuffer_t& defaultMemory =
+		MemoryManager::Inst().GetBuff<DefaultBuffer_t>();
 	CommandList& commandList = context.commandList;
 
 	// Set vertex buffer
 	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
-	vertBuffView.BufferLocation = defaultMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress() +
+	vertBuffView.BufferLocation = defaultMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
 		defaultMemory.GetOffset(object.vertices);
 	vertBuffView.StrideInBytes = sizeof(ShDef::Vert::PosTexCoord);
 	vertBuffView.SizeInBytes = object.verticesSizeInBytes;
 
 	commandList.commandList->IASetVertexBuffers(0, 1, &vertBuffView);
 
-	MemoryManager::UploadBuff_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	UploadBuffer_t& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	// Binding root signature params
 
@@ -1659,7 +1655,7 @@ void Renderer::Draw(const StaticObject& object, GPUJobContext& context)
 
 	// 3)
 	BufferHandler constBufferHandler = object.frameData[context.frame.GetArrayIndex()].constantBufferHandler;
-	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
 	cbAddress += uploadMemory.GetOffset(constBufferHandler);
 
 	commandList.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
@@ -1674,12 +1670,12 @@ void Renderer::DrawIndiced(const StaticObject& object, GPUJobContext& context)
 
 	CommandList& commandList = context.commandList;
 
-	MemoryManager::DefaultBuff_t& defaultMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Default>();
+	DefaultBuffer_t& defaultMemory =
+		MemoryManager::Inst().GetBuff<DefaultBuffer_t>();
 
 	// Set vertex buffer
 	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
-	vertBuffView.BufferLocation = defaultMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress() +
+	vertBuffView.BufferLocation = defaultMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
 		defaultMemory.GetOffset(object.vertices);
 	vertBuffView.StrideInBytes = sizeof(ShDef::Vert::PosTexCoord);
 	vertBuffView.SizeInBytes = object.verticesSizeInBytes;
@@ -1688,15 +1684,15 @@ void Renderer::DrawIndiced(const StaticObject& object, GPUJobContext& context)
 
 	// Set index buffer
 	D3D12_INDEX_BUFFER_VIEW indexBufferView;
-	indexBufferView.BufferLocation = defaultMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + 
+	indexBufferView.BufferLocation = defaultMemory.GetGpuBuffer()->GetGPUVirtualAddress() + 
 		defaultMemory.GetOffset(object.indices);
 	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
 	indexBufferView.SizeInBytes = object.indicesSizeInBytes;
 
 	commandList.commandList->IASetIndexBuffer(&indexBufferView);
 
-	MemoryManager::UploadBuff_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	UploadBuffer_t& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	// Binding root signature params
 
@@ -1713,7 +1709,7 @@ void Renderer::DrawIndiced(const StaticObject& object, GPUJobContext& context)
 
 	// 3)
 	BufferHandler constBufferHandler = object.frameData[context.frame.GetArrayIndex()].constantBufferHandler;
-	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
 	cbAddress += uploadMemory.GetOffset(constBufferHandler);
 
 	commandList.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
@@ -1729,12 +1725,12 @@ void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, 
 	const DynamicObjectModel& model = *object.model;
 	const DynamicObjectConstBuffer& constBuffer = *object.constBuffer;
 
-	MemoryManager::DefaultBuff_t& defaultMemory = 
-		MemoryManager::Inst().GetBuff<MemoryManager::Default>();
+	auto& defaultMemory = 
+		MemoryManager::Inst().GetBuff<DefaultBuffer_t>();
 
 	// Set vertex buffer views
 	const int vertexBufferStart = defaultMemory.GetOffset(model.vertices);
-	const D3D12_GPU_VIRTUAL_ADDRESS defaultMemBuffVirtAddress = defaultMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+	const D3D12_GPU_VIRTUAL_ADDRESS defaultMemBuffVirtAddress = defaultMemory.GetGpuBuffer()->GetGPUVirtualAddress();
 
 	constexpr int vertexSize = sizeof(XMFLOAT4);
 	const int frameSize = vertexSize * model.headerData.animFrameVertsNum;
@@ -1795,8 +1791,8 @@ void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, 
 
 	assert(tex != nullptr && "Not texture found for dynamic object rendering. Implement fall back");
 
-	MemoryManager::UploadBuff_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	auto& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	// Binding root signature params
 
@@ -1810,7 +1806,7 @@ void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, 
 	commandList.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
 
 	// 3)
-	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
 	cbAddress += uploadMemory.GetOffset(constBuffer.constantBufferHandler);
 
 	commandList.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
@@ -1835,15 +1831,15 @@ void Renderer::DrawStreaming(const FArg::DrawStreaming& args)
 
 	UpdateStreamingConstantBuffer(*args.pos, { 1.0f, 1.0f, 1.0f, 0.0f }, *args.bufferPiece, *args.context);
 
-	MemoryManager::UploadBuff_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	auto& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	const int vertexBufferOffset = uploadMemory.GetOffset(args.bufferPiece->handler) +
 		args.bufferPiece->offset +
 		Utils::Align(sizeof(ShDef::ConstBuff::TransMat), Settings::CONST_BUFFER_ALIGNMENT);
 
 	FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
-	updateVertexBufferArgs.buffer = uploadMemory.allocBuffer.gpuBuffer;
+	updateVertexBufferArgs.buffer = uploadMemory.GetGpuBuffer();
 	updateVertexBufferArgs.offset = vertexBufferOffset;
 	updateVertexBufferArgs.data = args.vertices;
 	updateVertexBufferArgs.byteSize = args.verticesSizeInBytes;
@@ -1852,7 +1848,7 @@ void Renderer::DrawStreaming(const FArg::DrawStreaming& args)
 	ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
 
 	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
-	vertBuffView.BufferLocation = uploadMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress() + vertexBufferOffset;
+	vertBuffView.BufferLocation = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress() + vertexBufferOffset;
 	vertBuffView.StrideInBytes = args.verticesStride;
 	vertBuffView.SizeInBytes = args.verticesSizeInBytes;
 
@@ -1872,7 +1868,7 @@ void Renderer::DrawStreaming(const FArg::DrawStreaming& args)
 	commandList.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
 
 	// 3)
-	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
 
 	cbAddress += uploadMemory.GetOffset(args.bufferPiece->handler) +
 		args.bufferPiece->offset;
@@ -1889,8 +1885,8 @@ void Renderer::AddParticleToDrawList(const particle_t& particle, BufferHandler v
 	unsigned char color[4];
 	*reinterpret_cast<int *>(color) = m_8To24Table[particle.color];
 
-	MemoryManager::UploadBuff_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	auto& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	ShDef::Vert::PosCol particleGpuData = {
 		XMFLOAT4(particle.origin[0], particle.origin[1], particle.origin[2], 1.0f),
@@ -1899,7 +1895,7 @@ void Renderer::AddParticleToDrawList(const particle_t& particle, BufferHandler v
 
 	// Deal with vertex buffer
 	FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
-	updateVertexBufferArgs.buffer = uploadMemory.allocBuffer.gpuBuffer;
+	updateVertexBufferArgs.buffer = uploadMemory.GetGpuBuffer();
 	updateVertexBufferArgs.offset = uploadMemory.GetOffset(vertexBufferHandler) + vertexBufferOffset;
 	updateVertexBufferArgs.data = &particleGpuData;
 	updateVertexBufferArgs.byteSize = sizeof(particleGpuData);
@@ -1912,11 +1908,11 @@ void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int verte
 	CommandList& commandList = context.commandList;
 	constexpr int vertexStrideInBytes = sizeof(ShDef::Vert::PosCol);
 
-	MemoryManager::UploadBuff_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	auto& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	D3D12_VERTEX_BUFFER_VIEW vertBufferView;
-	vertBufferView.BufferLocation = uploadMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress() +
+	vertBufferView.BufferLocation = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
 		uploadMemory.GetOffset(vertexBufferHandler);
 	vertBufferView.StrideInBytes = vertexStrideInBytes;
 	vertBufferView.SizeInBytes = vertexBufferSizeInBytes;
@@ -1926,7 +1922,7 @@ void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int verte
 	// Binding root signature params
 
 	// 1)
-	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress();
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
 	cbAddress += uploadMemory.GetOffset(constBufferHandler);
 
 	commandList.commandList->SetGraphicsRootConstantBufferView(0, cbAddress);
@@ -2076,12 +2072,12 @@ bool Renderer::IsVisible(const entity_t& entity, const Camera& camera) const
 
 void Renderer::DeleteDefaultMemoryBuffer(BufferHandler handler)
 {
-	MemoryManager::Inst().GetBuff<MemoryManager::Default>().Delete(handler);
+	MemoryManager::Inst().GetBuff<DefaultBuffer_t>().Delete(handler);
 }
 
 void Renderer::DeleteUploadMemoryBuffer(BufferHandler handler)
 {
-	MemoryManager::Inst().GetBuff<MemoryManager::Upload>().Delete(handler);
+	MemoryManager::Inst().GetBuff<UploadBuffer_t>().Delete(handler);
 }
 
 void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, GPUJobContext& context)
@@ -2111,11 +2107,11 @@ void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, 
 
 	XMStoreFloat4x4(&transMat.transformationMat, sseMvpMat);
 
-	MemoryManager::UploadBuff_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	auto& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	updateConstBufferArgs.buffer = uploadMemory.allocBuffer.gpuBuffer;
+	updateConstBufferArgs.buffer = uploadMemory.GetGpuBuffer();
 	updateConstBufferArgs.offset = uploadMemory.GetOffset(bufferPiece.handler) + bufferPiece.offset;
 	updateConstBufferArgs.data = &transMat;
 	updateConstBufferArgs.byteSize = sizeof(transMat);
@@ -2133,11 +2129,11 @@ void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, GPUJobC
 
 	BufferHandler constBufferHandler = obj.frameData[context.frame.GetArrayIndex()].constantBufferHandler;
 
-	MemoryManager::UploadBuff_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	auto& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	updateConstBufferArgs.buffer = uploadMemory.allocBuffer.gpuBuffer;
+	updateConstBufferArgs.buffer = uploadMemory.GetGpuBuffer();
 	updateConstBufferArgs.offset = uploadMemory.GetOffset(constBufferHandler);
 	updateConstBufferArgs.data = &mvpMat;
 	updateConstBufferArgs.byteSize = sizeof(mvpMat);
@@ -2183,11 +2179,11 @@ void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entit
 
 	assert(obj.constBuffer->constantBufferHandler != Const::INVALID_BUFFER_HANDLER && "Can't update dynamic const buffer, invalid offset");
 
-	MemoryManager::UploadBuff_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	auto& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	updateConstBufferArgs.buffer = uploadMemory.allocBuffer.gpuBuffer;
+	updateConstBufferArgs.buffer = uploadMemory.GetGpuBuffer();
 	updateConstBufferArgs.offset = uploadMemory.GetOffset(obj.constBuffer->constantBufferHandler);
 	updateConstBufferArgs.data = updateData.data();
 	updateConstBufferArgs.byteSize = updateDataSize;
@@ -2202,8 +2198,8 @@ BufferHandler Renderer::UpdateParticleConstantBuffer(GPUJobContext& context)
 
 	constexpr int updateDataSize = sizeof(ShDef::ConstBuff::CameraDataTransMat);
 
-	MemoryManager::UploadBuff_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	auto& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	const BufferHandler constantBufferHandler = uploadMemory.Allocate(Utils::Align(updateDataSize, 
 		Settings::CONST_BUFFER_ALIGNMENT));
@@ -2242,7 +2238,7 @@ BufferHandler Renderer::UpdateParticleConstantBuffer(GPUJobContext& context)
 	updateDataPtr += cpySize;
 
 	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	updateConstBufferArgs.buffer = uploadMemory.allocBuffer.gpuBuffer;
+	updateConstBufferArgs.buffer = uploadMemory.GetGpuBuffer();
 	updateConstBufferArgs.offset = uploadMemory.GetOffset(constantBufferHandler);
 	updateConstBufferArgs.data = updateData.data();
 	updateConstBufferArgs.byteSize = updateDataSize;

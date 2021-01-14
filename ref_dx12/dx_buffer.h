@@ -12,8 +12,12 @@
 #include "dx_common.h"
 #include "dx_allocators.h"
 #include "dx_utils.h"
+#include "dx_resourcemanager.h"
+
 
 using BufferHandler = uint32_t;
+
+struct GPUJobContext;
 
 namespace Const
 {
@@ -45,13 +49,19 @@ struct AllocBuffer
 	ComPtr<ID3D12Resource> gpuBuffer;
 };
 
-template<int BUFFER_SIZE, int HANDLERS_NUM, int ENFORCED_ALIGNMENT = 0>
+enum class MemoryType
+{
+	Upload,
+	Default
+};
+
+template<int BUFFER_SIZE, int HANDLERS_NUM, MemoryType TYPE, int ENFORCED_ALIGNMENT = 0>
 class HandlerBuffer
 {
 public:
 
 	HandlerBuffer()
-		: m_handlers(HANDLERS_NUM, Const::INVALID_OFFSET)
+		: handlers(HANDLERS_NUM, Const::INVALID_OFFSET)
 	{};
 
 	HandlerBuffer(const HandlerBuffer&) = delete;
@@ -61,6 +71,20 @@ public:
 	HandlerBuffer& operator=(HandlerBuffer&&) = delete;
 
 	~HandlerBuffer() = default;
+
+	void Init(GPUJobContext& context)
+	{
+		if constexpr (TYPE == MemoryType::Default)
+		{
+			allocBuffer.gpuBuffer = ResourceManager::Inst().CreateDefaultHeapBuffer(nullptr, BUFFER_SIZE, context);
+			Diagnostics::SetResourceNameWithAutoId(GetGpuBuffer(), "DefaultMemoryHeap");
+		}
+		else if constexpr (TYPE == MemoryType::Upload)
+		{
+			allocBuffer.gpuBuffer = ResourceManager::Inst().CreateUploadHeapBuffer(BUFFER_SIZE);
+			Diagnostics::SetResourceNameWithAutoId(GetGpuBuffer(), "UploadMemoryHeap");
+		}
+	}
 
 	BufferHandler Allocate(int size)
 	{
@@ -72,16 +96,16 @@ public:
 		}
 
 		// Find free handler slot
-		auto handlerIt = std::find_if(m_handlers.begin(), m_handlers.end(), [](BufferHandler h) 
+		auto handlerIt = std::find_if(handlers.begin(), handlers.end(), [](BufferHandler h) 
 		{
 			return h == Const::INVALID_OFFSET;
 		});
 
-		assert(handlerIt != m_handlers.end() && "Can't find free handler during allocation");
+		assert(handlerIt != handlers.end() && "Can't find free handler during allocation");
 
-		const BufferHandler handler = std::distance(m_handlers.begin(), handlerIt);
+		const BufferHandler handler = std::distance(handlers.begin(), handlerIt);
 
-		m_handlers[handler] = allocBuffer.allocator.Allocate(size);
+		handlers[handler] = allocBuffer.allocator.Allocate(size);
 
 		return handler;
 	}
@@ -92,11 +116,11 @@ public:
 
 		assert(handler != Const::INVALID_BUFFER_HANDLER && "Trying to delete invalid default buffer handler");
 
-		assert(m_handlers[handler] != Const::INVALID_OFFSET);
+		assert(handlers[handler] != Const::INVALID_OFFSET);
 
-		allocBuffer.allocator.Delete(m_handlers[handler]);
+		allocBuffer.allocator.Delete(handlers[handler]);
 
-		m_handlers[handler] = Const::INVALID_OFFSET;
+		handlers[handler] = Const::INVALID_OFFSET;
 	}
 
 	// IMPORTANT: handler is intentional layer of abstraction between offset and
@@ -106,16 +130,21 @@ public:
 	{
 		std::scoped_lock<std::mutex> lock(mutex);
 
-		assert(m_handlers[handler] != Const::INVALID_OFFSET);
-		return m_handlers[handler];
+		assert(handlers[handler] != Const::INVALID_OFFSET && "BufferHandler is invalid, can't get offset");
+		return handlers[handler];
 	}
 
-	AllocBuffer<BUFFER_SIZE> allocBuffer;
+	ID3D12Resource* GetGpuBuffer()
+	{
+		return allocBuffer.gpuBuffer.Get();
+	}
 
 private:
 
+	AllocBuffer<BUFFER_SIZE> allocBuffer;
+
 	mutable std::mutex mutex;
-	std::vector<int> m_handlers;
+	std::vector<int> handlers;
 };
 
 

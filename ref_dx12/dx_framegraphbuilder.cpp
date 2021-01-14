@@ -159,7 +159,6 @@ namespace
 			case Parsing::ResourceBindFrequency::PerPass:
 				pass.passRootArgs.push_back(std::move(arg));
 				break;
-			case Parsing::ResourceBindFrequency::Undefined:
 			default:
 				assert(false && "Undefined bind frequency handling in add root arg pass. Local");
 				break;
@@ -174,7 +173,7 @@ namespace
 			{
 				// This is global so try to find if resource for this was already created
 				std::vector<RootArg::Arg_t>& perObjGlobalResTemplate = 
-					frameGraph.objGlobalResTemplate[static_cast<int>(pass.input)];
+					frameGraph.objGlobalResTemplate[static_cast<int>(*pass.input)];
 
 				int resTemplateIndex = RootArg::FindArg(perObjGlobalResTemplate, arg);
 				if (resTemplateIndex == Const::INVALID_INDEX)
@@ -183,11 +182,11 @@ namespace
 					perObjGlobalResTemplate.push_back(std::move(arg));
 
 					// Add proper index
-					pass.perObjGlobalRootArgsIndices.push_back(perObjGlobalResTemplate.size() - 1);
+					pass.perObjGlobalRootArgsIndicesTemplate.push_back(perObjGlobalResTemplate.size() - 1);
 				}
 				else
 				{
-					pass.perObjGlobalRootArgsIndices.push_back(resTemplateIndex);
+					pass.perObjGlobalRootArgsIndicesTemplate.push_back(resTemplateIndex);
 				}
 
 			}
@@ -210,14 +209,12 @@ namespace
 				}
 			}
 				break;
-			case Parsing::ResourceBindFrequency::Undefined:
 			default:
 				assert(false && "Undefined bind frequency handling in add root arg pass. Global");
 				break;
 			}
 		}
 			break;
-		case Parsing::ResourceScope::Undefined:
 		default:
 			assert(false && "Can't add root arg, no scope");
 			break;
@@ -641,8 +638,8 @@ namespace
 		{
 			return Parsing::Resource_ConstBuff{
 				peg::any_cast<std::string>(sv[0]),
-				Parsing::ResourceBindFrequency::Undefined,
-				Parsing::ResourceScope::Undefined,
+				std::nullopt,
+				std::nullopt,
 				peg::any_cast<int>(sv[1]),
 				peg::any_cast<std::vector<RootArg::ConstBuffField>>(sv[2]),
 				sv.str()};
@@ -652,8 +649,8 @@ namespace
 		{
 			return Parsing::Resource_Texture{
 				peg::any_cast<std::string>(sv[0]),
-				Parsing::ResourceBindFrequency::Undefined,
-				Parsing::ResourceScope::Undefined,
+				std::nullopt,
+				std::nullopt,
 				peg::any_cast<int>(sv[1]),
 				sv.str()};
 		};
@@ -663,8 +660,8 @@ namespace
 		{
 			return Parsing::Resource_Sampler{
 				peg::any_cast<std::string>(sv[0]),
-				Parsing::ResourceBindFrequency::Undefined,
-				Parsing::ResourceScope::Undefined,
+				std::nullopt,
+				std::nullopt,
 				peg::any_cast<int>(sv[1]),
 				sv.str()};
 		};
@@ -855,16 +852,33 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 		{
 			// Find resource and stub it into shader source
 
+			// Try actual resources
 			const auto resIt = std::find_if(pass.resources.cbegin(), pass.resources.cend(),
-				[externalRes](const Parsing::Resource_t& currRes)
+				[&externalRes](const Parsing::Resource_t& currRes)
 			{
 				return externalRes == PassParametersSource::GetResourceName(currRes);
 			});
 
-			
-			assert(resIt != pass.resources.cend() && "Shader compilation failed can't find resource");
+			if (resIt != pass.resources.cend()) 
+			{
+				resToInclude += PassParametersSource::GetResourceRawView(*resIt);
+			}
+			else
+			{
+				// Not found among resources, try vert attr
+				const auto vertAttrIt = std::find_if(pass.vertAttr.cbegin(), pass.vertAttr.cend(), 
+					[&externalRes](const Parsing::VertAttr& vertAttr)
+				{
+					return vertAttr.name == externalRes;
 
-			resToInclude += PassParametersSource::GetResourceRawView(*resIt);
+				});
+
+				assert(vertAttrIt != pass.vertAttr.cend() && "Shader compilation failed can't find resource");
+
+				resToInclude += vertAttrIt->rawView;
+
+			}
+
 			resToInclude += ";";
 		}
 
@@ -945,7 +959,7 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 
 		PassParameters passParam = CompilePassParameters(std::move(*passParamIt), frameGraph);
 
-		switch (passParam.input)
+		switch (*passParam.input)
 		{
 		case PassParametersSource::InputType::UI:
 		{
@@ -953,12 +967,8 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 			InitPass(std::move(passParam), pass);
 		}
 		break;
-		case PassParametersSource::InputType::Undefined:
-		{
-			assert(false && "Pass with undefined input is detected");
-		}
-		break;
 		default:
+			assert(false && "Pass with undefined input is detected");
 			break;
 		}
 
@@ -972,9 +982,6 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 	{
 		frameGraph.passGlobalMemorySize += RootArg::GetSize(rootArg);
 	}
-	
-	frameGraph.passGlobalMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>().allocBuffer.allocator.Allocate(frameGraph.passGlobalMemorySize);
 
 	frameGraph.perObjectGlobalMemoryUISize = 0;
 
@@ -1231,8 +1238,8 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 
 				AddRootArg(pass,
 					frameGraph,
-					res->bindFrequency,
-					res->scope ,
+					*res->bindFrequency,
+					*res->scope ,
 					RootArg::ConstBuffView{
 						paramIndex,
 						HASH(res->name.c_str()),

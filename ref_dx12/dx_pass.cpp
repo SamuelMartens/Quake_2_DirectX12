@@ -58,11 +58,16 @@ void Pass_UI::Init(PassParameters&& parameters)
 void Pass_UI::Start(GPUJobContext& jobCtx)
 {
 	const std::vector<DrawCall_UI_t>& objects = jobCtx.frame.uiDrawCalls;
-	MemoryManager::UploadBuff_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	auto& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	//Check if we need to free this memory, maybe same amount needs to allocated
-	constBuffMemory = uploadMemory.Allocate(perObjectConstBuffMemorySize * objects.size());
+
+	if (perObjectConstBuffMemorySize != 0)
+	{
+		constBuffMemory = uploadMemory.Allocate(perObjectConstBuffMemorySize * objects.size());
+	}
+
 	vertexMemory = uploadMemory.Allocate(perObjectVertexMemorySize * objects.size());
 
 	for (int i = 0; i < objects.size(); ++i)
@@ -154,8 +159,8 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 
 			assert(perVertexMemorySize == sizeof(ShDef::Vert::PosTexCoord) && "Per vertex memory invalid size");
 			Renderer& renderer = Renderer::Inst();
-			MemoryManager::UploadBuff_t& uploadMemory =
-				MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+			auto& uploadMemory =
+				MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 			if constexpr (std::is_same_v<T, DrawCall_Pic>)
 			{
@@ -174,7 +179,7 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 				const int uploadBuffOffset = uploadMemory.GetOffset(vertexMemory) + perObjectVertexMemorySize * i;
 
 				FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
-				updateVertexBufferArgs.buffer = uploadMemory.allocBuffer.gpuBuffer;
+				updateVertexBufferArgs.buffer = uploadMemory.GetGpuBuffer();
 				updateVertexBufferArgs.offset = uploadBuffOffset;
 				updateVertexBufferArgs.data = vertices.data();
 				updateVertexBufferArgs.byteSize = perObjectVertexMemorySize;
@@ -210,7 +215,7 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 				const int uploadBuffOffset = uploadMemory.GetOffset(vertexMemory) + perObjectVertexMemorySize * i;
 
 				FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
-				updateVertexBufferArgs.buffer = uploadMemory.allocBuffer.gpuBuffer;
+				updateVertexBufferArgs.buffer = uploadMemory.GetGpuBuffer();
 				updateVertexBufferArgs.offset = uploadBuffOffset;
 				updateVertexBufferArgs.data = vertices.data();
 				updateVertexBufferArgs.byteSize = perObjectVertexMemorySize;
@@ -231,7 +236,7 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 				const int uploadBuffOffset = uploadMemory.GetOffset(vertexMemory) + perObjectVertexMemorySize * i;
 
 				FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
-				updateVertexBufferArgs.buffer = uploadMemory.allocBuffer.gpuBuffer;
+				updateVertexBufferArgs.buffer = uploadMemory.GetGpuBuffer();
 				updateVertexBufferArgs.offset = uploadBuffOffset;
 				updateVertexBufferArgs.data = vertices.data();
 				updateVertexBufferArgs.byteSize = perObjectVertexMemorySize;
@@ -246,17 +251,7 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 
 void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 {
-	RenderCallbacks::UpdateLocalObjectContext updateCtx = { XMFLOAT4X4(), jobCtx };
-
-	Frame& frame = updateCtx.jobContext.frame;
-
-	XMMATRIX sseViewMat = XMLoadFloat4x4(&frame.uiViewMat);
-	XMMATRIX sseProjMat = XMLoadFloat4x4(&frame.uiProjectionMat);
-	XMMATRIX sseYInverseAndCenterMat = XMLoadFloat4x4(&yInverseAndCenterMatrix);
-
-	XMMATRIX viewProj = sseYInverseAndCenterMat * sseViewMat * sseProjMat;
-
-	XMStoreFloat4x4(&updateCtx.viewProjMat, viewProj);
+	RenderCallbacks::UpdateLocalObjectContext updateContext = { jobCtx };
 
 	std::vector<std::byte> cpuMem(perObjectConstBuffMemorySize * drawObjects.size(), static_cast<std::byte>(0));
 
@@ -266,7 +261,7 @@ void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 
 		for (RootArg::Arg_t& rootArg : obj.rootArgs)
 		{
-			std::visit([&updateCtx, &obj, this, &cpuMem](auto&& rootArg) 
+			std::visit([&updateContext, &obj, this, &cpuMem](auto&& rootArg) 
 			{
 				using T = std::decay_t<decltype(rootArg)>;
 
@@ -282,14 +277,14 @@ void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 
 					for (RootArg::ConstBuffField& field : rootArg.content)
 					{
-						std::visit([this, &updateCtx, &field, &cpuMem, &fieldOffset](auto&& obj)
+						std::visit([this, &updateContext, &field, &cpuMem, &fieldOffset](auto&& obj)
 						{
 							RenderCallbacks::UpdateLocalObject(
 								HASH(passParameters.name.c_str()),
 								field.hashedName,
 								&obj,
 								&cpuMem[fieldOffset],
-								updateCtx);
+								updateContext);
 
 						}, *obj.originalDrawCall);
 
@@ -300,9 +295,13 @@ void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 
 				if constexpr (std::is_same_v<T, RootArg::DescTable>)
 				{
-					for (RootArg::DescTableEntity_t& descTableEntity : rootArg.content)
+					for (int i = 0; i < rootArg.content.size(); ++i)
 					{
-						std::visit([](auto&& descTableEntity) 
+
+						RootArg::DescTableEntity_t& descTableEntity = rootArg.content[i];
+						int currentViewIndex = rootArg.viewIndex + i;
+
+						std::visit([this, &updateContext, &cpuMem, &currentViewIndex](auto&& descTableEntity, auto&& obj)
 						{
 							using T = std::decay_t<decltype(descTableEntity)>;
 
@@ -310,7 +309,20 @@ void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 							{
 								assert(false && "Desc table view is probably not implemented! Make sure it is");
 							}
-						}, descTableEntity);
+
+							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
+							{
+								RenderCallbacks::UpdateLocalObject(
+									HASH(passParameters.name.c_str()),
+									descTableEntity.hashedName,
+									&obj,
+									&currentViewIndex,
+									updateContext
+								);
+							}
+
+						}, descTableEntity, *obj.originalDrawCall);
+
 					}
 				}
 
@@ -318,16 +330,19 @@ void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 		}
 	}
 
-	auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	if (perObjectConstBuffMemorySize != 0)
+	{
+		auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
-	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	updateConstBufferArgs.buffer = uploadMemoryBuff.allocBuffer.gpuBuffer;
-	updateConstBufferArgs.offset = uploadMemoryBuff.GetOffset(constBuffMemory);
-	updateConstBufferArgs.data = cpuMem.data();
-	updateConstBufferArgs.byteSize = cpuMem.size();
-	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
+		FArg::UpdateUploadHeapBuff updateConstBufferArgs;
+		updateConstBufferArgs.buffer = uploadMemoryBuff.GetGpuBuffer();
+		updateConstBufferArgs.offset = uploadMemoryBuff.GetOffset(constBuffMemory);
+		updateConstBufferArgs.data = cpuMem.data();
+		updateConstBufferArgs.byteSize = cpuMem.size();
+		updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
 
-	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
+		ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
+	}
 }
 
 void Pass_UI::SetUpRenderState(GPUJobContext& jobCtx)
@@ -360,31 +375,47 @@ void Pass_UI::SetUpRenderState(GPUJobContext& jobCtx)
 
 void Pass_UI::Draw(GPUJobContext& jobCtx)
 {
-	ComPtr<ID3D12GraphicsCommandList>& commandList = jobCtx.commandList.commandList;
+	CommandList& commandList = jobCtx.commandList;
 	Renderer& renderer = Renderer::Inst();
+	const FrameGraph& frameGraph = jobCtx.frame.frameGraph;
+
+	// Bind pass global argument
+	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsIndices, commandList);
+
+	// Bind pass local arguments
+	for (const RootArg::Arg_t& arg :  passParameters.passRootArgs)
+	{
+		RootArg::Bind(arg, commandList);
+	}
 
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
 	vertexBufferView.StrideInBytes = perVertexMemorySize;
 	vertexBufferView.SizeInBytes = perObjectVertexMemorySize;
 
-	MemoryManager::UploadBuff_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	auto& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	for (int i = 0; i < drawObjects.size(); ++i)
 	{
 		const PassObj& obj = drawObjects[i];
 
-		vertexBufferView.BufferLocation = uploadMemory.allocBuffer.gpuBuffer->GetGPUVirtualAddress() +
+		vertexBufferView.BufferLocation = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
 			uploadMemory.GetOffset(vertexMemory) + i * perObjectVertexMemorySize;
 
-		commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+		commandList.commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+		
+		// Bind global args
+		frameGraph.BindObjGlobalRes(passParameters.perObjGlobalRootArgsIndicesTemplate, i,
+			commandList, PassParametersSource::InputType::UI);
 
+
+		// Bind local args
 		for (const RootArg::Arg_t& rootArg : obj.rootArgs)
 		{
 			RootArg::Bind(rootArg, jobCtx.commandList);
 		}
 
-		commandList->DrawInstanced(perObjectVertexMemorySize / perVertexMemorySize, 1, 0, 0);
+		commandList.commandList->DrawInstanced(perObjectVertexMemorySize / perVertexMemorySize, 1, 0, 0);
 	}
 }
 
@@ -405,8 +436,8 @@ void Pass_UI::Execute(GPUJobContext& context)
 
 void Pass_UI::Finish()
 {
-	MemoryManager::UploadBuff_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<MemoryManager::Upload>();
+	auto& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	if (constBuffMemory != Const::INVALID_BUFFER_HANDLER)
 	{

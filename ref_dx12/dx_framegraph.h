@@ -28,7 +28,7 @@ class FrameGraph
 {
 public:
 
-	FrameGraph() = default;
+	FrameGraph();
 
 	FrameGraph(const FrameGraph&) = default;
 	FrameGraph& operator=(const FrameGraph&) = default;
@@ -38,16 +38,18 @@ public:
 
 	~FrameGraph();
 
+	/* Execution func */
 	void Execute(Frame& frame);
-
 	void Init(GPUJobContext& context);
+
+	/* Inner resource management  */
+	void BindPassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const;
+	void BindObjGlobalRes(const std::vector<int>& resIndices, int objIndex, CommandList& commandList, PassParametersSource::InputType objType) const;
 
 	//#DEBUG shares Context with BeginFrameJob()
 	// should unite this functions in one job
 	void BeginFrame(GPUJobContext& context);
-
 	void EndFrame(GPUJobContext& context);
-	
 
 	// Frame also keeps data. Try to put only stuff directly related to passes here.
 	// Everything else should go to Frame
@@ -57,6 +59,7 @@ public:
 
 	std::vector<RootArg::Arg_t> passesGlobalRes;
 	
+	// Template of all global resources for object. Combined when global resources from different pases are mixed 
 	std::array<std::vector<RootArg::Arg_t>,
 	static_cast<int>(PassParametersSource::InputType::SIZE)> objGlobalResTemplate;
 
@@ -77,6 +80,7 @@ public:
 	bool isInitalized = false;
 
 private:
+
 	void RegisterGlobalObjectsResUI(GPUJobContext& context);
 	void UpdateGlobalObjectsResUI(GPUJobContext& context);
 	

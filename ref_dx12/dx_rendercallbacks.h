@@ -29,6 +29,7 @@ namespace RenderCallbacks
 
 	struct UpdateGlobalObjectContext
 	{
+		XMFLOAT4X4 viewProjMat;
 		GPUJobContext& jobContext;
 	};
 
@@ -54,7 +55,6 @@ namespace RenderCallbacks
 
 	struct UpdateLocalObjectContext
 	{
-		XMFLOAT4X4 viewProjMat;
 		GPUJobContext& jobContext;
 	};
 
@@ -87,17 +87,19 @@ namespace RenderCallbacks
 			break;
 			case HASH("type"):
 			{
+				int* type = reinterpret_cast<int*>(bindPoint);
+
 				if constexpr (std::is_same_v<objT, DrawCall_Pic>)
 				{
-					*bindPoint = 0;
+					*type = 0;
 				}
 				else if constexpr (std::is_same_v<objT, DrawCall_Char>)
 				{
-					*bindPoint = 1;
+					*type = 1;
 				}
 				else if constexpr (std::is_same_v<objT, DrawCall_StretchRaw>)
 				{
-					*bindPoint = 2;
+					*type = 2;
 				}
 				else
 				{
@@ -129,34 +131,9 @@ namespace RenderCallbacks
 				tex = resMan.CreateTextureFromFile(texFullName.data(), ctx.jobContext);
 			}
 
-			Renderer::Inst().cbvSrvHeap->AllocateDescriptor(*bindPoint, tex->buffer.Get(), nullptr);
+			Renderer::Inst().cbvSrvHeap->AllocateDescriptor(*reinterpret_cast<int*>(bindPoint), tex->buffer.Get(), nullptr);
 		}
 		break;
-		case HASH("gMovieTex"):
-		{
-			Texture* tex = ResourceManager::Inst().FindTexture(Texture::RAW_TEXTURE_NAME);
-			assert(tex != nullptr && "Draw_RawPic texture doesn't exist");
-
-			// If there is no data, then texture is requested to be created for this frame. So no need to update
-			if (drawCall.data.empty() == false)
-			{
-				const int textureSize = drawCall.textureWidth * drawCall.textureHeight;
-
-				CommandList& commandList = ctx.jobContext.commandList;
-
-				std::vector<unsigned int> texture(textureSize, 0);
-				const std::array<unsigned int, 256>&  rawPalette = Renderer::Inst().GetRawPalette();
-
-				for (int i = 0; i < textureSize; ++i)
-				{
-					texture[i] = rawPalette[std::to_integer<int>(drawCall.data[i])];
-				}
-
-				ResourceManager::Inst().UpdateTexture(*tex, reinterpret_cast<std::byte*>(texture.data()), ctx.jobContext);
-			}
-
-			Renderer::Inst().cbvSrvHeap->AllocateDescriptor(*bindPoint, tex->buffer.Get(), nullptr);
-		}
 		break;
 		default:
 			break;
@@ -166,7 +143,49 @@ namespace RenderCallbacks
 	template<typename bT>
 	void UpdateGlobalPass(unsigned int paramName, bT* bindPoint, UpdateGlobalPassContext& ctx)
 	{
+		switch (paramName)
+		{
+		case HASH("gMovieTex"):
+		{
+			Texture* tex = ResourceManager::Inst().FindTexture(Texture::RAW_TEXTURE_NAME);
+			assert(tex != nullptr && "Draw_RawPic texture doesn't exist");
 
+			std::vector<DrawCall_UI_t>& uiDrawCalls = ctx.jobContext.frame.uiDrawCalls;
+
+			auto movieDrawCallIt = std::find_if(uiDrawCalls.cbegin(), uiDrawCalls.cend(), [](const DrawCall_UI_t& drawCall)
+			{
+				return std::holds_alternative<DrawCall_StretchRaw>(drawCall);
+
+			});
+
+			if (movieDrawCallIt != uiDrawCalls.cend())
+			{
+				const DrawCall_StretchRaw& movieDrawCall = std::get<DrawCall_StretchRaw>(*movieDrawCallIt);
+
+				// If there is no data, then texture is requested to be created for this frame. So no need to update
+				if (movieDrawCall.data.empty() == false)
+				{
+					const int textureSize = movieDrawCall.textureWidth * movieDrawCall.textureHeight;
+
+					CommandList& commandList = ctx.jobContext.commandList;
+
+					std::vector<unsigned int> texture(textureSize, 0);
+					const std::array<unsigned int, 256>&  rawPalette = Renderer::Inst().GetRawPalette();
+
+					for (int i = 0; i < textureSize; ++i)
+					{
+						texture[i] = rawPalette[std::to_integer<int>(movieDrawCall.data[i])];
+					}
+
+					ResourceManager::Inst().UpdateTexture(*tex, reinterpret_cast<std::byte*>(texture.data()), ctx.jobContext);
+				}
+
+				Renderer::Inst().cbvSrvHeap->AllocateDescriptor(*reinterpret_cast<int*>(bindPoint), tex->buffer.Get(), nullptr);
+			}
+		}
+		default:
+			break;
+		}
 	}
 
 	/*  Local */
@@ -253,12 +272,7 @@ namespace RenderCallbacks
 			{
 			case HASH("UI"):
 			{
-				// All static pass const buff data
-				switch (paramName)
-				{
-				default:
-					break;
-				}
+			
 			}
 			break;
 			default:
