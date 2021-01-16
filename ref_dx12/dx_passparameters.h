@@ -102,6 +102,7 @@ namespace RootArg
 
 	int GetDescTableSize(const DescTable& descTable);
 	int GetSize(const Arg_t& arg);
+	int GetSize(const std::vector<RootArg::Arg_t>& args);
 	
 };
 
@@ -309,7 +310,7 @@ public:
 
 	/*  Owned by pass */
 
-	std::vector<RootArg::Arg_t> passRootArgs;
+	std::vector<RootArg::Arg_t> passLocalRootArgs;
 	std::vector<int> passGlobalRootArgsIndices;
 
 };

@@ -120,21 +120,19 @@ void FrameGraph::Execute(Frame& frame)
 void FrameGraph::Init(GPUJobContext& context)
 {
 	// Init utility data
-	passGlobalMemorySize = 0;
+	passGlobalMemorySize = RootArg::GetSize(passesGlobalRes);
 
-	for (const RootArg::Arg_t& rootArg : passesGlobalRes)
-	{
-		passGlobalMemorySize += RootArg::GetSize(rootArg);
-	}
-
-	perObjectGlobalMemoryUISize = 0;
-
-	for (const RootArg::Arg_t& arg : objGlobalResTemplate[static_cast<int>(Parsing::PassInputType::UI)])
-	{
-		perObjectGlobalMemoryUISize += RootArg::GetSize(arg);
-	}
+	perObjectGlobalMemoryUISize = RootArg::GetSize(objGlobalResTemplate[static_cast<int>(Parsing::PassInputType::UI)]);
 
 	RegisterGlobaPasslRes(context);
+
+	for (Pass_t& pass : passes)
+	{
+		std::visit([&context](auto&& pass) 
+		{
+			pass.RegisterPassResources(context);
+		}, pass);
+	}
 }
 
 void FrameGraph::BindPassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const
@@ -179,7 +177,7 @@ void FrameGraph::ReleaseResources()
 	{
 		std::visit([](auto&& pass)
 		{
-			pass.ReleaseResources();
+			pass.ReleasePerFrameResources();
 		}, pass);
 	}
 

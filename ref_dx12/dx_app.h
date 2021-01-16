@@ -37,12 +37,6 @@ extern "C"
 	#include "../client/ref.h"
 };
 
-// Order is extremely important. Consider construction/destruction order
-// when adding something
-#define JOB_GUARD( context ) \
-	DependenciesRAIIGuard_t dependenciesGuard(context); \
-	CommandListRAIIGuard_t commandListGuard(context.commandList)
-
 namespace FArg 
 {
 

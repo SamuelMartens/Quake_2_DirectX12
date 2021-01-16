@@ -701,7 +701,7 @@ void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
 			pass.perObjectLocalRootArgsTemplate.push_back(std::move(arg));
 			break;
 		case Parsing::ResourceBindFrequency::PerPass:
-			pass.passRootArgs.push_back(std::move(arg));
+			pass.passLocalRootArgs.push_back(std::move(arg));
 			break;
 		default:
 			assert(false && "Undefined bind frequency handling in add root arg pass. Local");

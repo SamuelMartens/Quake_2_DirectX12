@@ -1,6 +1,7 @@
 #include "dx_pass.h"
 
 #include <cassert>
+#include <numeric>
 
 #include "dx_threadingutils.h"
 #include "dx_rendercallbacks.h"
@@ -17,24 +18,32 @@ void Pass_UI::Init(PassParameters&& parameters)
 
 	passParameters = std::move(parameters);
 
+	// Pass memory exists have the same lifetime as pass itself. So unlike objects memory
+	// I can allocate it only one time
+	assert(passMemorySize == 0 && "Pass memory size should be null");
+	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
+
+	if (passMemorySize > 0)
+	{
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(passMemorySize);
+	}
+
 	// UI uses streaming objects. So we need to preallocate piece of memory that will be
 	// used for each run
 
 	// Calculate amount of memory for const buffers per objects
 	assert(perObjectConstBuffMemorySize == 0 && "Per object const memory should be null");
+	perObjectConstBuffMemorySize =  RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
 
-	for (const RootArg::Arg_t& rootArg : passParameters.perObjectLocalRootArgsTemplate)
-	{
-		perObjectConstBuffMemorySize += GetSize(rootArg);
-	}
 
 	// Calculate amount of memory for vertex buffers per objects
 	assert(perVertexMemorySize == 0 && "Per Vertex Memory should be null");
 
-	for (const Parsing::VertAttrField& field : passParameters.vertAttr.content)
+	perVertexMemorySize = std::accumulate(passParameters.vertAttr.content.cbegin(), passParameters.vertAttr.content.cend(),
+		0, [](int& sum, const Parsing::VertAttrField& field) 
 	{
-		perVertexMemorySize += Parsing::GetParseDataTypeSize(field.type);
-	}
+		return sum + Parsing::GetParseDataTypeSize(field.type);
+	});
 
 	assert(perObjectVertexMemorySize == 0 && "Per Object Vertex Memory should be null");
 	// Every UI object is quad that consists of two triangles
@@ -51,7 +60,7 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 
 	if (perObjectConstBuffMemorySize != 0)
 	{
-		constBuffMemory = uploadMemory.Allocate(perObjectConstBuffMemorySize * objects.size());
+		objectConstBuffMemory = uploadMemory.Allocate(perObjectConstBuffMemorySize * objects.size());
 	}
 
 	vertexMemory = uploadMemory.Allocate(perObjectVertexMemorySize * objects.size());
@@ -84,7 +93,7 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 
 				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
 				{
-					rootArg.gpuMem.handler = constBuffMemory;
+					rootArg.gpuMem.handler = objectConstBuffMemory;
       				rootArg.gpuMem.offset = objectOffset + rootArgOffset;
 
 					rootArgOffset += RootArg::GetConstBufftSize(rootArg);
@@ -108,7 +117,7 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 							{
 								assert(false && "Desc table view is probably not implemented! Make sure it is");
 								//#TODO make view allocation
-								descTableEntitiy.gpuMem.handler = constBuffMemory;
+								descTableEntitiy.gpuMem.handler = objectConstBuffMemory;
 								descTableEntitiy.gpuMem.offset = objectOffset + rootArgOffset;
 
 								rootArgOffset += RootArg::GetConstBufftSize(descTableEntitiy);
@@ -237,6 +246,160 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 	}
 }
 
+void Pass_UI::RegisterPassResources(GPUJobContext& jobCtx)
+{
+	RenderCallbacks::RegisterLocalPassContext localPassContext = { jobCtx };
+
+	int offset = 0;
+
+	for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	{
+		std::visit([this, &offset, &localPassContext](auto&& arg) 
+		{
+			using T = std::decay_t<decltype(arg)>;
+
+			if constexpr (std::is_same_v<T, RootArg::RootConstant>)
+			{
+				assert(false && "Root constant is not implemented");
+			}
+
+			if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
+			{
+				arg.gpuMem.handler = passConstBuffMemory;
+				arg.gpuMem.offset = offset;
+
+				offset += RootArg::GetConstBufftSize(arg);
+			}
+
+			if constexpr (std::is_same_v<T, RootArg::DescTable>)
+			{
+				arg.viewIndex = RootArg::AllocateDescTableView(arg);
+
+				for (int i = 0; i < arg.content.size(); ++i)
+				{
+					RootArg::DescTableEntity_t& descTableEntitiy = arg.content[i];
+					int currentViewIndex = arg.viewIndex + i;
+
+					std::visit([this, &offset, &currentViewIndex, &localPassContext]
+					(auto&& descTableEntitiy)
+					{
+						using T = std::decay_t<decltype(descTableEntitiy)>;
+
+						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
+						{
+							assert(false && "Desc table view is probably not implemented! Make sure it is");
+							//#TODO make view allocation
+							descTableEntitiy.gpuMem.handler = passConstBuffMemory;
+							descTableEntitiy.gpuMem.offset = offset;
+
+							offset += RootArg::GetConstBufftSize(descTableEntitiy);
+						}
+
+						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
+						{
+							RenderCallbacks::RegisterLocalPass(
+								HASH(passParameters.name.c_str()),
+								descTableEntitiy.hashedName,
+								*this,
+								currentViewIndex,
+								localPassContext);
+						}
+
+					}, descTableEntitiy);
+				}
+			}
+
+		}, arg);
+	}
+}
+
+void Pass_UI::UpdatePassResources(GPUJobContext& jobCtx)
+{
+	RenderCallbacks::UpdateLocalPassContext localPassContext = { jobCtx };
+
+	std::vector<std::byte> cpuMem(passMemorySize, static_cast<std::byte>(0));
+
+	for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	{
+		std::visit([this, &localPassContext, &cpuMem](auto&& arg)
+		{
+			using T = std::decay_t<decltype(arg)>;
+
+			if constexpr (std::is_same_v<T, RootArg::RootConstant>)
+			{
+				assert(false && "Root constants are not implemented");
+			}
+
+			if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
+			{
+				int fieldOffset = arg.gpuMem.offset;
+
+				for (RootArg::ConstBuffField& field : arg.content)
+				{
+					RenderCallbacks::UpdateLocalPass(
+						HASH(passParameters.name.c_str()),
+						field.hashedName,
+						*this,
+						cpuMem[fieldOffset],
+						localPassContext
+					);
+
+					// Proceed to next buffer
+					fieldOffset += field.size;
+				}
+			}
+
+			if constexpr (std::is_same_v<T, RootArg::DescTable>)
+			{
+				for (int i = 0; i < arg.content.size(); ++i)
+				{
+					RootArg::DescTableEntity_t& descTableEntity = arg.content[i];
+					int currentViewIndex = arg.viewIndex + i;
+
+					std::visit([this, &localPassContext, &cpuMem, &currentViewIndex](auto&& descTableEntity)
+					{
+						using T = std::decay_t<decltype(descTableEntity)>;
+
+						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
+						{
+							assert(false && "Desc table view is probably not implemented! Make sure it is");
+						}
+
+						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
+						{
+					
+							RenderCallbacks::UpdateLocalPass(
+								HASH(passParameters.name.c_str()),
+								descTableEntity.hashedName,
+								*this,
+								currentViewIndex,
+								localPassContext
+							);
+						}
+
+					}, descTableEntity);
+
+				}
+			}
+
+		}, arg);
+	}
+
+	if (passMemorySize != 0)
+	{
+		auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+
+		FArg::UpdateUploadHeapBuff updateConstBufferArgs;
+		updateConstBufferArgs.buffer = uploadMemoryBuff.GetGpuBuffer();
+		updateConstBufferArgs.offset = uploadMemoryBuff.GetOffset(passConstBuffMemory);
+		updateConstBufferArgs.data = cpuMem.data();
+		updateConstBufferArgs.byteSize = cpuMem.size();
+		updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
+
+		ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
+	}
+}
+
 void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 {
 	RenderCallbacks::UpdateLocalObjectContext updateContext = { jobCtx };
@@ -324,7 +487,7 @@ void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 
 		FArg::UpdateUploadHeapBuff updateConstBufferArgs;
 		updateConstBufferArgs.buffer = uploadMemoryBuff.GetGpuBuffer();
-		updateConstBufferArgs.offset = uploadMemoryBuff.GetOffset(constBuffMemory);
+		updateConstBufferArgs.offset = uploadMemoryBuff.GetOffset(objectConstBuffMemory);
 		updateConstBufferArgs.data = cpuMem.data();
 		updateConstBufferArgs.byteSize = cpuMem.size();
 		updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
@@ -371,7 +534,7 @@ void Pass_UI::Draw(GPUJobContext& jobCtx)
 	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsIndices, commandList);
 
 	// Bind pass local arguments
-	for (const RootArg::Arg_t& arg :  passParameters.passRootArgs)
+	for (const RootArg::Arg_t& arg :  passParameters.passLocalRootArgs)
 	{
 		RootArg::Bind(arg, commandList);
 	}
@@ -407,6 +570,20 @@ void Pass_UI::Draw(GPUJobContext& jobCtx)
 	}
 }
 
+Pass_UI::~Pass_UI()
+{
+	ReleasePerFrameResources();
+
+	auto& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+
+	if (passConstBuffMemory != Const::INVALID_BUFFER_HANDLER)
+	{
+		uploadMemory.Delete(passConstBuffMemory);
+		passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
+	}
+}
+
 void Pass_UI::Execute(GPUJobContext& context)
 {
 	if (context.frame.uiDrawCalls.empty() == true)
@@ -416,21 +593,22 @@ void Pass_UI::Execute(GPUJobContext& context)
 	
 	Start(context);
 	
+	UpdatePassResources(context);
 	UpdateDrawObjects(context);
 
 	SetUpRenderState(context);
 	Draw(context);
 }
 
-void Pass_UI::ReleaseResources()
+void Pass_UI::ReleasePerFrameResources()
 {
 	auto& uploadMemory =
 		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
-	if (constBuffMemory != Const::INVALID_BUFFER_HANDLER)
+	if (objectConstBuffMemory != Const::INVALID_BUFFER_HANDLER)
 	{
-		uploadMemory.Delete(constBuffMemory);
-		constBuffMemory = Const::INVALID_BUFFER_HANDLER;
+		uploadMemory.Delete(objectConstBuffMemory);
+		objectConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
 	}
 	
 	if (vertexMemory != Const::INVALID_BUFFER_HANDLER )

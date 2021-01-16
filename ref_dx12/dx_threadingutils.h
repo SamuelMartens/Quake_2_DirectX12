@@ -106,5 +106,12 @@ private:
 
 };
 
+
+// Order is extremely important. Consider construction/destruction order
+// when adding something
+#define JOB_GUARD( context ) \
+	DependenciesRAIIGuard_t dependenciesGuard(context); \
+	CommandListRAIIGuard_t commandListGuard(context.commandList)
+
 using DependenciesRAIIGuard_t = Utils::RAIIGuard<GPUJobContext,
 	nullptr, &GPUJobContext::SignalDependencies>;

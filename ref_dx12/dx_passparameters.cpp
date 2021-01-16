@@ -1,5 +1,7 @@
 #include "dx_passparameters.h"
 
+#include <numeric>
+
 #include "d3dx12.h"
 #include "dx_settings.h"
 #include "dx_app.h"
@@ -86,6 +88,15 @@ namespace RootArg
 			}
 
 		}, arg);
+	}
+
+	int GetSize(const std::vector<Arg_t>& args)
+	{
+		return std::accumulate(args.cbegin(), args.cend(), 0, 
+			[](int& sum, const Arg_t& arg)
+		{
+			return sum + GetSize(arg);
+		});
 	}
 
 	int FindArg(const std::vector<Arg_t>& args, const Arg_t& arg)

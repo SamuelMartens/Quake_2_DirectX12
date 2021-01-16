@@ -38,11 +38,14 @@ public:
 	Pass_UI(Pass_UI&&) = default;
 	Pass_UI& operator=(Pass_UI&&) = default;
 
-	~Pass_UI() = default;
+	~Pass_UI();
 
 	void Execute(GPUJobContext& context);
 	void Init(PassParameters&& parameters);
-	void ReleaseResources();
+
+	void RegisterPassResources(GPUJobContext& jobCtx);
+	void UpdatePassResources(GPUJobContext& jobCtx);
+	void ReleasePerFrameResources();
 
 private:
 
@@ -57,10 +60,16 @@ private:
 	PassParameters passParameters;
 
 	unsigned int perObjectConstBuffMemorySize = 0;
+	// One object vertex memory size
 	unsigned int perObjectVertexMemorySize = 0;
+	// One vertex size
 	unsigned int perVertexMemorySize = 0;
 
-	BufferHandler constBuffMemory = Const::INVALID_BUFFER_HANDLER;
+	// Pass local args memory size
+	unsigned int passMemorySize = 0;
+
+	BufferHandler passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
+	BufferHandler objectConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
 	BufferHandler vertexMemory = Const::INVALID_BUFFER_HANDLER;
 
 	std::vector<PassObj> drawObjects;
