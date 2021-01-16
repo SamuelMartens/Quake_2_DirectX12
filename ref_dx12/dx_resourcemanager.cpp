@@ -557,8 +557,7 @@ void ResourceManager::_CreateGpuTexture(const unsigned int* raw, int width, int 
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
 
-
-	DescriptorHeap::Desc_t srvDescription = D3D12_SHADER_RESOURCE_VIEW_DESC{};
+	Descriptor_t srvDescription = D3D12_SHADER_RESOURCE_VIEW_DESC{};
 	D3D12_SHADER_RESOURCE_VIEW_DESC& srvDescriptionRef = std::get<D3D12_SHADER_RESOURCE_VIEW_DESC>(srvDescription);
 	srvDescriptionRef.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDescriptionRef.Format = textureDesc.Format;

@@ -16,6 +16,16 @@ void Frame::Init(int arrayIndexVal)
 	depthBufferViewIndex = renderer.dsvHeap->Allocate(depthStencilBuffer.Get());
 
 	camera.Init();
+
+	int drawAreaWidth = 0;
+	int drawAreaHeight = 0;
+	Renderer::Inst().GetDrawAreaSize(&drawAreaWidth, &drawAreaHeight);
+
+	XMMATRIX sseYInverseAndCenterMat = XMMatrixIdentity();
+	sseYInverseAndCenterMat.r[1] = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
+	sseYInverseAndCenterMat = XMMatrixTranslation(-drawAreaWidth / 2, -drawAreaHeight / 2, 0.0f) * sseYInverseAndCenterMat;
+
+	XMStoreFloat4x4(&uiYInverseAndCenterMat, sseYInverseAndCenterMat);
 }
 
 void Frame::ResetSyncData()

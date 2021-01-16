@@ -24,6 +24,7 @@
 #include "dx_memorymanager.h"
 #include "dx_jobmultithreading.h"
 #include "dx_rendercallbacks.h"
+#include "dx_descriptorheap.h"
 
 #ifdef max
 #undef max
@@ -198,7 +199,7 @@ void Renderer::Init(WNDPROC WindowProc, HINSTANCE hInstance)
 
 void Renderer::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 {
-	if (m_hWindows)
+	if (hWindows)
 	{
 		ShutdownWin32();
 	}
@@ -249,7 +250,7 @@ void Renderer::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 	const int x = vid_xpos->value;
 	const int y = vid_ypos->value;
 
-	 m_hWindows = CreateWindowEx(
+	 hWindows = CreateWindowEx(
 		exStyleBist,
 		windowsClassName.c_str(),
 		windowsClassName.c_str(),
@@ -261,13 +262,13 @@ void Renderer::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 		NULL
 	);
 
-	assert(m_hWindows && "Failed to create windows");
+	assert(hWindows && "Failed to create windows");
 
-	ShowWindow(m_hWindows, SW_SHOW);
-	UpdateWindow(m_hWindows);
+	ShowWindow(hWindows, SW_SHOW);
+	UpdateWindow(hWindows);
 
-	SetForegroundWindow(m_hWindows);
-	SetFocus(m_hWindows);
+	SetForegroundWindow(hWindows);
+	SetFocus(hWindows);
 
 	GetRefImport().Vid_NewWindow(width, height);
 }
@@ -294,7 +295,7 @@ void Renderer::InitDx()
 
 	CreateTextureSampler();
 
-	CreateFences(m_fence);
+	CreateFences(fence);
 
 	InitCommandListsBuffer();
 
@@ -382,10 +383,10 @@ void Renderer::InitUtils()
 	XMStoreFloat4x4(&m_yInverseAndCenterMatrix, sseResultMatrix);
 
 	// Init raw palette with 0
-	std::fill(m_rawPalette.begin(), m_rawPalette.end(), 0);
+	std::fill(rawPalette.begin(), rawPalette.end(), 0);
 
 	// Init dynamic objects constant buffers pool
-	m_dynamicObjectsConstBuffersPool.obj.resize(Settings::DYNAM_OBJECT_CONST_BUFFER_POOL_SIZE);
+	dynamicObjectsConstBuffersPool.obj.resize(Settings::DYNAM_OBJECT_CONST_BUFFER_POOL_SIZE);
 
 	JobSystem::Inst().Init();
 
@@ -402,7 +403,7 @@ void Renderer::InitScissorRect()
 	GetDrawAreaSize(&drawAreaWidth, &drawAreaHeight);
 	//#INFO scissor rectangle needs to be reset, every time command list is reset
 	// Set scissor
-	m_scissorRect = { 0, 0, drawAreaWidth, drawAreaHeight };
+	scissorRect = { 0, 0, drawAreaWidth, drawAreaHeight };
 }
 
 void Renderer::InitFrames()
@@ -413,7 +414,7 @@ void Renderer::InitFrames()
 
 	for (int i = 0; i < Settings::FRAMES_NUM; ++i)
 	{
-		Frame& frame = m_frames[i];
+		Frame& frame = frames[i];
 
 		frame.Init(i);
 		frame.frameGraph = frameGraph;
@@ -422,7 +423,7 @@ void Renderer::InitFrames()
 
 void Renderer::InitCommandListsBuffer()
 {
-	for (CommandList& commandList : m_commandListBuffer.commandLists)
+	for (CommandList& commandList : commandListBuffer.commandLists)
 	{
 		commandList.Init();
 		// We expect this command list to be closed after initialization
@@ -432,27 +433,27 @@ void Renderer::InitCommandListsBuffer()
 
 void Renderer::CreateDescriptorHeaps()
 {
-	rtvHeap = std::make_unique<DescriptorHeap>(Settings::RTV_DTV_DESCRIPTOR_HEAP_SIZE, 
-		D3D12_DESCRIPTOR_HEAP_TYPE_RTV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
+	rtvHeap = std::make_unique<std::remove_reference_t<decltype(*rtvHeap)>>
+		(GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV), D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
 
-	dsvHeap = std::make_unique<DescriptorHeap>(Settings::RTV_DTV_DESCRIPTOR_HEAP_SIZE, 
-		D3D12_DESCRIPTOR_HEAP_TYPE_DSV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
+	dsvHeap = std::make_unique<std::remove_reference_t<decltype(*dsvHeap)>>
+		(GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV), D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
 
-	cbvSrvHeap = std::make_unique<DescriptorHeap>(Settings::CBV_SRV_DESCRIPTOR_HEAP_SIZE,
-		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
+	cbvSrvHeap = std::make_unique<std::remove_reference_t<decltype(*cbvSrvHeap)>>
+		(GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV), D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
 
-	samplerHeap = std::make_unique<DescriptorHeap>(Settings::SAMPLER_DESCRIPTOR_HEAP_SIZE,
-		D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
+	samplerHeap = std::make_unique<std::remove_reference_t<decltype(*samplerHeap)>>
+		(GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER), D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
 }
 
 void Renderer::CreateSwapChainBuffersAndViews()
 {
 	for (int i = 0; i < Settings::SWAP_CHAIN_BUFFER_COUNT; ++i)
 	{
-		AssertBufferAndView& buffView = m_swapChainBuffersAndViews[i];
+		AssertBufferAndView& buffView = swapChainBuffersAndViews[i];
 
 		// Get i-th buffer in a swap chain
-		ThrowIfFailed(m_swapChain->GetBuffer(i, IID_PPV_ARGS(&buffView.buffer)));
+		ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&buffView.buffer)));
 
 		buffView.viewIndex = rtvHeap->Allocate(buffView.buffer.Get());
 	}
@@ -461,7 +462,7 @@ void Renderer::CreateSwapChainBuffersAndViews()
 void Renderer::CreateSwapChain()
 {
 	// Create swap chain
-	m_swapChain.Reset();
+	swapChain.Reset();
 
 	int drawAreaWidth = 0;
 	int drawAreaHeight = 0;
@@ -480,15 +481,15 @@ void Renderer::CreateSwapChain()
 	swapChainDesc.SampleDesc.Quality = GetMSAAQuality();
 	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swapChainDesc.BufferCount = Settings::SWAP_CHAIN_BUFFER_COUNT;
-	swapChainDesc.OutputWindow = m_hWindows;
+	swapChainDesc.OutputWindow = hWindows;
 	swapChainDesc.Windowed = true;
 	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 	swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 
 	// Note: Swap chain uses queue to perform flush.
-	ThrowIfFailed(Infr::Inst().GetFactory()->CreateSwapChain(m_commandQueue.Get(),
+	ThrowIfFailed(Infr::Inst().GetFactory()->CreateSwapChain(commandQueue.Get(),
 		&swapChainDesc,
-		m_swapChain.GetAddressOf()));
+		swapChain.GetAddressOf()));
 }
 
 void Renderer::CheckMSAAQualitySupport()
@@ -497,19 +498,19 @@ void Renderer::CheckMSAAQualitySupport()
 		return;
 
 	// Check 4X MSAA Quality Support
-	D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS MSQualityLevels;
-	MSQualityLevels.Format = Settings::BACK_BUFFER_FORMAT;
-	MSQualityLevels.SampleCount = Settings::MSAA_SAMPLE_COUNT;
-	MSQualityLevels.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
-	MSQualityLevels.NumQualityLevels = 0;
+	D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS qualityLevels;
+	qualityLevels.Format = Settings::BACK_BUFFER_FORMAT;
+	qualityLevels.SampleCount = Settings::MSAA_SAMPLE_COUNT;
+	qualityLevels.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
+	qualityLevels.NumQualityLevels = 0;
 	ThrowIfFailed(Infr::Inst().GetDevice()->CheckFeatureSupport(
 		D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS,
-		&MSQualityLevels,
-		sizeof(MSQualityLevels)
+		&qualityLevels,
+		sizeof(qualityLevels)
 	));
 
-	m_MSQualityLevels = MSQualityLevels.NumQualityLevels;
-	assert(m_MSQualityLevels > 0 && "Unexpected MSAA quality levels");
+	MSQualityLevels = qualityLevels.NumQualityLevels;
+	assert(MSQualityLevels > 0 && "Unexpected MSAA quality levels");
 }
 
 void Renderer::CreateCommandQueue()
@@ -520,7 +521,7 @@ void Renderer::CreateCommandQueue()
 	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 
-	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue)));
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&commandQueue)));
 }
 
 void Renderer::CreateFences(ComPtr<ID3D12Fence>& fence)
@@ -598,7 +599,7 @@ void Renderer::CreateCompiledMaterials()
 
 	for (const MaterialSource& matSource : materialsSource)
 	{
-		m_materials.push_back(CompileMaterial(matSource));
+		materials.push_back(CompileMaterial(matSource));
 	}
 }
 
@@ -692,12 +693,12 @@ Material Renderer::CompileMaterial(const MaterialSource& materialSourse) const
 
 void Renderer::SetMaterialAsync(const std::string& name, CommandList& commandList)
 {
-	auto materialIt = std::find_if(m_materials.begin(), m_materials.end(), [name](const Material& mat)
+	auto materialIt = std::find_if(materials.begin(), materials.end(), [name](const Material& mat)
 	{
 		return mat.name == name;
 	});
 
-	assert(materialIt != m_materials.end() && "Can't set requested material. It's not found");
+	assert(materialIt != materials.end() && "Can't set requested material. It's not found");
 
 	commandList.commandList->SetGraphicsRootSignature(materialIt->rootSingature.Get());
 	commandList.commandList->SetPipelineState(materialIt->pipelineState.Get());
@@ -734,9 +735,9 @@ void Renderer::SetNonMaterialState(GPUJobContext& context) const
 Frame& Renderer::GetMainThreadFrame()
 {
 	ASSERT_MAIN_THREAD;
-	assert(m_currentFrameIndex != Const::INVALID_INDEX && "Trying to get current frame which is invalid");
+	assert(currentFrameIndex != Const::INVALID_INDEX && "Trying to get current frame which is invalid");
 
-	return m_frames[m_currentFrameIndex];
+	return frames[currentFrameIndex];
 }
 
 void Renderer::SubmitFrame(Frame& frame)
@@ -748,10 +749,10 @@ void Renderer::SubmitFrame(Frame& frame)
 	for (int i = 0; i < frame.acquiredCommandListsIndices.size(); ++i)
 	{
 		const int commandListIndex = frame.acquiredCommandListsIndices[i];
-		commandLists[i] = m_commandListBuffer.commandLists[commandListIndex].commandList.Get();
+		commandLists[i] = commandListBuffer.commandLists[commandListIndex].commandList.Get();
 	}
 	
-	m_commandQueue->ExecuteCommandLists(commandLists.size(), commandLists.data());
+	commandQueue->ExecuteCommandLists(commandLists.size(), commandLists.data());
 
 	assert(frame.executeCommandListFenceValue == -1 && frame.executeCommandListEvenHandle == INVALID_HANDLE_VALUE &&
 		"Trying to set up sync primitives for frame that already has it");
@@ -759,8 +760,8 @@ void Renderer::SubmitFrame(Frame& frame)
 	frame.executeCommandListFenceValue = GenerateFenceValue();
 	frame.executeCommandListEvenHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
 
-	m_commandQueue->Signal(m_fence.Get(), frame.executeCommandListFenceValue);
-	ThrowIfFailed(m_fence->SetEventOnCompletion(frame.executeCommandListFenceValue, frame.executeCommandListEvenHandle));
+	commandQueue->Signal(fence.Get(), frame.executeCommandListFenceValue);
+	ThrowIfFailed(fence->SetEventOnCompletion(frame.executeCommandListFenceValue, frame.executeCommandListEvenHandle));
 
 	Logs::Logf(Logs::Category::FrameSubmission, "Frame with frameNumber %d submitted", frame.frameNumber);
 }
@@ -784,7 +785,7 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 
 	for (int acquiredCommandListIndex : frame.acquiredCommandListsIndices)
 	{
-		m_commandListBuffer.allocator.Delete(acquiredCommandListIndex);
+		commandListBuffer.allocator.Delete(acquiredCommandListIndex);
 	}
 
 	frame.acquiredCommandListsIndices.clear();
@@ -819,20 +820,14 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	// Remove used draw calls
 	frame.uiDrawCalls.clear();
 
-	for (Pass_t& pass : frame.frameGraph.passes)
-	{
-		std::visit([](auto&& pass)
-		{
-			pass.Finish();
-		}, pass);
-	}
+	frame.frameGraph.ReleaseResources();
 }
 
 void Renderer::AcquireMainThreadFrame()
 {
 	ASSERT_MAIN_THREAD;
 
-	assert(m_currentFrameIndex == Const::INVALID_INDEX && "Trying to acquire frame, while there is already frame acquired.");
+	assert(currentFrameIndex == Const::INVALID_INDEX && "Trying to acquire frame, while there is already frame acquired.");
 
 	// m_currentFrameIndex - is basically means index of frame that is used by main thread.
 	//						 and also indicates if new frame shall be used
@@ -841,8 +836,8 @@ void Renderer::AcquireMainThreadFrame()
 	std::vector <std::shared_ptr<Semaphore>> framesFinishedSemaphores;
 
 	// Try to find free frame
-	auto frameIt = m_frames.begin();
-	for (; frameIt != m_frames.end(); ++frameIt)
+	auto frameIt = frames.begin();
+	for (; frameIt != frames.end(); ++frameIt)
 	{
 		// It is important to grab that before isInUse check, so we never end up in the situation where semaphore
 		// was deleted right after check, but before we manage to pull it from frameIt
@@ -851,9 +846,9 @@ void Renderer::AcquireMainThreadFrame()
 		if (frameIt->GetIsInUse() == false)
 		{
 			OpenFrame(*frameIt);
-			m_currentFrameIndex = std::distance(m_frames.begin(), frameIt);
+			currentFrameIndex = std::distance(frames.begin(), frameIt);
 
-			Logs::Logf(Logs::Category::FrameSubmission, "Frame with index %d acquired", m_currentFrameIndex);
+			Logs::Logf(Logs::Category::FrameSubmission, "Frame with index %d acquired", currentFrameIndex);
 
 			return;
 		}
@@ -867,8 +862,8 @@ void Renderer::AcquireMainThreadFrame()
 	}
 
 	// Try again after wait 
-	frameIt = m_frames.begin();
-	for (; frameIt != m_frames.end(); ++frameIt)
+	frameIt = frames.begin();
+	for (; frameIt != frames.end(); ++frameIt)
 	{
 		if (frameIt->GetIsInUse() == false)
 		{
@@ -876,23 +871,23 @@ void Renderer::AcquireMainThreadFrame()
 		}
 	}
 
-	assert(frameIt != m_frames.end() && "Can't find free frame");
+	assert(frameIt != frames.end() && "Can't find free frame");
 
 	OpenFrame(*frameIt);
-	m_currentFrameIndex = std::distance(m_frames.begin(), frameIt);
+	currentFrameIndex = std::distance(frames.begin(), frameIt);
 
-	Logs::Logf(Logs::Category::FrameSubmission, "Frame with index %d acquired", m_currentFrameIndex);
+	Logs::Logf(Logs::Category::FrameSubmission, "Frame with index %d acquired", currentFrameIndex);
 }
 
 void Renderer::DetachMainThreadFrame()
 {
 	ASSERT_MAIN_THREAD;
 
-	assert(m_currentFrameIndex != Const::INVALID_INDEX && "Trying to detach frame. But there is nothing to detach.");
+	assert(currentFrameIndex != Const::INVALID_INDEX && "Trying to detach frame. But there is nothing to detach.");
 
-	Logs::Logf(Logs::Category::FrameSubmission, "Frame with index %d and frameNumber %d detached", m_currentFrameIndex, m_frames[m_currentFrameIndex].frameNumber);
+	Logs::Logf(Logs::Category::FrameSubmission, "Frame with index %d and frameNumber %d detached", currentFrameIndex, frames[currentFrameIndex].frameNumber);
 
-	m_currentFrameIndex = Const::INVALID_INDEX;
+	currentFrameIndex = Const::INVALID_INDEX;
 }
 
 void Renderer::ReleaseFrame(Frame& frame)
@@ -907,7 +902,7 @@ void Renderer::WaitForFrame(Frame& frame) const
 	assert(frame.executeCommandListFenceValue != -1 && frame.executeCommandListEvenHandle != INVALID_HANDLE_VALUE &&
 		"Trying to wait for frame that has invalid sync primitives.");
 
-	if (m_fence->GetCompletedValue() < frame.executeCommandListFenceValue)
+	if (fence->GetCompletedValue() < frame.executeCommandListFenceValue)
 	{
 		DWORD res = WaitForSingleObject(frame.executeCommandListEvenHandle, INFINITE);
 
@@ -918,13 +913,13 @@ void Renderer::WaitForFrame(Frame& frame) const
 void Renderer::WaitForPrevFrame(Frame& frame) const
 {
 	// Find prev frame
-	const auto frameIt = std::find_if(m_frames.cbegin(), m_frames.cend(), 
+	const auto frameIt = std::find_if(frames.cbegin(), frames.cend(), 
 		[&frame](const Frame& f)
 	{
 		return f.GetIsInUse() == true && f.frameNumber == frame.frameNumber - 1;
 	});
 
-	if (frameIt == m_frames.cend())
+	if (frameIt == frames.cend())
 	{
 		return;
 	}
@@ -937,17 +932,17 @@ void Renderer::WaitForPrevFrame(Frame& frame) const
 
 int Renderer::GenerateFenceValue()
 {
-	return m_fenceValue++;
+	return fenceValue++;
 }
 
 int Renderer::GetFenceValue() const
 {
-	return m_fenceValue;
+	return fenceValue;
 }
 
 void Renderer::CreateTextureSampler()
 {
-	DescriptorHeap::Desc_t samplerDesc = D3D12_SAMPLER_DESC{};
+	Descriptor_t samplerDesc = D3D12_SAMPLER_DESC{};
 	D3D12_SAMPLER_DESC& samplerDescRef = std::get<D3D12_SAMPLER_DESC>(samplerDesc);
 	samplerDescRef.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
 	samplerDescRef.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -968,13 +963,13 @@ int Renderer::GetMSAASampleCount() const
 
 int Renderer::GetMSAAQuality() const
 {
-	return Settings::MSAA_ENABLED ? (m_MSQualityLevels - 1) : 0;
+	return Settings::MSAA_ENABLED ? (MSQualityLevels - 1) : 0;
 }
 
 AssertBufferAndView& Renderer::GetNextSwapChainBufferAndView()
 {
-	AssertBufferAndView& buffAndView = m_swapChainBuffersAndViews[m_currentBackBuffer];
-	m_currentBackBuffer = (m_currentBackBuffer + 1) % Settings::SWAP_CHAIN_BUFFER_COUNT;
+	AssertBufferAndView& buffAndView = swapChainBuffersAndViews[currentBackBuffer];
+	currentBackBuffer = (currentBackBuffer + 1) % Settings::SWAP_CHAIN_BUFFER_COUNT;
 
 	buffAndView.Lock();
 
@@ -983,7 +978,7 @@ AssertBufferAndView& Renderer::GetNextSwapChainBufferAndView()
 
 void Renderer::PresentAndSwapBuffers(Frame& frame)
 {
-	ThrowIfFailed(m_swapChain->Present(0, 0));
+	ThrowIfFailed(swapChain->Present(0, 0));
 
 	frame.colorBufferAndView->Unlock();
 
@@ -991,17 +986,17 @@ void Renderer::PresentAndSwapBuffers(Frame& frame)
 
 DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
 {
-	m_dynamicObjectsConstBuffersPool.mutex.lock();
-	auto resIt = std::find_if(m_dynamicObjectsConstBuffersPool.obj.begin(), m_dynamicObjectsConstBuffersPool.obj.end(), 
+	dynamicObjectsConstBuffersPool.mutex.lock();
+	auto resIt = std::find_if(dynamicObjectsConstBuffersPool.obj.begin(), dynamicObjectsConstBuffersPool.obj.end(), 
 		[](const DynamicObjectConstBuffer& buff) 
 	{
 		return buff.isInUse == false;
 	});
 
-	assert(resIt != m_dynamicObjectsConstBuffersPool.obj.end() && "Can't find free dynamic object const buffer");
+	assert(resIt != dynamicObjectsConstBuffersPool.obj.end() && "Can't find free dynamic object const buffer");
 	resIt->isInUse = true;
 	
-	m_dynamicObjectsConstBuffersPool.mutex.unlock();
+	dynamicObjectsConstBuffersPool.mutex.unlock();
 
 
 	if (resIt->constantBufferHandler == Const::INVALID_BUFFER_HANDLER)
@@ -1070,7 +1065,7 @@ void Renderer::EndFrameJob(GPUJobContext& context)
 	context.commandList.Close();
 
 	// Make sure everything else is done
-	context.waitDependancy->Wait();
+	context.WaitDependency();
 
 	// We can't submit command lists attached to render target that is not current back buffer,
 	// so we need to wait until previous frame is done
@@ -1081,9 +1076,7 @@ void Renderer::EndFrameJob(GPUJobContext& context)
 	PresentAndSwapBuffers(frame);
 
 	ReleaseFrameResources(frame);
-	//#DEBUG this stuff mostly releases resources. Make separate function for it and put it into ReleaseFrameResources
-	context.frame.frameGraph.EndFrame(context);
-
+	
 	ReleaseFrame(frame);
 
 	ThreadingUtils::AssertUnlocked(context.frame.streamingObjectsHandlers);
@@ -1219,11 +1212,11 @@ void Renderer::DrawStaticGeometryJob(GPUJobContext& context)
 	SetNonMaterialState(context);
 	SetMaterialAsync(MaterialSource::STATIC_MATERIAL_NAME, commandList);
 	
-	std::vector<int> visibleStaticObj = BuildObjectsInFrustumList(context.frame.camera, m_staticObjectsAABB);
+	std::vector<int> visibleStaticObj = BuildObjectsInFrustumList(context.frame.camera, staticObjectsAABB);
 
 	for (int i = 0; i < visibleStaticObj.size(); ++i)
 	{
-		const StaticObject& obj = m_staticObjects[visibleStaticObj[i]];
+		const StaticObject& obj = staticObjects[visibleStaticObj[i]];
 
 		UpdateStaticObjectConstantBuffer(obj, context);
 
@@ -1269,11 +1262,11 @@ void Renderer::DrawDynamicGeometryJob(GPUJobContext& context)
 			continue;
 		}
 		
-		assert(m_dynamicObjectsModels.find(entity.model) != m_dynamicObjectsModels.end()
+		assert(dynamicObjectsModels.find(entity.model) != dynamicObjectsModels.end()
 			&& "Cannot render dynamic graphical object. Such model is not found");
 
 
-		DynamicObjectModel& model = m_dynamicObjectsModels[entity.model];
+		DynamicObjectModel& model = dynamicObjectsModels[entity.model];
 		DynamicObjectConstBuffer& constBuffer = FindDynamicObjConstBuffer();
 
 		// Const buffer should be a separate component, because if we don't do this different entities
@@ -1366,8 +1359,8 @@ ComPtr<ID3DBlob> Renderer::LoadCompiledShader(const std::string& filename) const
 
 void Renderer::ShutdownWin32()
 {
-	DestroyWindow(m_hWindows);
-	m_hWindows = NULL;
+	DestroyWindow(hWindows);
+	hWindows = NULL;
 }
 
 DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t* model, GPUJobContext& context)
@@ -1516,8 +1509,8 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 		return;
 	}
 
-	StaticObject& obj = m_staticObjects.emplace_back(StaticObject());
-	Utils::AABB& objCulling = m_staticObjectsAABB.emplace_back();
+	StaticObject& obj = staticObjects.emplace_back(StaticObject());
+	Utils::AABB& objCulling = staticObjectsAABB.emplace_back();
 
 	auto& defaultMemory =
 		MemoryManager::Inst().GetBuff<DefaultBuffer_t>();
@@ -1615,10 +1608,10 @@ GPUJobContext Renderer::CreateContext(Frame& frame)
 {
 	ASSERT_MAIN_THREAD;
 
-	const int commandListIndex = m_commandListBuffer.allocator.Allocate();
+	const int commandListIndex = commandListBuffer.allocator.Allocate();
 	frame.acquiredCommandListsIndices.push_back(commandListIndex);
 
-	return GPUJobContext(frame, m_commandListBuffer.commandLists[commandListIndex]);
+	return GPUJobContext(frame, commandListBuffer.commandLists[commandListIndex]);
 }
 
 void Renderer::Draw(const StaticObject& object, GPUJobContext& context)
@@ -1883,7 +1876,7 @@ void Renderer::AddParticleToDrawList(const particle_t& particle, BufferHandler v
 {
 
 	unsigned char color[4];
-	*reinterpret_cast<int *>(color) = m_8To24Table[particle.color];
+	*reinterpret_cast<int *>(color) = Table8To24[particle.color];
 
 	auto& uploadMemory =
 		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
@@ -1944,7 +1937,7 @@ void Renderer::GetDrawAreaSize(int* Width, int* Height)
 
 const std::array<unsigned int, 256>& Renderer::GetRawPalette() const
 {
-	return m_rawPalette;
+	return rawPalette;
 }
 
 void Renderer::Load8To24Table()
@@ -1965,17 +1958,17 @@ void Renderer::Load8To24Table()
 		GetRefImport().Sys_Error(ERR_FATAL, errorMsg);
 	}
 
-	for (int i = 0; i < m_8To24Table.size(); ++i)
+	for (int i = 0; i < Table8To24.size(); ++i)
 	{
 		int r = static_cast<int>(palette[i * 3 + 0]);
 		int g = static_cast<int>(palette[i * 3 + 1]);
 		int b = static_cast<int>(palette[i * 3 + 2]);
 
 		int v = (255 << 24) + (r << 0) + (g << 8) + (b << 16);
-		m_8To24Table[i] = static_cast<unsigned int>(LittleLong(v));
+		Table8To24[i] = static_cast<unsigned int>(LittleLong(v));
 	}
 
-	m_8To24Table[m_8To24Table.size() - 1] &= LittleLong(0xffffff);	// 255 is transparent
+	Table8To24[Table8To24.size() - 1] &= LittleLong(0xffffff);	// 255 is transparent
 
 	free(image);
 	free(palette);
@@ -1990,7 +1983,7 @@ void Renderer::ImageBpp8To32(const std::byte* data, int width, int height, unsig
 		// Cause m_8To24Table is in bytes we keep all channels in one number
 		int p = static_cast<int>(data[i]);
 
-		out[i] = m_8To24Table[p];
+		out[i] = Table8To24[p];
 
 		if (p != Settings::TRANSPARENT_TABLE_VAL)
 		{
@@ -2022,9 +2015,9 @@ void Renderer::ImageBpp8To32(const std::byte* data, int width, int height, unsig
 		else
 			p = 0;
 
-		reinterpret_cast<std::byte*>(&out[i])[0] = reinterpret_cast<const std::byte*>(&m_8To24Table[p])[0];
-		reinterpret_cast<std::byte*>(&out[i])[1] = reinterpret_cast<const std::byte*>(&m_8To24Table[p])[1];
-		reinterpret_cast<std::byte*>(&out[i])[2] = reinterpret_cast<const std::byte*>(&m_8To24Table[p])[2];
+		reinterpret_cast<std::byte*>(&out[i])[0] = reinterpret_cast<const std::byte*>(&Table8To24[p])[0];
+		reinterpret_cast<std::byte*>(&out[i])[1] = reinterpret_cast<const std::byte*>(&Table8To24[p])[1];
+		reinterpret_cast<std::byte*>(&out[i])[2] = reinterpret_cast<const std::byte*>(&Table8To24[p])[2];
 	}
 }
 
@@ -2249,26 +2242,6 @@ BufferHandler Renderer::UpdateParticleConstantBuffer(GPUJobContext& context)
 	return constantBufferHandler;
 }
 
-std::unique_ptr<DescriptorHeap>& Renderer::GetDescTableHeap(const RootArg::DescTable& descTable)
-{
-	assert(descTable.content.empty() == false && "GetDescTableHeap error. Desc table content can't be empty");
-
-	return std::visit([this](auto&& descTableEntity)  -> std::unique_ptr<DescriptorHeap>&
-	{
-		using T = std::decay_t<decltype(descTableEntity)>;
-
-		if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Sampler>)
-		{
-			return samplerHeap;
-		}
-		else
-		{
-			return cbvSrvHeap;
-		}
-
-	}, descTable.content[0]);
-}
-
 void Renderer::GetDrawTextureSize(int* x, int* y, const char* name)
 {
 	Logs::Logf(Logs::Category::Generic, "API: Get draw texture size %s", name);
@@ -2294,26 +2267,26 @@ void Renderer::SetPalette(const unsigned char* palette)
 {
 	Logs::Log(Logs::Category::Generic, "API: Set Palette");
 
-	unsigned char* rawPalette = reinterpret_cast<unsigned char *>(m_rawPalette.data());
+	unsigned char* rawPal = reinterpret_cast<unsigned char *>(rawPalette.data());
 
 	if (palette)
 	{
 		for (int i = 0; i < 256; i++)
 		{
-			rawPalette[i * 4 + 0] = palette[i * 3 + 0];
-			rawPalette[i * 4 + 1] = palette[i * 3 + 1];
-			rawPalette[i * 4 + 2] = palette[i * 3 + 2];
-			rawPalette[i * 4 + 3] = 0xff;
+			rawPal[i * 4 + 0] = palette[i * 3 + 0];
+			rawPal[i * 4 + 1] = palette[i * 3 + 1];
+			rawPal[i * 4 + 2] = palette[i * 3 + 2];
+			rawPal[i * 4 + 3] = 0xff;
 		}
 	}
 	else
 	{
 		for (int i = 0; i < 256; i++)
 		{
-			rawPalette[i * 4 + 0] = m_8To24Table[i] & 0xff;
-			rawPalette[i * 4 + 1] = (m_8To24Table[i] >> 8) & 0xff;
-			rawPalette[i * 4 + 2] = (m_8To24Table[i] >> 16) & 0xff;
-			rawPalette[i * 4 + 3] = 0xff;
+			rawPal[i * 4 + 0] = Table8To24[i] & 0xff;
+			rawPal[i * 4 + 1] = (Table8To24[i] >> 8) & 0xff;
+			rawPal[i * 4 + 2] = (Table8To24[i] >> 16) & 0xff;
+			rawPal[i * 4 + 3] = 0xff;
 		}
 	}
 }
@@ -2322,9 +2295,9 @@ void Renderer::EndLevelLoading()
 {
 	Logs::Log(Logs::Category::Generic, "API: End level loading");
 
-	Frame& frame = m_dynamicModelRegContext->frame;
+	Frame& frame = dynamicModelRegContext->frame;
 
-	m_dynamicModelRegContext->commandList.Close();
+	dynamicModelRegContext->commandList.Close();
 	
 	GPUJobContext createDeferredTextureContext = CreateContext(frame);
 	ResourceManager::Inst().CreateDeferredTextures(createDeferredTextureContext);
@@ -2335,14 +2308,14 @@ void Renderer::EndLevelLoading()
 
 	ReleaseFrame(frame);
 
-	if (std::shared_ptr<Semaphore> staticModelRegSemaphore = m_staticModelRegContext->frame.GetFinishSemaphore())
+	if (std::shared_ptr<Semaphore> staticModelRegSemaphore = staticModelRegContext->frame.GetFinishSemaphore())
 	{
 		staticModelRegSemaphore->Wait();
 	}
 
 
-	m_staticModelRegContext = nullptr;
-	m_dynamicModelRegContext = nullptr;
+	staticModelRegContext = nullptr;
+	dynamicModelRegContext = nullptr;
 
 	Mod_FreeAll();
 
@@ -2477,7 +2450,7 @@ void Renderer::Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiec
 		std::vector<unsigned int> texture(textureSize, 0);
 		for (int i = 0; i < textureSize; ++i)
 		{
-			texture[i] = m_rawPalette[std::to_integer<int>(drawCall.data[i])];
+			texture[i] = rawPalette[std::to_integer<int>(drawCall.data[i])];
 		}
 
 		Texture* rawTex = ResourceManager::Inst().FindTexture(Texture::RAW_TEXTURE_NAME);
@@ -2532,11 +2505,11 @@ void Renderer::BeginFrame()
 	Frame& frame = GetMainThreadFrame();
 
 	frame.colorBufferAndView = &GetNextSwapChainBufferAndView();
-	frame.scissorRect = m_scissorRect;
+	frame.scissorRect = scissorRect;
 
-	frame.frameNumber = m_frameCounter;
+	frame.frameNumber = frameCounter;
 
-	++m_frameCounter;
+	++frameCounter;
 }
 
 void Renderer::EndFrame()
@@ -2664,7 +2637,7 @@ Texture* Renderer::RegisterDrawPic(const char* name)
 
 	// If dynamic model registration context exists, then we are in the middle of the level loading. At this point
 	// current frame is most likely invalid
-	Frame& frame = m_dynamicModelRegContext != nullptr ? m_dynamicModelRegContext->frame : GetMainThreadFrame();
+	Frame& frame = dynamicModelRegContext != nullptr ? dynamicModelRegContext->frame : GetMainThreadFrame();
 	ResourceManager& resMan = ResourceManager::Inst();
 
 	std::array<char, MAX_QPATH> texFullName;
@@ -2687,7 +2660,7 @@ void Renderer::RegisterWorldModel(const char* model)
 	Frame& frame = GetMainThreadFrame();
 
 	GPUJobContext context = CreateContext(frame);
-	m_staticModelRegContext = std::make_unique<GPUJobContext>(context);
+	staticModelRegContext = std::make_unique<GPUJobContext>(context);
 
 	context.commandList.Open();
 
@@ -2741,8 +2714,8 @@ void Renderer::BeginLevelLoading(const char* mapName)
 	AcquireMainThreadFrame();
 	Frame& frame = GetMainThreadFrame();
 
-	m_dynamicModelRegContext = std::make_unique<GPUJobContext>(CreateContext(frame));
-	m_dynamicModelRegContext->commandList.Open();
+	dynamicModelRegContext = std::make_unique<GPUJobContext>(CreateContext(frame));
+	dynamicModelRegContext->commandList.Open();
 
 	DetachMainThreadFrame();
 }
@@ -2753,9 +2726,9 @@ model_s* Renderer::RegisterModel(const char* name)
 
 	std::string modelName = name;
 
-	Frame& frame = m_dynamicModelRegContext->frame;
+	Frame& frame = dynamicModelRegContext->frame;
 	
-	model_t* mod = Mod_ForName(modelName.data(), qFalse, *m_dynamicModelRegContext);
+	model_t* mod = Mod_ForName(modelName.data(), qFalse, *dynamicModelRegContext);
 
 	if (mod)
 	{
@@ -2784,10 +2757,10 @@ model_s* Renderer::RegisterModel(const char* name)
 			for (int i = 0; i < pheader->num_skins; ++i)
 			{
 				char* imageName = reinterpret_cast<char*>(pheader) + pheader->ofs_skins + i * MAX_SKINNAME;
-				mod->skins[i] = ResourceManager::Inst().FindOrCreateTexture(imageName, *m_dynamicModelRegContext);
+				mod->skins[i] = ResourceManager::Inst().FindOrCreateTexture(imageName, *dynamicModelRegContext);
 			}
 
-			m_dynamicObjectsModels[mod] = CreateDynamicGraphicObjectFromGLModel(mod, *m_dynamicModelRegContext);
+			dynamicObjectsModels[mod] = CreateDynamicGraphicObjectFromGLModel(mod, *dynamicModelRegContext);
 
 			break;
 		}

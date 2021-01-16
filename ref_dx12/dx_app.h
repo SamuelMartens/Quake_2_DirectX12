@@ -71,8 +71,8 @@ class Renderer
 {
 	DEFINE_SINGLETON(Renderer);
 
-	const refimport_t& GetRefImport() const { return m_refImport; };
-	void SetRefImport(refimport_t RefImport) { m_refImport = RefImport; };
+	const refimport_t& GetRefImport() const { return refImport; };
+	void SetRefImport(refimport_t RefImport) { refImport = RefImport; };
 
 	/*--- Buffers management --- */
 	void DeleteDefaultMemoryBuffer(BufferHandler handler);
@@ -114,7 +114,6 @@ class Renderer
 	int GetMSAAQuality() const;
 	void GetDrawAreaSize(int* Width, int* Height);
 	const std::array<unsigned int, 256>& GetRawPalette() const;
-	std::unique_ptr<DescriptorHeap>& GetDescTableHeap(const RootArg::DescTable& descTable);
 
 	void Load8To24Table();
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
@@ -128,10 +127,10 @@ class Renderer
 public:
 
 	// Public because it is already wrapped up in class
-	std::unique_ptr<DescriptorHeap>	rtvHeap = nullptr;
-	std::unique_ptr<DescriptorHeap>	dsvHeap = nullptr;
-	std::unique_ptr<DescriptorHeap> cbvSrvHeap = nullptr;
-	std::unique_ptr<DescriptorHeap> samplerHeap = nullptr;
+	std::unique_ptr<DescriptorHeap<Settings::RTV_DTV_DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_RTV>>	rtvHeap = nullptr;
+	std::unique_ptr<DescriptorHeap<Settings::RTV_DTV_DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_DSV>>	dsvHeap = nullptr;
+	std::unique_ptr<DescriptorHeap<Settings::CBV_SRV_DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV>> cbvSrvHeap = nullptr;
+	std::unique_ptr<DescriptorHeap<Settings::SAMPLER_DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER>> samplerHeap = nullptr;
 
 	//#TODO remove this when FrameGraph is implemented properly
 	// DirectX and OpenGL have different directions for Y axis,
@@ -251,46 +250,47 @@ private:
 	int GenerateFenceValue();
 	int GetFenceValue() const;
 
-	HWND		m_hWindows = nullptr;
+	HWND		hWindows = nullptr;
 
-	refimport_t m_refImport;
+	refimport_t refImport;
 
-	ComPtr<IDXGISwapChain> m_swapChain;
+	ComPtr<IDXGISwapChain> swapChain;
 
-	AssertBufferAndView m_swapChainBuffersAndViews[Settings::SWAP_CHAIN_BUFFER_COUNT];
+	AssertBufferAndView swapChainBuffersAndViews[Settings::SWAP_CHAIN_BUFFER_COUNT];
 
-	ComPtr<ID3D12CommandQueue>		  m_commandQueue;
+	ComPtr<ID3D12CommandQueue>	commandQueue;
 	
-	CommandListBuffer<Settings::COMMAND_LISTS_NUM> m_commandListBuffer;
+	CommandListBuffer<Settings::COMMAND_LISTS_NUM> commandListBuffer;
 
-	tagRECT		   m_scissorRect;
+	tagRECT scissorRect;
 
-	INT	m_currentBackBuffer = 0;
+	INT	currentBackBuffer = 0;
 
-	UINT m_MSQualityLevels = 0;
+	UINT MSQualityLevels = 0;
 
-	std::array<unsigned int, 256> m_8To24Table;
-	std::array<unsigned int, 256> m_rawPalette;
+	std::array<unsigned int, 256> Table8To24;
+	std::array<unsigned int, 256> rawPalette;
 
 	// Should I separate UI from game object? Damn, is this NWN speaks in me
-	std::vector<StaticObject> m_staticObjects;
-	std::vector<Utils::AABB> m_staticObjectsAABB;
+	std::vector<StaticObject> staticObjects;
+	std::vector<Utils::AABB> staticObjectsAABB;
 
-	std::unordered_map<model_t*, DynamicObjectModel> m_dynamicObjectsModels;
+	std::unordered_map<model_t*, DynamicObjectModel> dynamicObjectsModels;
 	// Expected to set a size for it during initialization. Don't change size afterward
-	LockVector_t<DynamicObjectConstBuffer> m_dynamicObjectsConstBuffersPool;
+	LockVector_t<DynamicObjectConstBuffer> dynamicObjectsConstBuffersPool;
 
-	std::vector<Material> m_materials;
+	//#TODO remove this
+	std::vector<Material> materials;
 
-	std::array<Frame, Settings::FRAMES_NUM> m_frames;
-	int m_currentFrameIndex = Const::INVALID_INDEX;
+	std::array<Frame, Settings::FRAMES_NUM> frames;
+	int currentFrameIndex = Const::INVALID_INDEX;
 
-	std::atomic<int>	m_fenceValue = 0;
-	ComPtr<ID3D12Fence>	m_fence;
+	std::atomic<int>	fenceValue = 0;
+	ComPtr<ID3D12Fence>	fence;
 
-	int m_frameCounter = 0;
+	int frameCounter = 0;
 
 	/* Level registration data */
-	std::unique_ptr<GPUJobContext> m_staticModelRegContext;
-	std::unique_ptr<GPUJobContext> m_dynamicModelRegContext;
+	std::unique_ptr<GPUJobContext> staticModelRegContext;
+	std::unique_ptr<GPUJobContext> dynamicModelRegContext;
 };

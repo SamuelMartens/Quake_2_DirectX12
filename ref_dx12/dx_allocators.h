@@ -2,23 +2,98 @@
 
 #include <vector>
 #include <mutex>
+#include <bitset>
 
 #include "dx_utils.h"
 
+template<int SIZE>
 class FlagAllocator
 {
 public:
-	FlagAllocator(const int flagsNum);
+	FlagAllocator() = default;
 
-	int Allocate();
-	int AllocateRange(int size);
-	void Delete(int index);
-	void DeleteRange(int index, int size);
+	int Allocate() 
+	{
+		std::scoped_lock<std::mutex> lock(mutex);
+
+		int index = 0;
+
+		while (index < flags.size() && flags[index] == true)
+		{
+			++index;
+		}
+
+		assert(index < flags.size() && "Failed allocation attempt in flag allocator");
+
+		flags[index] = true;
+
+		return index;
+
+	};
+
+	int AllocateRange(int size) 
+	{
+		std::scoped_lock<std::mutex> lock(mutex);
+
+		int setInRow = 0;
+
+		// Find free bits span
+		int index = 0;
+		for (;index < flags.size(); ++index)
+		{
+			if (flags[index] == false)
+			{
+				++setInRow;
+
+				if (setInRow == size)
+				{
+					break;
+				}
+			}
+			else
+			{
+				setInRow = 0;
+			}
+		}
+
+		assert(setInRow == size && "Failed range allocation attempt in flag allocator");
+
+		// Mark bit as allocated
+		for (; setInRow > 0; setInRow--, index--)
+		{
+			flags[index] = true;
+			
+		}
+
+		return index + 1;
+	};
+
+	void Delete(int index) 
+	{
+		std::scoped_lock<std::mutex> lock(mutex);
+
+		assert(flags[index] == true && "Attempt to delete free memory in flag allocator");
+
+		flags[index] = false;
+
+	};
+
+	void DeleteRange(int index, int size)
+	{
+		std::scoped_lock<std::mutex> lock(mutex);
+
+		for (int i = index; i < index + size; ++i)
+		{
+			assert(flags[i] == true && "DeleteRange trying to free some flag twice");
+
+			flags[i] = false;
+		}
+	};
 
 private:
 	
-	std::vector<bool> flags;
 	std::mutex mutex;
+	std::bitset<SIZE> flags;
 };
 
 struct Allocation

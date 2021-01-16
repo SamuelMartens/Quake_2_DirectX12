@@ -44,78 +44,7 @@ namespace
 		return fileContent;
 	}
 
-	template<typename T>
-	void ValidateResource(const T& resource, Parsing::ResourceScope scope, const Parsing::PassParametersContext& parseCtx)
-	{
-#ifdef _DEBUG
-
-		std::string_view resourceName = resource.name;
-
-		switch (scope)
-		{
-		case Parsing::ResourceScope::Local:
-		{
-			// Local resource can't collide with local resources in the same pass
-			// or with any global resource
-			const PassParametersSource& currentPassSource = parseCtx.passSources.back();
-
-			// Check against same pass resources
-			assert(std::find_if(currentPassSource.resources.cbegin(), currentPassSource.resources.cend(),
-				[resourceName](const Parsing::Resource_t& existingRes) 
-			{
-				return resourceName == PassParametersSource::GetResourceName(existingRes);
-
-			}) == currentPassSource.resources.cend() &&
-				"Local to local resource name collision");
-
-			// Check against other globals
-			assert(std::find_if(parseCtx.resources.cbegin(), parseCtx.resources.cend(),
-				[resourceName](const Parsing::Resource_t& existingRes)
-			{
-				return  resourceName == PassParametersSource::GetResourceName(existingRes);
-
-			}) == parseCtx.resources.cend() &&
-				"Global to local resource name collision, local insertion");
-
-			break;
-		}
-		case Parsing::ResourceScope::Global:
-		{
-			// Global resource can't collide with other global resource and with any local resource
-
-			for(const PassParametersSource& currentPassSource : parseCtx.passSources)
-			{
-				// Check against same pass resources
-				assert(std::find_if(currentPassSource.resources.cbegin(), currentPassSource.resources.cend(),
-					[resourceName](const Parsing::Resource_t& existingRes)
-				{
-					return resourceName == PassParametersSource::GetResourceName(existingRes);
-
-				}) == currentPassSource.resources.cend() &&
-					"Global to local resource name collision, global insertion");
-			}
-
-			// Check against other globals
-			// Global resources will be redefined in a few files, so naturally there will be duplicates.
-			// But we need to make sure that there are no resources with similar name but different content
-			assert(std::find_if(parseCtx.resources.cbegin(), parseCtx.resources.cend(),
-				[&resource, resourceName](const Parsing::Resource_t& existingRes)
-			{
-				return resourceName == PassParametersSource::GetResourceName(existingRes) &&
-					IsEqual(resource, existingRes) == false;
-
-			}) == parseCtx.resources.cend() &&
-				"Global to global resource name collision");
-
-			break;
-		}	
-		default:
-			assert(false && "Can't validate resource. Invalid scope");
-			break;
-		}
-#endif // _DEBUG
-	}
-
+	
 	template<typename T>
 	const T* FindResourceOfTypeAndRegId(const std::vector<Parsing::Resource_t>& resources, int registerId)
 	{
@@ -142,83 +71,6 @@ namespace
 		}
 
 		return nullptr;
-	}
-
-	void AddRootArg(PassParameters& pass, FrameGraph& frameGraph, 
-		Parsing::ResourceBindFrequency updateFrequency, Parsing::ResourceScope scope, RootArg::Arg_t&& arg)
-	{
-		switch (scope)
-		{
-		case Parsing::ResourceScope::Local:
-		{
-			switch (updateFrequency)
-			{
-			case Parsing::ResourceBindFrequency::PerObject:
-				pass.perObjectLocalRootArgsTemplate.push_back(std::move(arg));
-				break;
-			case Parsing::ResourceBindFrequency::PerPass:
-				pass.passRootArgs.push_back(std::move(arg));
-				break;
-			default:
-				assert(false && "Undefined bind frequency handling in add root arg pass. Local");
-				break;
-			}
-		}
-			break;
-		case Parsing::ResourceScope::Global:
-		{
-			switch (updateFrequency)
-			{
-			case Parsing::ResourceBindFrequency::PerObject:
-			{
-				// This is global so try to find if resource for this was already created
-				std::vector<RootArg::Arg_t>& perObjGlobalResTemplate = 
-					frameGraph.objGlobalResTemplate[static_cast<int>(*pass.input)];
-
-				int resTemplateIndex = RootArg::FindArg(perObjGlobalResTemplate, arg);
-				if (resTemplateIndex == Const::INVALID_INDEX)
-				{
-					// Res is not found create new
-					perObjGlobalResTemplate.push_back(std::move(arg));
-
-					// Add proper index
-					pass.perObjGlobalRootArgsIndicesTemplate.push_back(perObjGlobalResTemplate.size() - 1);
-				}
-				else
-				{
-					pass.perObjGlobalRootArgsIndicesTemplate.push_back(resTemplateIndex);
-				}
-
-			}
-				break;
-			case Parsing::ResourceBindFrequency::PerPass:
-			{
-				int resIndex = RootArg::FindArg(frameGraph.passesGlobalRes, arg);
-
-				if (resIndex == Const::INVALID_INDEX)
-				{
-					// Res is not found create new
-					frameGraph.passesGlobalRes.push_back(std::move(arg));
-
-					// Add proper index
-					pass.passGlobalRootArgsIndices.push_back(frameGraph.passesGlobalRes.size() - 1);
-				}
-				else
-				{
-					pass.passGlobalRootArgsIndices.push_back(resIndex);
-				}
-			}
-				break;
-			default:
-				assert(false && "Undefined bind frequency handling in add root arg pass. Global");
-				break;
-			}
-		}
-			break;
-		default:
-			assert(false && "Can't add root arg, no scope");
-			break;
-		}
 	}
 
 	void SetResourceBindFrequency(Parsing::Resource_t& r, Parsing::ResourceBindFrequency bind)
@@ -258,7 +110,7 @@ namespace
 		parser["PassInputIdent"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
-			parseCtx.passSources.back().input = static_cast<PassParametersSource::InputType>(sv.choice());
+			parseCtx.passSources.back().input = static_cast<Parsing::PassInputType>(sv.choice());
 		};
 
 		parser["PassVertAttr"] = [](const peg::SemanticValues& sv, peg::any& ctx)
@@ -610,8 +462,6 @@ namespace
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			//#DEBUG remove old ValidateResource and make new
-			
 			if (sv[1].type() == typeid(Parsing::Resource_ConstBuff))
 			{
 				currentPass.resources.emplace_back(std::any_cast<Parsing::Resource_ConstBuff>(sv[1]));
@@ -838,6 +688,136 @@ namespace
 	
 }
 
+void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
+	Parsing::ResourceBindFrequency updateFrequency, Parsing::ResourceScope scope, RootArg::Arg_t&& arg)
+{
+	switch (scope)
+	{
+	case Parsing::ResourceScope::Local:
+	{
+		switch (updateFrequency)
+		{
+		case Parsing::ResourceBindFrequency::PerObject:
+			pass.perObjectLocalRootArgsTemplate.push_back(std::move(arg));
+			break;
+		case Parsing::ResourceBindFrequency::PerPass:
+			pass.passRootArgs.push_back(std::move(arg));
+			break;
+		default:
+			assert(false && "Undefined bind frequency handling in add root arg pass. Local");
+			break;
+		}
+	}
+	break;
+	case Parsing::ResourceScope::Global:
+	{
+		switch (updateFrequency)
+		{
+		case Parsing::ResourceBindFrequency::PerObject:
+		{
+			// This is global so try to find if resource for this was already created
+			std::vector<RootArg::Arg_t>& perObjGlobalResTemplate =
+				frameGraph.objGlobalResTemplate[static_cast<int>(*pass.input)];
+
+			int resTemplateIndex = RootArg::FindArg(perObjGlobalResTemplate, arg);
+			if (resTemplateIndex == Const::INVALID_INDEX)
+			{
+				// Res is not found create new
+				perObjGlobalResTemplate.push_back(std::move(arg));
+
+				// Add proper index
+				pass.perObjGlobalRootArgsIndicesTemplate.push_back(perObjGlobalResTemplate.size() - 1);
+			}
+			else
+			{
+				pass.perObjGlobalRootArgsIndicesTemplate.push_back(resTemplateIndex);
+			}
+
+		}
+		break;
+		case Parsing::ResourceBindFrequency::PerPass:
+		{
+			int resIndex = RootArg::FindArg(frameGraph.passesGlobalRes, arg);
+
+			if (resIndex == Const::INVALID_INDEX)
+			{
+				// Res is not found create new
+				frameGraph.passesGlobalRes.push_back(std::move(arg));
+
+				// Add proper index
+				pass.passGlobalRootArgsIndices.push_back(frameGraph.passesGlobalRes.size() - 1);
+			}
+			else
+			{
+				pass.passGlobalRootArgsIndices.push_back(resIndex);
+			}
+		}
+		break;
+		default:
+			assert(false && "Undefined bind frequency handling in add root arg pass. Global");
+			break;
+		}
+	}
+	break;
+	default:
+		assert(false && "Can't add root arg, no scope");
+		break;
+	}
+}
+
+
+void FrameGraphBuilder::ValidateResources(const std::vector<PassParametersSource>& passesParametersSources) const
+{
+#ifdef _DEBUG
+	
+	std::vector<Parsing::Resource_t> globalResources;
+
+	// Check for name collision
+	for (const PassParametersSource& paramSource : passesParametersSources)
+	{
+		for (const Parsing::Resource_t& currentRes : paramSource.resources)
+		{
+			std::string_view currentResName = Parsing::GetResourceName(currentRes);
+			
+			// In pass collision check
+			{
+				const int count = std::count_if(paramSource.resources.cbegin(), 
+					paramSource.resources.cend(), [currentResName](const Parsing::Resource_t& res) 
+				{
+					return currentResName == Parsing::GetResourceName(res);
+				});
+
+				assert(count == 1 && "Name collision inside pass resource declaration");
+			}
+
+			// Global collision check
+			{
+				// Check if we have resource with the same name
+				const auto resIt = std::find_if(globalResources.cbegin(), globalResources.cend(),
+					[currentResName](const Parsing::Resource_t& res)
+				{
+					return currentResName == Parsing::GetResourceName(res);
+				});
+
+				if (resIt != globalResources.cend())
+				{
+					// Make sure content is equal. If yes, then this is just the same resource,
+					// if no then we have name collision
+					assert(Parsing::IsEqual(*resIt, currentRes) && "Global resource name collision is found");
+				}
+				else
+				{
+					// No such resource were found. Add this one to the list
+					globalResources.push_back(currentRes);
+				}
+			}
+
+
+		}
+	}
+
+#endif
+}
 
 FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const PassParametersSource& pass) const
 {
@@ -856,12 +836,12 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 			const auto resIt = std::find_if(pass.resources.cbegin(), pass.resources.cend(),
 				[&externalRes](const Parsing::Resource_t& currRes)
 			{
-				return externalRes == PassParametersSource::GetResourceName(currRes);
+				return externalRes == Parsing::GetResourceName(currRes);
 			});
 
 			if (resIt != pass.resources.cend()) 
 			{
-				resToInclude += PassParametersSource::GetResourceRawView(*resIt);
+				resToInclude += Parsing::GetResourceRawView(*resIt);
 			}
 			else
 			{
@@ -946,6 +926,8 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 {
 	FrameGraph frameGraph;
 
+	ValidateResources(source.passesParametersSources);
+
 	// Add passes to frame graph in proper order
 	for (const std::string& passName : source.passes)
 	{
@@ -959,12 +941,12 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 
 		PassParameters passParam = CompilePassParameters(std::move(*passParamIt), frameGraph);
 
+		// Add pass
 		switch (*passParam.input)
 		{
-		case PassParametersSource::InputType::UI:
+		case Parsing::PassInputType::UI:
 		{
-			Pass_t& pass = frameGraph.passes.emplace_back(Pass_UI{});
-			InitPass(std::move(passParam), pass);
+			frameGraph.passes.emplace_back(Pass_UI{});
 		}
 		break;
 		default:
@@ -972,22 +954,13 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 			break;
 		}
 
-	}
+		// Init pass
+		std::visit([&passParam](auto&& pass)
+		{
+			pass.Init(std::move(passParam));
 
-	//#DEBUG this is init so should be probably in other function than compile
-	// Init utility data
-	frameGraph.passGlobalMemorySize = 0;
+		}, frameGraph.passes.back());
 
-	for (const RootArg::Arg_t& rootArg : frameGraph.passesGlobalRes)
-	{
-		frameGraph.passGlobalMemorySize += RootArg::GetSize(rootArg);
-	}
-
-	frameGraph.perObjectGlobalMemoryUISize = 0;
-
-	for (const RootArg::Arg_t& arg : frameGraph.objGlobalResTemplate[static_cast<int>(PassParametersSource::InputType::UI)])
-	{
-		frameGraph.perObjectGlobalMemoryUISize += RootArg::GetSize(arg);
 	}
 
 	return frameGraph;
@@ -1058,11 +1031,6 @@ std::string FrameGraphBuilder::LoadFrameGraphFile() const
 	assert(false && "Material file was not found");
 
 	return std::string();
-}
-
-void FrameGraphBuilder::PreprocessPassFiles(const std::vector<std::string>& fileList)
-{
-
 }
 
 std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles) const
@@ -1401,15 +1369,6 @@ PassParameters FrameGraphBuilder::CompilePassParameters(PassParametersSource&& p
 	CreateResourceArguments(passSource, frameGraph, passParam);
 
 	return passParam;
-}
-
-void FrameGraphBuilder::InitPass(PassParameters&& passParameters, Pass_t& pass) const
-{
-	std::visit([&passParameters](auto&& pass)
-	{
-		pass.Init(std::move(passParameters));
-
-	}, pass);
 }
 
 std::filesystem::path FrameGraphBuilder::GenPathToFile(const std::string fileName) const

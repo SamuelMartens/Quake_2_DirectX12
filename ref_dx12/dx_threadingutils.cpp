@@ -153,3 +153,11 @@ void GPUJobContext::SignalDependencies()
 	}
 }
 
+void GPUJobContext::WaitDependency() const
+{
+	if (waitDependancy != nullptr)
+	{
+		waitDependancy->Wait();
+	}
+}
+

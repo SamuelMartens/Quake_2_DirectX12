@@ -12,7 +12,7 @@
 	buffer via ResourceManager, but not recommended.
 */
 
-struct GPUJobContext;
+class GPUJobContext;
 
 using UploadBuffer_t = HandlerBuffer<
 	Settings::UPLOAD_MEMORY_BUFFER_SIZE,

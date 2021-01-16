@@ -177,8 +177,22 @@ namespace RootArg
 				assert(rootArg.content.empty() == false && "Trying to bind empty desc table");
 				assert(rootArg.viewIndex != Const::INVALID_INDEX && "Invalid view index. Can't bind root arg");
 
-				commandList.commandList->SetGraphicsRootDescriptorTable(rootArg.bindIndex,
-					renderer.GetDescTableHeap(rootArg)->GetHandleGPU(rootArg.viewIndex));
+				std::visit([&commandList, &renderer, &rootArg](auto&& descTableEntity)
+				{
+					using T = std::decay_t<decltype(descTableEntity)>;
+
+					if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Sampler>)
+					{
+						commandList.commandList->SetGraphicsRootDescriptorTable(rootArg.bindIndex,
+							renderer.samplerHeap->GetHandleGPU(rootArg.viewIndex));
+					}
+					else
+					{
+						commandList.commandList->SetGraphicsRootDescriptorTable(rootArg.bindIndex,
+							renderer.cbvSrvHeap->GetHandleGPU(rootArg.viewIndex));
+					}
+
+				}, rootArg.content[0]);
 			}
 
 		}, rootArg);
@@ -236,7 +250,7 @@ namespace RootArg
 			{
 				if (viewIndex != Const::INVALID_INDEX)
 				{
-					Renderer::Inst().GetDescTableHeap(*this)->DeleteRange(viewIndex, content.size());
+					Renderer::Inst().cbvSrvHeap->DeleteRange(viewIndex, content.size());
 				}
 			}
 
@@ -340,6 +354,25 @@ namespace Parsing
 			registerId == other.registerId;
 	}
 
+
+	std::string_view GetResourceName(const Parsing::Resource_t& res)
+	{
+		return std::visit([](auto&& resource)
+		{
+			return std::string_view(resource.name);
+		},
+			res);
+	}
+
+	std::string_view GetResourceRawView(const Parsing::Resource_t& res)
+	{
+		return std::visit([](auto&& resource)
+		{
+			return std::string_view(resource.rawView);
+		},
+			res);
+	}
+
 }
 
 PassParametersSource::PassParametersSource()
@@ -358,24 +391,6 @@ PassParametersSource::PassParametersSource()
 	psoDesc.DSVFormat = Settings::DEPTH_STENCIL_FORMAT;
 
 	rootSignature = std::make_unique<Parsing::RootSignature>();
-}
-
-std::string_view PassParametersSource::GetResourceName(const Parsing::Resource_t& res)
-{
-	return std::visit([](auto&& resource)
-	{
-		return std::string_view(resource.name);
-	},
-		res);
-}
-
-std::string_view PassParametersSource::GetResourceRawView(const Parsing::Resource_t& res)
-{
-	return std::visit([](auto&& resource)
-	{
-		return std::string_view(resource.rawView);
-	},
-		res);
 }
 
 std::string PassParametersSource::ShaderTypeToStr(ShaderType type)

@@ -17,7 +17,7 @@
 
 using BufferHandler = uint32_t;
 
-struct GPUJobContext;
+class GPUJobContext;
 
 namespace Const
 {

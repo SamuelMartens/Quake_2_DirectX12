@@ -80,14 +80,23 @@ namespace ThreadingUtils
 
 }
 
-struct GPUJobContext
+class GPUJobContext
 {
+public:
+
 	/* SHOULD BE SAFE TO COPY */
 	GPUJobContext(Frame& frameVal, CommandList& commandListVal);
 
 	void CreateDependencyFrom(std::vector<GPUJobContext*> dependsFromList);
 	void CreateDependencyFrom(std::vector<GPUJobContext>& dependsFromList);
+
 	void SignalDependencies();
+	void WaitDependency() const;
+
+	Frame& frame;
+	CommandList& commandList;
+
+private:
 
 	// This properties represent relationship between jobs that Semaphore implements.
 	// Which is one to many, Which means one job can wait for multiple jobs to be finished,
@@ -95,8 +104,6 @@ struct GPUJobContext
 	std::vector<std::shared_ptr<Semaphore>> signalDependencies;
 	std::shared_ptr<Semaphore> waitDependancy;
 
-	Frame& frame;
-	CommandList& commandList;
 };
 
 using DependenciesRAIIGuard_t = Utils::RAIIGuard<GPUJobContext,

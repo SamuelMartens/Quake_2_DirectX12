@@ -130,6 +130,15 @@ namespace Parsing
 		Int
 	};
 
+	enum class PassInputType
+	{
+		Static,
+		Dynamic,
+		Particles,
+		UI,
+		PostProcess,
+		SIZE
+	};
 
 	unsigned int GetParseDataTypeSize(Parsing::DataType type);
 
@@ -198,6 +207,9 @@ namespace Parsing
 		Resource_Sampler>;
 
 	bool IsEqual(const Resource_t& res1, const Resource_t& res2);
+
+	std::string_view GetResourceName(const Parsing::Resource_t& res);
+	std::string_view GetResourceRawView(const Parsing::Resource_t& res);
 };
 
 
@@ -210,17 +222,6 @@ public:
 		Vs = 0,
 		Gs = 1,
 		Ps = 2,
-		SIZE
-	};
-
-	//#DEBUG move this to some other namespace
-	enum class InputType
-	{
-		Static,
-		Dynamic,
-		Particles,
-		UI,
-		PostProcess,
 		SIZE
 	};
 
@@ -245,9 +246,6 @@ public:
 
 	~PassParametersSource() = default;
 
-	static std::string_view GetResourceName(const Parsing::Resource_t& res);
-	static std::string_view GetResourceRawView(const Parsing::Resource_t& res);
-
 	static std::string ShaderTypeToStr(ShaderType type);
 
 	std::string name;
@@ -262,7 +260,7 @@ public:
 
 	D3D_PRIMITIVE_TOPOLOGY primitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
 
-	std::optional<InputType> input;
+	std::optional<Parsing::PassInputType> input;
 
 	std::vector<Parsing::VertAttr> vertAttr;
 	std::vector<Parsing::Resource_t> resources;
@@ -302,7 +300,7 @@ public:
 
 	Parsing::VertAttr vertAttr;
 
-	std::optional<PassParametersSource::InputType> input;
+	std::optional<Parsing::PassInputType> input;
 
 	ComPtr<ID3D12PipelineState>		  pipelineState;
 	ComPtr<ID3D12RootSignature>		  rootSingature;

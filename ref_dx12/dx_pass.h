@@ -42,7 +42,7 @@ public:
 
 	void Execute(GPUJobContext& context);
 	void Init(PassParameters&& parameters);
-	void Finish();
+	void ReleaseResources();
 
 private:
 
@@ -65,11 +65,6 @@ private:
 
 	std::vector<PassObj> drawObjects;
 
-	// DirectX and OpenGL have different directions for Y axis,
-	// this matrix is required to fix this. Also I am using wrong projection matrix
-	// and need to fix whenever I will have a chance
-	//#TODO fix use right projection matrix
-	XMFLOAT4X4 yInverseAndCenterMatrix;
 };
 
 using Pass_t = std::variant<Pass_UI>;

@@ -1,97 +1,10 @@
 #include "dx_descriptorheap.h"
 
-#include "dx_utils.h"
-#include "dx_app.h"
-#include "dx_infrastructure.h"
-
-DescriptorHeap::DescriptorHeap(int descriptorsNum,
-	D3D12_DESCRIPTOR_HEAP_TYPE descriptorsType,
-	D3D12_DESCRIPTOR_HEAP_FLAGS flags) :
-		alloc(descriptorsNum),
-		TYPE(descriptorsType)
+void _AllocDescriptorInternal(CD3DX12_CPU_DESCRIPTOR_HANDLE& handle, ID3D12Resource* resource, Descriptor_t* desc, D3D12_DESCRIPTOR_HEAP_TYPE type)
 {
-	DESCRIPTOR_SIZE = Renderer::Inst().GetDescriptorSize(TYPE);
+	// For some unknown reason compilation fails if I put this code inside AllocateDescriptor()
 
-	D3D12_DESCRIPTOR_HEAP_DESC heapDesc;
-
-	heapDesc.NumDescriptors = descriptorsNum;
-	heapDesc.Type = TYPE;
-	heapDesc.Flags = flags;
-	heapDesc.NodeMask = 0;
-
-	ThrowIfFailed(Infr::Inst().GetDevice()->CreateDescriptorHeap(
-		&heapDesc,
-		IID_PPV_ARGS(heap.GetAddressOf())));
-}
-
-int DescriptorHeap::Allocate(ID3D12Resource* resource, DescriptorHeap::Desc_t* desc)
-{
-	const int allocatedIndex = alloc.Allocate();
-
-	AllocateDescriptor(allocatedIndex, resource, desc);
-
-	return allocatedIndex;
-}
-
-int DescriptorHeap::Allocate()
-{
-	return alloc.Allocate();
-}
-
-int DescriptorHeap::AllocateRange(std::vector<ID3D12Resource*>& resources, std::vector<Desc_t*> descs)
-{
-	assert(resources.empty() == false && "DescHeap AllocateRange error. Resources array can't be empty");
-	assert(resources.size() == descs.size() && "DescHeap AllocateRange error. Resource and descriptor array sizes should be equal.");
-
-	const int rangeSize = resources.size();
-
-	const int allocatedIndexStart = alloc.AllocateRange(rangeSize);
-
-	for (int i = 0; i < rangeSize; ++i)
-	{
-		AllocateDescriptor(allocatedIndexStart + i, resources[i], descs[i]);
-	}
-
-	return allocatedIndexStart;
-}
-
-int DescriptorHeap::AllocateRange(int size)
-{
-	assert(size != 0 && "Desc heap allocate range error. Can't allocate zero range");
-
-	return alloc.AllocateRange(size);
-}
-
-void DescriptorHeap::Delete(int index)
-{
-	alloc.Delete(index);
-}
-
-void DescriptorHeap::DeleteRange(int index, int size)
-{
-	alloc.DeleteRange(index, size);
-}
-
-ID3D12DescriptorHeap* DescriptorHeap::GetHeapResource()
-{
-	return heap.Get();
-}
-
-CD3DX12_CPU_DESCRIPTOR_HANDLE DescriptorHeap::GetHandleCPU(int index) const
-{
-	return CD3DX12_CPU_DESCRIPTOR_HANDLE(heap->GetCPUDescriptorHandleForHeapStart(), index, DESCRIPTOR_SIZE);
-}
-
-CD3DX12_GPU_DESCRIPTOR_HANDLE DescriptorHeap::GetHandleGPU(int index) const
-{
-	return CD3DX12_GPU_DESCRIPTOR_HANDLE(heap->GetGPUDescriptorHandleForHeapStart(), index, DESCRIPTOR_SIZE);
-}
-
-void DescriptorHeap::AllocateDescriptor(int allocatedIndex, ID3D12Resource* resource, Desc_t* desc)
-{
-	CD3DX12_CPU_DESCRIPTOR_HANDLE handle = GetHandleCPU(allocatedIndex);
-
-	switch (TYPE)
+	switch (type)
 	{
 	case D3D12_DESCRIPTOR_HEAP_TYPE_RTV:
 	{

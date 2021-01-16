@@ -39,20 +39,6 @@ void Pass_UI::Init(PassParameters&& parameters)
 	assert(perObjectVertexMemorySize == 0 && "Per Object Vertex Memory should be null");
 	// Every UI object is quad that consists of two triangles
 	perObjectVertexMemorySize = perVertexMemorySize * 6;
-
-
-	// Init inverse matrix
-
-	// Generate utils matrices
-	int drawAreaWidth = 0;
-	int drawAreaHeight = 0;
-
-	Renderer::Inst().GetDrawAreaSize(&drawAreaWidth, &drawAreaHeight);
-
-	XMMATRIX sseResultMatrix = XMMatrixIdentity();
-	sseResultMatrix.r[1] = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
-	sseResultMatrix = XMMatrixTranslation(-drawAreaWidth / 2, -drawAreaHeight / 2, 0.0f) * sseResultMatrix;
-	XMStoreFloat4x4(&yInverseAndCenterMatrix, sseResultMatrix);
 }
 
 void Pass_UI::Start(GPUJobContext& jobCtx)
@@ -73,8 +59,6 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 	for (int i = 0; i < objects.size(); ++i)
 	{
 		// Special copy routine is required here.
-		//#DEBUG this is first major slow down. I can beat it by reusing
-		// pass objects rather than recreating them
 		PassObj& passObj = drawObjects.emplace_back(PassObj{
 			passParameters.perObjectLocalRootArgsTemplate,
 			&objects[i] });
@@ -108,15 +92,14 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 
 				if constexpr (std::is_same_v<T, RootArg::DescTable>)
 				{
-					//#DEBUG second major slow down that kills performance
 					rootArg.viewIndex = RootArg::AllocateDescTableView(rootArg);
 
 					for (int i = 0; i < rootArg.content.size(); ++i)
 					{
 						RootArg::DescTableEntity_t& descTableEntitiy = rootArg.content[i];
-						const int currentViewIndex = rootArg.viewIndex + i;
+						int currentViewIndex = rootArg.viewIndex + i;
 
-						std::visit([this, objectOffset, &rootArgOffset, &passObj, &regCtx, currentViewIndex]
+						std::visit([this, objectOffset, &rootArgOffset, &passObj, &regCtx, &currentViewIndex]
 						(auto&& descTableEntitiy)
 						{
 							using T = std::decay_t<decltype(descTableEntitiy)>;
@@ -133,13 +116,18 @@ void Pass_UI::Start(GPUJobContext& jobCtx)
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
 							{
-								RenderCallbacks::RegisterLocalObject(
-									HASH(passParameters.name.c_str()),
-									descTableEntitiy.hashedName,
-									passObj.originalDrawCall,
-									&currentViewIndex,
-									regCtx
-								);
+
+								std::visit([this, &descTableEntitiy, &currentViewIndex, &regCtx](auto&& drawCall)
+								{
+									RenderCallbacks::RegisterLocalObject(
+										HASH(passParameters.name.c_str()),
+										descTableEntitiy.hashedName,
+										drawCall,
+										currentViewIndex,
+										regCtx
+										);
+
+								}, *passObj.originalDrawCall);
 							}
 
 						}, descTableEntitiy);
@@ -282,8 +270,8 @@ void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 							RenderCallbacks::UpdateLocalObject(
 								HASH(passParameters.name.c_str()),
 								field.hashedName,
-								&obj,
-								&cpuMem[fieldOffset],
+								obj,
+								cpuMem[fieldOffset],
 								updateContext);
 
 						}, *obj.originalDrawCall);
@@ -315,8 +303,8 @@ void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 								RenderCallbacks::UpdateLocalObject(
 									HASH(passParameters.name.c_str()),
 									descTableEntity.hashedName,
-									&obj,
-									&currentViewIndex,
+									obj,
+									currentViewIndex,
 									updateContext
 								);
 							}
@@ -406,7 +394,7 @@ void Pass_UI::Draw(GPUJobContext& jobCtx)
 		
 		// Bind global args
 		frameGraph.BindObjGlobalRes(passParameters.perObjGlobalRootArgsIndicesTemplate, i,
-			commandList, PassParametersSource::InputType::UI);
+			commandList, Parsing::PassInputType::UI);
 
 
 		// Bind local args
@@ -434,7 +422,7 @@ void Pass_UI::Execute(GPUJobContext& context)
 	Draw(context);
 }
 
-void Pass_UI::Finish()
+void Pass_UI::ReleaseResources()
 {
 	auto& uploadMemory =
 		MemoryManager::Inst().GetBuff<UploadBuffer_t>();

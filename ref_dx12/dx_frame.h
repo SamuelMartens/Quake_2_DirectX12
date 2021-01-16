@@ -74,6 +74,11 @@ public:
 	XMFLOAT4X4 uiProjectionMat;
 	XMFLOAT4X4 uiViewMat;
 
+	// DirectX and OpenGL have different directions for Y axis,
+	// this matrix is required to fix this. Also I am using wrong projection matrix
+	// and need to fix whenever I will have a chance
+	XMFLOAT4X4 uiYInverseAndCenterMat;
+
 	// Synchronization 
 	
 	// These two values are used in the very end when we call ExecuteCommandList

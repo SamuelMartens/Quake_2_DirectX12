@@ -32,9 +32,7 @@ public:
 template<int SIZE>
 struct CommandListBuffer
 {
-	CommandListBuffer() :
-		allocator(SIZE) 
-	{};
+	CommandListBuffer() = default;
 	
 	CommandListBuffer(const CommandListBuffer&) = delete;
 	CommandListBuffer& operator=(const CommandListBuffer&) = delete;
@@ -45,7 +43,7 @@ struct CommandListBuffer
 	~CommandListBuffer() = default;
 
 	std::array<CommandList, SIZE> commandLists;
-	FlagAllocator allocator;
+	FlagAllocator<SIZE> allocator;
 };
 
 using CommandListRAIIGuard_t = Utils::RAIIGuard<CommandList, &CommandList::Open, &CommandList::Close>;

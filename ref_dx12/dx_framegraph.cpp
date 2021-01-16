@@ -41,62 +41,69 @@ void FrameGraph::Execute(Frame& frame)
 	// Some preparations
 	XMMATRIX tempMat = XMMatrixIdentity();
 	XMStoreFloat4x4(&frame.uiViewMat, tempMat);
-
 	tempMat = XMMatrixOrthographicRH(frame.camera.width, frame.camera.height, 0.0f, 1.0f);
+
 	XMStoreFloat4x4(&frame.uiProjectionMat, tempMat);
 
 	// NOTE: creation order is the order in which command Lists will be submitted.
 	// Set up dependencies 
 
-	GPUJobContext initFrameGraphJobContext = renderer.CreateContext(frame);
+	/*  Handle dependencies */
+	GPUJobContext updateGlobalResJobContext = renderer.CreateContext(frame);
+	GPUJobContext beginFrameJobContext = renderer.CreateContext(frame);
 
 	std::vector<GPUJobContext> framePassContexts;
-	framePassContexts.emplace_back(renderer.CreateContext(frame));
-
 	for (Pass_t& pass : passes)
 	{
 		framePassContexts.emplace_back(renderer.CreateContext(frame));
 
-		framePassContexts.back().CreateDependencyFrom({&initFrameGraphJobContext});
+		framePassContexts.back().CreateDependencyFrom({&updateGlobalResJobContext});
 	};
 
 	GPUJobContext endFrameJobContext = renderer.CreateContext(frame);
-	endFrameJobContext.CreateDependencyFrom(framePassContexts);
 
-	jobQueue.Enqueue(Job([initFrameGraphJobContext, &renderer]() mutable
+	std::vector<GPUJobContext*> endFrameDependency;
+
+	endFrameDependency.reserve(1 + endFrameDependency.size());
+	endFrameDependency.push_back(&updateGlobalResJobContext);
+
+	std::transform(framePassContexts.begin(), framePassContexts.end(), std::back_inserter(endFrameDependency),
+		[](GPUJobContext& context) 
 	{
-		JOB_GUARD(initFrameGraphJobContext);
-		//#DEBUG Wait is not called automatically
-		initFrameGraphJobContext.frame.frameGraph.BeginFrame(initFrameGraphJobContext);
+		return &context;
+	});
+
+	endFrameJobContext.CreateDependencyFrom(endFrameDependency);
+
+
+	/* Enqueue jobs */
+	// NOTE: context SHOULD be passed by value. Otherwise it will not exist when another thread will try to execute 
+	// this job
+	jobQueue.Enqueue(Job([updateGlobalResJobContext, &renderer]() mutable
+	{
+		JOB_GUARD(updateGlobalResJobContext);
+		updateGlobalResJobContext.WaitDependency();
+
+		updateGlobalResJobContext.frame.frameGraph.UpdateGlobalResources(updateGlobalResJobContext);
 
 	}));
 
-	jobQueue.Enqueue(Job([ctx = framePassContexts[0], &renderer]() mutable
+	jobQueue.Enqueue(Job([beginFrameJobContext, &renderer]() mutable
 	{
-		renderer.BeginFrameJob(ctx);
+		renderer.BeginFrameJob(beginFrameJobContext);
 	}));
 
 	for (int i = 0; i < passes.size(); ++i)
 	{
 		std::visit([
 			&jobQueue,
-				// i + 1 because of begin frame job
-				passJobContext = framePassContexts[i + 1]](auto&& pass)
+				passJobContext = framePassContexts[i]](auto&& pass)
 			{
 				jobQueue.Enqueue(Job(
 					[passJobContext, &pass]() mutable
 				{
 					JOB_GUARD(passJobContext);
-
-					//#DEBUG. Actually I need to figure out dependency stuff.
-					// First of all it should be not CreateDependency but rather AddDependency
-					// Secondly UI passes ore dependent on UI update. So they are defently should wait for it
-					// Finally BeginFRameJob doesn't depend on this routine actually.
-					// Is there a way I can handle this with resoure barrier?
-					// In ideal world where I am a good programmer, FrameGraph actually meant to handle,
-					// these sort of crap
-					passJobContext.waitDependancy->Wait();
-					//END
+					passJobContext.WaitDependency();
 
 					pass.Execute(passJobContext);
 				}));
@@ -112,6 +119,21 @@ void FrameGraph::Execute(Frame& frame)
 
 void FrameGraph::Init(GPUJobContext& context)
 {
+	// Init utility data
+	passGlobalMemorySize = 0;
+
+	for (const RootArg::Arg_t& rootArg : passesGlobalRes)
+	{
+		passGlobalMemorySize += RootArg::GetSize(rootArg);
+	}
+
+	perObjectGlobalMemoryUISize = 0;
+
+	for (const RootArg::Arg_t& arg : objGlobalResTemplate[static_cast<int>(Parsing::PassInputType::UI)])
+	{
+		perObjectGlobalMemoryUISize += RootArg::GetSize(arg);
+	}
+
 	RegisterGlobaPasslRes(context);
 }
 
@@ -123,7 +145,7 @@ void FrameGraph::BindPassGlobalRes(const std::vector<int>& resIndices, CommandLi
 	}
 }
 
-void FrameGraph::BindObjGlobalRes(const std::vector<int>& resIndices, int objIndex, CommandList& commandList, PassParametersSource::InputType objType) const
+void FrameGraph::BindObjGlobalRes(const std::vector<int>& resIndices, int objIndex, CommandList& commandList, Parsing::PassInputType objType) const
 {
 	const std::vector<RootArg::Arg_t>& objRes = objGlobalRes[static_cast<int>(objType)][objIndex];
 
@@ -133,8 +155,10 @@ void FrameGraph::BindObjGlobalRes(const std::vector<int>& resIndices, int objInd
 	}
 }
 
-void FrameGraph::BeginFrame(GPUJobContext& context)
+void FrameGraph::UpdateGlobalResources(GPUJobContext& context)
 {
+	// This just doesn't belong here. I will do proper Initialization when
+	// runtime load of frame graph will be implemented
 	if (isInitalized == false)
 	{
 		Init(context);
@@ -142,24 +166,29 @@ void FrameGraph::BeginFrame(GPUJobContext& context)
 		isInitalized = true;
 	}
 	
-	//#DEBUG should it be inside?
-	if (context.frame.uiDrawCalls.empty() == false)
-	{
-		RegisterGlobalObjectsResUI(context);
-		UpdateGlobalObjectsResUI(context);
-	}
+
+	RegisterGlobalObjectsResUI(context);
+	UpdateGlobalObjectsResUI(context);
 
 	UpdateGlobalPasslRes(context);
 }
 
-void FrameGraph::EndFrame(GPUJobContext& context)
+void FrameGraph::ReleaseResources()
 {
-	objGlobalRes[static_cast<int>(PassParametersSource::InputType::UI)].clear();
+	for (Pass_t& pass : passes)
+	{
+		std::visit([](auto&& pass)
+		{
+			pass.ReleaseResources();
+		}, pass);
+	}
+
+	objGlobalRes[static_cast<int>(Parsing::PassInputType::UI)].clear();
 
 	auto& updateBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	BufferHandler& perObjectGlobalMemoryUI = 
-		objGlobalResMemory[static_cast<int>(PassParametersSource::InputType::UI)];
+		objGlobalResMemory[static_cast<int>(Parsing::PassInputType::UI)];
 
 	if (perObjectGlobalMemoryUI != Const::INVALID_BUFFER_HANDLER)
 	{
@@ -172,8 +201,13 @@ void FrameGraph::RegisterGlobalObjectsResUI(GPUJobContext& context)
 {
 	std::vector<DrawCall_UI_t>& drawCalls = context.frame.uiDrawCalls;
 
+	if (drawCalls.empty() == true)
+	{
+		return;
+	}
+
 	// Allocate memory
-	BufferHandler& objectGlobalMemUI = objGlobalResMemory[static_cast<int>(PassParametersSource::InputType::UI)];
+	BufferHandler& objectGlobalMemUI = objGlobalResMemory[static_cast<int>(Parsing::PassInputType::UI)];
 
 	assert(objectGlobalMemUI == Const::INVALID_BUFFER_HANDLER && "UI per object global mem should is not deallocated");
 
@@ -183,8 +217,8 @@ void FrameGraph::RegisterGlobalObjectsResUI(GPUJobContext& context)
 	}
 
 	// Get references on used data
-	const std::vector<RootArg::Arg_t>& objResTemplate = objGlobalResTemplate[static_cast<int>(PassParametersSource::InputType::UI)];
-	std::vector<std::vector<RootArg::Arg_t>>& objlResources = objGlobalRes[static_cast<int>(PassParametersSource::InputType::UI)];
+	const std::vector<RootArg::Arg_t>& objResTemplate = objGlobalResTemplate[static_cast<int>(Parsing::PassInputType::UI)];
+	std::vector<std::vector<RootArg::Arg_t>>& objlResources = objGlobalRes[static_cast<int>(Parsing::PassInputType::UI)];
 	
 	RenderCallbacks::RegisterGlobalObjectContext regContext = { context };
 
@@ -244,8 +278,8 @@ void FrameGraph::RegisterGlobalObjectsResUI(GPUJobContext& context)
 							{
 								RenderCallbacks::RegisterGlobalObject(
 									descTableEntitiy.hashedName,
-									&drawCall,
-									&currentViewIndex,
+									drawCall,
+									currentViewIndex,
 									regContext
 								);
 							}
@@ -263,30 +297,23 @@ void FrameGraph::RegisterGlobalObjectsResUI(GPUJobContext& context)
 
 void FrameGraph::UpdateGlobalObjectsResUI(GPUJobContext& context)
 {
-	
-	//#DEBUG this should belong to frame (matrix I mean)
-	// And delete it in UI pass
-	int drawAreaWidth = 0;
-	int drawAreaHeight = 0;
-	Renderer::Inst().GetDrawAreaSize(&drawAreaWidth, &drawAreaHeight);
-
-	XMMATRIX sseYInverseAndCenterMat = XMMatrixIdentity();
-	sseYInverseAndCenterMat.r[1] = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
-	sseYInverseAndCenterMat = XMMatrixTranslation(-drawAreaWidth / 2, -drawAreaHeight / 2, 0.0f) * sseYInverseAndCenterMat;
+	if (context.frame.uiDrawCalls.empty() == true)
+	{
+		return;
+	}
 
 	Frame& frame = context.frame;
 
-	XMMATRIX sseViewMat = XMLoadFloat4x4(&frame.uiViewMat);
-	XMMATRIX sseProjMat = XMLoadFloat4x4(&frame.uiProjectionMat);
-
-	XMMATRIX viewProj = sseYInverseAndCenterMat * sseViewMat * sseProjMat;
+	XMMATRIX viewProj = XMLoadFloat4x4(&frame.uiYInverseAndCenterMat) * 
+		XMLoadFloat4x4(&frame.uiViewMat) * 
+		XMLoadFloat4x4(&frame.uiProjectionMat);
 
 	XMFLOAT4X4 yInverseAndCenterMat;
 	XMStoreFloat4x4(&yInverseAndCenterMat, viewProj);
 
 	RenderCallbacks::UpdateGlobalObjectContext updateContext = { yInverseAndCenterMat, context };
 
-	std::vector<std::vector<RootArg::Arg_t>>& objGlobalResUI = objGlobalRes[static_cast<int>(PassParametersSource::InputType::UI)];
+	std::vector<std::vector<RootArg::Arg_t>>& objGlobalResUI = objGlobalRes[static_cast<int>(Parsing::PassInputType::UI)];
 
 	std::vector<std::byte> cpuMem(perObjectGlobalMemoryUISize * objGlobalResUI.size(), static_cast<std::byte>(0));
 
@@ -317,8 +344,8 @@ void FrameGraph::UpdateGlobalObjectsResUI(GPUJobContext& context)
 						{
 							RenderCallbacks::UpdateGlobalObject(
 								field.hashedName,
-								&drawCall,
-								&cpuMem[fieldOffset],
+								drawCall,
+								cpuMem[fieldOffset],
 								updateContext);
 
 						}, drawCall);
@@ -352,7 +379,7 @@ void FrameGraph::UpdateGlobalObjectsResUI(GPUJobContext& context)
 	{
 		auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
-		BufferHandler objGlobalMemoryUI = objGlobalResMemory[static_cast<int>(PassParametersSource::InputType::UI)];
+		BufferHandler objGlobalMemoryUI = objGlobalResMemory[static_cast<int>(Parsing::PassInputType::UI)];
 
 		FArg::UpdateUploadHeapBuff updateConstBufferArgs;
 		updateConstBufferArgs.buffer = uploadMemoryBuff.GetGpuBuffer();
@@ -427,7 +454,7 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 						{
 							RenderCallbacks::RegisterGlobalPass(
 								descTableEntitiy.hashedName,
-								&currentViewIndex,
+								currentViewIndex,
 								globalPassContext
 							);
 						}
@@ -464,7 +491,7 @@ void FrameGraph::UpdateGlobalPasslRes(GPUJobContext& context)
 				{
 					RenderCallbacks::UpdateGlobalPass(
 						field.hashedName,
-						&cpuMem[fieldOffset],
+						cpuMem[fieldOffset],
 						globalPassContext
 					);
 
@@ -493,7 +520,7 @@ void FrameGraph::UpdateGlobalPasslRes(GPUJobContext& context)
 						{
 							RenderCallbacks::UpdateGlobalPass(
 								descTableEntity.hashedName,
-								&currentViewIndex,
+								currentViewIndex,
 								globalPassContext
 							);
 						}

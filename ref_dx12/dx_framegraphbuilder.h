@@ -69,8 +69,6 @@ namespace Parsing
 	struct PassParametersContext
 	{
 		std::vector<PassParametersSource> passSources;
-		//#DEBUG remove this
-		std::vector<Parsing::Resource_t> resources;
 	};
 
 	struct FrameGraphSourceContext
@@ -107,33 +105,42 @@ public:
 
 private:
 
-	FrameGraph CompileFrameGraph(FrameGraphSource&& source) const;
+	/* FrameGraph generation */
 	FrameGraphSource GenerateFrameGraphSource() const;
+	FrameGraph CompileFrameGraph(FrameGraphSource&& source) const;
 	
+	/* Pass Parameters */
 	std::vector<PassParametersSource> GeneratePassesParameterSources() const;
+	PassParameters CompilePassParameters(PassParametersSource&& passSource, FrameGraph& frameGraph) const;
 
+	/*  Files processing */
 	std::unordered_map<std::string, std::string> LoadPassFiles() const;
 	std::string	LoadFrameGraphFile() const;
-
-	void PreprocessPassFiles(const std::vector<std::string>& fileList);
 	
 	std::shared_ptr<Parsing::PassParametersContext> ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles) const;
 	std::shared_ptr<Parsing::FrameGraphSourceContext> ParseFrameGraphFile(const std::string& materialFileContent) const;
 
+	/* Shaders */
 	PassCompiledShaders_t CompileShaders(const PassParametersSource& pass) const;
+	
+	/* Input layout */
 	std::vector<D3D12_INPUT_ELEMENT_DESC> GenerateInputLayout(const PassParametersSource& pass) const;
 	const Parsing::VertAttr& GetPassInputVertAttr(const PassParametersSource& pass) const;
 
+	/* State objects processing */
 	ComPtr<ID3D12RootSignature> GenerateRootSignature(const PassParametersSource& pass, const PassCompiledShaders_t& shaders) const;
 	ComPtr<ID3D12PipelineState>	GeneratePipelineStateObject(
 		const PassParametersSource& passSource,
 		PassCompiledShaders_t& shaders,
 		ComPtr<ID3D12RootSignature>& rootSig) const;
+
+	/*  Root arguments */
 	void CreateResourceArguments(const PassParametersSource& passSource, FrameGraph& frameGraph, PassParameters& pass) const;
+	static void AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
+		Parsing::ResourceBindFrequency updateFrequency, Parsing::ResourceScope scope, RootArg::Arg_t&& arg);
 
-	PassParameters CompilePassParameters(PassParametersSource&& passSource, FrameGraph& frameGraph) const;
-
-	void InitPass(PassParameters&& passParameters, Pass_t& pass) const;
+	/* Utils */
+	void ValidateResources(const std::vector<PassParametersSource>& passesParametersSources) const;
 
 	std::filesystem::path ROOT_DIR_PATH;
 
