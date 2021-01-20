@@ -86,9 +86,10 @@ class Renderer
 
 
 	void BeginFrame();
-	//#TODO delete regualr EndFrame
+	//#TODO delete regular EndFrame
 	void EndFrame();
 	void EndFrame_Material();
+	void FlushAllFrames() const;
 
 	void GetDrawTextureSize(int* x, int* y, const char* name);
 	void SetPalette(const unsigned char* palette);

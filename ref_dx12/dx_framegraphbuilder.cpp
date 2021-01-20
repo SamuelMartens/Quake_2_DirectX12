@@ -7,6 +7,7 @@
 #include <tuple>
 #include <d3dcompiler.h>
 #include <optional>
+#include <windows.h>
 
 
 #ifdef max
@@ -917,9 +918,17 @@ FrameGraphBuilder& FrameGraphBuilder::Inst()
 	return *matCompiler;
 }
 
-FrameGraph FrameGraphBuilder::BuildFrameGraph()
+bool FrameGraphBuilder::BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph)
 {
-	return CompileFrameGraph(GenerateFrameGraphSource());
+	if (IsSourceChanged() == false)
+	{
+		return false;
+	}
+
+	Renderer::Inst().FlushAllFrames();
+	outFrameGraph = std::make_unique<FrameGraph>(CompileFrameGraph(GenerateFrameGraphSource()));
+
+	return true;
 }
 
 FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
@@ -1072,6 +1081,38 @@ std::shared_ptr<Parsing::FrameGraphSourceContext> FrameGraphBuilder::ParseFrameG
 	parser.parse(frameGraphSourceFileContent.c_str(), ctx);
 
 	return context;
+}
+
+bool FrameGraphBuilder::IsSourceChanged()
+{
+	if (sourceWatchHandle == INVALID_HANDLE_VALUE)
+	{
+		// First time requested. Init handler
+		sourceWatchHandle = FindFirstChangeNotification(ROOT_DIR_PATH.string().c_str(), TRUE, 
+			FILE_NOTIFY_CHANGE_FILE_NAME |
+			FILE_NOTIFY_CHANGE_DIR_NAME |
+			FILE_NOTIFY_CHANGE_LAST_WRITE);
+
+		assert(sourceWatchHandle != INVALID_HANDLE_VALUE && "Failed to init source watch handle");
+
+		return true;
+	}
+
+	// Time out value for wait is 0, so the function will return immediately and no actual wait happens
+	const DWORD waitStatus = WaitForSingleObject(sourceWatchHandle, 0);
+
+	assert(waitStatus == WAIT_OBJECT_0 || waitStatus == WAIT_TIMEOUT && "IsSourceChange failed. Wait function returned unexpected result");
+
+	if (waitStatus == WAIT_OBJECT_0)
+	{
+		// Object was signaled, set up next wait
+		BOOL res = FindNextChangeNotification(sourceWatchHandle);
+		assert(res == TRUE && "Failed to set up next change notification, for source watch");
+
+		return true;
+	}
+
+	return false;
 }
 
 std::vector<D3D12_INPUT_ELEMENT_DESC> FrameGraphBuilder::GenerateInputLayout(const PassParametersSource& pass) const

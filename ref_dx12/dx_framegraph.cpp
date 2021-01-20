@@ -65,7 +65,7 @@ void FrameGraph::Execute(Frame& frame)
 	std::vector<GPUJobContext*> endFrameDependency;
 
 	endFrameDependency.reserve(1 + endFrameDependency.size());
-	endFrameDependency.push_back(&updateGlobalResJobContext);
+	endFrameDependency.push_back(&beginFrameJobContext);
 
 	std::transform(framePassContexts.begin(), framePassContexts.end(), std::back_inserter(endFrameDependency),
 		[](GPUJobContext& context) 
@@ -84,7 +84,7 @@ void FrameGraph::Execute(Frame& frame)
 		JOB_GUARD(updateGlobalResJobContext);
 		updateGlobalResJobContext.WaitDependency();
 
-		updateGlobalResJobContext.frame.frameGraph.UpdateGlobalResources(updateGlobalResJobContext);
+		updateGlobalResJobContext.frame.frameGraph->UpdateGlobalResources(updateGlobalResJobContext);
 
 	}));
 

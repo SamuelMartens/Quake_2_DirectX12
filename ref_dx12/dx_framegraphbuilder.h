@@ -99,7 +99,7 @@ public:
 
 public:
 
-	FrameGraph BuildFrameGraph();
+	bool BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph);
 
 	std::filesystem::path GenPathToFile(const std::string fileName) const;
 
@@ -119,6 +119,8 @@ private:
 	
 	std::shared_ptr<Parsing::PassParametersContext> ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles) const;
 	std::shared_ptr<Parsing::FrameGraphSourceContext> ParseFrameGraphFile(const std::string& materialFileContent) const;
+
+	bool IsSourceChanged();
 
 	/* Shaders */
 	PassCompiledShaders_t CompileShaders(const PassParametersSource& pass) const;
@@ -143,5 +145,5 @@ private:
 	void ValidateResources(const std::vector<PassParametersSource>& passesParametersSources) const;
 
 	std::filesystem::path ROOT_DIR_PATH;
-
+	HANDLE sourceWatchHandle = INVALID_HANDLE_VALUE;
 };

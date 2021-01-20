@@ -30,9 +30,27 @@ void CommandList::Open()
 {
 	ThrowIfFailed(commandListAlloc->Reset());
 	ThrowIfFailed(commandList->Reset(commandListAlloc.Get(), nullptr));
+
+#ifdef VALIDATE_COMMAND_LIST
+	isOpen = true;
+#endif // VALIDATE_COMMAND_LIST
+
 }
 
 void CommandList::Close()
 {
 	ThrowIfFailed(commandList->Close());
+
+#ifdef VALIDATE_COMMAND_LIST
+	isOpen = false;
+#endif // VALIDATE_COMMAND_LIST
+
+}
+
+bool CommandList::GetIsOpen() const
+{
+#ifdef VALIDATE_COMMAND_LIST
+	return isOpen;
+#endif
+	return false;
 }

@@ -528,7 +528,7 @@ void Pass_UI::Draw(GPUJobContext& jobCtx)
 {
 	CommandList& commandList = jobCtx.commandList;
 	Renderer& renderer = Renderer::Inst();
-	const FrameGraph& frameGraph = jobCtx.frame.frameGraph;
+	const FrameGraph& frameGraph = *jobCtx.frame.frameGraph;
 
 	// Bind pass global argument
 	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsIndices, commandList);

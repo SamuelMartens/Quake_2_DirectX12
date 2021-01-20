@@ -50,6 +50,7 @@ public:
 	void Wait() const;
 
 	static void WaitForMultipleAny(const std::vector<std::shared_ptr<Semaphore>> waitForSemaphores);
+	static void WaitForMultipleAll(const std::vector<std::shared_ptr<Semaphore>> waitForSemaphores);
 
 private:
 

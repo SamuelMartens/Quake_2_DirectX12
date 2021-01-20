@@ -61,7 +61,7 @@ void Semaphore::Wait() const
 
 void Semaphore::WaitForMultipleAny(const std::vector<std::shared_ptr<Semaphore>> waitForSemaphores)
 {
-	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait entered");
+	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait any entered");
 
 	assert(waitForSemaphores.empty() == false && "WaitForMultipleAny received empty semaphore list.");
 
@@ -75,7 +75,7 @@ void Semaphore::WaitForMultipleAny(const std::vector<std::shared_ptr<Semaphore>>
 		// If any of semaphores is ready, we are done
 		if (s->counter.load() >= s->waitValue)
 		{
-			Logs::Logf(Logs::Category::Synchronization, "Semaphore multi wait finished");
+			Logs::Logf(Logs::Category::Synchronization, "Semaphore multi wait any finished");
 
 			return;
 		}
@@ -91,8 +91,24 @@ void Semaphore::WaitForMultipleAny(const std::vector<std::shared_ptr<Semaphore>>
 	ReleaseSemaphore(winSemaphores[res - WAIT_OBJECT_0], 1, &prevVal);
 	assert(prevVal == 0 && "Multiple prev val is not equal to 0");
 
-	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait finished, handle %x", reinterpret_cast<unsigned>(winSemaphores[res - WAIT_OBJECT_0]));
+	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait any finished, handle %x", reinterpret_cast<unsigned>(winSemaphores[res - WAIT_OBJECT_0]));
 
+}
+
+void Semaphore::WaitForMultipleAll(const std::vector<std::shared_ptr<Semaphore>> waitForSemaphores)
+{
+	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait all entered");
+
+	assert(waitForSemaphores.empty() == false && "WaitForMultipleAll received empty semaphore list.");
+
+	for (const std::shared_ptr<Semaphore>& s : waitForSemaphores)
+	{
+		assert(s != nullptr && "WaitForMultipleAll received empty pointer");
+
+		s->Wait();
+	}
+
+	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait all finished");
 }
 
 void ThreadingUtils::Init()

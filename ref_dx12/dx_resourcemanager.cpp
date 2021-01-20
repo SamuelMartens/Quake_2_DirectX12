@@ -235,8 +235,8 @@ Texture* ResourceManager::CreateTextureFromDataDeferred(const std::byte* data, i
 	Texture* result = &textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
 
 	TexCreationRequest_FromData texRequest(*result);
-	const int texSize = width * height * bpp / 8;
-
+	const int texSize = width * height;
+	
 	texRequest.data.resize(texSize);
 	memcpy(texRequest.data.data(), data, texSize);
 

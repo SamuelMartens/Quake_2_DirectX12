@@ -85,7 +85,7 @@ public:
 	int executeCommandListFenceValue = -1;
 	HANDLE executeCommandListEvenHandle = INVALID_HANDLE_VALUE;
 
-	FrameGraph frameGraph;
+	std::unique_ptr<FrameGraph> frameGraph;
 
 private:
 

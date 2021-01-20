@@ -410,14 +410,10 @@ void Renderer::InitFrames()
 {
 	assert(Settings::SWAP_CHAIN_BUFFER_COUNT == Settings::FRAMES_NUM && "Swap chain buffer count shall be equal to frames num");
 
-	FrameGraph frameGraph = FrameGraphBuilder::Inst().BuildFrameGraph();
-
 	for (int i = 0; i < Settings::FRAMES_NUM; ++i)
 	{
 		Frame& frame = frames[i];
-
 		frame.Init(i);
-		frame.frameGraph = frameGraph;
 	}
 }
 
@@ -773,6 +769,8 @@ void Renderer::OpenFrame(Frame& frame) const
 
 void Renderer::CloseFrame(Frame& frame)
 {
+	commandListBuffer.ValidateListsClosed(frame.acquiredCommandListsIndices);
+
 	SubmitFrame(frame);
 	WaitForFrame(frame);
 
@@ -820,7 +818,10 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	// Remove used draw calls
 	frame.uiDrawCalls.clear();
 
-	frame.frameGraph.ReleaseResources();
+	if (frame.frameGraph != nullptr)
+	{
+		frame.frameGraph->ReleaseResources();
+	}
 }
 
 void Renderer::AcquireMainThreadFrame()
@@ -2501,6 +2502,19 @@ void Renderer::BeginFrame()
 {
 	Logs::Log(Logs::Category::Generic, "API: Begin frame");
 
+	// Frame graph processing
+
+	if (FrameGraphBuilder::Inst().BuildFrameGraph(frames[0].frameGraph) == true)
+	{
+		// Frame graph has changed new frame graph is stored in the first frame,
+		// populate this change to other frames
+		for (int i = 1 ; i < frames.size(); ++i)
+		{
+			frames[i].frameGraph = std::make_unique<FrameGraph>(FrameGraph(*frames[0].frameGraph));
+		}
+	}
+
+	// Start work on the current frame
 	AcquireMainThreadFrame();
 	Frame& frame = GetMainThreadFrame();
 
@@ -2516,6 +2530,7 @@ void Renderer::EndFrame()
 {
 	Logs::Log(Logs::Category::Generic, "API: EndFrame");
 
+	assert(false);
 	// All heavy lifting is here
 
 	Frame& frame = GetMainThreadFrame();
@@ -2622,7 +2637,29 @@ void Renderer::EndFrame_Material()
 	// Proceed to next frame
 	DetachMainThreadFrame();
 
-	frame.frameGraph.Execute(frame);
+	frame.frameGraph->Execute(frame);
+}
+
+void Renderer::FlushAllFrames() const
+{
+	ASSERT_MAIN_THREAD;
+
+	std::vector<std::shared_ptr<Semaphore>> frameFinishSemaphores;
+
+	for (const Frame& frame : frames)
+	{
+		std::shared_ptr<Semaphore> fSemaphore = frame.GetFinishSemaphore();
+
+		if (fSemaphore != nullptr)
+		{
+			frameFinishSemaphores.push_back(std::move(fSemaphore));
+		}
+	}
+
+	if (frameFinishSemaphores.empty() == false)
+	{
+		Semaphore::WaitForMultipleAll(std::move(frameFinishSemaphores));
+	}
 }
 
 // This seems to take 188Kb of memory. Which is not that bad, so I will leave it
