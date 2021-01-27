@@ -12,6 +12,7 @@ class FlagAllocator
 public:
 	FlagAllocator() = default;
 
+	[[nodiscard]]
 	int Allocate() 
 	{
 		std::scoped_lock<std::mutex> lock(mutex);
@@ -31,6 +32,7 @@ public:
 
 	};
 
+	[[nodiscard]]
 	int AllocateRange(int size) 
 	{
 		std::scoped_lock<std::mutex> lock(mutex);
@@ -117,6 +119,7 @@ public:
 
 	~BufferAllocator() = default;
 
+	[[nodiscard]]
 	int Allocate(int size)
 	{
 		std::scoped_lock<std::mutex> lock(mutex);

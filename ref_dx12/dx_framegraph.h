@@ -46,15 +46,17 @@ public:
 	void BindPassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const;
 	void BindObjGlobalRes(const std::vector<int>& resIndices, int objIndex, CommandList& commandList, Parsing::PassInputType objType) const;
 
+	void RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& context);
 	void UpdateGlobalResources(GPUJobContext& context);
-	void ReleaseResources();
-
+	void ReleasePerFrameResources();
 
 private:
 
 	void RegisterGlobalObjectsResUI(GPUJobContext& context);
 	void UpdateGlobalObjectsResUI(GPUJobContext& context);
-	
+
+	void UpdateGlobalObjectsResStatic(GPUJobContext& context);
+
 	void RegisterGlobaPasslRes(GPUJobContext& context);
 	void UpdateGlobalPasslRes(GPUJobContext& context);
 
@@ -74,9 +76,11 @@ private:
 	std::array<BufferHandler,
 		static_cast<int>(Parsing::PassInputType::SIZE)> objGlobalResMemory;
 
+	// Size for one object
+	std::array<int,
+		static_cast<int>(Parsing::PassInputType::SIZE)> perObjectGlobalMemorySize;
+
 	int passGlobalMemorySize = 0;
-	// Size for one UI object
-	int perObjectGlobalMemoryUISize = 0;
 
 	BufferHandler passGlobalMemory = Const::INVALID_BUFFER_HANDLER;
 

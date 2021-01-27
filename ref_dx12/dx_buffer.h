@@ -86,6 +86,7 @@ public:
 		}
 	}
 
+	[[nodiscard]]
 	BufferHandler Allocate(int size)
 	{
 		std::scoped_lock<std::mutex> lock(mutex);

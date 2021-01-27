@@ -820,7 +820,7 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 
 	if (frame.frameGraph != nullptr)
 	{
-		frame.frameGraph->ReleaseResources();
+		frame.frameGraph->ReleasePerFrameResources();
 	}
 }
 
@@ -2495,6 +2495,17 @@ void Renderer::AddDrawCall_Char(int x, int y, int num)
 {
 	Logs::Log(Logs::Category::Generic, "API: AddDrawCall_Char");
 
+
+	if ((num & 127) == 32)
+	{
+		return;		// space
+	}
+
+	if (y <= -Settings::CHAR_SIZE)
+	{
+		return;		// totally off screen
+	}
+
 	GetMainThreadFrame().uiDrawCalls.emplace_back(DrawCall_Char{ x, y, num });
 }
 
@@ -2637,7 +2648,25 @@ void Renderer::EndFrame_Material()
 	// Proceed to next frame
 	DetachMainThreadFrame();
 
+	// Some preparations
+	PreRenderSetUpFrame(frame);
+
 	frame.frameGraph->Execute(frame);
+}
+
+void Renderer::PreRenderSetUpFrame(Frame& frame)
+{
+	ASSERT_MAIN_THREAD;
+
+	// Some preparations
+	XMMATRIX tempMat = XMMatrixIdentity();
+	XMStoreFloat4x4(&frame.uiViewMat, tempMat);
+	tempMat = XMMatrixOrthographicRH(frame.camera.width, frame.camera.height, 0.0f, 1.0f);
+
+	XMStoreFloat4x4(&frame.uiProjectionMat, tempMat);
+	
+	// Static objects
+	frame.visibleStaticObjectsIndices = BuildObjectsInFrustumList(frame.camera, staticObjectsAABB);
 }
 
 void Renderer::FlushAllFrames() const

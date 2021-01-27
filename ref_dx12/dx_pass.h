@@ -9,6 +9,12 @@
 #include "dx_common.h"
 #include "dx_passparameters.h"
 #include "dx_threadingutils.h"
+#include "dx_objects.h"
+
+
+// NOTE: passes are actually don't release their resources automatically,
+// it is done manually via ReleaseResources functions. It is fine as long as 
+// they live inside FrameGraph. Be careful putting them in any other place
 
 //#TODO
 // 1) Implement proper tex samplers handling. When I need more samplers
@@ -19,26 +25,17 @@
 // 6) Do proper logging for parsing and execution
 // 7) Proper name generation for D3D objects
 
+
 class Pass_UI
 {
 public:
 	struct PassObj
 	{
 		std::vector<RootArg::Arg_t> rootArgs;
-		const DrawCall_UI_t* originalDrawCall = nullptr;
+		const DrawCall_UI_t* originalObj = nullptr;
 	};
 
 public:
-
-	Pass_UI() = default;
-
-	Pass_UI(const Pass_UI&) = default;
-	Pass_UI& operator=(const Pass_UI&) = default;
-
-	Pass_UI(Pass_UI&&) = default;
-	Pass_UI& operator=(Pass_UI&&) = default;
-
-	~Pass_UI();
 
 	void Execute(GPUJobContext& context);
 	void Init(PassParameters&& parameters);
@@ -46,13 +43,14 @@ public:
 	void RegisterPassResources(GPUJobContext& jobCtx);
 	void UpdatePassResources(GPUJobContext& jobCtx);
 	void ReleasePerFrameResources();
+	void ReleasePersistentResources();
 
 private:
 
-	void Start(GPUJobContext& jobCtx);
+	void RegisterObjects(GPUJobContext& jobCtx);
 	void UpdateDrawObjects(GPUJobContext& jobCtx);
 
-	void SetUpRenderState(GPUJobContext& jobCtx);
+	void SetRenderState(GPUJobContext& jobCtx);
 	void Draw(GPUJobContext& jobCtx);
 
 private:
@@ -76,4 +74,47 @@ private:
 
 };
 
-using Pass_t = std::variant<Pass_UI>;
+class Pass_Static
+{
+public:
+
+	struct PassObj
+	{
+		std::vector<RootArg::Arg_t> rootArgs;
+		BufferHandler constantBuffMemory = Const::INVALID_BUFFER_HANDLER;
+		const StaticObject* originalObj = nullptr;
+
+		void ReleaseResources();
+	};
+
+public:
+
+	void Execute(GPUJobContext& context);
+	void Init(PassParameters&& parameters);
+	//#DEBUG change from jobCtx to context everywhere. Generally use Context, but not Ctx
+	void RegisterPassResources(GPUJobContext& jobCtx);
+	void UpdatePassResources(GPUJobContext& jobCtx);
+	void ReleasePerFrameResources();
+	void ReleasePersistentResources();
+
+	void RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& jobCtx);
+
+private:
+
+	void UpdateDrawObjects(GPUJobContext& jobCtx);
+	void Draw(GPUJobContext& jobCtx);
+
+	void SetRenderState(GPUJobContext& jobCtx);
+
+	PassParameters passParameters;
+
+	int passMemorySize = 0;
+	BufferHandler passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
+
+	unsigned int perObjectConstBuffMemorySize = 0;
+
+	std::vector<PassObj> drawObjects;
+
+};
+
+using Pass_t = std::variant<Pass_UI, Pass_Static>;

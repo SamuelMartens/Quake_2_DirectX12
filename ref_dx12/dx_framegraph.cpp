@@ -5,11 +5,255 @@
 #include "dx_memorymanager.h"
 #include "dx_rendercallbacks.h"
 
+
+
+namespace
+{
+	template<
+		typename objGlobalResTemplateT,
+		typename objGlobalResT,
+		typename objGlobalResMemoryT,
+		typename perObjectGlobalMemorySizeT>
+		struct ResContext
+	{
+		ResContext(const objGlobalResTemplateT& resTemplate,
+			objGlobalResT& globalRes,
+			objGlobalResMemoryT& globalResMemory,
+			perObjectGlobalMemorySizeT& objectGlobalMemorySize) :
+			objGlobalResTemplate(resTemplate),
+			objGlobalRes(globalRes),
+			objGlobalResMemory(globalResMemory),
+			perObjectGlobalMemorySize(objectGlobalMemorySize)
+		{};
+
+		const objGlobalResTemplateT&  objGlobalResTemplate;
+		objGlobalResT& objGlobalRes;
+		objGlobalResMemoryT& objGlobalResMemory;
+		perObjectGlobalMemorySizeT& perObjectGlobalMemorySize;
+	};
+
+	[[nodiscard]]
+	RenderCallbacks::UpdateGlobalObjectContext ConstructGlobalObjectContext(GPUJobContext& context)
+	{
+		Frame& frame = context.frame;
+
+		XMMATRIX sseViewProj = XMLoadFloat4x4(&frame.uiYInverseAndCenterMat) *
+			XMLoadFloat4x4(&frame.uiViewMat) *
+			XMLoadFloat4x4(&frame.uiProjectionMat);
+
+		XMFLOAT4X4 viewProj;
+		XMStoreFloat4x4(&viewProj, sseViewProj);
+
+		return RenderCallbacks::UpdateGlobalObjectContext{ viewProj, context };
+	}
+
+
+	template<Parsing::PassInputType INPUT_TYPE, typename T, typename ResContextT>
+	void _UpdateGlobalObjectRes(const std::vector<T>& objects, GPUJobContext& context, ResContextT resContext)
+	{
+		if (objects.empty() == true)
+		{
+			return;
+		}
+
+		Frame& frame = context.frame;
+
+		RenderCallbacks::UpdateGlobalObjectContext updateContext = ConstructGlobalObjectContext(context);
+
+		std::vector<std::vector<RootArg::Arg_t>>& objGlobalRes = resContext.objGlobalRes[static_cast<int>(INPUT_TYPE)];
+
+		const int perObjectGlobalMemorySize = resContext.perObjectGlobalMemorySize[static_cast<int>(INPUT_TYPE)];
+
+		std::vector<std::byte> cpuMem(perObjectGlobalMemorySize * objects.size(), static_cast<std::byte>(0));
+
+		for (int i = 0; i < objects.size(); ++i)
+		{
+			const T& object = objects[i];
+
+			for (RootArg::Arg_t& arg : objGlobalRes[i])
+			{
+				std::visit([&updateContext, &object, &cpuMem](auto&& arg)
+				{
+					using T = std::decay_t<decltype(arg)>;
+
+					if constexpr (std::is_same_v<T, RootArg::RootConstant>)
+					{
+						assert(false && "Root constant is not implemented");
+					};
+
+					if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
+					{
+						// Start of the memory of the current buffer
+						int fieldOffset = arg.gpuMem.offset;
+
+						for (RootArg::ConstBuffField& field : arg.content)
+						{
+							RenderCallbacks::UpdateGlobalObject(
+								field.hashedName,
+								object,
+								cpuMem[fieldOffset],
+								updateContext);
+
+
+							// Proceed to next buffer
+							fieldOffset += field.size;
+						}
+					}
+
+					if constexpr (std::is_same_v<T, RootArg::DescTable>)
+					{
+						for (RootArg::DescTableEntity_t& descTableEntity : arg.content)
+						{
+							std::visit([](auto&& descTableEntity)
+							{
+								using T = std::decay_t<decltype(descTableEntity)>;
+
+								if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
+								{
+									assert(false && "Desc table view is probably not implemented! Make sure it is");
+								}
+							}, descTableEntity);
+						}
+					}
+
+				}, arg);
+			}
+		}
+
+		if (perObjectGlobalMemorySize != 0)
+		{
+			auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+
+			BufferHandler objGlobalResMemory = resContext.objGlobalResMemory[static_cast<int>(INPUT_TYPE)];
+
+			FArg::UpdateUploadHeapBuff updateConstBufferArgs;
+			updateConstBufferArgs.buffer = uploadMemoryBuff.GetGpuBuffer();
+			updateConstBufferArgs.offset = uploadMemoryBuff.GetOffset(objGlobalResMemory);
+			updateConstBufferArgs.data = cpuMem.data();
+			updateConstBufferArgs.byteSize = cpuMem.size();
+			updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
+
+			ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
+		}
+	}
+
+	template< Parsing::PassInputType INPUT_TYPE, typename T, typename ResContextT>
+	void _RegisterGlobalObjectsRes(const std::vector<T>& objects, GPUJobContext& context, ResContextT resContext)
+	{
+		if (objects.empty() == true)
+		{
+			return;
+		}
+
+		constexpr int INPUT_TYPE_INDEX = static_cast<int>(INPUT_TYPE);
+
+		// Allocate memory
+		BufferHandler& objectGlobalMem = resContext.objGlobalResMemory[INPUT_TYPE_INDEX];
+
+		assert(objectGlobalMem == Const::INVALID_BUFFER_HANDLER && "_RegisterGlobalObjectsRes error. Per object global mem should is not deallocated");
+
+		const int objMemorySize = resContext.perObjectGlobalMemorySize[INPUT_TYPE_INDEX];
+
+		if (objMemorySize != 0)
+		{
+			objectGlobalMem = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(objMemorySize * objects.size());
+		}
+
+		// Get references on used data
+		const std::vector<RootArg::Arg_t>& objResTemplate = resContext.objGlobalResTemplate[INPUT_TYPE_INDEX];
+		std::vector<std::vector<RootArg::Arg_t>>& objlResources = resContext.objGlobalRes[INPUT_TYPE_INDEX];
+
+		RenderCallbacks::RegisterGlobalObjectContext regContext = { context };
+
+		// Actual registration
+		for (int i = 0; i < objects.size(); ++i)
+		{
+			const auto& obj = objects[i];
+
+			std::vector<RootArg::Arg_t>& objRes = objlResources.emplace_back(objResTemplate);
+
+			const int objectOffset = objMemorySize * i;
+			int argOffset = 0;
+
+			for (RootArg::Arg_t& arg : objRes)
+			{
+				std::visit([&obj, &objectGlobalMem, objectOffset, &argOffset, &regContext](auto&& arg)
+				{
+					using T = std::decay_t<decltype(arg)>;
+
+					if constexpr (std::is_same_v<T, RootArg::RootConstant>)
+					{
+						assert(false && "Root constant is not implemented");
+					}
+
+					if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
+					{
+						arg.gpuMem.handler = objectGlobalMem;
+						arg.gpuMem.offset = objectOffset + argOffset;
+
+						argOffset += RootArg::GetConstBufftSize(arg);
+					}
+
+					if constexpr (std::is_same_v<T, RootArg::DescTable>)
+					{
+						arg.viewIndex = RootArg::AllocateDescTableView(arg);
+
+						for (int i = 0; i < arg.content.size(); ++i)
+						{
+							RootArg::DescTableEntity_t& descTableEntitiy = arg.content[i];
+							const int currentViewIndex = arg.viewIndex + i;
+
+							std::visit([objectOffset, &argOffset, &obj, &regContext, currentViewIndex, &objectGlobalMem]
+							(auto&& descTableEntitiy)
+							{
+								using T = std::decay_t<decltype(descTableEntitiy)>;
+
+								if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
+								{
+									assert(false && "Desc table view is probably not implemented! Make sure it is");
+									//#TODO make view allocation
+									descTableEntitiy.gpuMem.handler = objectGlobalMem;
+									descTableEntitiy.gpuMem.offset = objectOffset + argOffset;
+
+									argOffset += RootArg::GetConstBufftSize(descTableEntitiy);
+								}
+
+								if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
+								{
+									RenderCallbacks::RegisterGlobalObject(
+										descTableEntitiy.hashedName,
+										obj,
+										currentViewIndex,
+										regContext
+									);
+								}
+
+							}, descTableEntitiy);
+						}
+					}
+
+				}, arg);
+
+			}
+
+		};
+
+	}
+
+
+}
+
+
 FrameGraph::FrameGraph()
 {
 	for (BufferHandler& handler : objGlobalResMemory)
 	{
 		handler = Const::INVALID_BUFFER_HANDLER;
+	}
+
+	for(int& memSize : perObjectGlobalMemorySize)
+	{
+		memSize = Const::INVALID_SIZE;
 	}
 }
 
@@ -29,6 +273,16 @@ FrameGraph::~FrameGraph()
 			uploadBuff.Delete(handler);
 		}
 	}
+
+	for (Pass_t& pass : passes)
+	{
+		std::visit([](auto&& pass)
+		{
+			pass.ReleasePerFrameResources();
+			pass.ReleasePersistentResources();
+
+		}, pass);
+	}
 }
 
 void FrameGraph::Execute(Frame& frame)
@@ -37,13 +291,6 @@ void FrameGraph::Execute(Frame& frame)
 
 	Renderer& renderer = Renderer::Inst();
 	JobQueue& jobQueue = JobSystem::Inst().GetJobQueue();
-
-	// Some preparations
-	XMMATRIX tempMat = XMMatrixIdentity();
-	XMStoreFloat4x4(&frame.uiViewMat, tempMat);
-	tempMat = XMMatrixOrthographicRH(frame.camera.width, frame.camera.height, 0.0f, 1.0f);
-
-	XMStoreFloat4x4(&frame.uiProjectionMat, tempMat);
 
 	// NOTE: creation order is the order in which command Lists will be submitted.
 	// Set up dependencies 
@@ -122,15 +369,29 @@ void FrameGraph::Init(GPUJobContext& context)
 	// Init utility data
 	passGlobalMemorySize = RootArg::GetSize(passesGlobalRes);
 
-	perObjectGlobalMemoryUISize = RootArg::GetSize(objGlobalResTemplate[static_cast<int>(Parsing::PassInputType::UI)]);
+	for (int i = 0; i < static_cast<int>(Parsing::PassInputType::SIZE); ++i)
+	{
+		perObjectGlobalMemorySize[i] = RootArg::GetSize(objGlobalResTemplate[i]);
+	}
 
 	RegisterGlobaPasslRes(context);
+
+	// Register static objects
+	RegisterObjects(Renderer::Inst().staticObjects, context);
 
 	for (Pass_t& pass : passes)
 	{
 		std::visit([&context](auto&& pass) 
 		{
+			using passT = std::decay_t<decltype(pass)>;
+
 			pass.RegisterPassResources(context);
+
+			if constexpr (std::is_same_v<passT, Pass_Static>)
+			{
+				pass.RegisterObjects(Renderer::Inst().staticObjects, context);
+			}
+
 		}, pass);
 	}
 }
@@ -153,6 +414,28 @@ void FrameGraph::BindObjGlobalRes(const std::vector<int>& resIndices, int objInd
 	}
 }
 
+
+void FrameGraph::RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& context)
+{
+	// Register global object resources
+	_RegisterGlobalObjectsRes<Parsing::PassInputType::Static>(objects, context,
+		ResContext{ objGlobalResTemplate, objGlobalRes, objGlobalResMemory, perObjectGlobalMemorySize });
+
+	for (Pass_t& pass : passes)
+	{
+		std::visit([&objects ,&context](auto&& pass) 
+		{
+			using T = std::decay_t<decltype(pass)>;
+
+			if constexpr (std::is_same_v<T, Pass_Static>)
+			{
+				pass.RegisterObjects(objects, context);
+			}
+
+		}, pass);
+	}
+}
+
 void FrameGraph::UpdateGlobalResources(GPUJobContext& context)
 {
 	// This just doesn't belong here. I will do proper Initialization when
@@ -168,10 +451,12 @@ void FrameGraph::UpdateGlobalResources(GPUJobContext& context)
 	RegisterGlobalObjectsResUI(context);
 	UpdateGlobalObjectsResUI(context);
 
+	UpdateGlobalObjectsResStatic(context);
+
 	UpdateGlobalPasslRes(context);
 }
 
-void FrameGraph::ReleaseResources()
+void FrameGraph::ReleasePerFrameResources()
 {
 	for (Pass_t& pass : passes)
 	{
@@ -197,197 +482,31 @@ void FrameGraph::ReleaseResources()
 
 void FrameGraph::RegisterGlobalObjectsResUI(GPUJobContext& context)
 {
-	std::vector<DrawCall_UI_t>& drawCalls = context.frame.uiDrawCalls;
-
-	if (drawCalls.empty() == true)
-	{
-		return;
-	}
-
-	// Allocate memory
-	BufferHandler& objectGlobalMemUI = objGlobalResMemory[static_cast<int>(Parsing::PassInputType::UI)];
-
-	assert(objectGlobalMemUI == Const::INVALID_BUFFER_HANDLER && "UI per object global mem should is not deallocated");
-
-	if (perObjectGlobalMemoryUISize != 0)
-	{
-		objectGlobalMemUI = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(perObjectGlobalMemoryUISize * drawCalls.size());
-	}
-
-	// Get references on used data
-	const std::vector<RootArg::Arg_t>& objResTemplate = objGlobalResTemplate[static_cast<int>(Parsing::PassInputType::UI)];
-	std::vector<std::vector<RootArg::Arg_t>>& objlResources = objGlobalRes[static_cast<int>(Parsing::PassInputType::UI)];
-	
-	RenderCallbacks::RegisterGlobalObjectContext regContext = { context };
-
-	for (int i = 0; i < context.frame.uiDrawCalls.size(); ++i)
-	{
-		DrawCall_UI_t& drawCall = context.frame.uiDrawCalls[i];
-
-		std::vector<RootArg::Arg_t>& objRes = objlResources.emplace_back(objResTemplate);
-
-		const int objectOffset = perObjectGlobalMemoryUISize * i;
-		int argOffset = 0;
-
-		for (RootArg::Arg_t& arg : objRes)
-		{
-			std::visit([&drawCall, &objectGlobalMemUI, objectOffset, &argOffset, &regContext](auto&& arg) 
-			{
-				using T = std::decay_t<decltype(arg)>;
-
-				if constexpr (std::is_same_v<T, RootArg::RootConstant>)
-				{
-					assert(false && "Root constant is not implemented");
-				}
-
-				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
-				{
-					arg.gpuMem.handler = objectGlobalMemUI;
-					arg.gpuMem.offset = objectOffset + argOffset;
-
-					argOffset += RootArg::GetConstBufftSize(arg);
-				}
-
-				if constexpr (std::is_same_v<T, RootArg::DescTable>)
-				{
-					arg.viewIndex = RootArg::AllocateDescTableView(arg);
-
-					for (int i = 0; i < arg.content.size(); ++i)
-					{
-						RootArg::DescTableEntity_t& descTableEntitiy = arg.content[i];
-						const int currentViewIndex = arg.viewIndex + i;
-
-						std::visit([objectOffset, &argOffset, &drawCall, &regContext, currentViewIndex, &objectGlobalMemUI]
-						(auto&& descTableEntitiy)
-						{
-							using T = std::decay_t<decltype(descTableEntitiy)>;
-
-							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
-							{
-								assert(false && "Desc table view is probably not implemented! Make sure it is");
-								//#TODO make view allocation
-								descTableEntitiy.gpuMem.handler = objectGlobalMemUI;
-								descTableEntitiy.gpuMem.offset = objectOffset + argOffset;
-
-								argOffset += RootArg::GetConstBufftSize(descTableEntitiy);
-							}
-
-							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
-							{
-								RenderCallbacks::RegisterGlobalObject(
-									descTableEntitiy.hashedName,
-									drawCall,
-									currentViewIndex,
-									regContext
-								);
-							}
-
-						}, descTableEntitiy);
-					}
-				}
-
-			}, arg);
-
-		}
-
-	};
+	_RegisterGlobalObjectsRes<Parsing::PassInputType::UI>(context.frame.uiDrawCalls, context, 
+		 ResContext{ objGlobalResTemplate, objGlobalRes, objGlobalResMemory, perObjectGlobalMemorySize });
 }
 
 void FrameGraph::UpdateGlobalObjectsResUI(GPUJobContext& context)
 {
-	if (context.frame.uiDrawCalls.empty() == true)
+	_UpdateGlobalObjectRes<Parsing::PassInputType::UI>(context.frame.uiDrawCalls, context,
+		ResContext{ objGlobalResTemplate, objGlobalRes, objGlobalResMemory, perObjectGlobalMemorySize });
+}
+
+void FrameGraph::UpdateGlobalObjectsResStatic(GPUJobContext& context)
+{
+	std::vector<std::reference_wrapper<const StaticObject>> objects;
+
+	const std::vector<StaticObject>& staticObjects = Renderer::Inst().staticObjects;
+
+	std::transform(context.frame.visibleStaticObjectsIndices.cbegin(), context.frame.visibleStaticObjectsIndices.cend(),
+		std::back_inserter(objects),
+		[&staticObjects](int index)
 	{
-		return;
-	}
+		return std::cref(staticObjects[index]);
+	});
 
-	Frame& frame = context.frame;
-
-	XMMATRIX viewProj = XMLoadFloat4x4(&frame.uiYInverseAndCenterMat) * 
-		XMLoadFloat4x4(&frame.uiViewMat) * 
-		XMLoadFloat4x4(&frame.uiProjectionMat);
-
-	XMFLOAT4X4 yInverseAndCenterMat;
-	XMStoreFloat4x4(&yInverseAndCenterMat, viewProj);
-
-	RenderCallbacks::UpdateGlobalObjectContext updateContext = { yInverseAndCenterMat, context };
-
-	std::vector<std::vector<RootArg::Arg_t>>& objGlobalResUI = objGlobalRes[static_cast<int>(Parsing::PassInputType::UI)];
-
-	std::vector<std::byte> cpuMem(perObjectGlobalMemoryUISize * objGlobalResUI.size(), static_cast<std::byte>(0));
-
-	for (int i = 0; i < objGlobalResUI.size(); ++i)
-	{
-		std::vector<RootArg::Arg_t>& objRes = objGlobalResUI[i];
-		DrawCall_UI_t& drawCall = context.frame.uiDrawCalls[i];
-
-		for (RootArg::Arg_t& arg : objRes)
-		{
-			std::visit([&updateContext, &drawCall, &cpuMem](auto&& arg)
-			{
-				using T = std::decay_t<decltype(arg)>;
-
-				if constexpr (std::is_same_v<T, RootArg::RootConstant>)
-				{
-					assert(false && "Root constant is not implemented");
-				};
-
-				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
-				{
-					// Start of the memory of the current buffer
-					int fieldOffset = arg.gpuMem.offset;
-
-					for (RootArg::ConstBuffField& field : arg.content)
-					{
-						std::visit([&updateContext, &field, &cpuMem, &fieldOffset](auto&& drawCall)
-						{
-							RenderCallbacks::UpdateGlobalObject(
-								field.hashedName,
-								drawCall,
-								cpuMem[fieldOffset],
-								updateContext);
-
-						}, drawCall);
-
-						// Proceed to next buffer
-						fieldOffset += field.size;
-					}
-				}
-
-				if constexpr (std::is_same_v<T, RootArg::DescTable>)
-				{
-					for (RootArg::DescTableEntity_t& descTableEntity : arg.content)
-					{
-						std::visit([](auto&& descTableEntity)
-						{
-							using T = std::decay_t<decltype(descTableEntity)>;
-
-							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
-							{
-								assert(false && "Desc table view is probably not implemented! Make sure it is");
-							}
-						}, descTableEntity);
-					}
-				}
-
-			}, arg);
-		}
-	}
-
-	if (perObjectGlobalMemoryUISize != 0)
-	{
-		auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
-
-		BufferHandler objGlobalMemoryUI = objGlobalResMemory[static_cast<int>(Parsing::PassInputType::UI)];
-
-		FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-		updateConstBufferArgs.buffer = uploadMemoryBuff.GetGpuBuffer();
-		updateConstBufferArgs.offset = uploadMemoryBuff.GetOffset(objGlobalMemoryUI);
-		updateConstBufferArgs.data = cpuMem.data();
-		updateConstBufferArgs.byteSize = cpuMem.size();
-		updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
-
-		ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
-	}
+	_UpdateGlobalObjectRes<Parsing::PassInputType::Static>(objects, context,
+		ResContext{ objGlobalResTemplate, objGlobalRes, objGlobalResMemory, perObjectGlobalMemorySize });
 }
 
 void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)

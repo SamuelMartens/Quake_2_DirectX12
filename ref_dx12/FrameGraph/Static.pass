@@ -1,21 +1,27 @@
 // Input geometry type
+{
 PassInput : Static
+PassVertAttr: VertexIn
+}
 
 // State
-
+{
 ColorTarget  : BACK_BUFFER
 DepthTarget  : BACK_BUFFER
 Viewport	 : 1.0, 1.0, 1.0, 1.0
 BlendEnabled : false
 Topology	 : Triangle
-
-// Resources 
-
-cbuffer cbPerObject : register(b0)
-{
-	float4x4 gWorldViewProj;
 }
 
+// Root signature
+{
+RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
+CBV(b0),
+DescriptorTable(SRV(t0, numDescriptors = 1)),
+DescriptorTable(Sampler(s0))
+}
+
+// Attributes
 
 struct VertexIn
 {
@@ -31,9 +37,23 @@ struct VertexOut
 }
 
 
+
+// Resources 
+
+[Global, PerObject]
+cbuffer cbPerObject : register(b0)
+{
+	float4x4 gWorldViewProj;
+}
+
+
+[Local, PerObject]
 Texture2D gDiffuseMap : register(t0)
 
+[Global, PerPass]
 SamplerState gSamLinearWrap : register(s0)
+
+
 
 // Shaders
 

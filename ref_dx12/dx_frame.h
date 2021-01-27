@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <functional>
 
 #include "dx_common.h"
 #include "dx_objects.h"
@@ -61,9 +62,11 @@ public:
 
 	std::vector<DynamicObject> dynamicObjects;
 	LockVector_t<ComPtr<ID3D12Resource>> uploadResources;
+	//#DEBUG delete this?
 	LockVector_t<BufferHandler> streamingObjectsHandlers;
 
 	std::vector<DrawCall_UI_t> uiDrawCalls;
+	std::vector<int> visibleStaticObjectsIndices;
 	
 	std::vector<TextureCreationRequest_t> texCreationRequests;
 

@@ -107,6 +107,8 @@ private:
 
 	/* FrameGraph generation */
 	FrameGraphSource GenerateFrameGraphSource() const;
+
+	[[nodiscard]]
 	FrameGraph CompileFrameGraph(FrameGraphSource&& source) const;
 	
 	/* Pass Parameters */

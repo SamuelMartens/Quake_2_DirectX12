@@ -89,6 +89,7 @@ class Renderer
 	//#TODO delete regular EndFrame
 	void EndFrame();
 	void EndFrame_Material();
+	void PreRenderSetUpFrame(Frame& frame);
 	void FlushAllFrames() const;
 
 	void GetDrawTextureSize(int* x, int* y, const char* name);
@@ -143,6 +144,12 @@ public:
 	void DrawStaticGeometryJob(GPUJobContext& context);
 	void DrawDynamicGeometryJob(GPUJobContext& context);
 	void DrawParticleJob(GPUJobContext& context);
+
+	//#DEBUG come incapsulation here
+	std::vector<StaticObject> staticObjects;
+	std::vector<Utils::AABB> staticObjectsAABB;
+
+	std::vector<int> BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const;
 
 private:
 
@@ -200,6 +207,7 @@ private:
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
 	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, GPUJobContext& context);
 	void Draw_Pic(int x, int y, const char* name, const BufferPiece& bufferPiece, GPUJobContext& context);
+	//#DEBUG clean up all this old functions
 	void Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, GPUJobContext& context);
 	void Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, GPUJobContext& context);
 
@@ -207,7 +215,6 @@ private:
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
 	bool IsVisible(const entity_t& entity, const Camera& camera) const;
 	DynamicObjectConstBuffer& FindDynamicObjConstBuffer();
-	std::vector<int> BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const;
 
 	/* Passes */
 	void ExecuteDrawUIPass(GPUJobContext& context, const PassParameters& pass);
@@ -265,10 +272,6 @@ private:
 
 	std::array<unsigned int, 256> Table8To24;
 	std::array<unsigned int, 256> rawPalette;
-
-	// Should I separate UI from game object? Damn, is this NWN speaks in me
-	std::vector<StaticObject> staticObjects;
-	std::vector<Utils::AABB> staticObjectsAABB;
 
 	std::unordered_map<model_t*, DynamicObjectModel> dynamicObjectsModels;
 	// Expected to set a size for it during initialization. Don't change size afterward

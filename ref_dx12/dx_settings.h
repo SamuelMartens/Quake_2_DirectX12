@@ -35,6 +35,9 @@ namespace Settings
 	constexpr DXGI_FORMAT BACK_BUFFER_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
 	constexpr DXGI_FORMAT DEPTH_STENCIL_FORMAT = DXGI_FORMAT_D24_UNORM_S8_UINT;
 
+	/* Draw settings */
+	constexpr int		 CHAR_SIZE = 8;
+
 	/* Material Compiler  */
 
 	extern const std::string	 GRAMMAR_DIR;

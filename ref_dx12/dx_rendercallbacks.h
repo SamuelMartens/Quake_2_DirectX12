@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include "Lib/crc32.h"
 #include "dx_pass.h"
 #include "dx_descriptorheap.h"
@@ -63,7 +65,35 @@ namespace RenderCallbacks
 	template<typename oT, typename bT>
 	void RegisterGlobalObject(unsigned int paramName, oT& obj, bT& bindPoint, RegisterGlobalObjectContext& ctx)
 	{
+		using objT = std::decay_t<oT>;
 
+		if constexpr(std::is_same_v<objT, DrawCall_UI_t>)
+		{
+			std::visit([&bindPoint, &ctx, paramName](auto&& obj) 
+			{
+				using uiDrawVallT = std::decay_t<decltype(obj)>;
+			}, obj);
+		}
+
+		if constexpr(std::is_same_v<objT, StaticObject>)
+		{
+			switch (paramName)
+			{
+			case HASH("gDiffuseMap"):
+			{
+				Renderer& renderer = Renderer::Inst();
+
+				std::array<char, MAX_QPATH> texFullName;
+				ResourceManager::Inst().GetDrawTextureFullname(obj.textureKey.c_str(), texFullName.data(), texFullName.size());
+
+				Texture* tex = ResourceManager::Inst().FindOrCreateTexture(texFullName.data(), ctx.jobContext);
+
+				renderer.cbvSrvHeap->AllocateDescriptor(bindPoint, tex->buffer.Get(), nullptr);
+			}
+			default:
+				break;
+			}
+		}
 	}
 
 	template<typename oT, typename bT>
@@ -71,45 +101,65 @@ namespace RenderCallbacks
 	{
 		using objT = std::decay_t<oT>;
 
-		if constexpr (std::is_same_v<objT, DrawCall_Char> ||
-			std::is_same_v<objT, DrawCall_Pic> ||
-			std::is_same_v<objT, DrawCall_StretchRaw>)
+		if constexpr (std::is_same_v<objT, DrawCall_UI_t>)
+		{
+			std::visit([&bindPoint, &ctx, paramName](auto&& obj) 
+			{
+				using uiDrawVallT = std::decay_t<decltype(obj)>;
+
+				switch (paramName)
+				{
+				case HASH("gWorldViewProj"):
+				{
+					XMMATRIX mvpMat = XMMatrixTranslation(obj.x, obj.y, 0.0f);
+
+					XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint), mvpMat * XMLoadFloat4x4(&ctx.viewProjMat));
+				}
+				break;
+				case HASH("type"):
+				{
+					int& type = reinterpret_cast<int&>(bindPoint);
+
+					if constexpr (std::is_same_v<uiDrawVallT, DrawCall_Pic>)
+					{
+						type = 0;
+					}
+					else if constexpr (std::is_same_v<uiDrawVallT, DrawCall_Char>)
+					{
+						type = 1;
+					}
+					else if constexpr (std::is_same_v<uiDrawVallT, DrawCall_StretchRaw>)
+					{
+						type = 2;
+					}
+					else
+					{
+						static_assert(false, "Invalid UI draw call type");
+					}
+				}
+				break;
+				default:
+					break;
+				}
+			}, obj);
+
+			
+		}
+		
+		if constexpr (std::is_same_v<objT, std::reference_wrapper<const StaticObject>>)
 		{
 			switch (paramName)
 			{
 			case HASH("gWorldViewProj"):
 			{
-				XMMATRIX mvpMat = XMMatrixTranslation(obj.x, obj.y, 0.0f);
-
-				XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint), mvpMat * XMLoadFloat4x4(&ctx.viewProjMat));
-			}
-			break;
-			case HASH("type"):
-			{
-				int& type = reinterpret_cast<int&>(bindPoint);
-
-				if constexpr (std::is_same_v<objT, DrawCall_Pic>)
-				{
-					type = 0;
-				}
-				else if constexpr (std::is_same_v<objT, DrawCall_Char>)
-				{
-					type = 1;
-				}
-				else if constexpr (std::is_same_v<objT, DrawCall_StretchRaw>)
-				{
-					type = 2;
-				}
-				else
-				{
-					static_assert(false, "Invalid UI draw call type");
-				}
+				XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint), ctx.jobContext.frame.camera.GetViewProjMatrix());
 			}
 			break;
 			default:
 				break;
 			}
 		}
+
 	}
 
 	template<typename bT>
@@ -132,7 +182,6 @@ namespace RenderCallbacks
 
 			Renderer::Inst().cbvSrvHeap->AllocateDescriptor(reinterpret_cast<int&>(bindPoint), tex->buffer.Get(), nullptr);
 		}
-		break;
 		break;
 		default:
 			break;
@@ -206,48 +255,49 @@ namespace RenderCallbacks
 	{
 		using objT = std::decay_t<oT>;
 
-		if constexpr (std::is_same_v<objT, DrawCall_Char> ||
-			std::is_same_v<objT, DrawCall_Pic> ||
-			std::is_same_v<objT, DrawCall_StretchRaw>)
+		if constexpr (std::is_same_v<objT, DrawCall_UI_t>)
 		{
-			// All UI handling is here
-			// All UI passes are handled here
-			switch (passName)
+			std::visit([&](auto&& obj)
 			{
-			case HASH("UI"):
-			{
-				// All static pass view data
-				switch (paramName)
+				using drawCallT = std::decay_t<decltype(obj)>;
+
+				// All UI handling is here
+				// All UI passes are handled here
+				switch (passName)
 				{
-				case HASH("gDiffuseMap"):
+				case HASH("UI"):
 				{
-					if constexpr (std::is_same_v<objT, DrawCall_Pic>)
+					// All static pass view data
+					switch (paramName)
 					{
-						Renderer& renderer = Renderer::Inst();
+					case HASH("gDiffuseMap"):
+					{
+						//#DEBUG this should be global
+						if constexpr (std::is_same_v< drawCallT, DrawCall_Pic>)
+						{
+							Renderer& renderer = Renderer::Inst();
 
-						std::array<char, MAX_QPATH> texFullName;
-						ResourceManager::Inst().GetDrawTextureFullname(obj.name.c_str(), texFullName.data(), texFullName.size());
+							std::array<char, MAX_QPATH> texFullName;
+							ResourceManager::Inst().GetDrawTextureFullname(obj.name.c_str(), texFullName.data(), texFullName.size());
 
-						Texture* tex = ResourceManager::Inst().FindOrCreateTexture(texFullName.data(), ctx.jobContext);
+							Texture* tex = ResourceManager::Inst().FindOrCreateTexture(texFullName.data(), ctx.jobContext);
 
-						renderer.cbvSrvHeap->AllocateDescriptor(bindPoint, tex->buffer.Get(), nullptr);
+							renderer.cbvSrvHeap->AllocateDescriptor(bindPoint, tex->buffer.Get(), nullptr);
 
+						}
+					}
+					break;
+					default:
+						break;
 					}
 				}
 				break;
 				default:
 					break;
 				}
-			}
-			break;
-			default:
-				break;
-			}
 
-		}
-		else
-		{
-			static_assert(false, "Unknown type");
+			}, obj);
+
 		}
 	}
 
@@ -256,9 +306,7 @@ namespace RenderCallbacks
 	{
 		using objT = std::decay_t<oT>;
 		
-		if constexpr(std::is_same_v<objT, DrawCall_Char> ||
-			std::is_same_v<objT, DrawCall_Pic> ||
-			std::is_same_v<objT, DrawCall_StretchRaw>)
+		if constexpr(std::is_same_v<objT, DrawCall_UI_t>)
 		{
 			// All UI handling is here
 			// All UI passes are handled here
@@ -274,10 +322,5 @@ namespace RenderCallbacks
 			}
 
 		}
-		else
-		{
-			static_assert(false, "UpdateLocalObject undefined type");
-		}
-
 	}
 }

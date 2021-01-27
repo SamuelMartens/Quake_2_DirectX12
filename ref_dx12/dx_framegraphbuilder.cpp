@@ -1054,7 +1054,7 @@ std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFile
 		//#DEBUG only UI
 		std::string passName = passFile.first.substr(0, passFile.first.rfind('.'));
 
-		if (passName != "UI")
+		if (passName != "UI" && passName != "Static")
 		{
 			continue;
 		}

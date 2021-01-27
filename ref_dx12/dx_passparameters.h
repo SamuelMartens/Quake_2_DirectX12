@@ -137,7 +137,6 @@ namespace Parsing
 		Dynamic,
 		Particles,
 		UI,
-		PostProcess,
 		SIZE
 	};
 
