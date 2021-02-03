@@ -137,6 +137,97 @@ namespace
 		}
 	}
 
+	template<Parsing::PassInputType INPUT_TYPE, typename T, typename ResContextT>
+	void _UpdateGlobalObjectResIndiced(const std::vector<T>& objects, const std::vector<int>& indices, GPUJobContext& context, ResContextT resContext)
+	{
+		if (objects.empty() == true || indices.empty() == true)
+		{
+			return;
+		}
+
+		auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+		Frame& frame = context.frame;
+
+		RenderCallbacks::UpdateGlobalObjectContext updateContext = ConstructGlobalObjectContext(context);
+
+		std::vector<std::vector<RootArg::Arg_t>>& objGlobalRes = resContext.objGlobalRes[static_cast<int>(INPUT_TYPE)];
+		
+		const int perObjectGlobalMemorySize = resContext.perObjectGlobalMemorySize[static_cast<int>(INPUT_TYPE)];
+		
+		BufferHandler objGlobalResMemory = resContext.objGlobalResMemory[static_cast<int>(INPUT_TYPE)];
+
+		std::vector<std::byte> cpuMem(perObjectGlobalMemorySize, static_cast<std::byte>(0));
+
+		for (int i = 0; i < indices.size(); ++i)
+		{
+			const int objectIndex = indices[i];
+			const int objectOffset = perObjectGlobalMemorySize * objectIndex;
+
+			const T& object = objects[objectIndex];
+
+			for (RootArg::Arg_t& arg : objGlobalRes[objectIndex])
+			{
+				std::visit([&updateContext, &object, &cpuMem, objectOffset](auto&& arg)
+				{
+					using T = std::decay_t<decltype(arg)>;
+
+					if constexpr (std::is_same_v<T, RootArg::RootConstant>)
+					{
+						assert(false && "Root constant is not implemented");
+					};
+
+					if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
+					{
+						// Start of the memory of the current buffer
+						int fieldOffset = arg.gpuMem.offset - objectOffset;;
+
+						for (RootArg::ConstBuffField& field : arg.content)
+						{
+							RenderCallbacks::UpdateGlobalObject(
+								field.hashedName,
+								object,
+								cpuMem[fieldOffset],
+								updateContext);
+
+
+							// Proceed to next buffer
+							fieldOffset += field.size;
+						}
+					}
+
+					if constexpr (std::is_same_v<T, RootArg::DescTable>)
+					{
+						for (RootArg::DescTableEntity_t& descTableEntity : arg.content)
+						{
+							std::visit([](auto&& descTableEntity)
+							{
+								using T = std::decay_t<decltype(descTableEntity)>;
+
+								if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
+								{
+									assert(false && "Desc table view is probably not implemented! Make sure it is");
+								}
+							}, descTableEntity);
+						}
+					}
+
+				}, arg);
+			}
+
+			if (perObjectGlobalMemorySize != 0)
+			{
+				FArg::UpdateUploadHeapBuff updateConstBufferArgs;
+				updateConstBufferArgs.buffer = uploadMemoryBuff.GetGpuBuffer();
+				updateConstBufferArgs.offset = uploadMemoryBuff.GetOffset(objGlobalResMemory) + objectOffset;
+				updateConstBufferArgs.data = cpuMem.data();
+				updateConstBufferArgs.byteSize = cpuMem.size();
+				updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
+
+				ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
+			}
+		}
+	}
+
 	template< Parsing::PassInputType INPUT_TYPE, typename T, typename ResContextT>
 	void _RegisterGlobalObjectsRes(const std::vector<T>& objects, GPUJobContext& context, ResContextT resContext)
 	{
@@ -374,11 +465,10 @@ void FrameGraph::Init(GPUJobContext& context)
 		perObjectGlobalMemorySize[i] = RootArg::GetSize(objGlobalResTemplate[i]);
 	}
 
+	// Pass global
 	RegisterGlobaPasslRes(context);
 
-	// Register static objects
-	RegisterObjects(Renderer::Inst().staticObjects, context);
-
+	// Pass local
 	for (Pass_t& pass : passes)
 	{
 		std::visit([&context](auto&& pass) 
@@ -387,13 +477,11 @@ void FrameGraph::Init(GPUJobContext& context)
 
 			pass.RegisterPassResources(context);
 
-			if constexpr (std::is_same_v<passT, Pass_Static>)
-			{
-				pass.RegisterObjects(Renderer::Inst().staticObjects, context);
-			}
-
 		}, pass);
 	}
+
+	// Register static objects
+	RegisterObjects(Renderer::Inst().staticObjects, context);
 }
 
 void FrameGraph::BindPassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const
@@ -417,6 +505,12 @@ void FrameGraph::BindObjGlobalRes(const std::vector<int>& resIndices, int objInd
 
 void FrameGraph::RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& context)
 {
+	assert(objGlobalRes[static_cast<int>(Parsing::PassInputType::Static)].empty() &&
+		"Object global res should be empty on registration");
+
+	assert(objGlobalResMemory[static_cast<int>(Parsing::PassInputType::Static)] == Const::INVALID_BUFFER_HANDLER &&
+		"Object global memory should be empty on registration");
+
 	// Register global object resources
 	_RegisterGlobalObjectsRes<Parsing::PassInputType::Static>(objects, context,
 		ResContext{ objGlobalResTemplate, objGlobalRes, objGlobalResMemory, perObjectGlobalMemorySize });
@@ -494,18 +588,9 @@ void FrameGraph::UpdateGlobalObjectsResUI(GPUJobContext& context)
 
 void FrameGraph::UpdateGlobalObjectsResStatic(GPUJobContext& context)
 {
-	std::vector<std::reference_wrapper<const StaticObject>> objects;
-
 	const std::vector<StaticObject>& staticObjects = Renderer::Inst().staticObjects;
 
-	std::transform(context.frame.visibleStaticObjectsIndices.cbegin(), context.frame.visibleStaticObjectsIndices.cend(),
-		std::back_inserter(objects),
-		[&staticObjects](int index)
-	{
-		return std::cref(staticObjects[index]);
-	});
-
-	_UpdateGlobalObjectRes<Parsing::PassInputType::Static>(objects, context,
+	_UpdateGlobalObjectResIndiced<Parsing::PassInputType::Static>(staticObjects, context.frame.visibleStaticObjectsIndices, context,
 		ResContext{ objGlobalResTemplate, objGlobalRes, objGlobalResMemory, perObjectGlobalMemorySize });
 }
 

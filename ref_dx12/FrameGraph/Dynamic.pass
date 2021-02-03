@@ -5,7 +5,7 @@ PassInput : Dynamic
 
 ColorTarget  : BACK_BUFFER
 DepthTarget  : BACK_BUFFER
-Viewport	 : 1.0, 1.0, 1.0, 1.0
+Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
 Topology	 : Triangle
 

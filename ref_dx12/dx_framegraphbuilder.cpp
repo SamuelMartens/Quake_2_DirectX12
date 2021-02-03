@@ -160,6 +160,9 @@ namespace
 
 			currentPass.viewport.Height = sv[6].type() == typeid(int) ?
 				peg::any_cast<int>(sv[6]) : peg::any_cast<float>(sv[6]) * height;
+
+			assert(currentPass.viewport.TopLeftX < currentPass.viewport.Width  && "Weird viewport X param, are you sure?");
+			assert(currentPass.viewport.TopLeftY < currentPass.viewport.Height  && "Weird viewport Y param, are you sure?");
 		};
 
 		parser["BlendEnabledSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
@@ -770,52 +773,52 @@ void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
 void FrameGraphBuilder::ValidateResources(const std::vector<PassParametersSource>& passesParametersSources) const
 {
 #ifdef _DEBUG
-	
+	//#DEBUG this function needs to be corrected to account for the case that different input types can have conflicting name
 	std::vector<Parsing::Resource_t> globalResources;
 
 	// Check for name collision
-	for (const PassParametersSource& paramSource : passesParametersSources)
-	{
-		for (const Parsing::Resource_t& currentRes : paramSource.resources)
-		{
-			std::string_view currentResName = Parsing::GetResourceName(currentRes);
-			
-			// In pass collision check
-			{
-				const int count = std::count_if(paramSource.resources.cbegin(), 
-					paramSource.resources.cend(), [currentResName](const Parsing::Resource_t& res) 
-				{
-					return currentResName == Parsing::GetResourceName(res);
-				});
+	//for (const PassParametersSource& paramSource : passesParametersSources)
+	//{
+	//	for (const Parsing::Resource_t& currentRes : paramSource.resources)
+	//	{
+	//		std::string_view currentResName = Parsing::GetResourceName(currentRes);
+	//		
+	//		// In pass collision check
+	//		{
+	//			const int count = std::count_if(paramSource.resources.cbegin(), 
+	//				paramSource.resources.cend(), [currentResName](const Parsing::Resource_t& res) 
+	//			{
+	//				return currentResName == Parsing::GetResourceName(res);
+	//			});
 
-				assert(count == 1 && "Name collision inside pass resource declaration");
-			}
+	//			assert(count == 1 && "Name collision inside pass resource declaration");
+	//		}
 
-			// Global collision check
-			{
-				// Check if we have resource with the same name
-				const auto resIt = std::find_if(globalResources.cbegin(), globalResources.cend(),
-					[currentResName](const Parsing::Resource_t& res)
-				{
-					return currentResName == Parsing::GetResourceName(res);
-				});
+	//		// Global collision check
+	//		{
+	//			// Check if we have resource with the same name
+	//			const auto resIt = std::find_if(globalResources.cbegin(), globalResources.cend(),
+	//				[currentResName](const Parsing::Resource_t& res)
+	//			{
+	//				return currentResName == Parsing::GetResourceName(res);
+	//			});
 
-				if (resIt != globalResources.cend())
-				{
-					// Make sure content is equal. If yes, then this is just the same resource,
-					// if no then we have name collision
-					assert(Parsing::IsEqual(*resIt, currentRes) && "Global resource name collision is found");
-				}
-				else
-				{
-					// No such resource were found. Add this one to the list
-					globalResources.push_back(currentRes);
-				}
-			}
+	//			if (resIt != globalResources.cend())
+	//			{
+	//				// Make sure content is equal. If yes, then this is just the same resource,
+	//				// if no then we have name collision
+	//				assert(Parsing::IsEqual(*resIt, currentRes) && "Global resource name collision is found");
+	//			}
+	//			else
+	//			{
+	//				// No such resource were found. Add this one to the list
+	//				globalResources.push_back(currentRes);
+	//			}
+	//		}
 
 
-		}
-	}
+	//	}
+	//}
 
 #endif
 }
@@ -956,6 +959,11 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 		case Parsing::PassInputType::UI:
 		{
 			frameGraph.passes.emplace_back(Pass_UI{});
+		}
+		break;
+		case Parsing::PassInputType::Static:
+		{
+			frameGraph.passes.emplace_back(Pass_Static{});
 		}
 		break;
 		default:
@@ -1180,6 +1188,8 @@ ComPtr<ID3D12RootSignature> FrameGraphBuilder::GenerateRootSignature(const PassP
 	Infr::Inst().GetDevice()->CreateRootSignature(0, shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize(),
 		IID_PPV_ARGS(rootSig.GetAddressOf()));
 
+	Diagnostics::SetResourceName(rootSig.Get(), std::string("Root sig, pass: ") + pass.name);
+
 	return rootSig;
 }
 
@@ -1222,6 +1232,8 @@ ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const
 	ComPtr<ID3D12PipelineState> pipelineState;
 
 	ThrowIfFailed(Infr::Inst().GetDevice()->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipelineState)));
+
+	Diagnostics::SetResourceName(pipelineState.Get(), std::string("PSO, pass: ") + passSource.name);
 
 	return pipelineState;
 }

@@ -343,6 +343,7 @@ namespace Parsing
 		return name == other.name &&
 			bindFrequency == other.bindFrequency &&
 			registerId == other.registerId &&
+			content.size() == other.content.size() &&
 			std::equal(content.cbegin(), content.cend(), other.content.cbegin(),
 				[](const RootArg::ConstBuffField& f1, const RootArg::ConstBuffField& r2) 
 		{

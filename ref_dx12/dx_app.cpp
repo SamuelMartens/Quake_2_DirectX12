@@ -1014,6 +1014,44 @@ DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
 	return *resIt;
 }
 
+void Renderer::RegisterObjectsAtFrameGraphs()
+{
+	// Explicitly register static geometry to passes
+	// potentially dynamic will do the same
+
+	// although it is not needed to acquire/release frames here, but for consistency all frames that 
+	// are in use should go through this
+
+	FlushAllFrames();
+
+	// Acquire all frames and do registration 
+	int frameIndex = 0;
+	for(; frameIndex < frames.size(); ++frameIndex)
+	{
+		AcquireMainThreadFrame();
+
+		GPUJobContext regContext = CreateContext(GetMainThreadFrame());
+
+		regContext.commandList.Open();
+		regContext.frame.frameGraph->RegisterObjects(staticObjects, regContext);
+		regContext.commandList.Close();
+
+		CloseFrame(regContext.frame);
+		ReleaseFrameResources(regContext.frame);
+
+		// Detach but not release, so we will be forced to use all frames
+		DetachMainThreadFrame();
+	}
+
+	assert(frameIndex == frames.size() && "Not all frames registered objects");
+
+	// Now when registration is over release everything
+	for (Frame& frame : frames)
+	{
+		frame.Release();
+	}
+}
+
 std::vector<int> Renderer::BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const
 {
 	Utils::AABB cameraAABB = camera.GetAABB();
@@ -1327,19 +1365,6 @@ void Renderer::DrawParticleJob(GPUJobContext& context)
 	Logs::Logf(Logs::Category::Job, "Particle job ended frame %d", context.frame.frameNumber);
 }
 
-void Renderer::ExecuteDrawUIPass(GPUJobContext& context, const PassParameters& pass)
-{
-	JOB_GUARD(context);
-
-	Frame& frame = context.frame;
-
-	if (frame.uiDrawCalls.empty())
-	{
-		Logs::Log(Logs::Category::Job, "DrawUI job started. No draw calls");
-		return;
-	}
-}
-
 ComPtr<ID3DBlob> Renderer::LoadCompiledShader(const std::string& filename) const
 {
 	std::ifstream fin(filename, std::ios::binary);
@@ -1560,7 +1585,8 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	// Init frame data
 	for (int i = 0; i < obj.frameData.size(); ++i)
 	{
-		obj.frameData[i].constantBufferHandler = uploadMemory.Allocate(PictureObjectConstSize);
+		//#DEBUG this is not needed, remove this
+		//obj.frameData[i].constantBufferHandler = uploadMemory.Allocate(PictureObjectConstSize);
 	}
 
 	std::vector<XMFLOAT4> verticesPos;
@@ -2314,9 +2340,10 @@ void Renderer::EndLevelLoading()
 		staticModelRegSemaphore->Wait();
 	}
 
-
 	staticModelRegContext = nullptr;
 	dynamicModelRegContext = nullptr;
+
+	RegisterObjectsAtFrameGraphs();
 
 	Mod_FreeAll();
 

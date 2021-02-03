@@ -704,6 +704,8 @@ void Pass_Static::ReleasePersistentResources()
 
 void Pass_Static::RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& jobCtx)
 {
+	assert(drawObjects.empty() == true && "Static pass Object registration failed. There should be no objects");
+
 	for (const StaticObject& object : objects)
 	{
 		PassObj& obj = drawObjects.emplace_back(PassObj{
@@ -774,21 +776,20 @@ void Pass_Static::Draw(GPUJobContext& jobCtx)
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
 	vertexBufferView.StrideInBytes = sizeof(ShDef::Vert::PosTexCoord);
 
-	auto& uploadMemory =
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+	D3D12_INDEX_BUFFER_VIEW indexBufferView;
+	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+
+	auto& defaultMemory =
+		MemoryManager::Inst().GetBuff<DefaultBuffer_t>();
 
 	for (int i = 0; i < jobCtx.frame.visibleStaticObjectsIndices.size(); ++i)
 	{
-		const PassObj& obj = drawObjects[jobCtx.frame.visibleStaticObjectsIndices[i]];
+		const int objectIndex = jobCtx.frame.visibleStaticObjectsIndices[i];
 
-		vertexBufferView.SizeInBytes = obj.originalObj->verticesSizeInBytes;
-		vertexBufferView.BufferLocation = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
-			uploadMemory.GetOffset(obj.originalObj->vertices);
-
-		commandList.commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+		const PassObj& obj = drawObjects[objectIndex];
 
 		// Bind global args
-		frameGraph.BindObjGlobalRes(passParameters.perObjGlobalRootArgsIndicesTemplate, i,
+		frameGraph.BindObjGlobalRes(passParameters.perObjGlobalRootArgsIndicesTemplate, objectIndex,
 			commandList, Parsing::PassInputType::Static);
 
 
@@ -798,7 +799,28 @@ void Pass_Static::Draw(GPUJobContext& jobCtx)
 			RootArg::Bind(rootArg, jobCtx.commandList);
 		}
 
-		commandList.commandList->DrawInstanced(vertexBufferView.SizeInBytes / vertexBufferView.StrideInBytes, 1, 0, 0);
+		// Vertices
+		vertexBufferView.SizeInBytes = obj.originalObj->verticesSizeInBytes;
+		vertexBufferView.BufferLocation = defaultMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
+			defaultMemory.GetOffset(obj.originalObj->vertices);
+
+		commandList.commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+
+
+		if (obj.originalObj->indices == Const::INVALID_BUFFER_HANDLER)
+		{
+			commandList.commandList->DrawInstanced(vertexBufferView.SizeInBytes / vertexBufferView.StrideInBytes, 1, 0, 0);
+		}
+		else
+		{
+			indexBufferView.BufferLocation = defaultMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
+				defaultMemory.GetOffset(obj.originalObj->indices);
+			indexBufferView.SizeInBytes = obj.originalObj->indicesSizeInBytes;
+
+			commandList.commandList->IASetIndexBuffer(&indexBufferView);
+			commandList.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
+		}
+
 	}
 }
 

@@ -60,6 +60,10 @@ namespace RenderCallbacks
 		GPUJobContext& jobContext;
 	};
 
+	//#DEBUG my asserts basically keeps me alive. So I should make sure that default cases for all those
+	// if constexpr and switch cases ARE HANDLED. Maybe add ability to turn it off, but I need this
+	// to no die during debugging.
+
 	/* Global */
 
 	template<typename oT, typename bT>
@@ -71,28 +75,51 @@ namespace RenderCallbacks
 		{
 			std::visit([&bindPoint, &ctx, paramName](auto&& obj) 
 			{
-				using uiDrawVallT = std::decay_t<decltype(obj)>;
-			}, obj);
-		}
+				using uiDrawCallT = std::decay_t<decltype(obj)>;
 
-		if constexpr(std::is_same_v<objT, StaticObject>)
+				switch (paramName)
+				{
+				case HASH("gDiffuseMap"):
+				{
+					//#DEBUG this should be global
+					if constexpr (std::is_same_v< uiDrawCallT, DrawCall_Pic>)
+					{
+						Renderer& renderer = Renderer::Inst();
+
+						std::array<char, MAX_QPATH> texFullName;
+						ResourceManager::Inst().GetDrawTextureFullname(obj.name.c_str(), texFullName.data(), texFullName.size());
+
+						Texture* tex = ResourceManager::Inst().FindOrCreateTexture(texFullName.data(), ctx.jobContext);
+
+						renderer.cbvSrvHeap->AllocateDescriptor(bindPoint, tex->buffer.Get(), nullptr);
+
+					}
+				}
+				break;
+				default:
+					break;
+				}
+
+			}, obj);
+		} 
+		else if constexpr(std::is_same_v<objT, StaticObject>)
 		{
 			switch (paramName)
 			{
 			case HASH("gDiffuseMap"):
 			{
-				Renderer& renderer = Renderer::Inst();
+				Texture* tex = ResourceManager::Inst().FindTexture(obj.textureKey.c_str());
 
-				std::array<char, MAX_QPATH> texFullName;
-				ResourceManager::Inst().GetDrawTextureFullname(obj.textureKey.c_str(), texFullName.data(), texFullName.size());
-
-				Texture* tex = ResourceManager::Inst().FindOrCreateTexture(texFullName.data(), ctx.jobContext);
-
-				renderer.cbvSrvHeap->AllocateDescriptor(bindPoint, tex->buffer.Get(), nullptr);
+				Renderer::Inst().cbvSrvHeap->AllocateDescriptor(bindPoint, tex->buffer.Get(), nullptr);
 			}
+			break;
 			default:
 				break;
 			}
+		}
+		else
+		{
+			assert(false && "RegisterGlobalObject unknown object type");
 		}
 	}
 
@@ -145,8 +172,7 @@ namespace RenderCallbacks
 
 			
 		}
-		
-		if constexpr (std::is_same_v<objT, std::reference_wrapper<const StaticObject>>)
+		else if constexpr (std::is_same_v<objT, StaticObject>)
 		{
 			switch (paramName)
 			{
@@ -158,6 +184,10 @@ namespace RenderCallbacks
 			default:
 				break;
 			}
+		}
+		else
+		{
+			assert(false && "UpdateGlobalObject unknown object type");
 		}
 
 	}
@@ -261,35 +291,11 @@ namespace RenderCallbacks
 			{
 				using drawCallT = std::decay_t<decltype(obj)>;
 
-				// All UI handling is here
-				// All UI passes are handled here
 				switch (passName)
 				{
 				case HASH("UI"):
 				{
-					// All static pass view data
-					switch (paramName)
-					{
-					case HASH("gDiffuseMap"):
-					{
-						//#DEBUG this should be global
-						if constexpr (std::is_same_v< drawCallT, DrawCall_Pic>)
-						{
-							Renderer& renderer = Renderer::Inst();
-
-							std::array<char, MAX_QPATH> texFullName;
-							ResourceManager::Inst().GetDrawTextureFullname(obj.name.c_str(), texFullName.data(), texFullName.size());
-
-							Texture* tex = ResourceManager::Inst().FindOrCreateTexture(texFullName.data(), ctx.jobContext);
-
-							renderer.cbvSrvHeap->AllocateDescriptor(bindPoint, tex->buffer.Get(), nullptr);
-
-						}
-					}
-					break;
-					default:
-						break;
-					}
+				
 				}
 				break;
 				default:
@@ -298,6 +304,23 @@ namespace RenderCallbacks
 
 			}, obj);
 
+		}
+		else if constexpr (std::is_same_v<objT, StaticObject>)
+		{
+			switch (passName)
+			{
+			case HASH("Static"):
+			{
+
+			}
+			break;
+			default:
+				break;
+			}
+		}
+		else
+		{
+			assert(false && "RegisterLocalObject unknown type");
 		}
 	}
 
@@ -321,6 +344,23 @@ namespace RenderCallbacks
 				break;
 			}
 
+		}
+		else if constexpr (std::is_same_v<objT, StaticObject>)
+		{
+			switch (passName)
+			{
+			case HASH("Static"):
+			{
+
+			}
+			break;
+			default:
+				break;
+			}
+		}
+		else
+		{
+			assert(false && "UpdateLocalObject unknown type");
 		}
 	}
 }

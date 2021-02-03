@@ -47,7 +47,7 @@ cbuffer cbPerObject : register(b0)
 	int type;
 }
 
-[Local, PerObject]
+[Global, PerObject]
 Texture2D gDiffuseMap : register(t0)
 
 [Global, PerPass]

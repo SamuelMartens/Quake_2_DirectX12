@@ -135,6 +135,7 @@ public:
 	// so we need to center content to the screen center
 	XMFLOAT4X4 m_yInverseAndCenterMatrix;
 
+	[[nodiscard]]
 	GPUJobContext CreateContext(Frame& frame);
 
 	/* Job  */
@@ -194,6 +195,7 @@ private:
 	void ShutdownWin32();
 
 	/* Factory functionality */
+	[[nodiscard]]
 	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model, GPUJobContext& context);
 	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJobContext& frame);
 	void DecomposeGLModelNode(const model_t& model, const mnode_t& node, GPUJobContext& context);
@@ -215,13 +217,11 @@ private:
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
 	bool IsVisible(const entity_t& entity, const Camera& camera) const;
 	DynamicObjectConstBuffer& FindDynamicObjConstBuffer();
-
-	/* Passes */
-	void ExecuteDrawUIPass(GPUJobContext& context, const PassParameters& pass);
+	void RegisterObjectsAtFrameGraphs();
 
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;
-
+	//#DEBUG delete this
 	void SetMaterialAsync(const std::string& name, CommandList& commandList);
 	void SetNonMaterialState(GPUJobContext& context) const;
 
