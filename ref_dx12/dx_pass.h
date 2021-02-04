@@ -40,18 +40,18 @@ public:
 	void Execute(GPUJobContext& context);
 	void Init(PassParameters&& parameters);
 
-	void RegisterPassResources(GPUJobContext& jobCtx);
-	void UpdatePassResources(GPUJobContext& jobCtx);
+	void RegisterPassResources(GPUJobContext& context);
+	void UpdatePassResources(GPUJobContext& context);
 	void ReleasePerFrameResources();
 	void ReleasePersistentResources();
 
 private:
 
-	void RegisterObjects(GPUJobContext& jobCtx);
-	void UpdateDrawObjects(GPUJobContext& jobCtx);
+	void RegisterObjects(GPUJobContext& context);
+	void UpdateDrawObjects(GPUJobContext& context);
 
-	void SetRenderState(GPUJobContext& jobCtx);
-	void Draw(GPUJobContext& jobCtx);
+	void SetRenderState(GPUJobContext& context);
+	void Draw(GPUJobContext& context);
 
 private:
 
@@ -91,20 +91,19 @@ public:
 
 	void Execute(GPUJobContext& context);
 	void Init(PassParameters&& parameters);
-	//#DEBUG change from jobCtx to context everywhere. Generally use Context, but not Ctx
-	void RegisterPassResources(GPUJobContext& jobCtx);
-	void UpdatePassResources(GPUJobContext& jobCtx);
+	void RegisterPassResources(GPUJobContext& context);
+	void UpdatePassResources(GPUJobContext& context);
 	void ReleasePerFrameResources();
 	void ReleasePersistentResources();
 
-	void RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& jobCtx);
+	void RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& context);
 
 private:
 
-	void UpdateDrawObjects(GPUJobContext& jobCtx);
-	void Draw(GPUJobContext& jobCtx);
+	void UpdateDrawObjects(GPUJobContext& context);
+	void Draw(GPUJobContext& context);
 
-	void SetRenderState(GPUJobContext& jobCtx);
+	void SetRenderState(GPUJobContext& context);
 
 	PassParameters passParameters;
 

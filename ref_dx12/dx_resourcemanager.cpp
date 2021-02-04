@@ -565,7 +565,4 @@ void ResourceManager::_CreateGpuTexture(const unsigned int* raw, int width, int 
 	srvDescriptionRef.Texture2D.MostDetailedMip = 0;
 	srvDescriptionRef.Texture2D.MipLevels = 1;
 	srvDescriptionRef.Texture2D.ResourceMinLODClamp = 0.0f;
-
-	outTex.texViewIndex = Renderer::Inst().cbvSrvHeap->Allocate(outTex.buffer.Get(), &srvDescription);
-
 }

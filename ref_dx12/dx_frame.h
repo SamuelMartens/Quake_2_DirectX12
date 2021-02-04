@@ -62,7 +62,7 @@ public:
 
 	std::vector<DynamicObject> dynamicObjects;
 	LockVector_t<ComPtr<ID3D12Resource>> uploadResources;
-	//#DEBUG delete this?
+	//#TODO delete this when particles are properly implemented
 	LockVector_t<BufferHandler> streamingObjectsHandlers;
 
 	std::vector<DrawCall_UI_t> uiDrawCalls;

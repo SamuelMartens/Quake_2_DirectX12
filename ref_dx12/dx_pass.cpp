@@ -379,9 +379,9 @@ void Pass_UI::Init(PassParameters&& parameters)
 	perObjectVertexMemorySize = perVertexMemorySize * 6;
 }
 
-void Pass_UI::RegisterObjects(GPUJobContext& jobCtx)
+void Pass_UI::RegisterObjects(GPUJobContext& context)
 {
-	const std::vector<DrawCall_UI_t>& objects = jobCtx.frame.uiDrawCalls;
+	const std::vector<DrawCall_UI_t>& objects = context.frame.uiDrawCalls;
 	auto& uploadMemory =
 		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
@@ -394,7 +394,7 @@ void Pass_UI::RegisterObjects(GPUJobContext& jobCtx)
 	}
 
 	vertexMemory = uploadMemory.Allocate(perObjectVertexMemorySize * objects.size());
-	RenderCallbacks::RegisterLocalObjectContext regCtx = { jobCtx };
+	RenderCallbacks::RegisterLocalObjectContext regContext = { context };
 
 	for (int i = 0; i < objects.size(); ++i)
 	{
@@ -408,7 +408,7 @@ void Pass_UI::RegisterObjects(GPUJobContext& jobCtx)
 		const int objectOffset = i * perObjectConstBuffMemorySize;
 		int rootArgOffset = objectOffset;
 
-		_RegisterObjectArgs(obj, rootArgOffset, objectConstBuffMemory, HASH(passParameters.name.c_str()), regCtx);
+		_RegisterObjectArgs(obj, rootArgOffset, objectConstBuffMemory, HASH(passParameters.name.c_str()), regContext);
 	}
 
 	// Init vertex data
@@ -502,19 +502,19 @@ void Pass_UI::RegisterObjects(GPUJobContext& jobCtx)
 	}
 }
 
-void Pass_UI::RegisterPassResources(GPUJobContext& jobCtx)
+void Pass_UI::RegisterPassResources(GPUJobContext& context)
 {
-	_RegisterPassResources(*this, passParameters, passConstBuffMemory, jobCtx);
+	_RegisterPassResources(*this, passParameters, passConstBuffMemory, context);
 }
 
-void Pass_UI::UpdatePassResources(GPUJobContext& jobCtx)
+void Pass_UI::UpdatePassResources(GPUJobContext& context)
 {
-	_UpdatePassResources(*this, passParameters, passConstBuffMemory, passMemorySize, jobCtx);
+	_UpdatePassResources(*this, passParameters, passConstBuffMemory, passMemorySize, context);
 }
 
-void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
+void Pass_UI::UpdateDrawObjects(GPUJobContext& jobContext)
 {
-	RenderCallbacks::UpdateLocalObjectContext updateContext = { jobCtx };
+	RenderCallbacks::UpdateLocalObjectContext updateContext = { jobContext };
 
 	std::vector<std::byte> cpuMem(perObjectConstBuffMemorySize * drawObjects.size(), static_cast<std::byte>(0));
 
@@ -540,16 +540,16 @@ void Pass_UI::UpdateDrawObjects(GPUJobContext& jobCtx)
 	}
 }
 
-void Pass_UI::SetRenderState(GPUJobContext& jobCtx)
+void Pass_UI::SetRenderState(GPUJobContext& context)
 {
-	_SetRenderState(passParameters, jobCtx);
+	_SetRenderState(passParameters, context);
 }
 
-void Pass_UI::Draw(GPUJobContext& jobCtx)
+void Pass_UI::Draw(GPUJobContext& context)
 {
-	CommandList& commandList = jobCtx.commandList;
+	CommandList& commandList = context.commandList;
 	Renderer& renderer = Renderer::Inst();
-	const FrameGraph& frameGraph = *jobCtx.frame.frameGraph;
+	const FrameGraph& frameGraph = *context.frame.frameGraph;
 
 	// Bind pass global argument
 	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsIndices, commandList);
@@ -584,7 +584,7 @@ void Pass_UI::Draw(GPUJobContext& jobCtx)
 		// Bind local args
 		for (const RootArg::Arg_t& rootArg : obj.rootArgs)
 		{
-			RootArg::Bind(rootArg, jobCtx.commandList);
+			RootArg::Bind(rootArg, context.commandList);
 		}
 
 		commandList.commandList->DrawInstanced(perObjectVertexMemorySize / perVertexMemorySize, 1, 0, 0);
@@ -671,14 +671,14 @@ void Pass_Static::Init(PassParameters&& parameters)
 	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
 }
 
-void Pass_Static::RegisterPassResources(GPUJobContext& jobCtx)
+void Pass_Static::RegisterPassResources(GPUJobContext& context)
 {
-	_RegisterPassResources(*this, passParameters, passConstBuffMemory, jobCtx);
+	_RegisterPassResources(*this, passParameters, passConstBuffMemory, context);
 }
 
-void Pass_Static::UpdatePassResources(GPUJobContext& jobCtx)
+void Pass_Static::UpdatePassResources(GPUJobContext& context)
 {
-	_UpdatePassResources(*this, passParameters, passConstBuffMemory, passMemorySize, jobCtx);
+	_UpdatePassResources(*this, passParameters, passConstBuffMemory, passMemorySize, context);
 }
 
 void Pass_Static::ReleasePerFrameResources()
@@ -702,7 +702,7 @@ void Pass_Static::ReleasePersistentResources()
 	}
 }
 
-void Pass_Static::RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& jobCtx)
+void Pass_Static::RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& context)
 {
 	assert(drawObjects.empty() == true && "Static pass Object registration failed. There should be no objects");
 
@@ -715,15 +715,15 @@ void Pass_Static::RegisterObjects(const std::vector<StaticObject>& objects, GPUJ
 
 		obj.constantBuffMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(perObjectConstBuffMemorySize);
 
-		RenderCallbacks::RegisterLocalObjectContext regCtx = { jobCtx };
+		RenderCallbacks::RegisterLocalObjectContext regContext = { context };
 
-		_RegisterObjectArgs(obj, 0, obj.constantBuffMemory, HASH(passParameters.name.c_str()), regCtx);
+		_RegisterObjectArgs(obj, 0, obj.constantBuffMemory, HASH(passParameters.name.c_str()), regContext);
 	}
 }
 
-void Pass_Static::UpdateDrawObjects(GPUJobContext& jobCtx)
+void Pass_Static::UpdateDrawObjects(GPUJobContext& context)
 {
-	RenderCallbacks::UpdateLocalObjectContext updateContext = { jobCtx };
+	RenderCallbacks::UpdateLocalObjectContext updateContext = { context };
 
 	auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
@@ -737,9 +737,9 @@ void Pass_Static::UpdateDrawObjects(GPUJobContext& jobCtx)
 	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
 
 
-	for (int i = 0; i < jobCtx.frame.visibleStaticObjectsIndices.size(); ++i)
+	for (int i = 0; i < context.frame.visibleStaticObjectsIndices.size(); ++i)
 	{
-		PassObj& obj = drawObjects[jobCtx.frame.visibleStaticObjectsIndices[i]];
+		PassObj& obj = drawObjects[context.frame.visibleStaticObjectsIndices[i]];
 
 		std::fill(cpuMem.begin(), cpuMem.end(), static_cast<std::byte>(0));
 
@@ -753,16 +753,16 @@ void Pass_Static::UpdateDrawObjects(GPUJobContext& jobCtx)
 	}
 }
 
-void Pass_Static::SetRenderState(GPUJobContext& jobCtx)
+void Pass_Static::SetRenderState(GPUJobContext& context)
 {
-	_SetRenderState(passParameters, jobCtx);
+	_SetRenderState(passParameters, context);
 }
 
-void Pass_Static::Draw(GPUJobContext& jobCtx)
+void Pass_Static::Draw(GPUJobContext& context)
 {
-	CommandList& commandList = jobCtx.commandList;
+	CommandList& commandList = context.commandList;
 	Renderer& renderer = Renderer::Inst();
-	const FrameGraph& frameGraph = *jobCtx.frame.frameGraph;
+	const FrameGraph& frameGraph = *context.frame.frameGraph;
 
 	// Bind pass global argument
 	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsIndices, commandList);
@@ -782,9 +782,9 @@ void Pass_Static::Draw(GPUJobContext& jobCtx)
 	auto& defaultMemory =
 		MemoryManager::Inst().GetBuff<DefaultBuffer_t>();
 
-	for (int i = 0; i < jobCtx.frame.visibleStaticObjectsIndices.size(); ++i)
+	for (int i = 0; i < context.frame.visibleStaticObjectsIndices.size(); ++i)
 	{
-		const int objectIndex = jobCtx.frame.visibleStaticObjectsIndices[i];
+		const int objectIndex = context.frame.visibleStaticObjectsIndices[i];
 
 		const PassObj& obj = drawObjects[objectIndex];
 
@@ -796,7 +796,7 @@ void Pass_Static::Draw(GPUJobContext& jobCtx)
 		// Bind local args
 		for (const RootArg::Arg_t& rootArg : obj.rootArgs)
 		{
-			RootArg::Bind(rootArg, jobCtx.commandList);
+			RootArg::Bind(rootArg, context.commandList);
 		}
 
 		// Vertices

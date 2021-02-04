@@ -37,8 +37,6 @@ StaticObject& StaticObject::StaticObject::operator=(StaticObject&& other)
 	indices = other.indices;
 	other.indices = Const::INVALID_BUFFER_HANDLER;
 
-	frameData = std::move(other.frameData);
-
 	return *this;
 }
 
@@ -243,28 +241,5 @@ DynamicObject::~DynamicObject()
 	{
 		assert(constBuffer->isInUse == true && "Trying to release const buffer, that was already released");
 		constBuffer->isInUse = false;
-	}
-}
-
-StaticObjectFrameData::StaticObjectFrameData(StaticObjectFrameData&& other)
-{
-	*this = std::move(other);
-}
-
-StaticObjectFrameData& StaticObjectFrameData::operator=(StaticObjectFrameData&& other)
-{
-	PREVENT_SELF_MOVE_ASSIGN;
-
-	constantBufferHandler = other.constantBufferHandler;
-	other.constantBufferHandler = Const::INVALID_BUFFER_HANDLER;
-
-	return *this;
-}
-
-StaticObjectFrameData::~StaticObjectFrameData()
-{
-	if (constantBufferHandler != Const::INVALID_BUFFER_HANDLER)
-	{
-		Renderer::Inst().DeleteUploadMemoryBuffer(constantBufferHandler);
 	}
 }

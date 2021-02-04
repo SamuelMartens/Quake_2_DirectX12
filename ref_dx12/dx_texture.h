@@ -30,7 +30,6 @@ public:
 	~Texture();
 	
 	ComPtr<ID3D12Resource> buffer;
-	int texViewIndex = Const::INVALID_INDEX;
 
 	std::string name;
 

@@ -481,7 +481,7 @@ void FrameGraph::Init(GPUJobContext& context)
 	}
 
 	// Register static objects
-	RegisterObjects(Renderer::Inst().staticObjects, context);
+	RegisterObjects(Renderer::Inst().GetStaticObjects(), context);
 }
 
 void FrameGraph::BindPassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const
@@ -588,7 +588,7 @@ void FrameGraph::UpdateGlobalObjectsResUI(GPUJobContext& context)
 
 void FrameGraph::UpdateGlobalObjectsResStatic(GPUJobContext& context)
 {
-	const std::vector<StaticObject>& staticObjects = Renderer::Inst().staticObjects;
+	const std::vector<StaticObject>& staticObjects = Renderer::Inst().GetStaticObjects();
 
 	_UpdateGlobalObjectResIndiced<Parsing::PassInputType::Static>(staticObjects, context.frame.visibleStaticObjectsIndices, context,
 		ResContext{ objGlobalResTemplate, objGlobalRes, objGlobalResMemory, perObjectGlobalMemorySize });

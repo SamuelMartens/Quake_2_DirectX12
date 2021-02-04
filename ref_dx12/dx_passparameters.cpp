@@ -385,6 +385,24 @@ namespace Parsing
 			res);
 	}
 
+	Parsing::ResourceBindFrequency GetResourceBindFrequency(const Parsing::Resource_t& res)
+	{
+		return std::visit([](auto&& resource)
+		{
+			return *resource.bindFrequency;;
+		},
+			res);
+	}
+
+	Parsing::ResourceScope GetResourceScope(const Resource_t& res)
+	{
+		return std::visit([](auto&& resource)
+		{
+			return *resource.scope;;
+		},
+			res);
+	}
+
 }
 
 PassParametersSource::PassParametersSource()

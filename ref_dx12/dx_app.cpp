@@ -687,47 +687,6 @@ Material Renderer::CompileMaterial(const MaterialSource& materialSourse) const
 	return materialCompiled;
 }
 
-void Renderer::SetMaterialAsync(const std::string& name, CommandList& commandList)
-{
-	auto materialIt = std::find_if(materials.begin(), materials.end(), [name](const Material& mat)
-	{
-		return mat.name == name;
-	});
-
-	assert(materialIt != materials.end() && "Can't set requested material. It's not found");
-
-	commandList.commandList->SetGraphicsRootSignature(materialIt->rootSingature.Get());
-	commandList.commandList->SetPipelineState(materialIt->pipelineState.Get());
-	commandList.commandList->IASetPrimitiveTopology(materialIt->primitiveTopology);
-}
-
-void Renderer::SetNonMaterialState(GPUJobContext& context) const
-{
-	CommandList& commandList = context.commandList;
-	Frame& frame = context.frame;
-
-	D3D12_VIEWPORT viewport;
-	viewport.TopLeftX = 0;
-	viewport.TopLeftY = 0;
-	viewport.Width = static_cast<float>(frame.camera.width);
-	viewport.Height = static_cast<float>(frame.camera.height);
-	viewport.MinDepth = 0.0f;
-	viewport.MaxDepth = 1.0f;
-
-	commandList.commandList->RSSetViewports(1, &viewport);
-	// Resetting scissor is mandatory 
-	commandList.commandList->RSSetScissorRects(1, &frame.scissorRect);
-
-	D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = rtvHeap->GetHandleCPU(frame.colorBufferAndView->viewIndex);
-	D3D12_CPU_DESCRIPTOR_HANDLE depthTargetView = dsvHeap->GetHandleCPU(frame.depthBufferViewIndex);
-
-	// Specify buffer we are going to render to
-	commandList.commandList->OMSetRenderTargets(1, &renderTargetView, true, &depthTargetView);
-
-	ID3D12DescriptorHeap* descriptorHeaps[] = { cbvSrvHeap->GetHeapResource(),	samplerHeap->GetHeapResource() };
-	commandList.commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-}
-
 Frame& Renderer::GetMainThreadFrame()
 {
 	ASSERT_MAIN_THREAD;
@@ -1162,118 +1121,6 @@ void Renderer::BeginFrameJob(GPUJobContext& context)
 	Logs::Logf(Logs::Category::Job, "BeginFrame job ended frame %d", frame.frameNumber);
 }
 
-void Renderer::DrawUIJob(GPUJobContext& context)
-{
-	JOB_GUARD(context);
-	Logs::Logf(Logs::Category::Job, "DrawUI job started frame %d", context.frame.frameNumber);
-
-	Frame& frame = context.frame;
-
-	if (frame.uiDrawCalls.empty())
-	{
-		Logs::Log(Logs::Category::Job, "DrawUI job started. No draw calls");
-		return;
-	}
-	// This is ugly :( I use this for both Constant buffer and Vertex buffer. As a result,
-	// both should be aligned for constant buffers.
-	const int perDrawCallMemoryRequired = Utils::Align(
-		Utils::Align(sizeof(ShDef::ConstBuff::TransMat), Settings::CONST_BUFFER_ALIGNMENT) + 
-		6 * sizeof(ShDef::Vert::PosTexCoord),
-		Settings::CONST_BUFFER_ALIGNMENT);
-
-	// Calculate amount of memory required for all draw calls
-	const int requiredMemoryAlloc = context.frame.uiDrawCalls.size() * perDrawCallMemoryRequired;
-
-	BufferHandler memoryBufferHandle = 
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(requiredMemoryAlloc);
-	DO_IN_LOCK(frame.streamingObjectsHandlers, push_back(memoryBufferHandle));
-
-	BufferPiece currentBufferPiece = {memoryBufferHandle, 0};
-
-	// Set some matrices
-	XMMATRIX tempMat = XMMatrixIdentity();
-	XMStoreFloat4x4(&frame.uiViewMat, tempMat);
-
-	tempMat = XMMatrixOrthographicRH(frame.camera.width, frame.camera.height, 0.0f, 1.0f);
-	XMStoreFloat4x4(&frame.uiProjectionMat, tempMat);
-
-	Diagnostics::BeginEvent(context.commandList.commandList.Get(), "UI drawing");
-
-	SetNonMaterialState(context);
-
-	SetMaterialAsync(MaterialSource::STATIC_MATERIAL_NAME, context.commandList);
-
-	for (const DrawCall_UI_t& dc : context.frame.uiDrawCalls)
-	{
-		std::visit([&context, &currentBufferPiece, this](auto&& drawCall)
-		{
-			using T = std::decay_t<decltype(drawCall)>;
-
-			if constexpr (std::is_same_v<T, DrawCall_Char>)
-			{
-				Draw_Char(drawCall.x, drawCall.y, drawCall.num, currentBufferPiece, context);
-			}
-			else if constexpr (std::is_same_v<T, DrawCall_Pic>)
-			{
-				Draw_Pic(drawCall.x, drawCall.y, drawCall.name.c_str(), currentBufferPiece, context);
-			}
-			else if constexpr (std::is_same_v<T, DrawCall_StretchRaw>)
-			{
-				Draw_RawPic(drawCall, currentBufferPiece, context);
-			}
-			else
-			{
-				static_assert(false, "Invalid class in draw UI");
-			}
-		}
-		, dc);
-
-		currentBufferPiece.offset += perDrawCallMemoryRequired;
-
-	}
-
-	Diagnostics::EndEvent(context.commandList.commandList.Get());
-
-	Logs::Logf(Logs::Category::Job, "DrawUI job ended frame %d", frame.frameNumber);
-}
-
-void Renderer::DrawStaticGeometryJob(GPUJobContext& context)
-{
-	JOB_GUARD(context);
-
-	Logs::Logf(Logs::Category::Job, "Static job started frame %d", context.frame.frameNumber);
-
-	CommandList& commandList = context.commandList;
-
-	// Static geometry 
-	Diagnostics::BeginEvent(commandList.commandList.Get(), "Static materials");
-
-	SetNonMaterialState(context);
-	SetMaterialAsync(MaterialSource::STATIC_MATERIAL_NAME, commandList);
-	
-	std::vector<int> visibleStaticObj = BuildObjectsInFrustumList(context.frame.camera, staticObjectsAABB);
-
-	for (int i = 0; i < visibleStaticObj.size(); ++i)
-	{
-		const StaticObject& obj = staticObjects[visibleStaticObj[i]];
-
-		UpdateStaticObjectConstantBuffer(obj, context);
-
-		if (obj.indices != Const::INVALID_BUFFER_HANDLER)
-		{
-			DrawIndiced(obj, context);
-		}
-		else
-		{
-			Draw(obj, context);
-		}
-	}
-
-	Diagnostics::EndEvent(commandList.commandList.Get());
-
-	Logs::Logf(Logs::Category::Job, "Static job ended frame %d", context.frame.frameNumber);
-}
-
 void Renderer::DrawDynamicGeometryJob(GPUJobContext& context)
 {
 	JOB_GUARD(context);
@@ -1286,9 +1133,6 @@ void Renderer::DrawDynamicGeometryJob(GPUJobContext& context)
 
 	// Dynamic geometry
 	Diagnostics::BeginEvent(commandList.commandList.Get(), "Dynamic materials");
-
-	SetNonMaterialState(context);
-	SetMaterialAsync(MaterialSource::DYNAMIC_MATERIAL_NAME, commandList);
 
 	for (int i = 0; i < entitiesToDraw.size(); ++i)
 	{
@@ -1334,9 +1178,6 @@ void Renderer::DrawParticleJob(GPUJobContext& context)
 
 	if (particlesToDraw.empty() == false)
 	{
-		SetNonMaterialState(context);
-		SetMaterialAsync(MaterialSource::PARTICLE_MATERIAL_NAME, commandList);
-
 		// Particles share the same constant buffer, so we only need to update it once
 		const BufferHandler particleConstantBufferHandler = UpdateParticleConstantBuffer(context);
 
@@ -1576,19 +1417,6 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 
 	ResourceManager::Inst().UpdateDefaultHeapBuff(updateBuffArg);
 
-	const unsigned int PictureObjectConstSize = Utils::Align(sizeof(ShDef::ConstBuff::TransMat), 
-		Settings::CONST_BUFFER_ALIGNMENT);
-
-	auto& uploadMemory =
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
-
-	// Init frame data
-	for (int i = 0; i < obj.frameData.size(); ++i)
-	{
-		//#DEBUG this is not needed, remove this
-		//obj.frameData[i].constantBufferHandler = uploadMemory.Allocate(PictureObjectConstSize);
-	}
-
 	std::vector<XMFLOAT4> verticesPos;
 	verticesPos.reserve(vertices.size());
 
@@ -1601,7 +1429,6 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	
 	objCulling.bbMin = bbMin;
 	objCulling.bbMax = bbMax;
-
 }
 
 void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, GPUJobContext& context)
@@ -1639,103 +1466,6 @@ GPUJobContext Renderer::CreateContext(Frame& frame)
 	frame.acquiredCommandListsIndices.push_back(commandListIndex);
 
 	return GPUJobContext(frame, commandListBuffer.commandLists[commandListIndex]);
-}
-
-void Renderer::Draw(const StaticObject& object, GPUJobContext& context)
-{
-	DefaultBuffer_t& defaultMemory =
-		MemoryManager::Inst().GetBuff<DefaultBuffer_t>();
-	CommandList& commandList = context.commandList;
-
-	// Set vertex buffer
-	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
-	vertBuffView.BufferLocation = defaultMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
-		defaultMemory.GetOffset(object.vertices);
-	vertBuffView.StrideInBytes = sizeof(ShDef::Vert::PosTexCoord);
-	vertBuffView.SizeInBytes = object.verticesSizeInBytes;
-
-	commandList.commandList->IASetVertexBuffers(0, 1, &vertBuffView);
-
-	UploadBuffer_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
-
-	// Binding root signature params
-
-	// 1)
-	const Texture& texture = *ResourceManager::Inst().FindTexture(object.textureKey);
-
-	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);
-
-	commandList.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
-
-
-	// 2)	
-	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle = samplerHeap->GetHandleGPU(texture.samplerInd);
-	commandList.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
-
-	// 3)
-	BufferHandler constBufferHandler = object.frameData[context.frame.GetArrayIndex()].constantBufferHandler;
-	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
-	cbAddress += uploadMemory.GetOffset(constBufferHandler);
-
-	commandList.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
-
-	// Finally, draw
-	commandList.commandList->DrawInstanced(vertBuffView.SizeInBytes / vertBuffView.StrideInBytes, 1, 0, 0);
-}
-
-void Renderer::DrawIndiced(const StaticObject& object, GPUJobContext& context)
-{
-	assert(object.indices != Const::INVALID_BUFFER_HANDLER && "Trying to draw indexed object without index buffer");
-
-	CommandList& commandList = context.commandList;
-
-	DefaultBuffer_t& defaultMemory =
-		MemoryManager::Inst().GetBuff<DefaultBuffer_t>();
-
-	// Set vertex buffer
-	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
-	vertBuffView.BufferLocation = defaultMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
-		defaultMemory.GetOffset(object.vertices);
-	vertBuffView.StrideInBytes = sizeof(ShDef::Vert::PosTexCoord);
-	vertBuffView.SizeInBytes = object.verticesSizeInBytes;
-
-	commandList.commandList->IASetVertexBuffers(0, 1, &vertBuffView);
-
-	// Set index buffer
-	D3D12_INDEX_BUFFER_VIEW indexBufferView;
-	indexBufferView.BufferLocation = defaultMemory.GetGpuBuffer()->GetGPUVirtualAddress() + 
-		defaultMemory.GetOffset(object.indices);
-	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-	indexBufferView.SizeInBytes = object.indicesSizeInBytes;
-
-	commandList.commandList->IASetIndexBuffer(&indexBufferView);
-
-	UploadBuffer_t& uploadMemory =
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
-
-	// Binding root signature params
-
-	// 1)
-	const Texture& texture = *ResourceManager::Inst().FindTexture(object.textureKey);
-
-	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);;
-
-	commandList.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
-
-	// 2)
-	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle = samplerHeap->GetHandleGPU(texture.samplerInd);
-	commandList.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
-
-	// 3)
-	BufferHandler constBufferHandler = object.frameData[context.frame.GetArrayIndex()].constantBufferHandler;
-	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
-	cbAddress += uploadMemory.GetOffset(constBufferHandler);
-
-	commandList.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
-
-	// Finally, draw
-	commandList.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
 }
 
 void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, GPUJobContext& context)
@@ -1817,9 +1547,9 @@ void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, 
 	// Binding root signature params
 
 	// 1)
-	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(tex->texViewIndex);;
+	//CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(tex->texViewIndex);;
 
-	commandList.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
+	//commandList.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
 
 	// 2)
 	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle = samplerHeap->GetHandleGPU(tex->samplerInd);
@@ -1833,70 +1563,6 @@ void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, 
 
 	// Finally, draw
 	commandList.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
-}
-
-void Renderer::DrawStreaming(const FArg::DrawStreaming& args)
-{
-	assert(args.vertices != nullptr &&
-		args.verticesSizeInBytes != Const::INVALID_SIZE &&
-		args.verticesStride != -1 &&
-		args.texName != nullptr &&
-		args.pos != nullptr &&
-		args.bufferPiece != nullptr &&
-		args.context != nullptr &&
-		"DrawStrwaming args are not initialized");
-
-	Frame& frame = args.context->frame;
-	CommandList& commandList = args.context->commandList;
-
-	UpdateStreamingConstantBuffer(*args.pos, { 1.0f, 1.0f, 1.0f, 0.0f }, *args.bufferPiece, *args.context);
-
-	auto& uploadMemory =
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
-
-	const int vertexBufferOffset = uploadMemory.GetOffset(args.bufferPiece->handler) +
-		args.bufferPiece->offset +
-		Utils::Align(sizeof(ShDef::ConstBuff::TransMat), Settings::CONST_BUFFER_ALIGNMENT);
-
-	FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
-	updateVertexBufferArgs.buffer = uploadMemory.GetGpuBuffer();
-	updateVertexBufferArgs.offset = vertexBufferOffset;
-	updateVertexBufferArgs.data = args.vertices;
-	updateVertexBufferArgs.byteSize = args.verticesSizeInBytes;
-	updateVertexBufferArgs.alignment = 0;
-
-	ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
-
-	D3D12_VERTEX_BUFFER_VIEW vertBuffView;
-	vertBuffView.BufferLocation = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress() + vertexBufferOffset;
-	vertBuffView.StrideInBytes = args.verticesStride;
-	vertBuffView.SizeInBytes = args.verticesSizeInBytes;
-
-	commandList.commandList->IASetVertexBuffers(0, 1, &vertBuffView);
-
-	// Binding root signature params
-
-	// 1)
-	const Texture& texture = *ResourceManager::Inst().FindTexture(args.texName);
-
-	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(texture.texViewIndex);;
-
-	commandList.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
-
-	// 2)
-	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle = samplerHeap->GetHandleGPU(texture.samplerInd);
-	commandList.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
-
-	// 3)
-	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
-
-	cbAddress += uploadMemory.GetOffset(args.bufferPiece->handler) +
-		args.bufferPiece->offset;
-
-	commandList.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
-
-
-	commandList.commandList->DrawInstanced(args.verticesSizeInBytes / args.verticesStride, 1, 0, 0);
 }
 
 void Renderer::AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset)
@@ -1965,6 +1631,11 @@ void Renderer::GetDrawAreaSize(int* Width, int* Height)
 const std::array<unsigned int, 256>& Renderer::GetRawPalette() const
 {
 	return rawPalette;
+}
+
+const std::vector<StaticObject>& Renderer::GetStaticObjects() const
+{
+	return staticObjects;
 }
 
 void Renderer::Load8To24Table()
@@ -2137,28 +1808,6 @@ void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, 
 	updateConstBufferArgs.byteSize = sizeof(transMat);
 	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
 	// Update our constant buffer
-	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
-}
-
-void Renderer::UpdateStaticObjectConstantBuffer(const StaticObject& obj, GPUJobContext& context)
-{
-	const Camera& camera = context.frame.camera;
-	
-	XMFLOAT4X4 mvpMat;
-	XMStoreFloat4x4(&mvpMat, camera.GetViewProjMatrix());
-
-	BufferHandler constBufferHandler = obj.frameData[context.frame.GetArrayIndex()].constantBufferHandler;
-
-	auto& uploadMemory =
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
-
-	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	updateConstBufferArgs.buffer = uploadMemory.GetGpuBuffer();
-	updateConstBufferArgs.offset = uploadMemory.GetOffset(constBufferHandler);
-	updateConstBufferArgs.data = &mvpMat;
-	updateConstBufferArgs.byteSize = sizeof(mvpMat);
-	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
-
 	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
@@ -2385,132 +2034,6 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 	GetMainThreadFrame().uiDrawCalls.push_back(std::move(drawCall));
 }
 
-void Renderer::Draw_Pic(int x, int y, const char* name, const BufferPiece& bufferPiece, GPUJobContext& context)
-{
-	std::array<char, MAX_QPATH> texFullName;
-	ResourceManager::Inst().GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
-
-	const Texture& texture = *ResourceManager::Inst().FindOrCreateTexture(texFullName.data(), context);
-
-	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
-	Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
-		XMFLOAT2(texture.width, texture.height),
-		XMFLOAT2(0.0f, 0.0f),
-		XMFLOAT2(1.0f, 1.0f),
-		vertices.data());
-
-	FArg::DrawStreaming drawArgs;
-
-	XMFLOAT4 pos = XMFLOAT4(x, y, 0.0f, 1.0f);
-
-	drawArgs.vertices = reinterpret_cast<std::byte*>(vertices.data());
-	drawArgs.verticesSizeInBytes = vertices.size() * sizeof(ShDef::Vert::PosTexCoord);
-	drawArgs.verticesStride = sizeof(ShDef::Vert::PosTexCoord);
-	drawArgs.texName = texFullName.data();
-	drawArgs.pos = &pos;
-	drawArgs.bufferPiece = &bufferPiece;
-	drawArgs.context = &context;
-
-	DrawStreaming(drawArgs);
-}
-
-void Renderer::Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, GPUJobContext& context)
-{
-	num &= 0xFF;
-
-	constexpr int charSize = 8;
-
-	if ((num & 127) == 32)
-		return;		// space
-
-	if (y <= -charSize)
-		return;		// totally off screen
-
-	constexpr float texCoordScale = 0.0625f;
-
-	const float uCoord = (num & 15) * texCoordScale;
-	const float vCoord = (num >> 4) * texCoordScale;
-	const float texSize = texCoordScale;
-
-	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
-	Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
-		XMFLOAT2(charSize, charSize),
-		XMFLOAT2(uCoord, vCoord),
-		XMFLOAT2(uCoord + texSize, vCoord + texSize),
-		vertices.data());
-
-	const int vertexStride = sizeof(ShDef::Vert::PosTexCoord);
-
-	std::array<char, MAX_QPATH> texFullName;
-	ResourceManager::Inst().GetDrawTextureFullname(Texture::FONT_TEXTURE_NAME, texFullName.data(), texFullName.size());
-
-	// Proper place for this is in Init(), but file loading system is not ready, when
-	// init is called for renderer
-	 if(ResourceManager::Inst().FindTexture(texFullName.data()) == nullptr)
-	 {
-		 ResourceManager::Inst().CreateTextureFromFile(texFullName.data(), context);
-	 }
-
-	 FArg::DrawStreaming drawArgs;
-
-	 XMFLOAT4 pos = XMFLOAT4(x, y, 0.0f, 1.0f);
-
-	 drawArgs.vertices = reinterpret_cast<std::byte*>(vertices.data());
-	 drawArgs.verticesSizeInBytes = vertices.size() * vertexStride;
-	 drawArgs.verticesStride = vertexStride;
-	 drawArgs.texName = texFullName.data();
-	 drawArgs.pos = &pos;
-	 drawArgs.bufferPiece = &bufferPiece;
-	 drawArgs.context = &context;
-	
-	 DrawStreaming(drawArgs);
-}
-
-void Renderer::Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, GPUJobContext& context)
-{
-	// If there is no data, then texture is requested to be created for this frame. So no need to update
-	if (drawCall.data.empty() == false)
-	{
-		const int textureSize = drawCall.textureWidth * drawCall.textureHeight;
-
-		CommandList& commandList = context.commandList;
-
-		std::vector<unsigned int> texture(textureSize, 0);
-		for (int i = 0; i < textureSize; ++i)
-		{
-			texture[i] = rawPalette[std::to_integer<int>(drawCall.data[i])];
-		}
-
-		Texture* rawTex = ResourceManager::Inst().FindTexture(Texture::RAW_TEXTURE_NAME);
-		assert(rawTex != nullptr && "Draw_RawPic texture doesn't exist");
-
-		ResourceManager::Inst().UpdateTexture(*rawTex, reinterpret_cast<std::byte*>(texture.data()), context);
-	}
-
-	std::array<ShDef::Vert::PosTexCoord, 6> vertices;
-	Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
-		XMFLOAT2(drawCall.quadWidth, drawCall.quadHeight),
-		XMFLOAT2(0.0f, 0.0f),
-		XMFLOAT2(1.0f, 1.0f),
-		vertices.data());
-
-	const int vertexStride = sizeof(ShDef::Vert::PosTexCoord);
-
-	FArg::DrawStreaming drawArgs;
-
-	XMFLOAT4 pos = XMFLOAT4(drawCall.x, drawCall.y, 0.0f, 1.0f);
-
-	drawArgs.vertices = reinterpret_cast<std::byte*>(vertices.data());
-	drawArgs.verticesSizeInBytes = vertices.size() * vertexStride;
-	drawArgs.verticesStride = vertexStride;
-	drawArgs.texName = Texture::RAW_TEXTURE_NAME;
-	drawArgs.pos = &pos;
-	drawArgs.bufferPiece = &bufferPiece;
-	drawArgs.context = &context;
-
-	DrawStreaming(drawArgs);
-}
-
 void Renderer::AddDrawCall_Pic(int x, int y, const char* name)
 {
 	Logs::Logf(Logs::Category::Generic, "API: AddDrawCall_Pic %s", name);
@@ -2617,13 +2140,6 @@ void Renderer::EndFrame()
 		BeginFrameJob(beginFrameContext);
 	}));
 
-	// --- Draw static objects job ---
-	
-	jobQueue.Enqueue(Job(
-		[drawStaticObjectsContext, this]() mutable
-	{
-		DrawStaticGeometryJob(drawStaticObjectsContext);
-	}));
 
 	// --- Draw dynamic objects job ---
 
@@ -2641,14 +2157,6 @@ void Renderer::EndFrame()
 		DrawParticleJob(drawParticlesContext);
 	}));
 	
-	// --- Draw UI job ---
-
-	jobQueue.Enqueue(Job(
-		[drawUIContext, this] () mutable 
-	{
-		DrawUIJob(drawUIContext);
-	}));
-
 	// --- End frame job ---
 
 	jobQueue.Enqueue(Job(

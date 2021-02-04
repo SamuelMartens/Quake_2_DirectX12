@@ -60,10 +60,6 @@ namespace RenderCallbacks
 		GPUJobContext& jobContext;
 	};
 
-	//#DEBUG my asserts basically keeps me alive. So I should make sure that default cases for all those
-	// if constexpr and switch cases ARE HANDLED. Maybe add ability to turn it off, but I need this
-	// to no die during debugging.
-
 	/* Global */
 
 	template<typename oT, typename bT>
@@ -81,7 +77,6 @@ namespace RenderCallbacks
 				{
 				case HASH("gDiffuseMap"):
 				{
-					//#DEBUG this should be global
 					if constexpr (std::is_same_v< uiDrawCallT, DrawCall_Pic>)
 					{
 						Renderer& renderer = Renderer::Inst();

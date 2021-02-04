@@ -210,6 +210,8 @@ namespace Parsing
 
 	std::string_view GetResourceName(const Parsing::Resource_t& res);
 	std::string_view GetResourceRawView(const Parsing::Resource_t& res);
+	Parsing::ResourceBindFrequency GetResourceBindFrequency(const Parsing::Resource_t& res);
+	Parsing::ResourceScope GetResourceScope(const Resource_t& res);
 };
 
 

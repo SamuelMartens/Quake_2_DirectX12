@@ -17,24 +17,6 @@ extern "C"
 	#include "../client/ref.h"
 };
 
-class StaticObjectFrameData
-{
-public:
-
-	StaticObjectFrameData() = default;
-
-	StaticObjectFrameData(const StaticObjectFrameData&) = delete;
-	StaticObjectFrameData& operator=(const StaticObjectFrameData&) = delete;
-
-	StaticObjectFrameData(StaticObjectFrameData&& other);
-	StaticObjectFrameData& operator=(StaticObjectFrameData&& other);
-
-	~StaticObjectFrameData();
-
-	BufferHandler constantBufferHandler = Const::INVALID_BUFFER_HANDLER;
-};
-
-//#DEBUG you need to delete old texture loading for static objects, if it exists? Do you?
 class StaticObject
 {
 public:
@@ -61,8 +43,6 @@ public:
 
 	int verticesSizeInBytes = Const::INVALID_SIZE;
 	int indicesSizeInBytes = Const::INVALID_SIZE;
-	//#DEBUG delete this 
-	std::array<StaticObjectFrameData, Settings::FRAMES_NUM> frameData;
 };
 
 class DynamicObjectModel

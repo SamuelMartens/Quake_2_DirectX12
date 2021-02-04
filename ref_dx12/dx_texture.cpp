@@ -17,9 +17,6 @@ Texture& Texture::operator=(Texture&& other)
 	ResourceManager::Inst().RequestResourceDeletion(other.buffer);
 	other.buffer = nullptr;
 
-	texViewIndex = other.texViewIndex;
-	other.texViewIndex = Const::INVALID_INDEX;
-
 	name = std::move(other.name);
 
 	samplerInd = other.samplerInd;
@@ -34,11 +31,6 @@ Texture& Texture::operator=(Texture&& other)
 
 Texture::~Texture()
 {
-	if (texViewIndex != Const::INVALID_INDEX)
-	{
-		Renderer::Inst().cbvSrvHeap->Delete(texViewIndex);
-	}
-
 	// This is a bit lame cause, resource might actually not be deleted, if 
 	// some other texture owns it.
 	ResourceManager::Inst().RequestResourceDeletion(buffer);

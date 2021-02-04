@@ -73,7 +73,6 @@ class Renderer
 	void DeleteUploadMemoryBuffer(BufferHandler handler);
 	
 	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, GPUJobContext& context);
-	void UpdateStaticObjectConstantBuffer(const StaticObject& obj, GPUJobContext& context);
 	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, GPUJobContext& context);
 	BufferHandler UpdateParticleConstantBuffer(GPUJobContext& context);
 
@@ -110,6 +109,7 @@ class Renderer
 	int GetMSAAQuality() const;
 	void GetDrawAreaSize(int* Width, int* Height);
 	const std::array<unsigned int, 256>& GetRawPalette() const;
+	const std::vector<StaticObject>& GetStaticObjects() const;
 
 	void Load8To24Table();
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
@@ -141,14 +141,8 @@ public:
 	/* Job  */
 	void EndFrameJob(GPUJobContext& context);
 	void BeginFrameJob(GPUJobContext& context);
-	void DrawUIJob(GPUJobContext& context);
-	void DrawStaticGeometryJob(GPUJobContext& context);
 	void DrawDynamicGeometryJob(GPUJobContext& context);
 	void DrawParticleJob(GPUJobContext& context);
-
-	//#DEBUG come incapsulation here
-	std::vector<StaticObject> staticObjects;
-	std::vector<Utils::AABB> staticObjectsAABB;
 
 	std::vector<int> BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const;
 
@@ -202,16 +196,9 @@ private:
 	
 
 	/* Rendering */
-	void Draw(const StaticObject& object, GPUJobContext& context);
-	void DrawIndiced(const StaticObject& object, GPUJobContext& context);
 	void DrawIndiced(const DynamicObject& object, const entity_t& entity, GPUJobContext& context);
-	void DrawStreaming(const FArg::DrawStreaming& args);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
 	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, GPUJobContext& context);
-	void Draw_Pic(int x, int y, const char* name, const BufferPiece& bufferPiece, GPUJobContext& context);
-	//#DEBUG clean up all this old functions
-	void Draw_Char(int x, int y, int num, const BufferPiece& bufferPiece, GPUJobContext& context);
-	void Draw_RawPic(const DrawCall_StretchRaw& drawCall, const BufferPiece& bufferPiece, GPUJobContext& context);
 
 	/* Utils */
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
@@ -221,9 +208,6 @@ private:
 
 	/* Materials */
 	Material CompileMaterial(const MaterialSource& materialSourse) const;
-	//#DEBUG delete this
-	void SetMaterialAsync(const std::string& name, CommandList& commandList);
-	void SetNonMaterialState(GPUJobContext& context) const;
 
 	/* Frames */
 	void SubmitFrame(Frame& frame);
@@ -272,6 +256,9 @@ private:
 
 	std::array<unsigned int, 256> Table8To24;
 	std::array<unsigned int, 256> rawPalette;
+
+	std::vector<Utils::AABB> staticObjectsAABB;
+	std::vector<StaticObject> staticObjects;
 
 	std::unordered_map<model_t*, DynamicObjectModel> dynamicObjectsModels;
 	// Expected to set a size for it during initialization. Don't change size afterward

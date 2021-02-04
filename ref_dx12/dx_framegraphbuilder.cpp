@@ -773,52 +773,130 @@ void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
 void FrameGraphBuilder::ValidateResources(const std::vector<PassParametersSource>& passesParametersSources) const
 {
 #ifdef _DEBUG
-	//#DEBUG this function needs to be corrected to account for the case that different input types can have conflicting name
-	std::vector<Parsing::Resource_t> globalResources;
+
+	// Per object resources are a bit special. From logical point of view it is totally fine if
+	// global per object resources will collide if they are related to different types of objects,
+	// so that's the reason I handle those types of resources different then pass resources.
+
+	 std::array<std::vector<Parsing::Resource_t>, 
+		 static_cast<int>(Parsing::PassInputType::SIZE)> perObjectGlobalResources;
+
+	 std::vector<Parsing::Resource_t> perPassGlobalResources;
 
 	// Check for name collision
-	//for (const PassParametersSource& paramSource : passesParametersSources)
-	//{
-	//	for (const Parsing::Resource_t& currentRes : paramSource.resources)
-	//	{
-	//		std::string_view currentResName = Parsing::GetResourceName(currentRes);
-	//		
-	//		// In pass collision check
-	//		{
-	//			const int count = std::count_if(paramSource.resources.cbegin(), 
-	//				paramSource.resources.cend(), [currentResName](const Parsing::Resource_t& res) 
-	//			{
-	//				return currentResName == Parsing::GetResourceName(res);
-	//			});
+	for (const PassParametersSource& paramSource : passesParametersSources)
+	{
+		for (const Parsing::Resource_t& currentRes : paramSource.resources)
+		{
+			std::string_view currentResName = Parsing::GetResourceName(currentRes);
+			
+			// In pass collision check
+			{
+				const int count = std::count_if(paramSource.resources.cbegin(), 
+					paramSource.resources.cend(), [currentResName](const Parsing::Resource_t& res) 
+				{
+					return currentResName == Parsing::GetResourceName(res);
+				});
 
-	//			assert(count == 1 && "Name collision inside pass resource declaration");
-	//		}
+				// There should be no collision in local scope
+				assert(count == 1 && "Name collision inside pass resource declaration");
+			}
 
-	//		// Global collision check
-	//		{
-	//			// Check if we have resource with the same name
-	//			const auto resIt = std::find_if(globalResources.cbegin(), globalResources.cend(),
-	//				[currentResName](const Parsing::Resource_t& res)
-	//			{
-	//				return currentResName == Parsing::GetResourceName(res);
-	//			});
-
-	//			if (resIt != globalResources.cend())
-	//			{
-	//				// Make sure content is equal. If yes, then this is just the same resource,
-	//				// if no then we have name collision
-	//				assert(Parsing::IsEqual(*resIt, currentRes) && "Global resource name collision is found");
-	//			}
-	//			else
-	//			{
-	//				// No such resource were found. Add this one to the list
-	//				globalResources.push_back(currentRes);
-	//			}
-	//		}
+			// Global pass collision check
+			{
+				// Check if we have resource with the same name
+				const auto resIt = std::find_if(perPassGlobalResources.cbegin(), perPassGlobalResources.cend(),
+					[currentResName](const Parsing::Resource_t& res)
+				{
+					return currentResName == Parsing::GetResourceName(res);
+				});
 
 
-	//	}
-	//}
+				if (Parsing::GetResourceScope(currentRes) == Parsing::ResourceScope::Global &&
+					Parsing::GetResourceBindFrequency(currentRes) == Parsing::ResourceBindFrequency::PerPass)
+				{
+					// Handle properly when it might be resource of the same type we are checking collision against
+
+					if (resIt != perPassGlobalResources.cend())
+					{
+						// Make sure content is equal. If yes, then this is just the same resource,
+						// if no then we have name collision
+						assert(Parsing::IsEqual(*resIt, currentRes) && "Global resource name collision is found");
+					}
+					else
+					{
+						// No such resource were found. Add this one to the list
+						perPassGlobalResources.push_back(currentRes);
+					}
+				}
+				else
+				{
+					assert(resIt == perPassGlobalResources.cend() && "Global resource name collision is found");
+				}
+				
+			}
+
+			// Global per object collision check
+			{
+				if (Parsing::GetResourceBindFrequency(currentRes) == Parsing::ResourceBindFrequency::PerObject)
+				{
+					// As I said before for global per object we only need to check against resources of the same input type
+
+					std::vector<Parsing::Resource_t>& objTypeGlobalResource =
+						perObjectGlobalResources[static_cast<int>(*paramSource.input)];
+
+					// Check if we have resource with the same name
+					const auto resIt = std::find_if(objTypeGlobalResource.cbegin(), objTypeGlobalResource.cend(),
+						[currentResName](const Parsing::Resource_t& res)
+					{
+						return currentResName == Parsing::GetResourceName(res);
+					});
+
+					
+					if (Parsing::GetResourceScope(currentRes) == Parsing::ResourceScope::Global)
+					{
+						if (resIt != objTypeGlobalResource.cend())
+						{
+							// Make sure content is equal. If yes, then this is just the same resource,
+							// if no then we have name collision
+							assert(Parsing::IsEqual(*resIt, currentRes) && "Global resource name collision is found");
+						}
+						else
+						{
+							// No such resource were found. Add this one to the list
+							objTypeGlobalResource.push_back(currentRes);
+						}
+					}
+					else
+					{
+						assert(resIt == objTypeGlobalResource.cend() && "Global resource name collision is found");
+					}
+					
+				}
+				else
+				{
+					for (std::vector<Parsing::Resource_t>& objTypeGlobalResource : perObjectGlobalResources)
+					{
+						// PerPass resources should not collide with any PerObject resource
+
+						// Check if we have resource with the same name
+						const auto resIt = std::find_if(objTypeGlobalResource.cbegin(), objTypeGlobalResource.cend(),
+							[currentResName](const Parsing::Resource_t& res)
+						{
+							return currentResName == Parsing::GetResourceName(res);
+						});
+
+
+						// No need to add anything, this case was handled above
+						assert(resIt == objTypeGlobalResource.cend() && "Global resource name collision is found");
+					}
+				}
+
+				
+			}
+
+		}
+	}
 
 #endif
 }
@@ -1059,7 +1137,7 @@ std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFile
 
 	for (const auto& passFile : passFiles)
 	{
-		//#DEBUG only UI
+		//#DEBUG only UI and static
 		std::string passName = passFile.first.substr(0, passFile.first.rfind('.'));
 
 		if (passName != "UI" && passName != "Static")
