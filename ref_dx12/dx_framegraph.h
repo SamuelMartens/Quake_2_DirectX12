@@ -1,5 +1,7 @@
 #pragma once
 
+#include <tuple>
+
 #include "dx_pass.h"
 
 // FrameGraph is a functional part of the frame. 
@@ -28,6 +30,17 @@ class FrameGraph
 
 public:
 
+	using PerObjectGlobalTemplate_t = std::tuple<
+		// Static
+		std::vector<RootArg::Arg_t>,
+		// Dynamic
+		std::vector<RootArg::Arg_t>,
+		// Particles
+		std::vector<RootArg::Arg_t>,
+		// UI
+		std::vector<RootArg::Arg_t>
+	>;
+
 	FrameGraph();
 
 	FrameGraph(const FrameGraph&) = default;
@@ -44,18 +57,35 @@ public:
 
 	/* Inner resource management  */
 	void BindPassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const;
-	void BindObjGlobalRes(const std::vector<int>& resIndices, int objIndex, CommandList& commandList, Parsing::PassInputType objType) const;
 
+	template<Parsing::PassInputType INPUT_TYPE>
+	void BindObjGlobalRes(const std::vector<int>& resIndices, int objIndex, CommandList& commandList) const
+	{
+		const std::vector<RootArg::Arg_t>& objRes = std::get<static_cast<int>(INPUT_TYPE)>(objGlobalRes)[objIndex];
+
+		for (const int index : resIndices)
+		{
+			RootArg::Bind(objRes[index], commandList);
+		}
+	};
+
+
+	// Persistent objects registration
 	void RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& context);
+	
 	void UpdateGlobalResources(GPUJobContext& context);
 	void ReleasePerFrameResources();
 
 private:
 
+	// Per frame objects registration
 	void RegisterGlobalObjectsResUI(GPUJobContext& context);
 	void UpdateGlobalObjectsResUI(GPUJobContext& context);
 
 	void UpdateGlobalObjectsResStatic(GPUJobContext& context);
+
+	void RegisterGlobalObjectsResDynamicEntities(GPUJobContext& context);
+	void UpdateGlobalObjectsResDynamic(GPUJobContext& context);
 
 	void RegisterGlobaPasslRes(GPUJobContext& context);
 	void UpdateGlobalPasslRes(GPUJobContext& context);
@@ -67,11 +97,19 @@ private:
 	std::vector<RootArg::Arg_t> passesGlobalRes;
 
 	// Template of all global resources for object. Combined when global resources from different pases are mixed 
-	std::array<std::vector<RootArg::Arg_t>,
-		static_cast<int>(Parsing::PassInputType::SIZE)> objGlobalResTemplate;
+	PerObjectGlobalTemplate_t objGlobalResTemplate;
 
-	std::array<std::vector<std::vector<RootArg::Arg_t>>,
-		static_cast<int>(Parsing::PassInputType::SIZE)> objGlobalRes;
+	std::tuple<
+	// Static
+	std::vector<std::vector<RootArg::Arg_t>>, 
+	// Dynamic
+	std::vector<std::vector<RootArg::Arg_t>>,
+	// Particles
+	std::vector<std::vector<RootArg::Arg_t>>,
+	// UI
+	std::vector<std::vector<RootArg::Arg_t>>
+	> objGlobalRes;
+
 
 	std::array<BufferHandler,
 		static_cast<int>(Parsing::PassInputType::SIZE)> objGlobalResMemory;

@@ -7,11 +7,18 @@
 #include <d3d12.h>
 #include <memory>
 #include <optional>
+#include <tuple>
 
 #include "dx_common.h"
 #include "dx_utils.h"
 #include "dx_buffer.h"
 #include "dx_commandlist.h"
+
+namespace Parsing
+{
+	enum class PassInputType;
+};
+
 
 namespace RootArg 
 {
@@ -86,6 +93,8 @@ namespace RootArg
 
 	int AllocateDescTableView(const DescTable& descTable);
 
+	void AttachConstBufferToArgs(std::vector<RootArg::Arg_t>& rootArgs, int offset, BufferHandler gpuHandler);
+
 	template<typename T>
 	int GetConstBufftSize(const T& cb)
 	{
@@ -102,8 +111,18 @@ namespace RootArg
 
 	int GetDescTableSize(const DescTable& descTable);
 	int GetSize(const Arg_t& arg);
+
+
 	int GetSize(const std::vector<RootArg::Arg_t>& args);
-	
+
+	template<typename... Ts>
+	int GetSize(const std::tuple<Ts...>& args) 
+	{
+		return std::apply([](Ts... args) 
+		{
+			return (GetSize(args) + ...);
+		}, args);
+	};
 };
 
 
@@ -284,6 +303,11 @@ public:
 	PassParameters& operator=(PassParameters&&) = default;
 
 	~PassParameters() = default;
+
+	static void AddGlobalPerObjectRootArgIndex(
+		std::vector<int>& perObjGlobalRootArgsIndicesTemplate,
+		std::vector<RootArg::Arg_t>& perObjGlobalResTemplate,
+		RootArg::Arg_t&& arg);
 
 public:
 

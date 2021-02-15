@@ -57,9 +57,13 @@ public:
 	std::vector<int> acquiredCommandListsIndices;
 	
 	// Utils
+	//#DEBUG entities to draw? Meh, rename this 
 	std::vector<entity_t> entitiesToDraw;
 	std::vector<particle_t> particlesToDraw;
 
+	std::vector<int> visibleEntitiesIndices;
+
+	//#DEBUG delete this
 	std::vector<DynamicObject> dynamicObjects;
 	LockVector_t<ComPtr<ID3D12Resource>> uploadResources;
 	//#TODO delete this when particles are properly implemented

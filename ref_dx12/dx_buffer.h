@@ -41,7 +41,7 @@ struct AllocBuffer
 	AllocBuffer& operator=(const AllocBuffer&) = delete;
 	AllocBuffer& operator=(AllocBuffer&&) = delete;
 
-	// No need to explicitly free our gpu buffer. COM interface will release 
+	// No need to explicitly free GPU buffer. COM pointer will release 
 	// gpu memory
 	~AllocBuffer() = default;
 
@@ -89,6 +89,8 @@ public:
 	[[nodiscard]]
 	BufferHandler Allocate(int size)
 	{
+		assert(size != 0 && "Zero allocation request");
+
 		std::scoped_lock<std::mutex> lock(mutex);
 
 		if constexpr (ENFORCED_ALIGNMENT != 0)

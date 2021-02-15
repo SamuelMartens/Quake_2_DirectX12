@@ -8,6 +8,7 @@
 #include "dx_texture.h"
 #include "dx_app.h"
 #include "dx_resourcemanager.h"
+#include "dx_framegraph.h"
 
 extern "C"
 {
@@ -112,6 +113,43 @@ namespace RenderCallbacks
 				break;
 			}
 		}
+		else if constexpr(std::is_same_v<objT, entity_t>)
+		{
+			switch(paramName)
+			{
+			case HASH("gDiffuseMap"):
+			{
+				assert(obj.skin == nullptr && "Custom skin. I am not prepared for this");
+
+				Renderer& renderer = Renderer::Inst();
+
+				const DynamicObjectModel& model = renderer.GetDynamicModels().at(obj.model);
+
+				Texture* tex = nullptr;
+
+				if (obj.skinnum >= MAX_MD2SKINS)
+				{
+					tex = ResourceManager::Inst().FindTexture(model.textures[0]);
+				}
+				else
+				{
+					tex = ResourceManager::Inst().FindTexture(model.textures[obj.skinnum]);
+
+					if (tex == nullptr)
+					{
+						tex = ResourceManager::Inst().FindTexture(model.textures[0]);
+					}
+				}
+
+				assert(tex != nullptr && "Not texture found for dynamic object rendering. Implement fall back");
+
+				renderer.cbvSrvHeap->AllocateDescriptor(bindPoint, tex->buffer.Get(), nullptr);
+			}
+			break;
+			default:
+				break;
+			}
+		}
 		else
 		{
 			assert(false && "RegisterGlobalObject unknown object type");
@@ -173,7 +211,47 @@ namespace RenderCallbacks
 			{
 			case HASH("gWorldViewProj"):
 			{
+				//#DEBUG pass onlu view proj map. So you can have just one pass res. instead of res for every object
+				// huge gain!
 				XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint), ctx.jobContext.frame.camera.GetViewProjMatrix());
+			}
+			break;
+			default:
+				break;
+			}
+		}
+		else if constexpr (std::is_same_v<objT, entity_t>)
+		{
+			switch (paramName)
+			{
+			case HASH("gWorldViewProj"):
+			{
+				XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint), 
+					DynamicObjectModel::GenerateModelMat(obj) * ctx.jobContext.frame.camera.GetViewProjMatrix());
+			}
+			break;
+			case HASH("gAnimMove"):
+			{
+				const DynamicObjectModel& model = Renderer::Inst().GetDynamicModels().at(obj.model);
+				auto[animMove, frontLerp, backLerp] =  model.GenerateAnimInterpolationData(obj);
+
+				reinterpret_cast<XMFLOAT4&>(bindPoint) = animMove;
+			}
+			break;
+			case HASH("gFrontLerp"):
+			{
+				const DynamicObjectModel& model = Renderer::Inst().GetDynamicModels().at(obj.model);
+				auto[animMove, frontLerp, backLerp] = model.GenerateAnimInterpolationData(obj);
+
+				reinterpret_cast<XMFLOAT4&>(bindPoint) = frontLerp;
+			}
+			break;
+			case HASH("gBackLerp"):
+			{
+				const DynamicObjectModel& model = Renderer::Inst().GetDynamicModels().at(obj.model);
+				auto[animMove, frontLerp, backLerp] = model.GenerateAnimInterpolationData(obj);
+
+				reinterpret_cast<XMFLOAT4&>(bindPoint) = backLerp;
 			}
 			break;
 			default:

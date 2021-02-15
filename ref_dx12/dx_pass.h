@@ -3,6 +3,7 @@
 #include <functional>
 #include <vector>
 #include <variant>
+#include <unordered_map>
 
 #include "dx_buffer.h"
 #include "dx_drawcalls.h"
@@ -10,6 +11,7 @@
 #include "dx_passparameters.h"
 #include "dx_threadingutils.h"
 #include "dx_objects.h"
+#include "dx_glmodel.h"
 
 
 // NOTE: passes are actually don't release their resources automatically,
@@ -41,11 +43,13 @@ public:
 	void Init(PassParameters&& parameters);
 
 	void RegisterPassResources(GPUJobContext& context);
-	void UpdatePassResources(GPUJobContext& context);
+	
 	void ReleasePerFrameResources();
 	void ReleasePersistentResources();
 
 private:
+
+	void UpdatePassResources(GPUJobContext& context);
 
 	void RegisterObjects(GPUJobContext& context);
 	void UpdateDrawObjects(GPUJobContext& context);
@@ -57,14 +61,14 @@ private:
 
 	PassParameters passParameters;
 
-	unsigned int perObjectConstBuffMemorySize = 0;
+	int perObjectConstBuffMemorySize = Const::INVALID_SIZE;
 	// One object vertex memory size
-	unsigned int perObjectVertexMemorySize = 0;
+	int perObjectVertexMemorySize = Const::INVALID_SIZE;
 	// One vertex size
-	unsigned int perVertexMemorySize = 0;
+	int perVertexMemorySize = Const::INVALID_SIZE;
 
 	// Pass local args memory size
-	unsigned int passMemorySize = 0;
+	int passMemorySize = Const::INVALID_SIZE;
 
 	BufferHandler passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
 	BufferHandler objectConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
@@ -91,14 +95,17 @@ public:
 
 	void Execute(GPUJobContext& context);
 	void Init(PassParameters&& parameters);
+
 	void RegisterPassResources(GPUJobContext& context);
-	void UpdatePassResources(GPUJobContext& context);
+	
 	void ReleasePerFrameResources();
 	void ReleasePersistentResources();
 
 	void RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& context);
 
 private:
+
+	void UpdatePassResources(GPUJobContext& context);
 
 	void UpdateDrawObjects(GPUJobContext& context);
 	void Draw(GPUJobContext& context);
@@ -107,13 +114,62 @@ private:
 
 	PassParameters passParameters;
 
-	int passMemorySize = 0;
+	int passMemorySize = Const::INVALID_SIZE;
 	BufferHandler passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
 
-	unsigned int perObjectConstBuffMemorySize = 0;
+	int perObjectConstBuffMemorySize = Const::INVALID_SIZE;
 
 	std::vector<PassObj> drawObjects;
 
 };
 
-using Pass_t = std::variant<Pass_UI, Pass_Static>;
+class Pass_Dynamic
+{
+public:
+
+	struct PassModel 
+	{
+		std::vector<RootArg::Arg_t> rootArgs;
+		const DynamicObjectModel* originalObj = nullptr;
+	};
+	
+	struct PassEntity
+	{
+		std::vector<RootArg::Arg_t> rootArgs;
+		const entity_t* originalObj = nullptr;
+	};
+
+public:
+
+	void Execute(GPUJobContext& context);
+	void Init(PassParameters&& parameters);
+
+	void RegisterPassResources(GPUJobContext& context);
+
+	void ReleasePerFrameResources();
+	void ReleasePersistentResources();
+
+private:
+
+	void RegisterEntities(GPUJobContext& context);
+	void UpdateDrawEntities(GPUJobContext& context);
+	
+	void UpdatePassResources(GPUJobContext& context);
+
+	void Draw(GPUJobContext& context);
+
+	void SetRenderState(GPUJobContext& context);
+
+	PassParameters passParameters;
+
+	int passMemorySize = Const::INVALID_SIZE;
+	BufferHandler passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
+
+	int perObjectConstBuffMemorySize = Const::INVALID_SIZE;
+
+	// Recreated every frame
+	std::vector<PassEntity> drawEntities;
+	BufferHandler objectsConstBufferMemory = Const::INVALID_BUFFER_HANDLER;
+};
+
+using Pass_t = std::variant<Pass_UI, Pass_Static, Pass_Dynamic>;

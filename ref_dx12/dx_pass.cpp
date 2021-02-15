@@ -16,15 +16,13 @@
 namespace
 {
 	template<typename T>
-	void _RegisterPassResources(T& pass, PassParameters& passParameters, BufferHandler passConstBuffMemory, GPUJobContext& context)
+	void _RegisterPassResources(T& pass, PassParameters& passParameters, GPUJobContext& context)
 	{
 		RenderCallbacks::RegisterLocalPassContext localPassContext = { context };
 
-		int offset = 0;
-
 		for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
 		{
-			std::visit([&pass, &offset, passConstBuffMemory, &localPassContext, &passParameters]
+			std::visit([&pass, &localPassContext, &passParameters]
 			(auto&& arg)
 			{
 				using T = std::decay_t<decltype(arg)>;
@@ -36,10 +34,7 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
 				{
-					arg.gpuMem.handler = passConstBuffMemory;
-					arg.gpuMem.offset = offset;
-
-					offset += RootArg::GetConstBufftSize(arg);
+					
 				}
 
 				if constexpr (std::is_same_v<T, RootArg::DescTable>)
@@ -51,7 +46,7 @@ namespace
 						RootArg::DescTableEntity_t& descTableEntitiy = arg.content[i];
 						int currentViewIndex = arg.viewIndex + i;
 
-						std::visit([&pass, &offset, passConstBuffMemory, &currentViewIndex, &localPassContext, &passParameters]
+						std::visit([&pass, &currentViewIndex, &localPassContext, &passParameters]
 						(auto&& descTableEntitiy)
 						{
 							using T = std::decay_t<decltype(descTableEntitiy)>;
@@ -59,11 +54,6 @@ namespace
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 							{
 								assert(false && "Desc table view is probably not implemented! Make sure it is");
-								//#TODO make view allocation
-								descTableEntitiy.gpuMem.handler = passConstBuffMemory;
-								descTableEntitiy.gpuMem.offset = offset;
-
-								offset += RootArg::GetConstBufftSize(descTableEntitiy);
 							}
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
@@ -173,11 +163,11 @@ namespace
 	}
 
 	template<typename T>
-	void _RegisterObjectArgs(T& obj, int offset, BufferHandler gpuHandler, unsigned int passHashedName, RenderCallbacks::RegisterLocalObjectContext& regCtx)
+	void _RegisterObjectArgs(T& obj, unsigned int passHashedName, RenderCallbacks::RegisterLocalObjectContext& regCtx)
 	{
 		for (RootArg::Arg_t& rootArg : obj.rootArgs)
 		{
-			std::visit([gpuHandler, &offset, &obj, &regCtx, passHashedName]
+			std::visit([&obj, &regCtx, passHashedName]
 			(auto&& rootArg)
 			{
 				using T = std::decay_t<decltype(rootArg)>;
@@ -189,10 +179,7 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
 				{
-					rootArg.gpuMem.handler = gpuHandler;
-					rootArg.gpuMem.offset = offset;
-
-					offset += RootArg::GetConstBufftSize(rootArg);
+				
 				}
 
 				if constexpr (std::is_same_v<T, RootArg::DescTable>)
@@ -204,19 +191,14 @@ namespace
 						RootArg::DescTableEntity_t& descTableEntitiy = rootArg.content[i];
 						int currentViewIndex = rootArg.viewIndex + i;
 
-						std::visit([gpuHandler, &offset, &obj, &regCtx, &currentViewIndex, passHashedName]
+						std::visit([&obj, &regCtx, &currentViewIndex, passHashedName]
 						(auto&& descTableEntitiy)
 						{
 							using T = std::decay_t<decltype(descTableEntitiy)>;
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 							{
-								assert(false && "Desc table view is probably not implemented! Make sure it is");
-								//#TODO make view allocation
-								descTableEntitiy.gpuMem.handler = gpuHandler;
-								descTableEntitiy.gpuMem.offset = offset;
-
-								offset += RootArg::GetConstBufftSize(descTableEntitiy);
+								assert(false && "Const buffer view is not implemented");
 							}
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
@@ -348,7 +330,7 @@ void Pass_UI::Init(PassParameters&& parameters)
 
 	// Pass memory exists have the same lifetime as pass itself. So unlike objects memory
 	// I can allocate it only one time
-	assert(passMemorySize == 0 && "Pass_UI memory size should be null");
+	assert(passMemorySize == Const::INVALID_SIZE && "Pass_UI memory size should be uninitialized");
 	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
 
 	if (passMemorySize > 0)
@@ -361,12 +343,12 @@ void Pass_UI::Init(PassParameters&& parameters)
 	// used for each run
 
 	// Calculate amount of memory for const buffers per objects
-	assert(perObjectConstBuffMemorySize == 0 && "Per object const memory should be null");
+	assert(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Per object const memory should be uninitialized");
 	perObjectConstBuffMemorySize =  RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
 
 
 	// Calculate amount of memory for vertex buffers per objects
-	assert(perVertexMemorySize == 0 && "Per Vertex Memory should be null");
+	assert(perVertexMemorySize == Const::INVALID_SIZE && "Per Vertex Memory should be uninitialized");
 
 	perVertexMemorySize = std::accumulate(passParameters.vertAttr.content.cbegin(), passParameters.vertAttr.content.cend(),
 		0, [](int& sum, const Parsing::VertAttrField& field) 
@@ -374,7 +356,7 @@ void Pass_UI::Init(PassParameters&& parameters)
 		return sum + Parsing::GetParseDataTypeSize(field.type);
 	});
 
-	assert(perObjectVertexMemorySize == 0 && "Per Object Vertex Memory should be null");
+	assert(perObjectVertexMemorySize == Const::INVALID_SIZE && "Per Object Vertex Memory should be uninitialized");
 	// Every UI object is quad that consists of two triangles
 	perObjectVertexMemorySize = perVertexMemorySize * 6;
 }
@@ -382,8 +364,7 @@ void Pass_UI::Init(PassParameters&& parameters)
 void Pass_UI::RegisterObjects(GPUJobContext& context)
 {
 	const std::vector<DrawCall_UI_t>& objects = context.frame.uiDrawCalls;
-	auto& uploadMemory =
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+	auto& uploadMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
 	//Check if we need to free this memory, maybe same amount needs to allocated
 
@@ -395,6 +376,7 @@ void Pass_UI::RegisterObjects(GPUJobContext& context)
 
 	vertexMemory = uploadMemory.Allocate(perObjectVertexMemorySize * objects.size());
 	RenderCallbacks::RegisterLocalObjectContext regContext = { context };
+	const unsigned passHashedName = HASH(passParameters.name.c_str());
 
 	for (int i = 0; i < objects.size(); ++i)
 	{
@@ -406,9 +388,9 @@ void Pass_UI::RegisterObjects(GPUJobContext& context)
 		// Init object root args
 
 		const int objectOffset = i * perObjectConstBuffMemorySize;
-		int rootArgOffset = objectOffset;
 
-		_RegisterObjectArgs(obj, rootArgOffset, objectConstBuffMemory, HASH(passParameters.name.c_str()), regContext);
+		_RegisterObjectArgs(obj, passHashedName, regContext);
+		RootArg::AttachConstBufferToArgs(obj.rootArgs, objectOffset, objectConstBuffMemory);
 	}
 
 	// Init vertex data
@@ -504,7 +486,8 @@ void Pass_UI::RegisterObjects(GPUJobContext& context)
 
 void Pass_UI::RegisterPassResources(GPUJobContext& context)
 {
-	_RegisterPassResources(*this, passParameters, passConstBuffMemory, context);
+	_RegisterPassResources(*this, passParameters, context);
+	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
 }
 
 void Pass_UI::UpdatePassResources(GPUJobContext& context)
@@ -577,8 +560,8 @@ void Pass_UI::Draw(GPUJobContext& context)
 		commandList.commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
 		
 		// Bind global args
-		frameGraph.BindObjGlobalRes(passParameters.perObjGlobalRootArgsIndicesTemplate, i,
-			commandList, Parsing::PassInputType::UI);
+		frameGraph.BindObjGlobalRes<Parsing::PassInputType::UI>(passParameters.perObjGlobalRootArgsIndicesTemplate, i,
+			commandList);
 
 
 		// Bind local args
@@ -646,6 +629,8 @@ void Pass_Static::Execute(GPUJobContext& context)
 		return;
 	}
 
+	UpdatePassResources(context);
+
 	UpdateDrawObjects(context);
 
 	SetRenderState(context);
@@ -658,22 +643,23 @@ void Pass_Static::Init(PassParameters&& parameters)
 
 	passParameters = std::move(parameters);
 
-	assert(passMemorySize == 0 && "Pass_Static memory size should be null");
+	assert(passMemorySize == Const::INVALID_SIZE && "Pass_Static memory size should be unitialized");
 	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
 
 	if (passMemorySize > 0)
 	{
-		assert(passConstBuffMemory == 0 && "Pass_Static not cleaned up memory");
+		assert(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Static not cleaned up memory");
 		passConstBuffMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(passMemorySize);
 	}
 
-	assert(perObjectConstBuffMemorySize == 0 && "Pass_Static perObject memory size should be null");
+	assert(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Static perObject memory size should be unitialized");
 	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
 }
 
 void Pass_Static::RegisterPassResources(GPUJobContext& context)
 {
-	_RegisterPassResources(*this, passParameters, passConstBuffMemory, context);
+	_RegisterPassResources(*this, passParameters, context);
+	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
 }
 
 void Pass_Static::UpdatePassResources(GPUJobContext& context)
@@ -683,6 +669,7 @@ void Pass_Static::UpdatePassResources(GPUJobContext& context)
 
 void Pass_Static::ReleasePerFrameResources()
 {
+
 }
 
 void Pass_Static::ReleasePersistentResources()
@@ -704,7 +691,9 @@ void Pass_Static::ReleasePersistentResources()
 
 void Pass_Static::RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& context)
 {
-	assert(drawObjects.empty() == true && "Static pass Object registration failed. There should be no objects");
+	assert(drawObjects.empty() == true && "Static pass Object registration failed. Pass objects list should be empty");
+
+	const unsigned passHashedName = HASH(passParameters.name.c_str());
 
 	for (const StaticObject& object : objects)
 	{
@@ -713,11 +702,15 @@ void Pass_Static::RegisterObjects(const std::vector<StaticObject>& objects, GPUJ
 		Const::INVALID_BUFFER_HANDLER,
 		 &object });
 
-		obj.constantBuffMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(perObjectConstBuffMemorySize);
+		if (perObjectConstBuffMemorySize != 0)
+		{
+			obj.constantBuffMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(perObjectConstBuffMemorySize);
+		}
 
 		RenderCallbacks::RegisterLocalObjectContext regContext = { context };
 
-		_RegisterObjectArgs(obj, 0, obj.constantBuffMemory, HASH(passParameters.name.c_str()), regContext);
+		_RegisterObjectArgs(obj, passHashedName, regContext);
+		RootArg::AttachConstBufferToArgs(obj.rootArgs, 0, obj.constantBuffMemory);
 	}
 }
 
@@ -725,29 +718,28 @@ void Pass_Static::UpdateDrawObjects(GPUJobContext& context)
 {
 	RenderCallbacks::UpdateLocalObjectContext updateContext = { context };
 
-	auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+	auto& uploadMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
-	std::vector<std::byte> cpuMem(perObjectConstBuffMemorySize);
+	std::vector<std::byte> cpuMem(perObjectConstBuffMemorySize, static_cast<std::byte>(0));
 
 	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	updateConstBufferArgs.buffer = uploadMemoryBuff.GetGpuBuffer();
+	updateConstBufferArgs.buffer = uploadMemory.GetGpuBuffer();
 	updateConstBufferArgs.offset = Const::INVALID_OFFSET;
 	updateConstBufferArgs.data = cpuMem.data();
 	updateConstBufferArgs.byteSize = cpuMem.size();
 	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
 
+	const unsigned passHashedName = HASH(passParameters.name.c_str());
 
 	for (int i = 0; i < context.frame.visibleStaticObjectsIndices.size(); ++i)
 	{
 		PassObj& obj = drawObjects[context.frame.visibleStaticObjectsIndices[i]];
 
-		std::fill(cpuMem.begin(), cpuMem.end(), static_cast<std::byte>(0));
-
-		_UpdateObjectArgs(obj, cpuMem.data(), HASH(passParameters.name.c_str()), updateContext);
+		_UpdateObjectArgs(obj, cpuMem.data(), passHashedName, updateContext);
 
 		if (perObjectConstBuffMemorySize > 0)
 		{
-			updateConstBufferArgs.offset = uploadMemoryBuff.GetOffset(obj.constantBuffMemory);
+			updateConstBufferArgs.offset = uploadMemory.GetOffset(obj.constantBuffMemory);
 			ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 		}
 	}
@@ -789,8 +781,8 @@ void Pass_Static::Draw(GPUJobContext& context)
 		const PassObj& obj = drawObjects[objectIndex];
 
 		// Bind global args
-		frameGraph.BindObjGlobalRes(passParameters.perObjGlobalRootArgsIndicesTemplate, objectIndex,
-			commandList, Parsing::PassInputType::Static);
+		frameGraph.BindObjGlobalRes<Parsing::PassInputType::Static>(passParameters.perObjGlobalRootArgsIndicesTemplate, objectIndex,
+			commandList);
 
 
 		// Bind local args
@@ -831,4 +823,225 @@ void Pass_Static::PassObj::ReleaseResources()
 		MemoryManager::Inst().GetBuff<UploadBuffer_t>().Delete(constantBuffMemory);
 		constantBuffMemory = Const::INVALID_BUFFER_HANDLER;
 	}
+}
+
+void Pass_Dynamic::Execute(GPUJobContext& context)
+{
+	if (context.frame.visibleEntitiesIndices.empty() == true)
+	{
+		return;
+	}
+
+	RegisterEntities(context);
+
+	UpdatePassResources(context);
+	UpdateDrawEntities(context);
+
+	SetRenderState(context);
+	Draw(context);
+}
+
+void Pass_Dynamic::Init(PassParameters&& parameters)
+{
+	ASSERT_MAIN_THREAD;
+
+	passParameters = std::move(parameters);
+
+	assert(passMemorySize == Const::INVALID_SIZE && "Pass_Dynamic memory size should be unitialized");
+	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
+
+	if (passMemorySize > 0)
+	{
+		assert(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Static not cleaned up memory");
+		passConstBuffMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(passMemorySize);
+	}
+
+	assert(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Static perObject memory size should be unitialized");
+	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
+}
+
+void Pass_Dynamic::RegisterPassResources(GPUJobContext& context)
+{
+	_RegisterPassResources(*this, passParameters, context);
+	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
+}
+
+void Pass_Dynamic::UpdatePassResources(GPUJobContext& context)
+{
+	_UpdatePassResources(*this, passParameters, passConstBuffMemory, passMemorySize, context);
+}
+
+void Pass_Dynamic::ReleasePerFrameResources()
+{
+	if (objectsConstBufferMemory != Const::INVALID_BUFFER_HANDLER)
+	{
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>().Delete(objectsConstBufferMemory);
+		objectsConstBufferMemory = Const::INVALID_BUFFER_HANDLER;
+	}
+
+	drawEntities.clear();
+}
+
+void Pass_Dynamic::ReleasePersistentResources()
+{
+	if (passConstBuffMemory != Const::INVALID_BUFFER_HANDLER)
+	{
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>().Delete(passConstBuffMemory);
+		passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
+	}
+}
+
+void Pass_Dynamic::RegisterEntities(GPUJobContext& context)
+{
+	assert(drawEntities.empty() == true && "Dynamic pass entities registration failed. Pass objects list should be empty");
+
+	const std::vector<int>& visibleEntitiesIndices = context.frame.visibleEntitiesIndices;
+
+	assert(objectsConstBufferMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Dynamic start not cleaned up memory");
+	auto& uploadMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+	
+	if (perObjectConstBuffMemorySize != 0)
+	{
+		objectsConstBufferMemory = uploadMemory.Allocate(perObjectConstBuffMemorySize * visibleEntitiesIndices.size());
+	}
+
+	const std::vector<RootArg::Arg_t>& perEntityArgTemplate = passParameters.perObjectLocalRootArgsTemplate;
+
+	RenderCallbacks::RegisterLocalObjectContext regContext = { context };
+	const unsigned passHashedName = HASH(passParameters.name.c_str());
+
+	for (int i = 0; i < visibleEntitiesIndices.size(); ++i)
+	{
+		const entity_t& entitiy = context.frame.entitiesToDraw[visibleEntitiesIndices[i]];
+
+		PassEntity& drawEntity = drawEntities.emplace_back(PassEntity{perEntityArgTemplate, 
+			&entitiy});
+
+		const int objectOffset = i * perObjectConstBuffMemorySize;
+
+		_RegisterObjectArgs(drawEntity, passHashedName, regContext);
+		RootArg::AttachConstBufferToArgs(drawEntity.rootArgs, objectOffset, objectsConstBufferMemory);
+	}
+}
+
+void Pass_Dynamic::UpdateDrawEntities(GPUJobContext& context)
+{
+	RenderCallbacks::UpdateLocalObjectContext updateContext = { context };
+
+	auto& uploadMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+
+	const std::vector<int>& visibleEntitiesIndices = context.frame.visibleEntitiesIndices;
+
+	std::vector<std::byte> cpuMem(perObjectConstBuffMemorySize * visibleEntitiesIndices.size(), static_cast<std::byte>(0));
+
+	const unsigned passHashedName = HASH(passParameters.name.c_str());
+
+	for (int i = 0; i < visibleEntitiesIndices.size(); ++i)
+	{
+		PassEntity& entity = drawEntities[i];
+
+		_UpdateObjectArgs(entity, cpuMem.data() + perObjectConstBuffMemorySize * i, passHashedName, updateContext);
+	}
+
+	if (perObjectConstBuffMemorySize != 0)
+	{
+		assert(objectsConstBufferMemory != Const::INVALID_BUFFER_HANDLER && "Pass_Dynamic memory is invalid");
+
+		FArg::UpdateUploadHeapBuff updateConstBufferArgs;
+		updateConstBufferArgs.buffer = uploadMemory.GetGpuBuffer();
+		updateConstBufferArgs.offset = uploadMemory.GetOffset(objectsConstBufferMemory);
+		updateConstBufferArgs.data = cpuMem.data();
+		updateConstBufferArgs.byteSize = cpuMem.size();
+		updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
+
+		ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
+	}
+}
+
+void Pass_Dynamic::Draw(GPUJobContext& context)
+{
+	CommandList& commandList = context.commandList;
+	Renderer& renderer = Renderer::Inst();
+	const FrameGraph& frameGraph = *context.frame.frameGraph;
+
+	// Bind pass global argument
+	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsIndices, commandList);
+
+	// Bind pass local arguments
+	for (const RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	{
+		RootArg::Bind(arg, commandList);
+	}
+
+	// Position0, Position1, TexCoord 
+	D3D12_VERTEX_BUFFER_VIEW vertexBufferViews[3];
+
+	constexpr int vertexSize = sizeof(XMFLOAT4);
+
+	vertexBufferViews[0].StrideInBytes = vertexSize;
+	vertexBufferViews[1].StrideInBytes = vertexSize;
+
+	constexpr int texCoordStrideSize = sizeof(XMFLOAT2);
+
+	vertexBufferViews[2].StrideInBytes = texCoordStrideSize;
+	
+	// Index buffer data
+	D3D12_INDEX_BUFFER_VIEW indexBufferView;
+	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+
+	auto& defaultMemory = MemoryManager::Inst().GetBuff<DefaultBuffer_t>();
+	const D3D12_GPU_VIRTUAL_ADDRESS defaultMemBuffVirtAddress = defaultMemory.GetGpuBuffer()->GetGPUVirtualAddress();
+
+	const std::unordered_map<model_t*, DynamicObjectModel>& dynamicModels = Renderer::Inst().GetDynamicModels();
+
+	for (int i = 0; i < drawEntities.size(); ++i)
+	{
+		PassEntity& drawEntitiy = drawEntities[i];
+		
+		// Bind global 
+		frameGraph.BindObjGlobalRes<Parsing::PassInputType::Dynamic>(passParameters.perObjGlobalRootArgsIndicesTemplate, 
+				i, commandList);
+
+		// Bind local 
+		for (const RootArg::Arg_t& rootArg : drawEntitiy.rootArgs)
+		{
+			RootArg::Bind(rootArg, context.commandList);
+		}
+
+		// Set up vertex data
+		const DynamicObjectModel& model = dynamicModels.at(drawEntitiy.originalObj->model);
+		const int frameSize = vertexSize * model.headerData.animFrameVertsNum;
+		const int vertexBufferStart = defaultMemory.GetOffset(model.vertices);
+
+		// Position0
+		vertexBufferViews[0].BufferLocation = defaultMemBuffVirtAddress +
+			vertexBufferStart + frameSize * drawEntitiy.originalObj->oldframe;
+		vertexBufferViews[0].SizeInBytes = frameSize;
+
+		// Position1
+		vertexBufferViews[1].BufferLocation = defaultMemBuffVirtAddress +
+			vertexBufferStart + frameSize * drawEntitiy.originalObj->frame;
+		vertexBufferViews[1].SizeInBytes = frameSize;
+
+		// TexCoord
+		vertexBufferViews[2].BufferLocation = defaultMemBuffVirtAddress +
+			defaultMemory.GetOffset(model.textureCoords);
+		vertexBufferViews[2].SizeInBytes = texCoordStrideSize * model.headerData.animFrameVertsNum;
+
+		commandList.commandList->IASetVertexBuffers(0, _countof(vertexBufferViews), vertexBufferViews);
+   
+		// Set index buffer
+		indexBufferView.BufferLocation = defaultMemBuffVirtAddress +
+			defaultMemory.GetOffset(model.indices);
+		indexBufferView.SizeInBytes = model.headerData.indicesNum * sizeof(uint32_t);
+
+		commandList.commandList->IASetIndexBuffer(&indexBufferView);
+
+		commandList.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
+	}
+}
+
+void Pass_Dynamic::SetRenderState(GPUJobContext& context)
+{
+	_SetRenderState(passParameters, context);
 }

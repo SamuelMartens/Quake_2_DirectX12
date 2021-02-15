@@ -31,7 +31,6 @@
 #endif
 
 
-
 namespace
 {
 	inline void PushBackUvInd(const float* uvInd, std::vector<int>& indices, std::vector<XMFLOAT2>& texCoords)
@@ -1043,6 +1042,27 @@ std::vector<int> Renderer::BuildObjectsInFrustumList(const Camera& camera, const
 	return res;
 }
 
+std::vector<int> Renderer::BuildVisibleDynamicObjectsList(const Camera& camera, const std::vector<entity_t>& entities) const
+{
+	std::vector<int> visibleObjects;
+
+	for (int i = 0; i < entities.size(); ++i)
+	{
+		const entity_t& entity = entities[i];
+
+		constexpr int SKIP_FLAGS = RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE | RF_SHELL_DOUBLE | RF_SHELL_HALF_DAM;
+
+		if (entity.model != nullptr &&
+			(entity.flags & SKIP_FLAGS) == 0 &&
+			IsVisible(entity, camera) == true)
+		{
+			visibleObjects.push_back(i);
+		}
+	}
+
+	return visibleObjects;
+}
+
 void Renderer::EndFrameJob(GPUJobContext& context)
 {
 	Logs::Logf(Logs::Category::Job, "EndFrame job started frame %d", context.frame.frameNumber);
@@ -1547,7 +1567,7 @@ void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, 
 	// Binding root signature params
 
 	// 1)
-	//CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(tex->texViewIndex);;
+	//CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(tex->texViewIndex);
 
 	//commandList.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
 
@@ -1636,6 +1656,11 @@ const std::array<unsigned int, 256>& Renderer::GetRawPalette() const
 const std::vector<StaticObject>& Renderer::GetStaticObjects() const
 {
 	return staticObjects;
+}
+
+const std::unordered_map<model_t*, DynamicObjectModel>& Renderer::GetDynamicModels() const
+{
+	return dynamicObjectsModels;
 }
 
 void Renderer::Load8To24Table()
@@ -2202,6 +2227,9 @@ void Renderer::PreRenderSetUpFrame(Frame& frame)
 	
 	// Static objects
 	frame.visibleStaticObjectsIndices = BuildObjectsInFrustumList(frame.camera, staticObjectsAABB);
+
+	// Dynamic objects
+	frame.visibleEntitiesIndices = BuildVisibleDynamicObjectsList(frame.camera, frame.entitiesToDraw);
 }
 
 void Renderer::FlushAllFrames() const

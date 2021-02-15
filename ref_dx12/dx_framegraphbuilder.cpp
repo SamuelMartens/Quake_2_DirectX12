@@ -585,7 +585,7 @@ namespace
 			};
 		};
 
-		parser["VertAttrFieldSlot"] = [](const peg::SemanticValues& sv) 
+		parser["VertAttrSlots"] = [](const peg::SemanticValues& sv) 
 		{
 			std::vector<std::tuple<unsigned int, int>> result;
 
@@ -689,82 +689,98 @@ namespace
 
 	};
 
-	
+	template<Parsing::PassInputType INPUT_TYPE>
+	void _AddRootArg(PassParameters& pass, std::vector<RootArg::Arg_t>& passesGlobalRes, FrameGraph::PerObjectGlobalTemplate_t& objGlobalResTemplate,
+		Parsing::ResourceBindFrequency updateFrequency, Parsing::ResourceScope scope, RootArg::Arg_t&& arg)
+	{
+		switch (scope)
+		{
+		case Parsing::ResourceScope::Local:
+		{
+			switch (updateFrequency)
+			{
+			case Parsing::ResourceBindFrequency::PerObject:
+				pass.perObjectLocalRootArgsTemplate.push_back(std::move(arg));
+				break;
+			case Parsing::ResourceBindFrequency::PerPass:
+				pass.passLocalRootArgs.push_back(std::move(arg));
+				break;
+			default:
+				assert(false && "Undefined bind frequency handling in add root arg pass. Local");
+				break;
+			}
+		}
+		break;
+		case Parsing::ResourceScope::Global:
+		{
+			switch (updateFrequency)
+			{
+			case Parsing::ResourceBindFrequency::PerObject:
+			{
+				// This is global so try to find if resource for this was already created
+				auto& perObjGlobalResTemplate =
+					std::get<static_cast<int>(INPUT_TYPE)>(objGlobalResTemplate);
+
+				PassParameters::AddGlobalPerObjectRootArgIndex(
+					pass.perObjGlobalRootArgsIndicesTemplate,
+					perObjGlobalResTemplate, std::move(arg));
+
+			}
+			break;
+			case Parsing::ResourceBindFrequency::PerPass:
+			{
+				int resIndex = RootArg::FindArg(passesGlobalRes, arg);
+
+				if (resIndex == Const::INVALID_INDEX)
+				{
+					// Res is not found create new
+					passesGlobalRes.push_back(std::move(arg));
+
+					// Add proper index
+					pass.passGlobalRootArgsIndices.push_back(passesGlobalRes.size() - 1);
+				}
+				else
+				{
+					pass.passGlobalRootArgsIndices.push_back(resIndex);
+				}
+			}
+			break;
+			default:
+				assert(false && "Undefined bind frequency handling in add root arg pass. Global");
+				break;
+			}
+		}
+		break;
+		default:
+			assert(false && "Can't add root arg, no scope");
+			break;
+		}
+	}
 }
 
 void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
 	Parsing::ResourceBindFrequency updateFrequency, Parsing::ResourceScope scope, RootArg::Arg_t&& arg)
 {
-	switch (scope)
+	//#DEBUG explain why
+	switch (*pass.input)
 	{
-	case Parsing::ResourceScope::Local:
-	{
-		switch (updateFrequency)
-		{
-		case Parsing::ResourceBindFrequency::PerObject:
-			pass.perObjectLocalRootArgsTemplate.push_back(std::move(arg));
-			break;
-		case Parsing::ResourceBindFrequency::PerPass:
-			pass.passLocalRootArgs.push_back(std::move(arg));
-			break;
-		default:
-			assert(false && "Undefined bind frequency handling in add root arg pass. Local");
-			break;
-		}
-	}
-	break;
-	case Parsing::ResourceScope::Global:
-	{
-		switch (updateFrequency)
-		{
-		case Parsing::ResourceBindFrequency::PerObject:
-		{
-			// This is global so try to find if resource for this was already created
-			std::vector<RootArg::Arg_t>& perObjGlobalResTemplate =
-				frameGraph.objGlobalResTemplate[static_cast<int>(*pass.input)];
-
-			int resTemplateIndex = RootArg::FindArg(perObjGlobalResTemplate, arg);
-			if (resTemplateIndex == Const::INVALID_INDEX)
-			{
-				// Res is not found create new
-				perObjGlobalResTemplate.push_back(std::move(arg));
-
-				// Add proper index
-				pass.perObjGlobalRootArgsIndicesTemplate.push_back(perObjGlobalResTemplate.size() - 1);
-			}
-			else
-			{
-				pass.perObjGlobalRootArgsIndicesTemplate.push_back(resTemplateIndex);
-			}
-
-		}
+	case Parsing::PassInputType::UI:
+		_AddRootArg<Parsing::PassInputType::UI>(pass, frameGraph.passesGlobalRes, frameGraph.objGlobalResTemplate,
+			updateFrequency, scope, std::move(arg));
 		break;
-		case Parsing::ResourceBindFrequency::PerPass:
-		{
-			int resIndex = RootArg::FindArg(frameGraph.passesGlobalRes, arg);
-
-			if (resIndex == Const::INVALID_INDEX)
-			{
-				// Res is not found create new
-				frameGraph.passesGlobalRes.push_back(std::move(arg));
-
-				// Add proper index
-				pass.passGlobalRootArgsIndices.push_back(frameGraph.passesGlobalRes.size() - 1);
-			}
-			else
-			{
-				pass.passGlobalRootArgsIndices.push_back(resIndex);
-			}
-		}
+	case Parsing::PassInputType::Static:
+		_AddRootArg<Parsing::PassInputType::Static>(pass, frameGraph.passesGlobalRes, frameGraph.objGlobalResTemplate,
+			updateFrequency, scope, std::move(arg));
 		break;
-		default:
-			assert(false && "Undefined bind frequency handling in add root arg pass. Global");
-			break;
-		}
-	}
-	break;
+	case Parsing::PassInputType::Dynamic:
+		_AddRootArg<Parsing::PassInputType::Dynamic>(pass, frameGraph.passesGlobalRes, frameGraph.objGlobalResTemplate,
+			updateFrequency, scope, std::move(arg));
+		break;
+	case Parsing::PassInputType::Particles:
+		_AddRootArg<Parsing::PassInputType::Particles>(pass, frameGraph.passesGlobalRes, frameGraph.objGlobalResTemplate,
+			updateFrequency, scope, std::move(arg));
+		break;
 	default:
-		assert(false && "Can't add root arg, no scope");
 		break;
 	}
 }
@@ -1044,6 +1060,11 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 			frameGraph.passes.emplace_back(Pass_Static{});
 		}
 		break;
+		case Parsing::PassInputType::Dynamic:
+		{
+			frameGraph.passes.emplace_back(Pass_Dynamic{});
+		}
+		break;
 		default:
 			assert(false && "Pass with undefined input is detected");
 			break;
@@ -1140,7 +1161,7 @@ std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFile
 		//#DEBUG only UI and static
 		std::string passName = passFile.first.substr(0, passFile.first.rfind('.'));
 
-		if (passName != "UI" && passName != "Static")
+		if (passName != "UI" && passName != "Static" && passName != "Dynamic")
 		{
 			continue;
 		}

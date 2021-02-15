@@ -110,6 +110,7 @@ class Renderer
 	void GetDrawAreaSize(int* Width, int* Height);
 	const std::array<unsigned int, 256>& GetRawPalette() const;
 	const std::vector<StaticObject>& GetStaticObjects() const;
+	const std::unordered_map<model_t*, DynamicObjectModel>& GetDynamicModels() const;
 
 	void Load8To24Table();
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
@@ -145,6 +146,7 @@ public:
 	void DrawParticleJob(GPUJobContext& context);
 
 	std::vector<int> BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const;
+	std::vector<int> BuildVisibleDynamicObjectsList(const Camera& camera, const std::vector<entity_t>& entities) const;
 
 private:
 
@@ -262,6 +264,7 @@ private:
 
 	std::unordered_map<model_t*, DynamicObjectModel> dynamicObjectsModels;
 	// Expected to set a size for it during initialization. Don't change size afterward
+	//#DEBUG delete this
 	LockVector_t<DynamicObjectConstBuffer> dynamicObjectsConstBuffersPool;
 
 	//#TODO remove this

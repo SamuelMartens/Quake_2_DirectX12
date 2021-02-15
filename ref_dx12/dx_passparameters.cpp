@@ -42,6 +42,57 @@ namespace RootArg
 		}, descTable.content[0]);
 	}
 
+	void AttachConstBufferToArgs(std::vector<Arg_t>& rootArgs, int offset, BufferHandler gpuHandler)
+	{
+		for (RootArg::Arg_t& rootArg : rootArgs)
+		{
+			std::visit([gpuHandler, &offset]
+			(auto&& rootArg)
+			{
+				using T = std::decay_t<decltype(rootArg)>;
+
+				if constexpr (std::is_same_v<T, RootArg::RootConstant>)
+				{
+					assert(false && "Root constant is not implemented");
+				}
+
+				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
+				{
+					rootArg.gpuMem.handler = gpuHandler;
+					rootArg.gpuMem.offset = offset;
+
+					offset += RootArg::GetConstBufftSize(rootArg);
+				}
+
+				if constexpr (std::is_same_v<T, RootArg::DescTable>)
+				{
+					for (int i = 0; i < rootArg.content.size(); ++i)
+					{
+						RootArg::DescTableEntity_t& descTableEntitiy = rootArg.content[i];
+
+						std::visit([gpuHandler, &offset]
+						(auto&& descTableEntitiy)
+						{
+							using T = std::decay_t<decltype(descTableEntitiy)>;
+
+							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
+							{
+								assert(false && "Desc table view is probably not implemented! Make sure it is");
+								//#TODO make view allocation
+								descTableEntitiy.gpuMem.handler = gpuHandler;
+								descTableEntitiy.gpuMem.offset = offset;
+
+								offset += RootArg::GetConstBufftSize(descTableEntitiy);
+							}
+
+						}, descTableEntitiy);
+					}
+				}
+
+			}, rootArg);
+		}
+	}
+
 	int GetDescTableSize(const DescTable& descTable)
 	{
 		int size = 0;
@@ -389,7 +440,7 @@ namespace Parsing
 	{
 		return std::visit([](auto&& resource)
 		{
-			return *resource.bindFrequency;;
+			return *resource.bindFrequency;
 		},
 			res);
 	}
@@ -398,7 +449,7 @@ namespace Parsing
 	{
 		return std::visit([](auto&& resource)
 		{
-			return *resource.scope;;
+			return *resource.scope;
 		},
 			res);
 	}
@@ -439,4 +490,21 @@ std::string PassParametersSource::ShaderTypeToStr(ShaderType type)
 	}
 
 	return "Undefined";
+}
+
+void PassParameters::AddGlobalPerObjectRootArgIndex(std::vector<int>& perObjGlobalRootArgsIndicesTemplate, std::vector<RootArg::Arg_t>& perObjGlobalResTemplate, RootArg::Arg_t&& arg)
+{
+	int resTemplateIndex = RootArg::FindArg(perObjGlobalResTemplate, arg);
+	if (resTemplateIndex == Const::INVALID_INDEX)
+	{
+		// Res is not found create new
+		perObjGlobalResTemplate.push_back(std::move(arg));
+
+		// Add proper index
+		perObjGlobalRootArgsIndicesTemplate.push_back(perObjGlobalResTemplate.size() - 1);
+	}
+	else
+	{
+		perObjGlobalRootArgsIndicesTemplate.push_back(resTemplateIndex);
+	}
 }
