@@ -384,9 +384,6 @@ void Renderer::InitUtils()
 	// Init raw palette with 0
 	std::fill(rawPalette.begin(), rawPalette.end(), 0);
 
-	// Init dynamic objects constant buffers pool
-	dynamicObjectsConstBuffersPool.obj.resize(Settings::DYNAM_OBJECT_CONST_BUFFER_POOL_SIZE);
-
 	JobSystem::Inst().Init();
 
 	InitScissorRect();
@@ -737,6 +734,7 @@ void Renderer::CloseFrame(Frame& frame)
 
 void Renderer::ReleaseFrameResources(Frame& frame)
 {
+	//#TODO after frame graph rework delete redundant parts As well as shaders
 	Logs::Logf(Logs::Category::FrameSubmission, "Frame with frameNumber %d releases resources", frame.frameNumber);
 
 	for (int acquiredCommandListIndex : frame.acquiredCommandListsIndices)
@@ -763,12 +761,7 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	frame.streamingObjectsHandlers.obj.clear();
 	frame.streamingObjectsHandlers.mutex.unlock();
 
-
-	// We are done with dynamic objects rendering. It's safe
-	// to delete them
-	frame.dynamicObjects.clear();
-
-	frame.entitiesToDraw.clear();
+	frame.entities.clear();
 	frame.particlesToDraw.clear();
 
 	frame.texCreationRequests.clear();
@@ -943,35 +936,6 @@ void Renderer::PresentAndSwapBuffers(Frame& frame)
 
 }
 
-DynamicObjectConstBuffer& Renderer::FindDynamicObjConstBuffer()
-{
-	dynamicObjectsConstBuffersPool.mutex.lock();
-	auto resIt = std::find_if(dynamicObjectsConstBuffersPool.obj.begin(), dynamicObjectsConstBuffersPool.obj.end(), 
-		[](const DynamicObjectConstBuffer& buff) 
-	{
-		return buff.isInUse == false;
-	});
-
-	assert(resIt != dynamicObjectsConstBuffersPool.obj.end() && "Can't find free dynamic object const buffer");
-	resIt->isInUse = true;
-	
-	dynamicObjectsConstBuffersPool.mutex.unlock();
-
-
-	if (resIt->constantBufferHandler == Const::INVALID_BUFFER_HANDLER)
-	{
-		// This buffer doesn't have any memory allocated. Do it now
-		// Allocate constant buffer
-		static const unsigned int DynamicObjectConstSize =
-			Utils::Align(sizeof(ShDef::ConstBuff::AnimInterpTranstMap), Settings::CONST_BUFFER_ALIGNMENT);
-
-		resIt->constantBufferHandler = 
-			MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(DynamicObjectConstSize);
-	}
-
-	return *resIt;
-}
-
 void Renderer::RegisterObjectsAtFrameGraphs()
 {
 	// Explicitly register static geometry to passes
@@ -1139,50 +1103,6 @@ void Renderer::BeginFrameJob(GPUJobContext& context)
 		nullptr);
 
 	Logs::Logf(Logs::Category::Job, "BeginFrame job ended frame %d", frame.frameNumber);
-}
-
-void Renderer::DrawDynamicGeometryJob(GPUJobContext& context)
-{
-	JOB_GUARD(context);
-
-	Logs::Logf(Logs::Category::Job, "Dynamic job started frame %d", context.frame.frameNumber);
-
-	CommandList& commandList = context.commandList;
-	Frame& frame = context.frame;
-	const std::vector<entity_t>& entitiesToDraw = context.frame.entitiesToDraw;
-
-	// Dynamic geometry
-	Diagnostics::BeginEvent(commandList.commandList.Get(), "Dynamic materials");
-
-	for (int i = 0; i < entitiesToDraw.size(); ++i)
-	{
-		const entity_t& entity = (entitiesToDraw[i]);
-
-		if (entity.model == nullptr ||
-			entity.flags  & (RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE | RF_SHELL_DOUBLE | RF_SHELL_HALF_DAM) ||
-			IsVisible(entity, context.frame.camera) == false)
-		{
-			continue;
-		}
-		
-		assert(dynamicObjectsModels.find(entity.model) != dynamicObjectsModels.end()
-			&& "Cannot render dynamic graphical object. Such model is not found");
-
-
-		DynamicObjectModel& model = dynamicObjectsModels[entity.model];
-		DynamicObjectConstBuffer& constBuffer = FindDynamicObjConstBuffer();
-
-		// Const buffer should be a separate component, because if we don't do this different entities
-		// will use the same model, but with different transformation
-		DynamicObject& object = frame.dynamicObjects.emplace_back(DynamicObject(&model, &constBuffer));
-
-		UpdateDynamicObjectConstantBuffer(object, entity, context);
-		DrawIndiced(object, entity, context);
-	}
-
-	Diagnostics::EndEvent(commandList.commandList.Get());
-
-	Logs::Logf(Logs::Category::Job, "Dynamic job ended frame %d", context.frame.frameNumber);
 }
 
 void Renderer::DrawParticleJob(GPUJobContext& context)
@@ -1488,103 +1408,6 @@ GPUJobContext Renderer::CreateContext(Frame& frame)
 	return GPUJobContext(frame, commandListBuffer.commandLists[commandListIndex]);
 }
 
-void Renderer::DrawIndiced(const DynamicObject& object, const entity_t& entity, GPUJobContext& context)
-{
-	CommandList& commandList = context.commandList;
-
-	const DynamicObjectModel& model = *object.model;
-	const DynamicObjectConstBuffer& constBuffer = *object.constBuffer;
-
-	auto& defaultMemory = 
-		MemoryManager::Inst().GetBuff<DefaultBuffer_t>();
-
-	// Set vertex buffer views
-	const int vertexBufferStart = defaultMemory.GetOffset(model.vertices);
-	const D3D12_GPU_VIRTUAL_ADDRESS defaultMemBuffVirtAddress = defaultMemory.GetGpuBuffer()->GetGPUVirtualAddress();
-
-	constexpr int vertexSize = sizeof(XMFLOAT4);
-	const int frameSize = vertexSize * model.headerData.animFrameVertsNum;
-
-	D3D12_VERTEX_BUFFER_VIEW vertexBufferViews[3];
-
-
-	// Position0
-	vertexBufferViews[0].BufferLocation = defaultMemBuffVirtAddress +
-		vertexBufferStart + frameSize * entity.oldframe;
-	vertexBufferViews[0].StrideInBytes = vertexSize;
-	vertexBufferViews[0].SizeInBytes = frameSize;
-
-	// Position1
-	vertexBufferViews[1].BufferLocation = defaultMemBuffVirtAddress +
-		vertexBufferStart + frameSize * entity.frame;
-	vertexBufferViews[1].StrideInBytes = vertexSize;
-	vertexBufferViews[1].SizeInBytes = frameSize;
-
-	// TexCoord
-	constexpr int texCoordStrideSize = sizeof(XMFLOAT2);
-
-	vertexBufferViews[2].BufferLocation = defaultMemBuffVirtAddress +
-		defaultMemory.GetOffset(model.textureCoords);
-	vertexBufferViews[2].StrideInBytes = texCoordStrideSize;
-	vertexBufferViews[2].SizeInBytes = texCoordStrideSize * model.headerData.animFrameVertsNum;
-
-	commandList.commandList->IASetVertexBuffers(0, _countof(vertexBufferViews), vertexBufferViews);
-
-
-	// Set index buffer
-	D3D12_INDEX_BUFFER_VIEW indexBufferView;
-	indexBufferView.BufferLocation = defaultMemBuffVirtAddress +
-		defaultMemory.GetOffset(model.indices);
-	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-	indexBufferView.SizeInBytes = model.headerData.indicesNum * sizeof(uint32_t);
-	
-	commandList.commandList->IASetIndexBuffer(&indexBufferView);
-
-	// Pick texture
-	assert(entity.skin == nullptr && "Custom skin. I am not prepared for this");
-
-	Texture* tex = nullptr;
-
-	if (entity.skinnum >= MAX_MD2SKINS)
-	{
-		tex = ResourceManager::Inst().FindTexture(model.textures[0]);
-	}
-	else
-	{
-		tex = ResourceManager::Inst().FindTexture(model.textures[entity.skinnum]);
-
-		if (tex == nullptr)
-		{
-			tex = ResourceManager::Inst().FindTexture(model.textures[0]);
-		}
-	}
-
-	assert(tex != nullptr && "Not texture found for dynamic object rendering. Implement fall back");
-
-	auto& uploadMemory =
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
-
-	// Binding root signature params
-
-	// 1)
-	//CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle = cbvSrvHeap->GetHandleGPU(tex->texViewIndex);
-
-	//commandList.commandList->SetGraphicsRootDescriptorTable(0, texHandle);
-
-	// 2)
-	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle = samplerHeap->GetHandleGPU(tex->samplerInd);
-	commandList.commandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
-
-	// 3)
-	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
-	cbAddress += uploadMemory.GetOffset(constBuffer.constantBufferHandler);
-
-	commandList.commandList->SetGraphicsRootConstantBufferView(2, cbAddress);
-
-	// Finally, draw
-	commandList.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
-}
-
 void Renderer::AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset)
 {
 
@@ -1833,56 +1656,6 @@ void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, 
 	updateConstBufferArgs.byteSize = sizeof(transMat);
 	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
 	// Update our constant buffer
-	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
-}
-
-void Renderer::UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, GPUJobContext& context)
-{
-	const Camera& camera = context.frame.camera;
-
-	// Calculate transformation matrix
-	XMMATRIX sseMvpMat = DynamicObjectModel::GenerateModelMat(entity) * camera.GetViewProjMatrix();
-
-	XMFLOAT4X4 mvpMat;
-	XMStoreFloat4x4(&mvpMat, sseMvpMat);
-
-	// Calculate animation data
-	auto[animMove, frontLerp, backLerp] = obj.model->GenerateAnimInterpolationData(entity);
-
-	constexpr int updateDataSize = sizeof(ShDef::ConstBuff::AnimInterpTranstMap);
-
-	std::array<std::byte, updateDataSize> updateData;
-
-	std::byte* updateDataPtr = updateData.data();
-	// It is possible to do it nicely via template parameter pack and unfold
-	int cpySize = sizeof(XMFLOAT4X4);
-	memcpy(updateDataPtr, &mvpMat, cpySize);
-	updateDataPtr += cpySize;
-
-	cpySize = sizeof(XMFLOAT4);
-	memcpy(updateDataPtr, &animMove, cpySize);
-	updateDataPtr += cpySize;
-
-	cpySize = sizeof(XMFLOAT4);
-	memcpy(updateDataPtr, &frontLerp, cpySize);
-	updateDataPtr += cpySize;
-
-	cpySize = sizeof(XMFLOAT4);
-	memcpy(updateDataPtr, &backLerp, cpySize);
-	updateDataPtr += cpySize;
-
-	assert(obj.constBuffer->constantBufferHandler != Const::INVALID_BUFFER_HANDLER && "Can't update dynamic const buffer, invalid offset");
-
-	auto& uploadMemory =
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
-
-	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	updateConstBufferArgs.buffer = uploadMemory.GetGpuBuffer();
-	updateConstBufferArgs.offset = uploadMemory.GetOffset(obj.constBuffer->constantBufferHandler);
-	updateConstBufferArgs.data = updateData.data();
-	updateConstBufferArgs.byteSize = updateDataSize;
-	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
-
 	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 }
 
@@ -2165,15 +1938,6 @@ void Renderer::EndFrame()
 		BeginFrameJob(beginFrameContext);
 	}));
 
-
-	// --- Draw dynamic objects job ---
-
-	jobQueue.Enqueue(Job(
-		[drawDynamicObjectsContext, this]() mutable
-	{
-		DrawDynamicGeometryJob(drawDynamicObjectsContext);
-	}));
-
 	// --- Draw particles job ---
 
 	jobQueue.Enqueue(Job(
@@ -2229,7 +1993,7 @@ void Renderer::PreRenderSetUpFrame(Frame& frame)
 	frame.visibleStaticObjectsIndices = BuildObjectsInFrustumList(frame.camera, staticObjectsAABB);
 
 	// Dynamic objects
-	frame.visibleEntitiesIndices = BuildVisibleDynamicObjectsList(frame.camera, frame.entitiesToDraw);
+	frame.visibleEntitiesIndices = BuildVisibleDynamicObjectsList(frame.camera, frame.entities);
 }
 
 void Renderer::FlushAllFrames() const
@@ -2416,8 +2180,8 @@ void Renderer::UpdateFrame(const refdef_t& updateData)
 	frame.camera.Update(updateData);
 	frame.camera.GenerateViewProjMat();
 	
-	frame.entitiesToDraw.resize(updateData.num_entities);
-	memcpy(frame.entitiesToDraw.data(), updateData.entities, sizeof(entity_t) * updateData.num_entities);
+	frame.entities.resize(updateData.num_entities);
+	memcpy(frame.entities.data(), updateData.entities, sizeof(entity_t) * updateData.num_entities);
 
 	frame.particlesToDraw.resize(updateData.num_particles);
 	memcpy(frame.particlesToDraw.data(), updateData.particles, sizeof(particle_t) * updateData.num_particles);

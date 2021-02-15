@@ -73,7 +73,6 @@ class Renderer
 	void DeleteUploadMemoryBuffer(BufferHandler handler);
 	
 	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, GPUJobContext& context);
-	void UpdateDynamicObjectConstantBuffer(DynamicObject& obj, const entity_t& entity, GPUJobContext& context);
 	BufferHandler UpdateParticleConstantBuffer(GPUJobContext& context);
 
 	/*--- API functions begin --- */
@@ -142,7 +141,6 @@ public:
 	/* Job  */
 	void EndFrameJob(GPUJobContext& context);
 	void BeginFrameJob(GPUJobContext& context);
-	void DrawDynamicGeometryJob(GPUJobContext& context);
 	void DrawParticleJob(GPUJobContext& context);
 
 	std::vector<int> BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const;
@@ -198,14 +196,12 @@ private:
 	
 
 	/* Rendering */
-	void DrawIndiced(const DynamicObject& object, const entity_t& entity, GPUJobContext& context);
 	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
 	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, GPUJobContext& context);
 
 	/* Utils */
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
 	bool IsVisible(const entity_t& entity, const Camera& camera) const;
-	DynamicObjectConstBuffer& FindDynamicObjConstBuffer();
 	void RegisterObjectsAtFrameGraphs();
 
 	/* Materials */
@@ -263,9 +259,6 @@ private:
 	std::vector<StaticObject> staticObjects;
 
 	std::unordered_map<model_t*, DynamicObjectModel> dynamicObjectsModels;
-	// Expected to set a size for it during initialization. Don't change size afterward
-	//#DEBUG delete this
-	LockVector_t<DynamicObjectConstBuffer> dynamicObjectsConstBuffersPool;
 
 	//#TODO remove this
 	std::vector<Material> materials;

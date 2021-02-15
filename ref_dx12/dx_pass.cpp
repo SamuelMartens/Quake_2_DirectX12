@@ -912,7 +912,7 @@ void Pass_Dynamic::RegisterEntities(GPUJobContext& context)
 
 	for (int i = 0; i < visibleEntitiesIndices.size(); ++i)
 	{
-		const entity_t& entitiy = context.frame.entitiesToDraw[visibleEntitiesIndices[i]];
+		const entity_t& entitiy = context.frame.entities[visibleEntitiesIndices[i]];
 
 		PassEntity& drawEntity = drawEntities.emplace_back(PassEntity{perEntityArgTemplate, 
 			&entitiy});

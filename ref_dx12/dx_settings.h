@@ -12,7 +12,6 @@ namespace Settings
 	constexpr int		 MSAA_SAMPLE_COUNT = 4;
 	constexpr int		 TRANSPARENT_TABLE_VAL = 255;
 	constexpr int		 CONST_BUFFER_ALIGNMENT = 256;
-	constexpr int		 DYNAM_OBJECT_CONST_BUFFER_POOL_SIZE = 512;
 
 	constexpr int		 CBV_SRV_DESCRIPTOR_HEAP_SIZE = 64 * 1024;
 	constexpr int		 RTV_DTV_DESCRIPTOR_HEAP_SIZE = FRAMES_NUM;

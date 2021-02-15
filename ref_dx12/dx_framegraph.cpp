@@ -565,7 +565,7 @@ void FrameGraph::RegisterGlobalObjectsResDynamicEntities(GPUJobContext& context)
 	{
 		std::vector<RootArg::Arg_t>& objRes = entityRes.emplace_back(objResTemplate);
 
-		_RegisterGlobalObjectRes(context.frame.entitiesToDraw[visibleIndex], objRes, regContext);
+		_RegisterGlobalObjectRes(context.frame.entities[visibleIndex], objRes, regContext);
 	}
 
 	// Allocate and attach memory
@@ -699,7 +699,7 @@ void FrameGraph::UpdateGlobalObjectsResDynamic(GPUJobContext& context)
 
 	for (int i = 0; i < visibleEntitiesIndices.size(); ++i)
 	{
-		const entity_t& entity = context.frame.entitiesToDraw[visibleEntitiesIndices[i]];
+		const entity_t& entity = context.frame.entities[visibleEntitiesIndices[i]];
 
 		for (RootArg::Arg_t& arg : entityRes[i])
 		{

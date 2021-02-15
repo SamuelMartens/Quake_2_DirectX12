@@ -761,7 +761,8 @@ namespace
 void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
 	Parsing::ResourceBindFrequency updateFrequency, Parsing::ResourceScope scope, RootArg::Arg_t&& arg)
 {
-	//#DEBUG explain why
+	// This switch case is required because compiler needs to know which version of _AddRootArg
+	// generate during compile time.
 	switch (*pass.input)
 	{
 	case Parsing::PassInputType::UI:
@@ -781,6 +782,7 @@ void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
 			updateFrequency, scope, std::move(arg));
 		break;
 	default:
+		assert(false && "Unknown pass input for adding root argument");
 		break;
 	}
 }
