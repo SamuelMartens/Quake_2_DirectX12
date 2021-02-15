@@ -761,7 +761,7 @@ namespace
 void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
 	Parsing::ResourceBindFrequency updateFrequency, Parsing::ResourceScope scope, RootArg::Arg_t&& arg)
 {
-	// This switch case is required because compiler needs to know which version of _AddRootArg
+	// This switch case is required because compiler needs to know which version of _AddRootArg template to
 	// generate during compile time.
 	switch (*pass.input)
 	{

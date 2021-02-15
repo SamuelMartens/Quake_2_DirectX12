@@ -207,18 +207,7 @@ namespace RenderCallbacks
 		}
 		else if constexpr (std::is_same_v<objT, StaticObject>)
 		{
-			switch (paramName)
-			{
-			case HASH("gWorldViewProj"):
-			{
-				//#DEBUG pass onlu view proj map. So you can have just one pass res. instead of res for every object
-				// huge gain!
-				XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint), ctx.jobContext.frame.camera.GetViewProjMatrix());
-			}
-			break;
-			default:
-				break;
-			}
+			
 		}
 		else if constexpr (std::is_same_v<objT, entity_t>)
 		{
@@ -334,6 +323,12 @@ namespace RenderCallbacks
 				Renderer::Inst().cbvSrvHeap->AllocateDescriptor(reinterpret_cast<int&>(bindPoint), tex->buffer.Get(), nullptr);
 			}
 		}
+		break;
+		case HASH("gViewProj"):
+		{
+			XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint), ctx.jobContext.frame.camera.GetViewProjMatrix());
+		}
+		break;
 		default:
 			break;
 		}

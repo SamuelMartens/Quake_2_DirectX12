@@ -57,7 +57,6 @@ public:
 	std::vector<int> acquiredCommandListsIndices;
 	
 	// Utils
-	//#DEBUG entities to draw? Meh, rename this 
 	std::vector<entity_t> entities;
 	std::vector<particle_t> particlesToDraw;
 
