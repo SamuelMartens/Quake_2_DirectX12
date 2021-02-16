@@ -329,6 +329,32 @@ namespace RenderCallbacks
 			XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint), ctx.jobContext.frame.camera.GetViewProjMatrix());
 		}
 		break;
+		case HASH("gCameraYaw"):
+		{
+			auto[yaw, pitch, roll] = ctx.jobContext.frame.camera.GetBasis();
+
+			reinterpret_cast<XMFLOAT4&>(bindPoint) = yaw;
+		}
+		break;
+		case HASH("gCameraPitch"):
+		{
+			auto[yaw, pitch, roll] = ctx.jobContext.frame.camera.GetBasis();
+
+			reinterpret_cast<XMFLOAT4&>(bindPoint) = pitch;
+		}
+		break;
+		case HASH("gCameraRoll"):
+		{
+			auto[yaw, pitch, roll] = ctx.jobContext.frame.camera.GetBasis();
+
+			reinterpret_cast<XMFLOAT4&>(bindPoint) = roll;
+		}
+		break;
+		case HASH("gCameraOrigin"):
+		{
+			reinterpret_cast<XMFLOAT4&>(bindPoint) = ctx.jobContext.frame.camera.position;
+		}
+		break;
 		default:
 			break;
 		}

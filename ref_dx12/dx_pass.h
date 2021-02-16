@@ -127,13 +127,7 @@ class Pass_Dynamic
 {
 public:
 
-	struct PassModel 
-	{
-		std::vector<RootArg::Arg_t> rootArgs;
-		const DynamicObjectModel* originalObj = nullptr;
-	};
-	
-	struct PassEntity
+	struct PassObj
 	{
 		std::vector<RootArg::Arg_t> rootArgs;
 		const entity_t* originalObj = nullptr;
@@ -168,8 +162,34 @@ private:
 	int perObjectConstBuffMemorySize = Const::INVALID_SIZE;
 
 	// Recreated every frame
-	std::vector<PassEntity> drawEntities;
+	std::vector<PassObj> drawObjects;
 	BufferHandler objectsConstBufferMemory = Const::INVALID_BUFFER_HANDLER;
 };
 
-using Pass_t = std::variant<Pass_UI, Pass_Static, Pass_Dynamic>;
+class Pass_Particles
+{
+public:
+
+	void Execute(GPUJobContext& context);
+	void Init(PassParameters&& parameters);
+
+	void RegisterPassResources(GPUJobContext& context);
+
+	void ReleasePerFrameResources();
+	void ReleasePersistentResources();
+
+private:
+
+	void UpdatePassResources(GPUJobContext& context);
+
+	void Draw(GPUJobContext& context);
+
+	void SetRenderState(GPUJobContext& context);
+
+	PassParameters passParameters;
+
+	int passMemorySize = Const::INVALID_SIZE;
+	BufferHandler passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
+};
+
+using Pass_t = std::variant<Pass_UI, Pass_Static, Pass_Dynamic, Pass_Particles>;

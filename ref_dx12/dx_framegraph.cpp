@@ -594,6 +594,8 @@ void FrameGraph::UpdateGlobalResources(GPUJobContext& context)
 		isInitalized = true;
 	}
 	
+	RegisterParticles(context);
+
 	RegisterGlobalObjectsResUI(context);
 	UpdateGlobalObjectsResUI(context);
 
@@ -638,7 +640,16 @@ void FrameGraph::ReleasePerFrameResources()
 		perObjectGlobalMemoryDynamic = Const::INVALID_BUFFER_HANDLER;
 	}
 
+	if (particlesVertexMemory != Const::INVALID_BUFFER_HANDLER)
+	{
+		updateBuff.Delete(particlesVertexMemory);
+		particlesVertexMemory = Const::INVALID_BUFFER_HANDLER;
+	}
+}
 
+BufferHandler FrameGraph::GetParticlesVertexMemory() const
+{
+	return particlesVertexMemory;
 }
 
 void FrameGraph::RegisterGlobalObjectsResUI(GPUJobContext& context)
@@ -764,6 +775,49 @@ void FrameGraph::UpdateGlobalObjectsResDynamic(GPUJobContext& context)
 
 		ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 	}
+}
+
+void FrameGraph::RegisterParticles(GPUJobContext& context)
+{
+	const std::vector<particle_t>& particlesToDraw = context.frame.particlesToDraw;
+
+	if (particlesToDraw.empty() == true)
+	{
+		return;
+	}
+
+	const int vertexBufferSize = SINGLE_PARTICLE_SIZE * particlesToDraw.size();
+
+	const std::array<unsigned int, 256>& table8To24 = Renderer::Inst().GetTable8To24();
+
+	std::vector<ShDef::Vert::PosCol> particleVertexData;
+	particleVertexData.reserve(particlesToDraw.size());
+
+	std::transform(particlesToDraw.cbegin(), particlesToDraw.cend(), std::back_inserter(particleVertexData),
+		[&table8To24](const particle_t& particle) 
+	{
+		unsigned char color[4];
+		*reinterpret_cast<int *>(color) = table8To24[particle.color];
+
+		return  ShDef::Vert::PosCol{
+		XMFLOAT4(particle.origin[0], particle.origin[1], particle.origin[2], 1.0f),
+		XMFLOAT4(color[0] / 255.0f, color[1] / 255.0f, color[2] / 255.0f, particle.alpha)
+		};
+	});
+
+	auto& uploadMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+
+	assert(particlesVertexMemory == Const::INVALID_BUFFER_HANDLER && "Particle vertex memory is not cleaned up");
+	particlesVertexMemory = uploadMemory.Allocate(vertexBufferSize);
+
+	// Deal with vertex buffer
+	FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
+	updateVertexBufferArgs.buffer = uploadMemory.GetGpuBuffer();
+	updateVertexBufferArgs.offset = uploadMemory.GetOffset(particlesVertexMemory);
+	updateVertexBufferArgs.data = particleVertexData.data();
+	updateVertexBufferArgs.byteSize = vertexBufferSize;
+	updateVertexBufferArgs.alignment = 0;
+	ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
 }
 
 void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)

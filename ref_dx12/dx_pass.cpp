@@ -879,7 +879,7 @@ void Pass_Dynamic::ReleasePerFrameResources()
 		objectsConstBufferMemory = Const::INVALID_BUFFER_HANDLER;
 	}
 
-	drawEntities.clear();
+	drawObjects.clear();
 }
 
 void Pass_Dynamic::ReleasePersistentResources()
@@ -893,7 +893,7 @@ void Pass_Dynamic::ReleasePersistentResources()
 
 void Pass_Dynamic::RegisterEntities(GPUJobContext& context)
 {
-	assert(drawEntities.empty() == true && "Dynamic pass entities registration failed. Pass objects list should be empty");
+	assert(drawObjects.empty() == true && "Dynamic pass entities registration failed. Pass objects list should be empty");
 
 	const std::vector<int>& visibleEntitiesIndices = context.frame.visibleEntitiesIndices;
 
@@ -914,7 +914,7 @@ void Pass_Dynamic::RegisterEntities(GPUJobContext& context)
 	{
 		const entity_t& entitiy = context.frame.entities[visibleEntitiesIndices[i]];
 
-		PassEntity& drawEntity = drawEntities.emplace_back(PassEntity{perEntityArgTemplate, 
+		PassObj& drawEntity = drawObjects.emplace_back(PassObj{perEntityArgTemplate, 
 			&entitiy});
 
 		const int objectOffset = i * perObjectConstBuffMemorySize;
@@ -938,7 +938,7 @@ void Pass_Dynamic::UpdateDrawEntities(GPUJobContext& context)
 
 	for (int i = 0; i < visibleEntitiesIndices.size(); ++i)
 	{
-		PassEntity& entity = drawEntities[i];
+		PassObj& entity = drawObjects[i];
 
 		_UpdateObjectArgs(entity, cpuMem.data() + perObjectConstBuffMemorySize * i, passHashedName, updateContext);
 	}
@@ -994,9 +994,9 @@ void Pass_Dynamic::Draw(GPUJobContext& context)
 
 	const std::unordered_map<model_t*, DynamicObjectModel>& dynamicModels = Renderer::Inst().GetDynamicModels();
 
-	for (int i = 0; i < drawEntities.size(); ++i)
+	for (int i = 0; i < drawObjects.size(); ++i)
 	{
-		PassEntity& drawEntitiy = drawEntities[i];
+		PassObj& drawEntitiy = drawObjects[i];
 		
 		// Bind global 
 		frameGraph.BindObjGlobalRes<Parsing::PassInputType::Dynamic>(passParameters.perObjGlobalRootArgsIndicesTemplate, 
@@ -1042,6 +1042,95 @@ void Pass_Dynamic::Draw(GPUJobContext& context)
 }
 
 void Pass_Dynamic::SetRenderState(GPUJobContext& context)
+{
+	_SetRenderState(passParameters, context);
+}
+
+void Pass_Particles::Execute(GPUJobContext& context)
+{
+	if (context.frame.particlesToDraw.empty() == true)
+	{
+		return;
+	}
+
+	UpdatePassResources(context);
+
+	SetRenderState(context);
+	Draw(context);
+}
+
+void Pass_Particles::Init(PassParameters&& parameters)
+{
+	ASSERT_MAIN_THREAD;
+
+	passParameters = std::move(parameters);
+
+	assert(passMemorySize == Const::INVALID_SIZE && "Pass_Particles memory size should be unitialized");
+	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
+
+	if (passMemorySize > 0)
+	{
+		assert(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Particles not cleaned up memory");
+		passConstBuffMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(passMemorySize);
+	}
+
+	assert(passParameters.perObjectLocalRootArgsTemplate.empty() == true && "Particle pass is not suited to have local per object resources");
+	assert(passParameters.perObjGlobalRootArgsIndicesTemplate.empty() == true && "Particle pass is not suited to have global per object resources");
+}
+
+void Pass_Particles::RegisterPassResources(GPUJobContext& context)
+{
+	_RegisterPassResources(*this, passParameters, context);
+	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
+}
+
+void Pass_Particles::ReleasePerFrameResources()
+{
+
+}
+
+void Pass_Particles::ReleasePersistentResources()
+{
+	if (passConstBuffMemory != Const::INVALID_BUFFER_HANDLER)
+	{
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>().Delete(passConstBuffMemory);
+		passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
+	}
+}
+
+void Pass_Particles::UpdatePassResources(GPUJobContext& context)
+{
+	_UpdatePassResources(*this, passParameters, passConstBuffMemory, passMemorySize, context);
+}
+
+void Pass_Particles::Draw(GPUJobContext& context)
+{
+	CommandList& commandList = context.commandList;
+	const FrameGraph& frameGraph = *context.frame.frameGraph;
+
+	// Bind pass global argument
+	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsIndices, commandList);
+
+	// Bind pass local arguments
+	for (const RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	{
+		RootArg::Bind(arg, commandList);
+	}
+
+	auto& uploadMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+
+	D3D12_VERTEX_BUFFER_VIEW vertBufferView;
+	vertBufferView.BufferLocation = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
+		uploadMemory.GetOffset(context.frame.frameGraph->GetParticlesVertexMemory());
+	vertBufferView.StrideInBytes = FrameGraph::SINGLE_PARTICLE_SIZE;
+	vertBufferView.SizeInBytes = vertBufferView.StrideInBytes * context.frame.particlesToDraw.size();
+
+	commandList.commandList->IASetVertexBuffers(0, 1, &vertBufferView);
+
+	commandList.commandList->DrawInstanced(vertBufferView.SizeInBytes / vertBufferView.StrideInBytes, 1, 0, 0);
+}
+
+void Pass_Particles::SetRenderState(GPUJobContext& context)
 {
 	_SetRenderState(passParameters, context);
 }

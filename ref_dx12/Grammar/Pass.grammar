@@ -1,7 +1,7 @@
 Pass <- PassProps State RSig Resources ShaderList
 
 Resources   <- T( < (Resource / VertAttr)* > )
-State       <- T( '{' < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendAlphaSt / SrcDestAlphaSt )* > '}' )
+State       <- T( '{' < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendSt / DestBlendSt )* > '}' )
 ShaderList  <- T( < Shader* > )
 
 # --- Pass properties
@@ -23,8 +23,8 @@ ColorTargetSt   	<- T( 'ColorTarget' _ ':' < Ident > )
 DepthTargetSt   	<- T( 'DepthTarget' _ ':' < Ident > )
 ViewportSt      	<- T( 'Viewport' _ ':' < (Float / Int) (Comma (Float / Int)){3} > )
 BlendEnabledSt  	<- T( 'BlendEnabled' _ ':' < Bool > )
-SrcBlendAlphaSt		<- T( 'SrcBlendAlpha' _ ':' < BlendStValues > )
-SrcDestAlphaSt		<- T( 'DestBlendAlpha' _ ':' < BlendStValues > )
+SrcBlendSt			<- T( 'SrcBlend' _ ':' < BlendStValues > )
+DestBlendSt			<- T( 'DestBlend' _ ':' < BlendStValues > )
 TopologySt			<- T( 'Topology' _ ':' < TopologyStValues > )
 DepthWriteMaskSt	<- T( 'DepthWriteMask' _ ':' < Bool > )
 
@@ -69,9 +69,10 @@ ConstBuffContent	<- T( ConstBuffField* )
 ConstBuffField		<- T( ResourceFieldType Ident ';' )
 
 VertAttrContent     <- T( VertAttrField* ) 
-VertAttrField       <- T( ResourceFieldType Ident ':' ResourceFieldSemantic ';' )
+VertAttrField       <- T( ~VertAttrFieldAttr? ResourceFieldType Ident ':' ResourceFieldSemantic ';' )
 VertAttrSlots       <- T( '[' VertAttrFieldSlot? ( Comma VertAttrFieldSlot )* ']' )
 VertAttrFieldSlot   <- T( Ident ':' Int )
+VertAttrFieldAttr   <- _ 'nointerpolation' _ / _ 'centroid' _
 
 ResourceFieldType       <- _ 'float4x4' _ / _ 'float4' _ / _ 'float2' _ / _ 'int' _
 ResourceFieldSemantic   <- T( Word Int? )

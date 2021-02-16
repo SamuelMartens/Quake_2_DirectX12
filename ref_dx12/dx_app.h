@@ -108,6 +108,7 @@ class Renderer
 	int GetMSAAQuality() const;
 	void GetDrawAreaSize(int* Width, int* Height);
 	const std::array<unsigned int, 256>& GetRawPalette() const;
+	const std::array<unsigned int, 256>& GetTable8To24() const;
 	const std::vector<StaticObject>& GetStaticObjects() const;
 	const std::unordered_map<model_t*, DynamicObjectModel>& GetDynamicModels() const;
 
@@ -243,7 +244,7 @@ private:
 	AssertBufferAndView swapChainBuffersAndViews[Settings::SWAP_CHAIN_BUFFER_COUNT];
 
 	ComPtr<ID3D12CommandQueue>	commandQueue;
-	
+	//#TODO during building of frame graph I can ge exactly how much command lists I need
 	CommandListBuffer<Settings::COMMAND_LISTS_NUM> commandListBuffer;
 
 	tagRECT scissorRect;

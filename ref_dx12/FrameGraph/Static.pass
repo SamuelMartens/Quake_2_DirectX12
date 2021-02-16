@@ -43,7 +43,11 @@ struct VertexOut
 [Global, PerPass]
 cbuffer cbPerPass : register(b0)
 {
-	float4x4 gViewProj;
+    float4x4 gViewProj;
+    float4 gCameraYaw;
+    float4 gCameraPitch;
+    float4 gCameraRoll;
+    float4 gCameraOrigin;
 }
 
 

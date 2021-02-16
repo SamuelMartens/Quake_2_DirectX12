@@ -173,20 +173,20 @@ namespace
 			currentPass.psoDesc.BlendState.RenderTarget[0].BlendEnable = peg::any_cast<bool>(sv[0]);
 		};
 
-		parser["SrcBlendAlphaSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["SrcBlendSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.psoDesc.BlendState.RenderTarget[0].SrcBlendAlpha = peg::any_cast<D3D12_BLEND>(sv[0]);
+			currentPass.psoDesc.BlendState.RenderTarget[0].SrcBlend = peg::any_cast<D3D12_BLEND>(sv[0]);
 		};
 
-		parser["DestBlendAlphaSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["DestBlendSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.psoDesc.BlendState.RenderTarget[0].DestBlendAlpha = peg::any_cast<D3D12_BLEND>(sv[0]);
+			currentPass.psoDesc.BlendState.RenderTarget[0].DestBlend = peg::any_cast<D3D12_BLEND>(sv[0]);
 		};
 
 		parser["TopologySt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
@@ -205,7 +205,7 @@ namespace
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.psoDesc.DepthStencilState.DepthWriteMask = peg::any_cast<bool>(sv) ?
+			currentPass.psoDesc.DepthStencilState.DepthWriteMask = peg::any_cast<bool>(sv[0]) ?
 				D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
 		};
 
@@ -1067,6 +1067,11 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 			frameGraph.passes.emplace_back(Pass_Dynamic{});
 		}
 		break;
+		case Parsing::PassInputType::Particles:
+		{
+			frameGraph.passes.emplace_back(Pass_Particles{});
+		}
+		break;
 		default:
 			assert(false && "Pass with undefined input is detected");
 			break;
@@ -1160,15 +1165,6 @@ std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFile
 
 	for (const auto& passFile : passFiles)
 	{
-		//#DEBUG only UI and static
-		std::string passName = passFile.first.substr(0, passFile.first.rfind('.'));
-
-		if (passName != "UI" && passName != "Static" && passName != "Dynamic")
-		{
-			continue;
-		}
-		//END
-
 		context->passSources.emplace_back(PassParametersSource()).name = passFile.first.substr(0, passFile.first.rfind('.'));
 
 		peg::any ctx = context;

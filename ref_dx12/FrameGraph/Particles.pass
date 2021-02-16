@@ -1,17 +1,29 @@
 // Input geometry type
+{
 PassInput : Particles
+PassVertAttr: VertexIn
+}
+
 
 // State
-
+{
 ColorTarget  	: BACK_BUFFER
 DepthTarget  	: BACK_BUFFER
 Viewport	 	: 0.0, 0.0, 1.0, 1.0
 BlendEnabled 	: true
-SrcBlendAlpha	: SrcAlpha
-DestBlendAlpha	: InvSrcAlpha
+SrcBlend		: SrcAlpha
+DestBlend		: InvSrcAlpha
+DepthWriteMask	: false
 Topology	 	: Point
+}
 
-// Resources 
+// Root signature
+{
+RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
+CBV(b0)
+}
+
+// Attributes
 
 struct VertexIn
 {
@@ -35,19 +47,17 @@ struct GeomVertOut
     float4 Col : COLOR;
 }
 
-cbuffer cbPerObject : register(b0)
+// Resources 
+
+[Global, PerPass]
+cbuffer cbPerPass : register(b0)
 {
-    float4x4 gWorldViewProj;
+    float4x4 gViewProj;
     float4 gCameraYaw;
     float4 gCameraPitch;
     float4 gCameraRoll;
     float4 gCameraOrigin;
 }
-
-Texture2D gDiffuseMap : register(t0)
-
-SamplerState gSamLinearWrap : register(s0)
-
 
 // Shaders
 
@@ -66,7 +76,7 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : GS 
-External : cbPerObject, VertexOut, GeomVertOut
+External : cbPerPass, VertexOut, GeomVertOut
 <[
 // v1 +--------+ v2
 //    |        |
@@ -90,28 +100,28 @@ void main(point VertexOut vIn[1], inout TriangleStream<GeomVertOut> triStream)
     
     GeomVertOut v0;
     v0.ModelPos = 0.0;
-    v0.Pos = mul(gWorldViewProj, vIn[0].Pos + v0.ModelPos);
+    v0.Pos = mul(gViewProj, vIn[0].Pos + v0.ModelPos);
     v0.Col = vIn[0].Col;
     v0.Center = center;
     triStream.Append(v0);
    
     GeomVertOut v1;
     v1.ModelPos = gCameraYaw;
-    v1.Pos = mul(gWorldViewProj, vIn[0].Pos + mul(v1.ModelPos, scale));
+    v1.Pos = mul(gViewProj, vIn[0].Pos + mul(v1.ModelPos, scale));
     v1.Col = vIn[0].Col;
     v1.Center = center;
     triStream.Append(v1); 
     
     GeomVertOut v2;
     v2.ModelPos = gCameraPitch;
-    v2.Pos = mul(gWorldViewProj, vIn[0].Pos + mul(v2.ModelPos, scale));
+    v2.Pos = mul(gViewProj, vIn[0].Pos + mul(v2.ModelPos, scale));
     v2.Col = vIn[0].Col;
     v2.Center = center;
     triStream.Append(v2);
    
     GeomVertOut v3;
     v3.ModelPos = gCameraYaw + gCameraPitch;
-    v3.Pos = mul(gWorldViewProj, vIn[0].Pos + mul(v3.ModelPos, scale));
+    v3.Pos = mul(gViewProj, vIn[0].Pos + mul(v3.ModelPos, scale));
     v3.Col = vIn[0].Col;
     v3.Center = center;
     triStream.Append(v3);

@@ -30,6 +30,8 @@ class FrameGraph
 
 public:
 
+	static const int SINGLE_PARTICLE_SIZE = sizeof(ShDef::Vert::PosCol);
+
 	using PerObjectGlobalTemplate_t = std::tuple<
 		// Static
 		std::vector<RootArg::Arg_t>,
@@ -70,11 +72,14 @@ public:
 	};
 
 
-	// Persistent objects registration
+	/* Persistent objects registration */
 	void RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& context);
 	
 	void UpdateGlobalResources(GPUJobContext& context);
 	void ReleasePerFrameResources();
+
+	/* Utils */
+	BufferHandler GetParticlesVertexMemory() const;
 
 private:
 
@@ -86,6 +91,8 @@ private:
 
 	void RegisterGlobalObjectsResDynamicEntities(GPUJobContext& context);
 	void UpdateGlobalObjectsResDynamic(GPUJobContext& context);
+
+	void RegisterParticles(GPUJobContext& context);
 
 	void RegisterGlobaPasslRes(GPUJobContext& context);
 	void UpdateGlobalPasslRes(GPUJobContext& context);
@@ -121,6 +128,8 @@ private:
 	int passGlobalMemorySize = 0;
 
 	BufferHandler passGlobalMemory = Const::INVALID_BUFFER_HANDLER;
+
+	BufferHandler particlesVertexMemory = Const::INVALID_BUFFER_HANDLER;
 
 	//#TODO delete when proper runtime load is developed.
 	// this is temp hack

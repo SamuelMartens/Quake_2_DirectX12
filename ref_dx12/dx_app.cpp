@@ -1476,6 +1476,11 @@ const std::array<unsigned int, 256>& Renderer::GetRawPalette() const
 	return rawPalette;
 }
 
+const std::array<unsigned int, 256>& Renderer::GetTable8To24() const
+{
+	return Table8To24;
+}
+
 const std::vector<StaticObject>& Renderer::GetStaticObjects() const
 {
 	return staticObjects;

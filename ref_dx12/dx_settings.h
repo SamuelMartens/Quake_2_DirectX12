@@ -17,7 +17,7 @@ namespace Settings
 	constexpr int		 RTV_DTV_DESCRIPTOR_HEAP_SIZE = FRAMES_NUM;
 	constexpr int		 SAMPLER_DESCRIPTOR_HEAP_SIZE = 16;
 
-	constexpr int		 COMMAND_LISTS_PER_FRAME = 7;
+	constexpr int		 COMMAND_LISTS_PER_FRAME = 8;
 	// Try to avoid to set up any particular number for this, instead change command lists per frame
 	constexpr int		 COMMAND_LISTS_NUM = COMMAND_LISTS_PER_FRAME * FRAMES_NUM;
 
