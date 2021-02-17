@@ -4,6 +4,7 @@
 #include <vector>
 #include <variant>
 #include <unordered_map>
+#include <string_view>
 
 #include "dx_buffer.h"
 #include "dx_drawcalls.h"
@@ -26,10 +27,10 @@
 // 5) Implement include
 // 6) Do proper logging for parsing and execution
 // 7) Proper name generation for D3D objects
-
-
 class Pass_UI
 {
+	friend class PassUtils;
+
 public:
 	struct PassObj
 	{
@@ -80,6 +81,8 @@ private:
 
 class Pass_Static
 {
+	friend class PassUtils;
+
 public:
 
 	struct PassObj
@@ -125,6 +128,8 @@ private:
 
 class Pass_Dynamic
 {
+	friend class PassUtils;
+
 public:
 
 	struct PassObj
@@ -168,6 +173,8 @@ private:
 
 class Pass_Particles
 {
+	friend class PassUtils;
+
 public:
 
 	void Execute(GPUJobContext& context);
@@ -193,3 +200,24 @@ private:
 };
 
 using Pass_t = std::variant<Pass_UI, Pass_Static, Pass_Dynamic, Pass_Particles>;
+
+
+class PassUtils
+{
+public:
+
+	template<typename T>
+	static std::string_view GetPassName(const T& pass)
+	{
+		return pass.passParameters.name;
+	}
+
+	template<>
+	static std::string_view GetPassName<Pass_t>(const Pass_t& pass)
+	{
+		return std::visit([](auto&& pass)
+		{
+			return GetPassName(pass);
+		}, pass);
+	}
+};

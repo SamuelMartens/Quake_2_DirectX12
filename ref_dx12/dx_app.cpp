@@ -611,7 +611,6 @@ void Renderer::CloseFrame(Frame& frame)
 
 void Renderer::ReleaseFrameResources(Frame& frame)
 {
-	//#TODO after frame graph rework delete redundant parts As well as shaders
 	Logs::Logf(Logs::Category::FrameSubmission, "Frame with frameNumber %d releases resources", frame.frameNumber);
 
 	for (int acquiredCommandListIndex : frame.acquiredCommandListsIndices)
@@ -896,6 +895,8 @@ std::vector<int> Renderer::BuildVisibleDynamicObjectsList(const Camera& camera, 
 
 void Renderer::EndFrameJob(GPUJobContext& context)
 {
+	Diagnostics::BeginEvent(context.commandList.commandList.Get(), "End Frame");
+
 	Logs::Logf(Logs::Category::Job, "EndFrame job started frame %d", context.frame.frameNumber);
 
 	context.commandList.Open();
@@ -919,6 +920,8 @@ void Renderer::EndFrameJob(GPUJobContext& context)
 	// We can't submit command lists attached to render target that is not current back buffer,
 	// so we need to wait until previous frame is done
 	WaitForPrevFrame(context.frame);
+
+	Diagnostics::EndEvent(context.commandList.commandList.Get());
 
 	CloseFrame(frame);
 

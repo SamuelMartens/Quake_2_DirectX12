@@ -4,7 +4,7 @@
 #include "dx_jobmultithreading.h"
 #include "dx_memorymanager.h"
 #include "dx_rendercallbacks.h"
-
+#include "dx_diagnostics.h"
 
 
 namespace
@@ -436,9 +436,18 @@ void FrameGraph::Execute(Frame& frame)
 					[passJobContext, &pass]() mutable
 				{
 					JOB_GUARD(passJobContext);
+
+					std::string_view passName = PassUtils::GetPassName(pass);
+
+					Diagnostics::BeginEvent(passJobContext.commandList.commandList.Get(), passName);
+					Logs::Logf(Logs::Category::Job, "Pass job started: %s", passName);
+
 					passJobContext.WaitDependency();
 
 					pass.Execute(passJobContext);
+
+					Logs::Logf(Logs::Category::Job, "Pass job end: %s", passName);
+					Diagnostics::EndEvent(passJobContext.commandList.commandList.Get());
 				}));
 
 			}, passes[i]);
@@ -585,6 +594,8 @@ void FrameGraph::RegisterGlobalObjectsResDynamicEntities(GPUJobContext& context)
 
 void FrameGraph::UpdateGlobalResources(GPUJobContext& context)
 {
+	Diagnostics::BeginEvent(context.commandList.commandList.Get(), "UpdateGlobalResources");
+
 	// This just doesn't belong here. I will do proper Initialization when
 	// runtime load of frame graph will be implemented
 	if (isInitalized == false)
@@ -605,6 +616,8 @@ void FrameGraph::UpdateGlobalResources(GPUJobContext& context)
 	UpdateGlobalObjectsResDynamic(context);
 
 	UpdateGlobalPasslRes(context);
+
+	Diagnostics::EndEvent(context.commandList.commandList.Get());
 }
 
 void FrameGraph::ReleasePerFrameResources()

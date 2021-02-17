@@ -25,7 +25,7 @@
 #include "dx_app.h"
 #include "dx_infrastructure.h"
 #include "dx_memorymanager.h"
-
+#include "dx_diagnostics.h"
 
 namespace
 {
@@ -973,6 +973,8 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 
 		const std::string strShaderType = PassParametersSource::ShaderTypeToStr(shader.type);
 
+		Logs::Logf(Logs::Category::Parser, "Shader compilation, type: %s", strShaderType.c_str());
+
 		HRESULT hr = D3DCompile(
 			sourceCode.c_str(),
 			sourceCode.size(),
@@ -1024,6 +1026,8 @@ bool FrameGraphBuilder::BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGra
 		return false;
 	}
 
+	Logs::Log(Logs::Category::Parser, "BuildFrameGraph");
+
 	Renderer::Inst().FlushAllFrames();
 	outFrameGraph = std::make_unique<FrameGraph>(CompileFrameGraph(GenerateFrameGraphSource()));
 
@@ -1032,6 +1036,8 @@ bool FrameGraphBuilder::BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGra
 
 FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 {
+	Logs::Log(Logs::Category::Parser, "CompileFrameGraph start");
+
 	FrameGraph frameGraph;
 
 	ValidateResources(source.passesParametersSources);
@@ -1039,6 +1045,8 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 	// Add passes to frame graph in proper order
 	for (const std::string& passName : source.passes)
 	{
+		Logs::Logf(Logs::Category::Parser, "Compile pass, start: %s", passName.c_str());
+
 		auto passParamIt = std::find_if(source.passesParametersSources.begin(), source.passesParametersSources.end(), 
 			[&passName](const PassParametersSource& paramSource)
 		{
@@ -1126,6 +1134,8 @@ std::unordered_map<std::string, std::string> FrameGraphBuilder::LoadPassFiles() 
 
 		if (filePath.extension() == Settings::FRAMEGRAPH_PASS_FILE_EXT)
 		{
+			Logs::Logf(Logs::Category::Parser, "Read pass file %s", filePath.c_str());
+
 			std::string passFileContent = ReadFile(filePath);
 
 			passFiles.emplace(std::make_pair(
@@ -1145,6 +1155,8 @@ std::string FrameGraphBuilder::LoadFrameGraphFile() const
 
 		if (filePath.extension() == Settings::FRAMEGRAPH_FILE_EXT)
 		{
+			Logs::Logf(Logs::Category::Parser, "Read frame graph file %s", filePath.c_str());
+
 			std::string frameGraphFileContent = ReadFile(filePath);
 
 			return frameGraphFileContent;
@@ -1169,6 +1181,8 @@ std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFile
 
 		peg::any ctx = context;
 
+		Logs::Logf(Logs::Category::Parser, "Parse pass file, start: %s", context->passSources.back().name.c_str());
+
 		parser.parse(passFile.second.c_str(), ctx);
 	}
 
@@ -1182,6 +1196,8 @@ std::shared_ptr<Parsing::FrameGraphSourceContext> FrameGraphBuilder::ParseFrameG
 
 	std::shared_ptr<Parsing::FrameGraphSourceContext> context = std::make_shared<Parsing::FrameGraphSourceContext>();
 	peg::any ctx = context;
+
+	Logs::Log(Logs::Category::Parser, "Parse frame graph file, start");
 
 	parser.parse(frameGraphSourceFileContent.c_str(), ctx);
 
@@ -1276,6 +1292,8 @@ const Parsing::VertAttr& FrameGraphBuilder::GetPassInputVertAttr(const PassParam
 
 ComPtr<ID3D12RootSignature> FrameGraphBuilder::GenerateRootSignature(const PassParametersSource& pass, const PassCompiledShaders_t& shaders) const
 {
+	Logs::Logf(Logs::Category::Parser, "GenerateRootSignature, start, pass: %s", pass.name.c_str());
+
 	assert(shaders.empty() == false && "Can't generate root signature with not shaders");
 
 	ComPtr<ID3D12RootSignature> rootSig;
@@ -1292,6 +1310,8 @@ ComPtr<ID3D12RootSignature> FrameGraphBuilder::GenerateRootSignature(const PassP
 
 ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const PassParametersSource& passSource, PassCompiledShaders_t& shaders, ComPtr<ID3D12RootSignature>& rootSig) const
 {
+	Logs::Logf(Logs::Category::Parser, "GeneratePipelineStateObject, start, pass %s", passSource.name.c_str());
+
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = passSource.psoDesc;
 
 	// Set up root sig
@@ -1337,6 +1357,8 @@ ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const
 
 void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& passSource, FrameGraph& frameGraph, PassParameters& pass) const
 {
+	Logs::Logf(Logs::Category::Parser, "CreateResourceArguments, start, pass: %s", passSource.name.c_str());
+
 	const std::vector<Parsing::Resource_t>& passResources = passSource.resources;
 
 	for (int i = 0; i < passSource.rootSignature->params.size(); ++i)
@@ -1514,7 +1536,6 @@ PassParameters FrameGraphBuilder::CompilePassParameters(PassParametersSource&& p
 	PassCompiledShaders_t compiledShaders = CompileShaders(passSource);
 	passParam.rootSingature = GenerateRootSignature(passSource, compiledShaders);
 	passParam.pipelineState = GeneratePipelineStateObject(passSource, compiledShaders, passParam.rootSingature);
-
 
 	CreateResourceArguments(passSource, frameGraph, passParam);
 
