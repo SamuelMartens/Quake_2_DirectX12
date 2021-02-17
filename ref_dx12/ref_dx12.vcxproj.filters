@@ -13,9 +13,6 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Shaders">
-      <UniqueIdentifier>{b160e90b-a57c-4504-8304-cf6237080178}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Header Files\Lib">
       <UniqueIdentifier>{48b60800-17fd-47b8-bc00-b2a3de1a9368}</UniqueIdentifier>
     </Filter>
@@ -61,9 +58,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="dx_camera.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="dx_material.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="dx_diagnostics.h">
@@ -161,9 +155,6 @@
     <ClCompile Include="dx_camera.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="dx_material.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="dx_diagnostics.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -212,25 +203,5 @@
     <ClCompile Include="dx_framegraph.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <FxCompile Include="Shaders\vs_PosTex.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\ps_PosTex.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\gs_Particle.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\ps_Particle.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\vs_Particle.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\vs_PosPosTex.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
   </ItemGroup>
 </Project>

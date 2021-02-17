@@ -290,8 +290,6 @@ void Renderer::InitDx()
 	
 	CreateSwapChainBuffersAndViews();
 
-	CreateCompiledMaterials();
-
 	CreateTextureSampler();
 
 	CreateFences(fence);
@@ -562,127 +560,6 @@ int Renderer::GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType) c
 	return Infr::Inst().GetDevice()->GetDescriptorHandleIncrementSize(descriptorHeapType);
 }
 
-ComPtr<ID3D12RootSignature> Renderer::SerializeAndCreateRootSigFromRootDesc(const CD3DX12_ROOT_SIGNATURE_DESC& rootSigDesc) const
-{
-	ComPtr<ID3DBlob> serializedRootSig = nullptr;
-	ComPtr<ID3DBlob> errorBlob = nullptr;
-
-	ThrowIfFailed(D3D12SerializeRootSignature(
-		&rootSigDesc,
-		D3D_ROOT_SIGNATURE_VERSION_1,
-		serializedRootSig.GetAddressOf(),
-		errorBlob.GetAddressOf()));
-
-	ComPtr<ID3D12RootSignature> resultRootSig;
-
-	ThrowIfFailed(Infr::Inst().GetDevice()->CreateRootSignature(
-		0,
-		serializedRootSig->GetBufferPointer(),
-		serializedRootSig->GetBufferSize(),
-		IID_PPV_ARGS(&resultRootSig)
-	));
-
-	return resultRootSig;
-}
-
-void Renderer::CreateCompiledMaterials()
-{
-	std::vector<MaterialSource> materialsSource = MaterialSource::ConstructSourceMaterials();
-
-	for (const MaterialSource& matSource : materialsSource)
-	{
-		materials.push_back(CompileMaterial(matSource));
-	}
-}
-
-Material Renderer::CompileMaterial(const MaterialSource& materialSourse) const
-{
-	Material materialCompiled;
-
-	materialCompiled.name = materialSourse.name;
-
-	// Compiler root signature
-	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(
-		materialSourse.rootParameters.size(),
-		materialSourse.rootParameters.data(),
-		materialSourse.staticSamplers.size(),
-		materialSourse.staticSamplers.empty() ? nullptr : materialSourse.staticSamplers.data(),
-		materialSourse.rootSignatureFlags);
-
-	materialCompiled.rootSingature = SerializeAndCreateRootSigFromRootDesc(rootSigDesc);
-
-	// Compile shaders
-	 std::array<ComPtr<ID3DBlob>, MaterialSource::ShaderType::SIZE> compiledShaders;
-
-	for (int i = 0; i < MaterialSource::ShaderType::SIZE; ++i)
-	{
-		if (materialSourse.shaders[i].empty())
-		{
-			continue;
-		}
-
-		compiledShaders[i] = LoadCompiledShader(materialSourse.shaders[i]);
-	}
-
-	// Create pso 
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc(materialSourse.psoDesc);
-
-	psoDesc.pRootSignature = materialCompiled.rootSingature.Get();
-	psoDesc.InputLayout = { materialSourse.inputLayout.data(), static_cast<UINT>(materialSourse.inputLayout.size())};
-
-	ID3DBlob* currentBlob = nullptr;
-	for (int i = 0; i < MaterialSource::ShaderType::SIZE; ++i)
-	{
-		MaterialSource::ShaderType shaderType = static_cast<MaterialSource::ShaderType>(i);
-		currentBlob = compiledShaders[shaderType].Get();
-
-		switch (shaderType)
-		{
-		case MaterialSource::ShaderType::Vs:
-			{
-				assert(currentBlob != nullptr && "Empty vertex shader blob");
-				psoDesc.VS =
-				{
-					reinterpret_cast<BYTE*>(currentBlob->GetBufferPointer()),
-					currentBlob->GetBufferSize()
-				};
-				break;
-			}
-		case MaterialSource::ShaderType::Ps:
-			{
-				assert(currentBlob != nullptr && "Empty pixel shader blob");
-				psoDesc.PS =
-				{
-					reinterpret_cast<BYTE*>(currentBlob->GetBufferPointer()),
-					currentBlob->GetBufferSize()
-				};
-				break;
-			}
-		case MaterialSource::ShaderType::Gs:
-			{
-				if (currentBlob != nullptr)
-				{
-					psoDesc.GS = 
-					{
-						reinterpret_cast<BYTE*>(currentBlob->GetBufferPointer()),
-						currentBlob->GetBufferSize()
-					};
-				}
-				break;
-			}
-		default:
-			assert(false && "Shader compilation failed. Unknown shader type");
-			break;
-		}
-	}
-
-	ThrowIfFailed(Infr::Inst().GetDevice()->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&materialCompiled.pipelineState)));
-
-	materialCompiled.primitiveTopology = materialSourse.primitiveTopology;
-
-	return materialCompiled;
-}
-
 Frame& Renderer::GetMainThreadFrame()
 {
 	ASSERT_MAIN_THREAD;
@@ -741,7 +618,6 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	{
 		commandListBuffer.allocator.Delete(acquiredCommandListIndex);
 	}
-
 	frame.acquiredCommandListsIndices.clear();
 
 	frame.colorBufferAndView = nullptr;
@@ -752,17 +628,8 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	auto& uploadMemory = 
 		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
-	// Streaming drawing stuff
-	frame.streamingObjectsHandlers.mutex.lock();
-	for (BufferHandler handler : frame.streamingObjectsHandlers.obj)
-	{
-		uploadMemory.Delete(handler);
-	}
-	frame.streamingObjectsHandlers.obj.clear();
-	frame.streamingObjectsHandlers.mutex.unlock();
-
 	frame.entities.clear();
-	frame.particlesToDraw.clear();
+	frame.particles.clear();
 
 	frame.texCreationRequests.clear();
 
@@ -1061,7 +928,6 @@ void Renderer::EndFrameJob(GPUJobContext& context)
 	
 	ReleaseFrame(frame);
 
-	ThreadingUtils::AssertUnlocked(context.frame.streamingObjectsHandlers);
 	ThreadingUtils::AssertUnlocked(context.frame.uploadResources);
 	
 	// Delete shared resources marked for deletion
@@ -1103,65 +969,6 @@ void Renderer::BeginFrameJob(GPUJobContext& context)
 		nullptr);
 
 	Logs::Logf(Logs::Category::Job, "BeginFrame job ended frame %d", frame.frameNumber);
-}
-
-void Renderer::DrawParticleJob(GPUJobContext& context)
-{
-	JOB_GUARD(context);
-
-	Logs::Logf(Logs::Category::Job, "Particle job started frame %d", context.frame.frameNumber);
-
-	CommandList& commandList = context.commandList;
-	const std::vector<particle_t>& particlesToDraw = context.frame.particlesToDraw;
-
-	Diagnostics::BeginEvent(commandList.commandList.Get(), "Particles");
-
-	if (particlesToDraw.empty() == false)
-	{
-		// Particles share the same constant buffer, so we only need to update it once
-		const BufferHandler particleConstantBufferHandler = UpdateParticleConstantBuffer(context);
-
-		// Preallocate vertex buffer for particles
-		constexpr int singleParticleSize = sizeof(ShDef::Vert::PosCol);
-		const int vertexBufferSize = singleParticleSize * particlesToDraw.size();
-		const BufferHandler particleVertexBufferHandler = 
-			MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(vertexBufferSize);
-		DO_IN_LOCK(context.frame.streamingObjectsHandlers, push_back(particleVertexBufferHandler));
-
-		assert(particleVertexBufferHandler != Const::INVALID_BUFFER_HANDLER && "Failed to allocate particle vertex buffer");
-
-		// Gather all particles, and do one draw call for everything at once
-		for (int i = 0, currentVertexBufferOffset = 0; i < particlesToDraw.size(); ++i)
-		{
-			AddParticleToDrawList(particlesToDraw[i], particleVertexBufferHandler, currentVertexBufferOffset);
-
-			currentVertexBufferOffset += singleParticleSize;
-		}
-
-		DrawParticleDrawList(particleVertexBufferHandler, vertexBufferSize, particleConstantBufferHandler, context);
-	}
-
-	Diagnostics::EndEvent(commandList.commandList.Get());
-
-	Logs::Logf(Logs::Category::Job, "Particle job ended frame %d", context.frame.frameNumber);
-}
-
-ComPtr<ID3DBlob> Renderer::LoadCompiledShader(const std::string& filename) const
-{
-	std::ifstream fin(filename, std::ios::binary);
-
-	fin.seekg(0, std::ios_base::end);
-	const std::ifstream::pos_type size = static_cast<int>(fin.tellg());
-	fin.seekg(0, std::ios::beg);
-
-	ComPtr<ID3DBlob> blob = nullptr;
-
-	ThrowIfFailed(D3DCreateBlob(size, blob.GetAddressOf()));
-
-	fin.read(static_cast<char*>(blob->GetBufferPointer()), size);
-	fin.close();
-
-	return blob;
 }
 
 void Renderer::ShutdownWin32()
@@ -1408,58 +1215,6 @@ GPUJobContext Renderer::CreateContext(Frame& frame)
 	return GPUJobContext(frame, commandListBuffer.commandLists[commandListIndex]);
 }
 
-void Renderer::AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset)
-{
-
-	unsigned char color[4];
-	*reinterpret_cast<int *>(color) = Table8To24[particle.color];
-
-	auto& uploadMemory =
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
-
-	ShDef::Vert::PosCol particleGpuData = {
-		XMFLOAT4(particle.origin[0], particle.origin[1], particle.origin[2], 1.0f),
-		XMFLOAT4(color[0] / 255.0f, color[1] / 255.0f, color[2] / 255.0f, particle.alpha)
-	};
-
-	// Deal with vertex buffer
-	FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
-	updateVertexBufferArgs.buffer = uploadMemory.GetGpuBuffer();
-	updateVertexBufferArgs.offset = uploadMemory.GetOffset(vertexBufferHandler) + vertexBufferOffset;
-	updateVertexBufferArgs.data = &particleGpuData;
-	updateVertexBufferArgs.byteSize = sizeof(particleGpuData);
-	updateVertexBufferArgs.alignment = 0;
-	ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
-}
-
-void Renderer::DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, GPUJobContext& context)
-{
-	CommandList& commandList = context.commandList;
-	constexpr int vertexStrideInBytes = sizeof(ShDef::Vert::PosCol);
-
-	auto& uploadMemory =
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
-
-	D3D12_VERTEX_BUFFER_VIEW vertBufferView;
-	vertBufferView.BufferLocation = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
-		uploadMemory.GetOffset(vertexBufferHandler);
-	vertBufferView.StrideInBytes = vertexStrideInBytes;
-	vertBufferView.SizeInBytes = vertexBufferSizeInBytes;
-
-	commandList.commandList->IASetVertexBuffers(0, 1, &vertBufferView);
-
-	// Binding root signature params
-
-	// 1)
-	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
-	cbAddress += uploadMemory.GetOffset(constBufferHandler);
-
-	commandList.commandList->SetGraphicsRootConstantBufferView(0, cbAddress);
-
-	// Draw
-	commandList.commandList->DrawInstanced(vertexBufferSizeInBytes / vertexStrideInBytes, 1, 0, 0);
-}
-
 void Renderer::GetDrawAreaSize(int* Width, int* Height)
 {
 
@@ -1622,103 +1377,6 @@ void Renderer::DeleteDefaultMemoryBuffer(BufferHandler handler)
 void Renderer::DeleteUploadMemoryBuffer(BufferHandler handler)
 {
 	MemoryManager::Inst().GetBuff<UploadBuffer_t>().Delete(handler);
-}
-
-void Renderer::UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, GPUJobContext& context)
-{
-	assert(bufferPiece.handler != Const::INVALID_BUFFER_HANDLER &&
-		bufferPiece.offset != Const::INVALID_OFFSET &&
-		"Can't update constant buffer, invalid offset.");
-
-	// Update transformation mat
-	ShDef::ConstBuff::TransMat transMat;
-	XMMATRIX modelMat = XMMatrixScaling(scale.x, scale.y, scale.z);
-
-	modelMat = modelMat * XMMatrixTranslation(
-		position.x,
-		position.y,
-		position.z
-	);
-
-	Frame& frame = context.frame;
-
-	XMMATRIX sseViewMat = XMLoadFloat4x4(&frame.uiViewMat);
-	XMMATRIX sseProjMat = XMLoadFloat4x4(&frame.uiProjectionMat);
-	XMMATRIX sseYInverseAndCenterMat = XMLoadFloat4x4(&m_yInverseAndCenterMatrix);
-
-	XMMATRIX sseMvpMat = modelMat * sseYInverseAndCenterMat * sseViewMat * sseProjMat;
-
-
-	XMStoreFloat4x4(&transMat.transformationMat, sseMvpMat);
-
-	auto& uploadMemory =
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
-
-	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	updateConstBufferArgs.buffer = uploadMemory.GetGpuBuffer();
-	updateConstBufferArgs.offset = uploadMemory.GetOffset(bufferPiece.handler) + bufferPiece.offset;
-	updateConstBufferArgs.data = &transMat;
-	updateConstBufferArgs.byteSize = sizeof(transMat);
-	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
-	// Update our constant buffer
-	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
-}
-
-BufferHandler Renderer::UpdateParticleConstantBuffer(GPUJobContext& context)
-{
-	const Camera& camera = context.frame.camera;
-
-	constexpr int updateDataSize = sizeof(ShDef::ConstBuff::CameraDataTransMat);
-
-	auto& uploadMemory =
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
-
-	const BufferHandler constantBufferHandler = uploadMemory.Allocate(Utils::Align(updateDataSize, 
-		Settings::CONST_BUFFER_ALIGNMENT));
-	DO_IN_LOCK(context.frame.streamingObjectsHandlers, push_back(constantBufferHandler));
-
-	assert(constantBufferHandler != Const::INVALID_BUFFER_HANDLER && "Can't update particle const buffer");
-
-	XMFLOAT4X4 mvpMat;
-
-	XMStoreFloat4x4(&mvpMat, camera.GetViewProjMatrix());
-
-	auto[yaw, pitch, roll] = camera.GetBasis();
-
-	std::array<std::byte, updateDataSize> updateData;
-
-	std::byte* updateDataPtr = updateData.data();
-
-	int cpySize = sizeof(XMFLOAT4X4);
-	memcpy(updateDataPtr, &mvpMat, cpySize);
-	updateDataPtr += cpySize;
-
-	cpySize = sizeof(XMFLOAT4);
-	memcpy(updateDataPtr, &yaw, cpySize);
-	updateDataPtr += cpySize;
-
-	cpySize = sizeof(XMFLOAT4);
-	memcpy(updateDataPtr, &pitch, cpySize);
-	updateDataPtr += cpySize;
-
-	cpySize = sizeof(XMFLOAT4);
-	memcpy(updateDataPtr, &roll, cpySize);
-	updateDataPtr += cpySize;
-
-	cpySize = sizeof(XMFLOAT4);
-	memcpy(updateDataPtr, &camera.position, cpySize);
-	updateDataPtr += cpySize;
-
-	FArg::UpdateUploadHeapBuff updateConstBufferArgs;
-	updateConstBufferArgs.buffer = uploadMemory.GetGpuBuffer();
-	updateConstBufferArgs.offset = uploadMemory.GetOffset(constantBufferHandler);
-	updateConstBufferArgs.data = updateData.data();
-	updateConstBufferArgs.byteSize = updateDataSize;
-	updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
-
-	ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
-
-	return constantBufferHandler;
 }
 
 void Renderer::GetDrawTextureSize(int* x, int* y, const char* name)
@@ -1891,76 +1549,6 @@ void Renderer::BeginFrame()
 }
 
 void Renderer::EndFrame()
-{
-	Logs::Log(Logs::Category::Generic, "API: EndFrame");
-
-	assert(false);
-	// All heavy lifting is here
-
-	Frame& frame = GetMainThreadFrame();
-
-	if (frame.texCreationRequests.empty() == false)
-	{
-		GPUJobContext createDeferredTextureContext = CreateContext(frame);
-		ResourceManager::Inst().CreateDeferredTextures(createDeferredTextureContext);
-	}
-
-	// Proceed to next frame
-	DetachMainThreadFrame();
-
-	// Create contexts
-	// NOTE: creation order is the order in which command Lists will be submitted.
-	GPUJobContext beginFrameContext = CreateContext(frame);
-
-	GPUJobContext drawStaticObjectsContext = CreateContext(frame);
-	
-	GPUJobContext drawDynamicObjectsContext = CreateContext(frame);
-
-	GPUJobContext drawParticlesContext = CreateContext(frame);
-
-	GPUJobContext drawUIContext = CreateContext(frame);
-	
-	GPUJobContext endFrameContext = CreateContext(frame);
-
-	// Set up dependencies
-	
-	endFrameContext.CreateDependencyFrom({
-			&beginFrameContext,
-			&drawStaticObjectsContext,
-			&drawDynamicObjectsContext,
-			&drawParticlesContext,
-			&drawUIContext
-		});
-
-
-	JobQueue& jobQueue = JobSystem::Inst().GetJobQueue();
-
-	// --- Begin frame job ---
-
-	jobQueue.Enqueue(Job(
-		[beginFrameContext, this] () mutable
-	{
-		BeginFrameJob(beginFrameContext);
-	}));
-
-	// --- Draw particles job ---
-
-	jobQueue.Enqueue(Job(
-		[drawParticlesContext, this]() mutable
-	{
-		DrawParticleJob(drawParticlesContext);
-	}));
-	
-	// --- End frame job ---
-
-	jobQueue.Enqueue(Job(
-		[endFrameContext, this]() mutable
-	{
-		EndFrameJob(endFrameContext);
-	}));
-}
-
-void Renderer::EndFrame_Material()
 {
 	Logs::Log(Logs::Category::Generic, "API: EndFrame");
 
@@ -2188,6 +1776,6 @@ void Renderer::UpdateFrame(const refdef_t& updateData)
 	frame.entities.resize(updateData.num_entities);
 	memcpy(frame.entities.data(), updateData.entities, sizeof(entity_t) * updateData.num_entities);
 
-	frame.particlesToDraw.resize(updateData.num_particles);
-	memcpy(frame.particlesToDraw.data(), updateData.particles, sizeof(particle_t) * updateData.num_particles);
+	frame.particles.resize(updateData.num_particles);
+	memcpy(frame.particles.data(), updateData.particles, sizeof(particle_t) * updateData.num_particles);
 }

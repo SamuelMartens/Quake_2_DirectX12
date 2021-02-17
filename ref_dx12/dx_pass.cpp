@@ -1048,7 +1048,7 @@ void Pass_Dynamic::SetRenderState(GPUJobContext& context)
 
 void Pass_Particles::Execute(GPUJobContext& context)
 {
-	if (context.frame.particlesToDraw.empty() == true)
+	if (context.frame.particles.empty() == true)
 	{
 		return;
 	}
@@ -1123,7 +1123,7 @@ void Pass_Particles::Draw(GPUJobContext& context)
 	vertBufferView.BufferLocation = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
 		uploadMemory.GetOffset(context.frame.frameGraph->GetParticlesVertexMemory());
 	vertBufferView.StrideInBytes = FrameGraph::SINGLE_PARTICLE_SIZE;
-	vertBufferView.SizeInBytes = vertBufferView.StrideInBytes * context.frame.particlesToDraw.size();
+	vertBufferView.SizeInBytes = vertBufferView.StrideInBytes * context.frame.particles.size();
 
 	commandList.commandList->IASetVertexBuffers(0, 1, &vertBufferView);
 

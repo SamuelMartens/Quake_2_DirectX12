@@ -24,7 +24,6 @@
 #include "dx_shaderdefinitions.h"
 #include "dx_glmodel.h"
 #include "dx_camera.h"
-#include "dx_material.h"
 #include "dx_threadingutils.h"
 #include "dx_frame.h"
 #include "dx_descriptorheap.h"
@@ -72,9 +71,6 @@ class Renderer
 	void DeleteDefaultMemoryBuffer(BufferHandler handler);
 	void DeleteUploadMemoryBuffer(BufferHandler handler);
 	
-	void UpdateStreamingConstantBuffer(XMFLOAT4 position, XMFLOAT4 scale, BufferPiece bufferPiece, GPUJobContext& context);
-	BufferHandler UpdateParticleConstantBuffer(GPUJobContext& context);
-
 	/*--- API functions begin --- */
 
 	void Init(WNDPROC WindowProc, HINSTANCE hInstance);
@@ -84,9 +80,7 @@ class Renderer
 
 
 	void BeginFrame();
-	//#TODO delete regular EndFrame
 	void EndFrame();
-	void EndFrame_Material();
 	void PreRenderSetUpFrame(Frame& frame);
 	void FlushAllFrames() const;
 
@@ -142,7 +136,6 @@ public:
 	/* Job  */
 	void EndFrameJob(GPUJobContext& context);
 	void BeginFrameJob(GPUJobContext& context);
-	void DrawParticleJob(GPUJobContext& context);
 
 	std::vector<int> BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const;
 	std::vector<int> BuildVisibleDynamicObjectsList(const Camera& camera, const std::vector<entity_t>& entities) const;
@@ -175,12 +168,7 @@ private:
 
 	void CreateCommandQueue();
 
-	void CreateCompiledMaterials();
-
 	void CreateTextureSampler();
-
-	ComPtr<ID3DBlob> LoadCompiledShader(const std::string& filename) const;
-	ComPtr<ID3D12RootSignature> SerializeAndCreateRootSigFromRootDesc(const CD3DX12_ROOT_SIGNATURE_DESC& rootSigDesc) const;
 
 	AssertBufferAndView& GetNextSwapChainBufferAndView();
 	
@@ -189,24 +177,16 @@ private:
 	/* Shutdown and clean up Win32 specific stuff */
 	void ShutdownWin32();
 
-	/* Factory functionality */
+	/* Geometry loading */
 	[[nodiscard]]
 	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model, GPUJobContext& context);
 	void CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJobContext& frame);
 	void DecomposeGLModelNode(const model_t& model, const mnode_t& node, GPUJobContext& context);
-	
-
-	/* Rendering */
-	void AddParticleToDrawList(const particle_t& particle, BufferHandler vertexBufferHandler, int vertexBufferOffset);
-	void DrawParticleDrawList(BufferHandler vertexBufferHandler, int vertexBufferSizeInBytes, BufferHandler constBufferHandler, GPUJobContext& context);
 
 	/* Utils */
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
 	bool IsVisible(const entity_t& entity, const Camera& camera) const;
 	void RegisterObjectsAtFrameGraphs();
-
-	/* Materials */
-	Material CompileMaterial(const MaterialSource& materialSourse) const;
 
 	/* Frames */
 	void SubmitFrame(Frame& frame);
@@ -260,9 +240,6 @@ private:
 	std::vector<StaticObject> staticObjects;
 
 	std::unordered_map<model_t*, DynamicObjectModel> dynamicObjectsModels;
-
-	//#TODO remove this
-	std::vector<Material> materials;
 
 	std::array<Frame, Settings::FRAMES_NUM> frames;
 	int currentFrameIndex = Const::INVALID_INDEX;

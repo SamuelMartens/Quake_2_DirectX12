@@ -8,8 +8,10 @@ namespace Settings
 {
 	constexpr int		 FRAMES_NUM = 3;
 	constexpr int		 SWAP_CHAIN_BUFFER_COUNT = FRAMES_NUM;
+
 	constexpr bool		 MSAA_ENABLED = false;
 	constexpr int		 MSAA_SAMPLE_COUNT = 4;
+
 	constexpr int		 TRANSPARENT_TABLE_VAL = 255;
 	constexpr int		 CONST_BUFFER_ALIGNMENT = 256;
 
@@ -23,10 +25,10 @@ namespace Settings
 
 	// 128 MB of upload memory
 	constexpr int		 UPLOAD_MEMORY_BUFFER_SIZE = 128 * 1024 * 1024;
-	constexpr int		 UPLOAD_MEMORY_BUFFER_HANDLERS_NUM = 16382 * 2 * 2;
+	constexpr int		 UPLOAD_MEMORY_BUFFER_HANDLERS_NUM = 64 * 1024;
 	// 256 MB of default memory
 	constexpr int		 DEFAULT_MEMORY_BUFFER_SIZE = 256 * 1024 * 1024;
-	constexpr int		 DEFAULT_MEMORY_BUFFER_HANDLERS_NUM = 16382;
+	constexpr int		 DEFAULT_MEMORY_BUFFER_HANDLERS_NUM = 16 * 1024;
 
 	constexpr bool		 DEBUG_LAYER_ENABLED = false;
 	constexpr bool		 DEBUG_MESSAGE_FILTER_ENABLED = true;

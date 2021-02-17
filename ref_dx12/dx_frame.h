@@ -56,18 +56,15 @@ public:
 	// Released on the frame end
 	std::vector<int> acquiredCommandListsIndices;
 	
-	// Utils
-	std::vector<entity_t> entities;
-	std::vector<particle_t> particlesToDraw;
-
-	std::vector<int> visibleEntitiesIndices;
-
 	LockVector_t<ComPtr<ID3D12Resource>> uploadResources;
-	//#TODO delete this when particles are properly implemented
-	LockVector_t<BufferHandler> streamingObjectsHandlers;
+	
+	// Populated on every frame
+	std::vector<entity_t> entities;
+	std::vector<particle_t> particles;
 
 	std::vector<DrawCall_UI_t> uiDrawCalls;
 	std::vector<int> visibleStaticObjectsIndices;
+	std::vector<int> visibleEntitiesIndices;
 	
 	std::vector<TextureCreationRequest_t> texCreationRequests;
 

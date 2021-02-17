@@ -779,7 +779,7 @@ void FrameGraph::UpdateGlobalObjectsResDynamic(GPUJobContext& context)
 
 void FrameGraph::RegisterParticles(GPUJobContext& context)
 {
-	const std::vector<particle_t>& particlesToDraw = context.frame.particlesToDraw;
+	const std::vector<particle_t>& particlesToDraw = context.frame.particles;
 
 	if (particlesToDraw.empty() == true)
 	{

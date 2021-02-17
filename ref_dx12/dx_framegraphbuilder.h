@@ -7,7 +7,6 @@
 #include <memory>
 
 #include "dx_passparameters.h"
-#include "dx_material.h"
 #include "dx_framegraph.h"
 
 namespace Parsing
