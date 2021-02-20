@@ -90,6 +90,58 @@ namespace
 		}, r);
 	}
 
+	void InitPreprocessorParser(peg::parser& parser)
+	{
+		// Load grammar
+		const std::string preprocessorGrammar = ReadFile(FrameGraphBuilder::Inst().GenPathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_PREPROCESSOR_FILENAME));
+
+		parser.log = [](size_t line, size_t col, const std::string& msg)
+		{
+			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
+
+			assert(false && "Preprocessing error");
+		};
+
+		const bool loadGrammarResult = parser.load_grammar(preprocessorGrammar.c_str());
+		assert(loadGrammarResult && "Can't load pass grammar");
+
+		// Set up callbacks
+		parser["Instruction"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		{
+			Parsing::PreprocessorContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PreprocessorContext>&>(ctx);
+
+			assert(parseCtx.currentFile.empty() == false && "Current file for preprocessor parser is empty");
+
+			// So far I have only include instructions
+			auto instruction = peg::any_cast<Parsing::PreprocessorContext::Include>(sv[1]);
+
+			// Account for start definition symbol, so correct position and length
+			instruction.len += 1;
+			instruction.pos -= 1;
+
+			parseCtx.includes[parseCtx.currentFile].push_back(std::move(instruction));
+		};
+
+
+		parser["IncludeInstr"] = [](const peg::SemanticValues& sv)
+		{
+			std::string includeFilename = peg::any_cast<std::string>(sv[0]) + "." + peg::any_cast<std::string>(sv[1]);
+
+			return Parsing::PreprocessorContext::Include
+			{
+				std::move(includeFilename),
+				std::distance(sv.ss, sv.c_str()),
+				static_cast<int>(sv.length())
+			};
+
+		};
+
+		parser["Word"] = [](const peg::SemanticValues& sv)
+		{
+			return sv.token();
+		};
+	}
+
 	void InitPassParser(peg::parser& parser) 
 	{
 		// Load grammar
@@ -99,7 +151,7 @@ namespace
 		{
 			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
 
-			assert(false && "Parsing error");
+			assert(false && "Pass parsing error");
 		};
 
 		const bool loadGrammarResult = parser.load_grammar(passGrammar.c_str());
@@ -665,7 +717,7 @@ namespace
 		{
 			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
 
-			assert(false && "Parsing error");
+			assert(false && "FrameGraph parsing error");
 		};
 
 		const bool loadGrammarResult = parser.load_grammar(frameGraphGrammar.c_str());
@@ -1112,7 +1164,15 @@ FrameGraphSource FrameGraphBuilder::GenerateFrameGraphSource() const
 
 std::vector<PassParametersSource> FrameGraphBuilder::GeneratePassesParameterSources() const
 {
-	std::shared_ptr<Parsing::PassParametersContext> parseCtx = ParsePassFiles(LoadPassFiles());
+	std::unordered_map<std::string, std::string> passSourceFiles = LoadPassFiles();
+	
+	std::shared_ptr<Parsing::PreprocessorContext> preprocessCtx = ParsePreprocessPassFiles(passSourceFiles);
+	// Preprocessing is currently applied only to pass files, so there is no need to check that there is no
+	// nested includes. However, if I would decide to apply preprocessing to other random file it would be
+	// critical to either implement some kind of validation or actually made #include to work in nested manner
+	PreprocessPassFiles(passSourceFiles, *preprocessCtx);
+
+	std::shared_ptr<Parsing::PassParametersContext> parseCtx = ParsePassFiles(passSourceFiles);
 
 	std::vector<PassParametersSource> passesParametersSources;
 
@@ -1168,6 +1228,28 @@ std::string FrameGraphBuilder::LoadFrameGraphFile() const
 	return std::string();
 }
 
+std::shared_ptr<Parsing::PreprocessorContext> FrameGraphBuilder::ParsePreprocessPassFiles(const std::unordered_map<std::string, std::string>& passFiles) const
+{
+	peg::parser parser;
+	InitPreprocessorParser(parser);
+
+	std::shared_ptr<Parsing::PreprocessorContext> context = std::make_shared<Parsing::PreprocessorContext>();
+
+	for (const auto& passFile : passFiles)
+	{
+		context->currentFile = passFile.first;
+		context->includes[context->currentFile] = std::vector<Parsing::PreprocessorContext::Include>{};
+
+		Logs::Logf(Logs::Category::Parser, "Preprocess pass file, start: %s", passFile.first.c_str());
+
+		peg::any ctx = context;
+
+		parser.parse(passFile.second.c_str(), ctx);
+	}
+
+	return context;
+}
+
 std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles) const
 {
 	peg::parser parser;
@@ -1179,9 +1261,9 @@ std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFile
 	{
 		context->passSources.emplace_back(PassParametersSource()).name = passFile.first.substr(0, passFile.first.rfind('.'));
 
-		peg::any ctx = context;
-
 		Logs::Logf(Logs::Category::Parser, "Parse pass file, start: %s", context->passSources.back().name.c_str());
+
+		peg::any ctx = context;
 
 		parser.parse(passFile.second.c_str(), ctx);
 	}
@@ -1234,6 +1316,45 @@ bool FrameGraphBuilder::IsSourceChanged()
 	}
 
 	return false;
+}
+
+void FrameGraphBuilder::PreprocessPassFiles(std::unordered_map<std::string, std::string>& passFiles, Parsing::PreprocessorContext& context) const
+{
+	for (auto& fileInclude : context.includes)
+	{
+		// Sort includes first
+		std::sort(fileInclude.second.begin(), fileInclude.second.end(), []
+		(Parsing::PreprocessorContext::Include& rv,   Parsing::PreprocessorContext::Include& lv) 
+		{
+			return rv.pos < lv.pos;
+		});
+
+		std::string& currentFile = passFiles[fileInclude.first];
+
+		std::string processedFile;
+
+		int currentPos = 0;
+		
+		for (const Parsing::PreprocessorContext::Include& include : fileInclude.second)
+		{
+			// Add chunk before this include
+			processedFile += currentFile.substr(currentPos, include.pos - currentPos);
+			currentPos += include.pos + include.len;
+
+			// Add included file
+			processedFile += ReadFile(GenPathToFile(Settings::FRAMEGRAPH_DIR + "/" + include.name));
+		}
+
+		assert(currentPos < currentFile.size() && "PreprocessPassFile, something wrong with current pos");
+
+		// Include last piece of the file
+		if (currentPos + 1 != currentFile.size())
+		{
+			processedFile += currentFile.substr(currentPos);
+		}
+
+		currentFile = processedFile;
+	}
 }
 
 std::vector<D3D12_INPUT_ELEMENT_DESC> FrameGraphBuilder::GenerateInputLayout(const PassParametersSource& pass) const
