@@ -1,6 +1,6 @@
-Pass <- PassProps State RSig Resources ShaderList
+Pass <- PassProps State RSig ShaderDefs ShaderList
 
-Resources   <- T( < (Resource / VertAttr)* > )
+ShaderDefs	<- T( < ( Resource / VertAttr / Function )* > )
 State       <- T( '{' < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendSt / DestBlendSt )* > '}' )
 ShaderList  <- T( < Shader* > )
 
@@ -55,7 +55,8 @@ RSigVisibilityDecl  <- T( 'visibility' _ '=' RSigVisibilityFlags )
 RSigVisibilityFlags	<- _ 'SHADER_VISIBILITY_ALL' _ / _ 'SHADER_VISIBILITY_VERTEX' _ / _ 'SHADER_VISIBILITY_HULL' _ / _ 'SHADER_VISIBILITY_DOMAIN' _ / _ 'SHADER_VISIBILITY_GEOMETRY' _ / _ 'SHADER_VISIBILITY_PIXEL' _
 RSDescNumDecl       <- T( 'numDescriptors' _ '=' Int )
 
-# --- Resources ---
+# --- ShaderDefs ---
+Function 			<- T( < Ident Ident '(' ( !')' . )* ')' _ '{' ( !'}' . )* '}' > )
 VertAttr            <- T(  'struct' < Ident '{' VertAttrContent '}' > )
 Resource            <- T(  ResourceAttr ( ConstBuff / Texture / Sampler) )
 ConstBuff           <- T( 'cbuffer' < Ident ':' RegisterDecl  '{' ConstBuffContent '}' > )

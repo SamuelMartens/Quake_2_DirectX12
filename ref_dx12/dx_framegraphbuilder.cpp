@@ -498,7 +498,18 @@ namespace
 			return peg::any_cast<int>(sv[0]);
 		};
 
-		// --- Resources
+
+		// --- ShaderDefs
+		parser["Function"] = [](const peg::SemanticValues& sv, peg::any& ctx) 
+		{
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+
+			parseCtx.passSources.back().functions.emplace_back(Parsing::Function{
+				peg::any_cast<std::string>(sv[1]),
+				sv.str()
+				});
+		};
+
 		parser["VertAttr"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
@@ -977,45 +988,54 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 
 	for (const PassParametersSource::ShaderSource& shader : pass.shaders)
 	{
-		std::string resToInclude;
+		std::string shaderDefsToInclude;
 
 		// Add External Resources
-		for (const std::string& externalRes : shader.externals)
+		//#DEBUG rename externalRes to externalResDef
+		for (const std::string& externalDefName : shader.externals)
 		{
 			// Find resource and stub it into shader source
 
-			// Try actual resources
-			const auto resIt = std::find_if(pass.resources.cbegin(), pass.resources.cend(),
-				[&externalRes](const Parsing::Resource_t& currRes)
+			// Holy C++ magic
+			bool result = std::invoke([&shaderDefsToInclude, &externalDefName](auto... shaderDefs) 
 			{
-				return externalRes == Parsing::GetResourceName(currRes);
-			});
+				int shaderDefsToIncludeOldSize = shaderDefsToInclude.size();
 
-			if (resIt != pass.resources.cend()) 
-			{
-				resToInclude += Parsing::GetResourceRawView(*resIt);
-			}
-			else
-			{
-				// Not found among resources, try vert attr
-				const auto vertAttrIt = std::find_if(pass.vertAttr.cbegin(), pass.vertAttr.cend(), 
-					[&externalRes](const Parsing::VertAttr& vertAttr)
+				((
+					std::for_each(shaderDefs->cbegin(), shaderDefs->cend(), [&shaderDefsToInclude, &externalDefName](const auto& def) 
 				{
-					return vertAttr.name == externalRes;
+					using T = std::decay_t<decltype(def)>;
 
-				});
+					if constexpr (std::is_same_v<T, Parsing::Resource_t>)
+					{
+						if (externalDefName == Parsing::GetResourceName(def))
+						{
+							shaderDefsToInclude += Parsing::GetResourceRawView(def);
+						}
+					}
+					else
+					{
+						if (externalDefName == def.name)
+						{
+							shaderDefsToInclude += def.rawView;
+						}
+					}
 
-				assert(vertAttrIt != pass.vertAttr.cend() && "Shader compilation failed can't find resource");
+				}
+				)), ...);
 
-				resToInclude += vertAttrIt->rawView;
+				// If the size of the string to include changed, then we found something
+				return shaderDefsToIncludeOldSize != shaderDefsToInclude.size();
 
-			}
+			}, &pass.resources, &pass.vertAttr, &pass.functions);
 
-			resToInclude += ";";
+			assert(result == true && "Some include shader resource was not found");
+
+			shaderDefsToInclude += ";";
 		}
 
 		std::string sourceCode =
-			resToInclude +
+			shaderDefsToInclude +
 			"[RootSignature( \" " + pass.rootSignature->rawView + " \" )]" +
 			shader.source;
 

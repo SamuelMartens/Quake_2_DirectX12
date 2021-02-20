@@ -163,6 +163,12 @@ namespace Parsing
 
 	DXGI_FORMAT GetParseDataTypeDXGIFormat(Parsing::DataType type);
 
+	struct Function
+	{
+		std::string name;
+		std::string rawView;
+	};
+
 	struct VertAttrField
 	{
 		DataType type = DataType::Float4;
@@ -283,6 +289,7 @@ public:
 
 	std::optional<Parsing::PassInputType> input;
 
+	std::vector<Parsing::Function> functions;
 	std::vector<Parsing::VertAttr> vertAttr;
 	std::vector<Parsing::Resource_t> resources;
 	std::string inputVertAttr;
