@@ -13,6 +13,7 @@
 #include "dx_allocators.h"
 #include "dx_utils.h"
 #include "dx_resourcemanager.h"
+#include "dx_diagnostics.h"
 
 
 using BufferHandler = uint32_t;

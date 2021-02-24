@@ -13,6 +13,7 @@
 #include "dx_utils.h"
 #include "dx_buffer.h"
 #include "dx_commandlist.h"
+#include "dx_settings.h"
 
 namespace Parsing
 {

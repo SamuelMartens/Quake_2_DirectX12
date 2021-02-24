@@ -6,13 +6,13 @@ ShaderList  <- T( < Shader* > )
 
 # --- Pass properties
 PassProps           <- T( '{' < ( PassInput / PassVertAttr / PassVertAttrSlots )* > '}' )
-PassInput           <- T( 'PassInput' _ ':' < PassInputIdent (Comma PassInputIdent)* > )
+PassInput           <- T( 'PassInput' _ ':' < PassInputIdent (~Comma PassInputIdent)* > )
 PassInputIdent      <- _ 'Static' _ / _ 'Dynamic' _ / _ 'Particles' _ / _ 'UI' _ / _ 'PostProcess' _
 PassVertAttr        <- T( 'PassVertAttr' _ ':' Ident )
 PassVertAttrSlots   <- T( 'PassSlotLayout' _ ':' VertAttrSlots )
 
 # --- Shader code ---
-ShaderExternalDecl  <- T( 'External'_ ':' < Ident? ( Comma Ident )* > )
+ShaderExternalDecl  <- T( 'External'_ ':' < Ident? ( ~Comma Ident )* > )
 ShaderSource        <- T( '<[' < ( !"]>"  . )* > ']>' ) 
 Shader              <- T( < ShaderTypeDecl ShaderExternalDecl ShaderSource > )
 ShaderTypeDecl      <- T( 'Type' _ ':' _ < ShaderType > ) 
@@ -21,7 +21,7 @@ ShaderType			<- _'VS' _ / _ 'GS' _ / _ 'PS' _
 # --- State ---
 ColorTargetSt   	<- T( 'ColorTarget' _ ':' < Ident > )
 DepthTargetSt   	<- T( 'DepthTarget' _ ':' < Ident > )
-ViewportSt      	<- T( 'Viewport' _ ':' < (Float / Int) (Comma (Float / Int)){3} > )
+ViewportSt      	<- T( 'Viewport' _ ':' < (Float / Int) (~Comma (Float / Int)){3} > )
 BlendEnabledSt  	<- T( 'BlendEnabled' _ ':' < Bool > )
 SrcBlendSt			<- T( 'SrcBlend' _ ':' < BlendStValues > )
 DestBlendSt			<- T( 'DestBlend' _ ':' < BlendStValues > )
@@ -32,7 +32,7 @@ BlendStValues		<- _ 'SrcAlpha' _ / _ 'InvSrcAlpha' _
 TopologyStValues    <- _ 'Triangle' _ / _ 'Point' _
 
 # --- Root Signature ---
-RSig                <- T( '{' < RSigFlagsDecl ( ~Comma RSigEntity )+ > '}' )
+RSig                <- T( '{' < RSigFlagsDecl ( Comma RSigEntity )+ > '}' )
 RSigEntity          <- RSigCBVDecl / RSigSRVDecl / RSigUAVDecl / RSigRootConstDecl / RSigStatSamplerDecl / RSigDescTableDecl
 
 RSigFlagsDecl   	<- T( < 'RootFlags' _ '(' RSigFlags? ( _ '|' _ RSigFlags )* ')' > )
@@ -42,11 +42,11 @@ RSigCBVDecl         <- T( < 'CBV' _ '(' RegisterId ( Comma RSigDeclOptions )* ')
 RSigSRVDecl         <- T( < 'SRV' _ '(' RegisterId ( Comma RSigDeclOptions )* ')' > )
 RSigUAVDecl         <- T( < 'UAV' _ '(' RegisterId ( Comma RSigDeclOptions )* ')' > )
 
-RSigRootConstDecl	<- T( 'RootConstants' _ '(' _ 'num32BitConstants' _ '=' Int Comma RegisterId (Comma RSigVisibilityDecl)? ')' )
+RSigRootConstDecl	<- T( 'RootConstants' _ '(' _ 'num32BitConstants' _ '=' Int Comma RegisterId ( Comma RSigVisibilityDecl)? ')' )
 
 RSigStatSamplerDecl <- T( 'StaticSampler' _ '(' RegisterId ( Comma ( !')' . )* )? ')' )
 
-RSigDescTableDecl       <- T( 'DescriptorTable' _ '(' RSigDescTableEntity ( ~Comma RSigDescTableEntity )*  ')' )
+RSigDescTableDecl       <- T( 'DescriptorTable' _ '(' RSigDescTableEntity ( Comma RSigDescTableEntity )*  ')' )
 RSigDescTableEntity     <- _ RSigCBVDecl _ / _ RSigSRVDecl _ / _ RSigUAVDecl _ / _ RSigDescTableSampler _
 RSigDescTableSampler    <- T( 'Sampler' _ '(' RegisterId ( Comma RSDescNumDecl )? ')' )
 
@@ -62,9 +62,10 @@ Resource            <- T(  ResourceAttr ( ConstBuff / Texture / Sampler) )
 ConstBuff           <- T( 'cbuffer' < Ident ':' RegisterDecl  '{' ConstBuffContent '}' > )
 Texture             <- T( 'Texture2D' < Ident ':' RegisterDecl > )
 Sampler             <- T( 'SamplerState' < Ident ':' RegisterDecl > )
-ResourceAttr        <- T( '[' < ResourceScope ',' ResourceUpdate > ']' )
+ResourceAttr        <- T( '[' < ResourceScope Comma ResourceUpdate ( Comma ResourceBind)?> ']' )
 ResourceScope       <- _ 'Local' _ / _ 'Global' _
 ResourceUpdate      <- _ 'PerObject' _ / _ 'PerPass' _
+ResourceBind        <- T( 'Bind' _ ':' Ident )
 
 ConstBuffContent	<- T( ConstBuffField* )
 ConstBuffField		<- T( ResourceFieldType Ident ';' )
@@ -99,7 +100,7 @@ Int     <- T( < [0-9][0-9]* > )
 Word    <- T( < [a-zA-Z_][a-zA-Z_]* > )
 
 # --- Punctuation ---
-Comma <-  T( < ',' > )
+~Comma <-  T( < ',' > )
 
 # --- Whitespaces ---
 ~_   <- Spacing*

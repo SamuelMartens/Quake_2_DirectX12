@@ -204,14 +204,14 @@ namespace
 			currentPass.viewport.TopLeftX = sv[0].type() == typeid(int) ?
 				peg::any_cast<int>(sv[0]) : peg::any_cast<float>(sv[0]) * width;
 
-			currentPass.viewport.TopLeftY = sv[2].type() == typeid(int) ?
-				peg::any_cast<int>(sv[2]) : peg::any_cast<float>(sv[2]) * height;
+			currentPass.viewport.TopLeftY = sv[1].type() == typeid(int) ?
+				peg::any_cast<int>(sv[1]) : peg::any_cast<float>(sv[1]) * height;
 
-			currentPass.viewport.Width = sv[4].type() == typeid(int) ?
-				peg::any_cast<int>(sv[4]) : peg::any_cast<float>(sv[4]) * width;
+			currentPass.viewport.Width = sv[2].type() == typeid(int) ?
+				peg::any_cast<int>(sv[2]) : peg::any_cast<float>(sv[2]) * width;
 
-			currentPass.viewport.Height = sv[6].type() == typeid(int) ?
-				peg::any_cast<int>(sv[6]) : peg::any_cast<float>(sv[6]) * height;
+			currentPass.viewport.Height = sv[3].type() == typeid(int) ?
+				peg::any_cast<int>(sv[3]) : peg::any_cast<float>(sv[3]) * height;
 
 			assert(currentPass.viewport.TopLeftX < currentPass.viewport.Width  && "Weird viewport X param, are you sure?");
 			assert(currentPass.viewport.TopLeftY < currentPass.viewport.Height  && "Weird viewport Y param, are you sure?");
@@ -301,7 +301,7 @@ namespace
 		{
 			std::vector<std::string> externalList;
 
-			for (int i = 0; i < sv.size(); i += 2)
+			for (int i = 0; i < sv.size(); ++i)
 			{
 				externalList.push_back(peg::any_cast<std::string>(sv[i]));
 			}
@@ -414,7 +414,7 @@ namespace
 		{
 			int num = 1;
 
-			for (int i = 2 ; i < sv.size(); i += 2)
+			for (int i = 1 ; i < sv.size(); ++i)
 			{
 				auto option = peg::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
 
@@ -441,7 +441,7 @@ namespace
 		{
 			int num = 1;
 
-			for (int i = 2; i < sv.size(); i += 2)
+			for (int i = 1; i < sv.size(); ++i)
 			{
 				auto option = peg::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
 
@@ -473,7 +473,7 @@ namespace
 		{
 			return Parsing::RootParam_SamplerView{
 				peg::any_cast<int>(sv[0]),
-				sv.size() == 1 ? 1 :  peg::any_cast<int>(sv[2])
+				sv.size() == 1 ? 1 :  peg::any_cast<int>(sv[1])
 			};
 		};
 
@@ -652,7 +652,7 @@ namespace
 		{
 			std::vector<std::tuple<unsigned int, int>> result;
 
-			for (int i = 0; i < sv.size(); i += 2)
+			for (int i = 0; i < sv.size(); ++i)
 			{
 				result.push_back(peg::any_cast<std::tuple<unsigned int, int>>(sv[i]));
 			}
@@ -734,7 +734,7 @@ namespace
 		const bool loadGrammarResult = parser.load_grammar(frameGraphGrammar.c_str());
 		assert(loadGrammarResult && "Can't load pass grammar");
 
-		parser["FrameGraph"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["Passes"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
 			Parsing::FrameGraphSourceContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::FrameGraphSourceContext>&>(ctx);
 			
@@ -991,7 +991,6 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 		std::string shaderDefsToInclude;
 
 		// Add External Resources
-		//#DEBUG rename externalRes to externalResDef
 		for (const std::string& externalDefName : shader.externals)
 		{
 			// Find resource and stub it into shader source

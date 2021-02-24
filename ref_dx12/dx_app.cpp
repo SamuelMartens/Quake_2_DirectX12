@@ -546,8 +546,10 @@ void Renderer::CreateDepthStencilBuffer(ComPtr<ID3D12Resource>& buffer)
 	optimizedClearVal.DepthStencil.Depth = 1.0f;
 	optimizedClearVal.DepthStencil.Stencil = 0;
 
+	CD3DX12_HEAP_PROPERTIES heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+
 	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		&heapProperties,
 		D3D12_HEAP_FLAG_NONE,
 		&depthStencilDesc,
 		D3D12_RESOURCE_STATE_DEPTH_WRITE,
@@ -586,7 +588,7 @@ void Renderer::SubmitFrame(Frame& frame)
 		"Trying to set up sync primitives for frame that already has it");
 
 	frame.executeCommandListFenceValue = GenerateFenceValue();
-	frame.executeCommandListEvenHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+	frame.executeCommandListEvenHandle = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
 
 	commandQueue->Signal(fence.Get(), frame.executeCommandListFenceValue);
 	ThrowIfFailed(fence->SetEventOnCompletion(frame.executeCommandListFenceValue, frame.executeCommandListEvenHandle));
@@ -902,14 +904,17 @@ void Renderer::EndFrameJob(GPUJobContext& context)
 	context.commandList.Open();
 
 	Frame& frame = context.frame;
+
+	CD3DX12_RESOURCE_BARRIER resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		frame.colorBufferAndView->buffer.Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PRESENT
+	);
+
 	// This is stupid. I use separate command list just for a few commands, bruh
 	context.commandList.commandList->ResourceBarrier(
 		1,
-		&CD3DX12_RESOURCE_BARRIER::Transition(
-			frame.colorBufferAndView->buffer.Get(),
-			D3D12_RESOURCE_STATE_RENDER_TARGET,
-			D3D12_RESOURCE_STATE_PRESENT
-		)
+		&resourceBarrier
 	);
 
 	context.commandList.Close();
@@ -948,14 +953,16 @@ void Renderer::BeginFrameJob(GPUJobContext& context)
 	CommandList& commandList = context.commandList;
 	Frame& frame = context.frame;
 
+	CD3DX12_RESOURCE_BARRIER resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		frame.colorBufferAndView->buffer.Get(),
+		D3D12_RESOURCE_STATE_PRESENT,
+		D3D12_RESOURCE_STATE_RENDER_TARGET
+	);
+
 	// Indicate buffer transition to write state
 	commandList.commandList->ResourceBarrier(
 		1,
-		&CD3DX12_RESOURCE_BARRIER::Transition(
-			frame.colorBufferAndView->buffer.Get(),
-			D3D12_RESOURCE_STATE_PRESENT,
-			D3D12_RESOURCE_STATE_RENDER_TARGET
-		)
+		&resourceBarrier
 	);
 
 	D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = rtvHeap->GetHandleCPU(frame.colorBufferAndView->viewIndex);
@@ -1343,7 +1350,9 @@ void Renderer::FindImageScaledSizes(int width, int height, int& scaledWidth, int
 
 bool Renderer::IsVisible(const entity_t& entity, const Camera& camera) const
 {
-	const FXMVECTOR sseEntityPos = XMLoadFloat4(&XMFLOAT4(entity.origin[0], entity.origin[1], entity.origin[2], 1.0f));
+	const XMFLOAT4 entityPos = XMFLOAT4(entity.origin[0], entity.origin[1], entity.origin[2], 1.0f);
+
+	const FXMVECTOR sseEntityPos = XMLoadFloat4(&entityPos);
 	const FXMVECTOR sseCameraToEntity = XMVectorSubtract(sseEntityPos, XMLoadFloat4(&camera.position));
 	const float dist = XMVectorGetX(XMVector4Length(sseCameraToEntity));
 

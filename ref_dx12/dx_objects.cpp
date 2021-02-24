@@ -130,8 +130,11 @@ std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> DynamicObjectModel::GenerateAnimInterpo
 	const DynamicObjectModel::AnimFrame& oldFrame = animationFrames[entity.oldframe];
 	const DynamicObjectModel::AnimFrame& frame = animationFrames[entity.frame];
 
-	XMVECTOR sseOldOrigin = XMLoadFloat4(&XMFLOAT4(entity.oldorigin[0], entity.oldorigin[1], entity.oldorigin[2], 1.0f));
-	XMVECTOR sseOrigin = XMLoadFloat4(&XMFLOAT4(entity.origin[0], entity.origin[1], entity.origin[2], 1.0f));
+	XMFLOAT4 oldOrigin = XMFLOAT4(entity.oldorigin[0], entity.oldorigin[1], entity.oldorigin[2], 1.0f);
+	XMFLOAT4 origin = XMFLOAT4(entity.origin[0], entity.origin[1], entity.origin[2], 1.0f);
+
+	XMVECTOR sseOldOrigin = XMLoadFloat4(&oldOrigin);
+	XMVECTOR sseOrigin = XMLoadFloat4(&origin);
 
 	XMVECTOR sseDelta = XMVectorSubtract(sseOldOrigin, sseOrigin);
 
