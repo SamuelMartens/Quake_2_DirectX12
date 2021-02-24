@@ -2,7 +2,7 @@
 
 - Yet another attempt to rewrite Quake 2 renderer to work on DirectX 12.
 
-- I use VS2017, but it should work for VS2019 as well.
+- I use VS2019, but VS2017 might work as well. Make sure C++ MFC is installed.
 
 - This repo doesn't contain any assets so you still need original game to run it.
 
@@ -17,4 +17,3 @@ How to run:
   4) Click on User Macros
   5) Change GameDir to point on the root directory of the original game
   
- 
