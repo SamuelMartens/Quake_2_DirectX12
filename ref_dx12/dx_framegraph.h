@@ -1,6 +1,8 @@
 #pragma once
 
 #include <tuple>
+#include <vector>
+#include <unordered_map>
 
 #include "dx_pass.h"
 
@@ -9,6 +11,13 @@
 class FrameGraphSource
 {
 public:
+
+	struct FrameGraphResourceDecl
+	{
+		std::string name;
+		D3D12_RESOURCE_DESC desc;
+	};
+
 
 	FrameGraphSource() = default;
 
@@ -21,6 +30,8 @@ public:
 	~FrameGraphSource() = default;
 
 	std::vector<std::string> passes;
+	std::vector<FrameGraphResourceDecl> resourceDeclarations;
+
 	std::vector<PassParametersSource> passesParametersSources;
 };
 
@@ -130,6 +141,10 @@ private:
 	BufferHandler passGlobalMemory = Const::INVALID_BUFFER_HANDLER;
 
 	BufferHandler particlesVertexMemory = Const::INVALID_BUFFER_HANDLER;
+
+	// This resources are shared between frame graphs of different frames
+	//#DEBUG can't do this with textures. Textures should be managed by texture manager
+	std::unordered_map<int, ComPtr<ID3D12Resource>> frameGraphInternalResource;
 
 	//#TODO delete when proper runtime load is developed.
 	// this is temp hack

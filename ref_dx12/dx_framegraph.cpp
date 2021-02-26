@@ -238,7 +238,7 @@ namespace
 
 		const int objMemorySize = resContext.perObjectGlobalMemorySize[INPUT_TYPE_INDEX];
 
-		if (objMemorySize != 0)
+		if (objMemorySize > 0)
 		{
 			objectGlobalMem = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(objMemorySize * objectsNum);
 		}
@@ -439,7 +439,7 @@ void FrameGraph::Execute(Frame& frame)
 
 					std::string_view passName = PassUtils::GetPassName(pass);
 
-					Diagnostics::BeginEvent(passJobContext.commandList.commandList.Get(), passName);
+					Diagnostics::BeginEvent(passJobContext.commandList.GetGPUList(), passName);
 					Logs::Logf(Logs::Category::Job, "Pass job started: %s", passName);
 
 					passJobContext.WaitDependency();
@@ -447,7 +447,7 @@ void FrameGraph::Execute(Frame& frame)
 					pass.Execute(passJobContext);
 
 					Logs::Logf(Logs::Category::Job, "Pass job end: %s", passName);
-					Diagnostics::EndEvent(passJobContext.commandList.commandList.Get());
+					Diagnostics::EndEvent(passJobContext.commandList.GetGPUList());
 				}));
 
 			}, passes[i]);
@@ -464,11 +464,6 @@ void FrameGraph::Init(GPUJobContext& context)
 	// Init utility data
 	passGlobalMemorySize = RootArg::GetSize(passesGlobalRes);
 
-	/*for (int i = 0; i < static_cast<int>(Parsing::PassInputType::SIZE); ++i)
-	{
-		perObjectGlobalMemorySize[i] = RootArg::GetSize(std::get<i>(objGlobalResTemplate));
-	}
-*/
 	int index = 0;
 	std::apply([&index, this](auto&... objResTemplate) 
 	{
@@ -594,7 +589,7 @@ void FrameGraph::RegisterGlobalObjectsResDynamicEntities(GPUJobContext& context)
 
 void FrameGraph::UpdateGlobalResources(GPUJobContext& context)
 {
-	Diagnostics::BeginEvent(context.commandList.commandList.Get(), "UpdateGlobalResources");
+	Diagnostics::BeginEvent(context.commandList.GetGPUList(), "UpdateGlobalResources");
 
 	// This just doesn't belong here. I will do proper Initialization when
 	// runtime load of frame graph will be implemented
@@ -617,7 +612,7 @@ void FrameGraph::UpdateGlobalResources(GPUJobContext& context)
 
 	UpdateGlobalPasslRes(context);
 
-	Diagnostics::EndEvent(context.commandList.commandList.Get());
+	Diagnostics::EndEvent(context.commandList.GetGPUList());
 }
 
 void FrameGraph::ReleasePerFrameResources()

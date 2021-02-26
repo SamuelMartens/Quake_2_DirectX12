@@ -294,7 +294,7 @@ namespace
 	void _SetRenderState(const PassParameters& params, GPUJobContext& context)
 	{
 		Frame& frame = context.frame;
-		ComPtr<ID3D12GraphicsCommandList>& commandList = context.commandList.commandList;
+		ID3D12GraphicsCommandList* commandList = context.commandList.GetGPUList();
 
 
 		commandList->RSSetViewports(1, &params.viewport);
@@ -557,7 +557,7 @@ void Pass_UI::Draw(GPUJobContext& context)
 		vertexBufferView.BufferLocation = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
 			uploadMemory.GetOffset(vertexMemory) + i * perObjectVertexMemorySize;
 
-		commandList.commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+		commandList.GetGPUList()->IASetVertexBuffers(0, 1, &vertexBufferView);
 		
 		// Bind global args
 		frameGraph.BindObjGlobalRes<Parsing::PassInputType::UI>(passParameters.perObjGlobalRootArgsIndicesTemplate, i,
@@ -570,7 +570,7 @@ void Pass_UI::Draw(GPUJobContext& context)
 			RootArg::Bind(rootArg, context.commandList);
 		}
 
-		commandList.commandList->DrawInstanced(perObjectVertexMemorySize / perVertexMemorySize, 1, 0, 0);
+		commandList.GetGPUList()->DrawInstanced(perObjectVertexMemorySize / perVertexMemorySize, 1, 0, 0);
 	}
 }
 
@@ -796,12 +796,12 @@ void Pass_Static::Draw(GPUJobContext& context)
 		vertexBufferView.BufferLocation = defaultMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
 			defaultMemory.GetOffset(obj.originalObj->vertices);
 
-		commandList.commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+		commandList.GetGPUList()->IASetVertexBuffers(0, 1, &vertexBufferView);
 
 
 		if (obj.originalObj->indices == Const::INVALID_BUFFER_HANDLER)
 		{
-			commandList.commandList->DrawInstanced(vertexBufferView.SizeInBytes / vertexBufferView.StrideInBytes, 1, 0, 0);
+			commandList.GetGPUList()->DrawInstanced(vertexBufferView.SizeInBytes / vertexBufferView.StrideInBytes, 1, 0, 0);
 		}
 		else
 		{
@@ -809,8 +809,8 @@ void Pass_Static::Draw(GPUJobContext& context)
 				defaultMemory.GetOffset(obj.originalObj->indices);
 			indexBufferView.SizeInBytes = obj.originalObj->indicesSizeInBytes;
 
-			commandList.commandList->IASetIndexBuffer(&indexBufferView);
-			commandList.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
+			commandList.GetGPUList()->IASetIndexBuffer(&indexBufferView);
+			commandList.GetGPUList()->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
 		}
 
 	}
@@ -1028,16 +1028,16 @@ void Pass_Dynamic::Draw(GPUJobContext& context)
 			defaultMemory.GetOffset(model.textureCoords);
 		vertexBufferViews[2].SizeInBytes = texCoordStrideSize * model.headerData.animFrameVertsNum;
 
-		commandList.commandList->IASetVertexBuffers(0, _countof(vertexBufferViews), vertexBufferViews);
+		commandList.GetGPUList()->IASetVertexBuffers(0, _countof(vertexBufferViews), vertexBufferViews);
    
 		// Set index buffer
 		indexBufferView.BufferLocation = defaultMemBuffVirtAddress +
 			defaultMemory.GetOffset(model.indices);
 		indexBufferView.SizeInBytes = model.headerData.indicesNum * sizeof(uint32_t);
 
-		commandList.commandList->IASetIndexBuffer(&indexBufferView);
+		commandList.GetGPUList()->IASetIndexBuffer(&indexBufferView);
 
-		commandList.commandList->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
+		commandList.GetGPUList()->DrawIndexedInstanced(indexBufferView.SizeInBytes / sizeof(uint32_t), 1, 0, 0, 0);
 	}
 }
 
@@ -1125,9 +1125,9 @@ void Pass_Particles::Draw(GPUJobContext& context)
 	vertBufferView.StrideInBytes = FrameGraph::SINGLE_PARTICLE_SIZE;
 	vertBufferView.SizeInBytes = vertBufferView.StrideInBytes * context.frame.particles.size();
 
-	commandList.commandList->IASetVertexBuffers(0, 1, &vertBufferView);
+	commandList.GetGPUList()->IASetVertexBuffers(0, 1, &vertBufferView);
 
-	commandList.commandList->DrawInstanced(vertBufferView.SizeInBytes / vertBufferView.StrideInBytes, 1, 0, 0);
+	commandList.GetGPUList()->DrawInstanced(vertBufferView.SizeInBytes / vertBufferView.StrideInBytes, 1, 0, 0);
 }
 
 void Pass_Particles::SetRenderState(GPUJobContext& context)

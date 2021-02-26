@@ -590,6 +590,11 @@ namespace
 				peg::any_cast<Parsing::ResourceBindFrequency>(sv[1]));
 		};
 
+		parser["ResourceBind"] = [](const peg::SemanticValues& sv)
+		{
+			assert(false && "Implement resource bind");
+		};
+
 		parser["ResourceScope"] = [](const peg::SemanticValues& sv)
 		{
 			return static_cast<Parsing::ResourceScope>(sv.choice());
@@ -746,6 +751,103 @@ namespace
 		};
 
 		parser["Pass"] = [](const peg::SemanticValues& sv)
+		{
+			return sv.token();
+		};
+
+		// --- Resource Declaration
+		parser["ResourceDecls"] = [](const peg::SemanticValues& sv, peg::any& ctx) 
+		{
+			Parsing::FrameGraphSourceContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::FrameGraphSourceContext>&>(ctx);
+
+			std::for_each(sv.begin(), sv.end(),
+				[&parseCtx](const peg::any& resource)
+			{
+				parseCtx.resources.push_back(std::move(peg::any_cast<FrameGraphSource::FrameGraphResourceDecl>(resource)));
+			});
+		};
+
+		parser["ResourceDecl"] = [](const peg::SemanticValues& sv)
+		{
+			auto dimensions = peg::any_cast<std::array<int,3>>(sv[2]);
+
+			D3D12_RESOURCE_DESC desc = {};
+			desc.MipLevels = 1;
+			desc.SampleDesc.Count = 1;
+			desc.SampleDesc.Quality = 0;
+			desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+			
+			desc.Width = dimensions[0];
+			desc.Height = dimensions[1];
+			desc.DepthOrArraySize = dimensions[2];
+			
+			desc.Format = peg::any_cast<DXGI_FORMAT>(sv[3]);
+			desc.Dimension = peg::any_cast<D3D12_RESOURCE_DIMENSION>(sv[1]);
+			
+			if (desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) 
+			{
+				desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+				//#DEBUG verify if it's ok to set alignment to 0 for texture ok
+				// so there is no special case
+				desc.Alignment = 0;
+			}
+
+			return FrameGraphSource::FrameGraphResourceDecl{ peg::any_cast<std::string>(sv[0]), desc };
+		};
+
+		parser["ResourceDeclType"] = [](const peg::SemanticValues& sv) 
+		{
+			switch (HASH(peg::any_cast<std::string>(sv[0]).c_str())) 
+			{
+			case HASH("Texture2D"):
+				return D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+			case HASH("Buffer"):
+				return D3D12_RESOURCE_DIMENSION_BUFFER;
+			default:
+				assert(false && "Unknown value of ResourceDeclType");
+			}
+
+			return D3D12_RESOURCE_DIMENSION_BUFFER;
+		};
+
+		parser["ResourceDeclDimen"] = [](const peg::SemanticValues& sv) 
+		{
+			std::array<int, 3> dimensions;
+
+			dimensions[0] = peg::any_cast<int>(sv[0]);
+			dimensions[1] = sv.size() > 1 ? peg::any_cast<int>(sv[1]) : 1;
+			dimensions[2] = sv.size() > 2 ? peg::any_cast<int>(sv[2]) : 1;
+		};
+
+		parser["ResourceDeclFormat"] = [](const peg::SemanticValues& sv) 
+		{
+			switch (HASH(peg::any_cast<std::string>(sv[0]).c_str()))
+			{
+			case HASH("Unknown"):
+				return DXGI_FORMAT_UNKNOWN;
+			case HASH("R8G8B8A8_UNORM"):
+				return DXGI_FORMAT_R8G8B8A8_UNORM;
+			default:
+				assert(false && "Invalid value of ResourceDeclFormat");
+				break;
+			}
+
+			return DXGI_FORMAT_UNKNOWN;
+		};
+
+		// --- Tokens
+		parser["Ident"] = [](const peg::SemanticValues& sv)
+		{
+			return sv.token();
+		};
+
+		// --- Types
+		parser["Int"] = [](const peg::SemanticValues& sv)
+		{
+			return stoi(sv.token());
+		};
+
+		parser["Word"] = [](const peg::SemanticValues& sv)
 		{
 			return sv.token();
 		};
@@ -1176,9 +1278,16 @@ FrameGraphSource FrameGraphBuilder::GenerateFrameGraphSource() const
 
 	std::shared_ptr<Parsing::FrameGraphSourceContext> parseCtx = ParseFrameGraphFile(LoadFrameGraphFile());
 
+	//#DEBUG make this move
 	frameGraphSource.passes = parseCtx->passes;
+	frameGraphSource.resourceDeclarations = std::move(parseCtx->resources);
 
 	return frameGraphSource;
+}
+
+std::unordered_map<int, ComPtr<ID3D12Resource>> FrameGraphBuilder::CreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls) const
+{
+	return std::unordered_map<int, ComPtr<ID3D12Resource>>();
 }
 
 std::vector<PassParametersSource> FrameGraphBuilder::GeneratePassesParameterSources() const

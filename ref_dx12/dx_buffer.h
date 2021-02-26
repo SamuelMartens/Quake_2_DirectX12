@@ -90,7 +90,7 @@ public:
 	[[nodiscard]]
 	BufferHandler Allocate(int size)
 	{
-		assert(size != 0 && "Zero allocation request");
+		assert(size > 0 && "Invalid allocation size request");
 
 		std::scoped_lock<std::mutex> lock(mutex);
 

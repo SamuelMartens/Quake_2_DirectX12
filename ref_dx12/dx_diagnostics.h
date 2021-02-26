@@ -19,6 +19,8 @@ namespace Diagnostics
 	/*
 		PIX doesn't work for x32 applications so does its event library. So here I am
 		directly using Command List event methods.
+
+		NOTE: Event markers can only be applied to open command lists.
 	*/
 	void BeginEvent(ID3D12GraphicsCommandList* commandList, std::string_view msg);
 	void BeginEventf(ID3D12GraphicsCommandList* commandList, const char* fmt, ...);

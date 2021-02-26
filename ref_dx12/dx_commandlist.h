@@ -31,11 +31,13 @@ public:
 
 	bool GetIsOpen() const;
 
+	ID3D12GraphicsCommandList* GetGPUList();
+
+private:
+
 	// Rendering related
 	ComPtr<ID3D12GraphicsCommandList> commandList;
 	ComPtr<ID3D12CommandAllocator> commandListAlloc;
-
-private:
 
 #ifdef VALIDATE_COMMAND_LIST
 	std::atomic<bool> isOpen = false;

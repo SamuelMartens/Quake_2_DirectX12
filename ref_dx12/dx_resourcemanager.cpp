@@ -34,7 +34,7 @@ ComPtr<ID3D12Resource> ResourceManager::CreateDefaultHeapBuffer(const void* data
 		IID_PPV_ARGS(&buffer)
 	));
 
-	ComPtr<ID3D12GraphicsCommandList>& commandList = context.commandList.commandList;
+	ID3D12GraphicsCommandList* commandList = context.commandList.GetGPUList();
 
 	if (data != nullptr)
 	{
@@ -50,7 +50,7 @@ ComPtr<ID3D12Resource> ResourceManager::CreateDefaultHeapBuffer(const void* data
 		subResourceData.RowPitch = byteSize;
 		subResourceData.SlicePitch = subResourceData.RowPitch;
 
-		UpdateSubresources(commandList.Get(), buffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
+		UpdateSubresources(commandList, buffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
 	}
 
 	CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -153,11 +153,11 @@ void ResourceManager::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
 		D3D12_RESOURCE_STATE_COPY_DEST
 	);
 
-	commandList.commandList->ResourceBarrier(1, &copyDestTransition);
+	commandList.GetGPUList()->ResourceBarrier(1, &copyDestTransition);
 
 	// Last argument is intentionally args.byteSize, cause that's how much data we pass to this function
 	// we don't want to read out of range
-	commandList.commandList->CopyBufferRegion(args.buffer, args.offset, uploadBuffer.Get(), 0, args.byteSize);
+	commandList.GetGPUList()->CopyBufferRegion(args.buffer, args.offset, uploadBuffer.Get(), 0, args.byteSize);
 
 	CD3DX12_RESOURCE_BARRIER readTransition = CD3DX12_RESOURCE_BARRIER::Transition(
 		args.buffer,
@@ -165,7 +165,7 @@ void ResourceManager::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
 		D3D12_RESOURCE_STATE_GENERIC_READ
 	);
 
-	commandList.commandList->ResourceBarrier(1, &readTransition);
+	commandList.GetGPUList()->ResourceBarrier(1, &readTransition);
 }
 
 void ResourceManager::RequestResourceDeletion(ComPtr<ID3D12Resource> resourceToDelete)
@@ -351,16 +351,16 @@ void ResourceManager::UpdateTexture(Texture& tex, const std::byte* data, GPUJobC
 		D3D12_RESOURCE_STATE_COPY_DEST
 	);
 
-	commandList.commandList->ResourceBarrier(1, &copyDestTransition);
+	commandList.GetGPUList()->ResourceBarrier(1, &copyDestTransition);
 
-	UpdateSubresources(commandList.commandList.Get(), tex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
+	UpdateSubresources(commandList.GetGPUList(), tex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
 
 	CD3DX12_RESOURCE_BARRIER pixelResourceTransition = CD3DX12_RESOURCE_BARRIER::Transition(
 		tex.buffer.Get(),
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-	commandList.commandList->ResourceBarrier(1, &pixelResourceTransition);
+	commandList.GetGPUList()->ResourceBarrier(1, &pixelResourceTransition);
 
 }
 
@@ -573,15 +573,6 @@ void ResourceManager::_CreateGpuTexture(const unsigned int* raw, int width, int 
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-	UpdateSubresources(commandList.commandList.Get(), outTex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
-	commandList.commandList->ResourceBarrier(1, &transition);
-
-	Descriptor_t srvDescription = D3D12_SHADER_RESOURCE_VIEW_DESC{};
-	D3D12_SHADER_RESOURCE_VIEW_DESC& srvDescriptionRef = std::get<D3D12_SHADER_RESOURCE_VIEW_DESC>(srvDescription);
-	srvDescriptionRef.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDescriptionRef.Format = textureDesc.Format;
-	srvDescriptionRef.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDescriptionRef.Texture2D.MostDetailedMip = 0;
-	srvDescriptionRef.Texture2D.MipLevels = 1;
-	srvDescriptionRef.Texture2D.ResourceMinLODClamp = 0.0f;
+	UpdateSubresources(commandList.GetGPUList(), outTex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
+	commandList.GetGPUList()->ResourceBarrier(1, &transition);
 }

@@ -579,7 +579,7 @@ void Renderer::SubmitFrame(Frame& frame)
 	for (int i = 0; i < frame.acquiredCommandListsIndices.size(); ++i)
 	{
 		const int commandListIndex = frame.acquiredCommandListsIndices[i];
-		commandLists[i] = commandListBuffer.commandLists[commandListIndex].commandList.Get();
+		commandLists[i] = commandListBuffer.commandLists[commandListIndex].GetGPUList();
 	}
 	
 	commandQueue->ExecuteCommandLists(commandLists.size(), commandLists.data());
@@ -897,11 +897,11 @@ std::vector<int> Renderer::BuildVisibleDynamicObjectsList(const Camera& camera, 
 
 void Renderer::EndFrameJob(GPUJobContext& context)
 {
-	Diagnostics::BeginEvent(context.commandList.commandList.Get(), "End Frame");
-
 	Logs::Logf(Logs::Category::Job, "EndFrame job started frame %d", context.frame.frameNumber);
 
 	context.commandList.Open();
+
+	Diagnostics::BeginEvent(context.commandList.GetGPUList(), "End Frame");
 
 	Frame& frame = context.frame;
 
@@ -912,10 +912,12 @@ void Renderer::EndFrameJob(GPUJobContext& context)
 	);
 
 	// This is stupid. I use separate command list just for a few commands, bruh
-	context.commandList.commandList->ResourceBarrier(
+	context.commandList.GetGPUList()->ResourceBarrier(
 		1,
 		&resourceBarrier
 	);
+
+	Diagnostics::EndEvent(context.commandList.GetGPUList());
 
 	context.commandList.Close();
 
@@ -925,8 +927,6 @@ void Renderer::EndFrameJob(GPUJobContext& context)
 	// We can't submit command lists attached to render target that is not current back buffer,
 	// so we need to wait until previous frame is done
 	WaitForPrevFrame(context.frame);
-
-	Diagnostics::EndEvent(context.commandList.commandList.Get());
 
 	CloseFrame(frame);
 
@@ -949,7 +949,7 @@ void Renderer::BeginFrameJob(GPUJobContext& context)
 	Logs::Logf(Logs::Category::Job, "BeginFrame job started frame %d", context.frame.frameNumber);
 
 	JOB_GUARD(context);
-
+	
 	CommandList& commandList = context.commandList;
 	Frame& frame = context.frame;
 
@@ -960,7 +960,7 @@ void Renderer::BeginFrameJob(GPUJobContext& context)
 	);
 
 	// Indicate buffer transition to write state
-	commandList.commandList->ResourceBarrier(
+	commandList.GetGPUList()->ResourceBarrier(
 		1,
 		&resourceBarrier
 	);
@@ -969,8 +969,8 @@ void Renderer::BeginFrameJob(GPUJobContext& context)
 	D3D12_CPU_DESCRIPTOR_HANDLE depthTargetView = dsvHeap->GetHandleCPU(frame.depthBufferViewIndex);
 
 	// Clear back buffer and depth buffer
-	commandList.commandList->ClearRenderTargetView(renderTargetView, DirectX::Colors::Black, 0, nullptr);
-	commandList.commandList->ClearDepthStencilView(
+	commandList.GetGPUList()->ClearRenderTargetView(renderTargetView, DirectX::Colors::Black, 0, nullptr);
+	commandList.GetGPUList()->ClearDepthStencilView(
 		depthTargetView,
 		D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
 		1.0f,

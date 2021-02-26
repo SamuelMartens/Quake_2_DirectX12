@@ -87,6 +87,7 @@ namespace Parsing
 	struct FrameGraphSourceContext
 	{
 		std::vector<std::string> passes;
+		std::vector<FrameGraphSource::FrameGraphResourceDecl> resources;
 	};
 
 }
@@ -120,6 +121,9 @@ private:
 
 	/* FrameGraph generation */
 	FrameGraphSource GenerateFrameGraphSource() const;
+
+	[[nodiscard]]
+	std::unordered_map<int, ComPtr<ID3D12Resource>> CreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls) const;
 
 	[[nodiscard]]
 	FrameGraph CompileFrameGraph(FrameGraphSource&& source) const;

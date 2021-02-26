@@ -124,6 +124,8 @@ public:
 	{
 		std::scoped_lock<std::mutex> lock(mutex);
 
+		assert(size > 0 && "Invalid allocation size request");
+
 		// Check before existing allocations
 		{
 			const int nextOffset = allocations.empty() ? SIZE : allocations.begin()->offset;
@@ -150,6 +152,7 @@ public:
 				{
 					allocations.insert(nextAllocIt, { currAllocEnd, size });
 					ValidateAllocations();
+		
 					return currAllocEnd;
 				}
 			}
@@ -167,6 +170,7 @@ public:
 				{
 					allocations.push_back({ lastAllocEnd, size });
 					ValidateAllocations();
+	
 					return lastAllocEnd;
 				}
 			}
