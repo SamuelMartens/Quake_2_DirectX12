@@ -1490,9 +1490,8 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 		|| rawTex->width != textureWidth
 		|| rawTex->height != textureHeight)
 	{
-		constexpr int textureBitsPerPixel = 32;
 		rawTex = ResourceManager::Inst().CreateTextureFromDataDeferred(data,
-			textureWidth, textureHeight, textureBitsPerPixel, Texture::RAW_TEXTURE_NAME, GetMainThreadFrame());
+			textureWidth, textureHeight, DXGI_FORMAT_R8G8B8A8_UNORM, Texture::RAW_TEXTURE_NAME, GetMainThreadFrame());
 	}
 	else
 	{

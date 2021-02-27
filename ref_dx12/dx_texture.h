@@ -29,6 +29,11 @@ public:
 
 	~Texture();
 	
+	// bits per pixel from format
+	static int BPPFromFormat(DXGI_FORMAT format);
+
+public:
+
 	ComPtr<ID3D12Resource> buffer;
 
 	std::string name;
@@ -37,8 +42,8 @@ public:
 
 	int width = 0;
 	int height = 0;
-	// bits per pixel
-	int bpp = 0;
+
+	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
 };
 
 

@@ -24,7 +24,7 @@ Texture& Texture::operator=(Texture&& other)
 	width = other.width;
 	height = other.height;
 
-	bpp = other.bpp;
+	format = other.format;
 
 	return *this;
 }
@@ -34,4 +34,20 @@ Texture::~Texture()
 	// This is a bit lame cause, resource might actually not be deleted, if 
 	// some other texture owns it.
 	ResourceManager::Inst().RequestResourceDeletion(buffer);
+}
+
+int Texture::BPPFromFormat(DXGI_FORMAT format)
+{
+	switch (format)
+	{
+	case DXGI_FORMAT_R8G8B8A8_UNORM:
+		return 32;
+	case DXGI_FORMAT_R8_UNORM:
+		return 8;
+	default:
+		assert(false && "Unknown format for BPPFromFormat");
+		break;
+	}
+
+	return 0;
 }

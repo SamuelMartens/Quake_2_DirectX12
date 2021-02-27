@@ -232,7 +232,7 @@ Texture* ResourceManager::CreateTextureFromFile(const char* name, GPUJobContext&
 	return _CreateTextureFromFile(name, context);
 }
 
-Texture* ResourceManager::CreateTextureFromDataDeferred(const std::byte* data, int width, int height, int bpp, const char* name, Frame& frame)
+Texture* ResourceManager::CreateTextureFromDataDeferred(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, Frame& frame)
 {
 	std::scoped_lock<std::mutex> lock(textures.mutex);
 
@@ -240,7 +240,7 @@ Texture* ResourceManager::CreateTextureFromDataDeferred(const std::byte* data, i
 	tex.name = name;
 	tex.width = width;
 	tex.height = height;
-	tex.bpp = bpp;
+	tex.format = format;
 
 	Texture* result = &textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
 
@@ -255,11 +255,11 @@ Texture* ResourceManager::CreateTextureFromDataDeferred(const std::byte* data, i
 	return result;
 }
 
-Texture* ResourceManager::CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, GPUJobContext& context)
+Texture* ResourceManager::CreateTextureFromData(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, GPUJobContext& context)
 {
 	std::scoped_lock<std::mutex> lock(textures.mutex);
 
-	return _CreateTextureFromData(data, width, height, bpp, name, context);
+	return _CreateTextureFromData(data, width, height, format, name, context);
 }
 
 void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
@@ -297,7 +297,7 @@ void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
 					reinterpret_cast<std::byte*>(texture.data()),
 					texRequest.texture.width,
 					texRequest.texture.height,
-					texRequest.texture.bpp,
+					texRequest.texture.format,
 					name.c_str(),
 					context);
 			}
@@ -340,7 +340,7 @@ void ResourceManager::UpdateTexture(Texture& tex, const std::byte* data, GPUJobC
 	D3D12_SUBRESOURCE_DATA textureData = {};
 	textureData.pData = data;
 	// Divide by 8 cause bpp is bits per pixel, not bytes
-	textureData.RowPitch = tex.width * tex.bpp / 8;
+	textureData.RowPitch = tex.width * Texture::BPPFromFormat(tex.format) / 8;
 	// Not SlicePitch but texture size in our case
 	textureData.SlicePitch = textureData.RowPitch * tex.height;
 
@@ -409,16 +409,16 @@ void ResourceManager::ResampleTexture(const unsigned *in, int inwidth, int inhei
 	}
 }
 
-Texture* ResourceManager::_CreateTextureFromData(const std::byte* data, int width, int height, int bpp, const char* name, GPUJobContext& context)
+Texture* ResourceManager::_CreateTextureFromData(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, GPUJobContext& context)
 {
 	Logs::Logf(Logs::Category::Textures, "Create texture %s", name);
 
 	Texture tex;
-	_CreateGpuTexture(reinterpret_cast<const unsigned int*>(data), width, height, bpp, context, tex);
+	_CreateGpuTexture(reinterpret_cast<const unsigned int*>(data), width, height, format, context, tex);
 
 	tex.width = width;
 	tex.height = height;
-	tex.bpp = bpp;
+	tex.format = format;
 
 	tex.name = name;
 
@@ -445,21 +445,21 @@ Texture* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContext
 	std::byte* palette = nullptr;
 	int width = 0;
 	int height = 0;
-	int bpp = 0;
+	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
 
 	if (strcmp(texFileExtension, ".pcx") == 0)
 	{
-		bpp = 8;
+		format = DXGI_FORMAT_R8_UNORM;
 		Utils::LoadPCX(nonConstNamePtr, &image, &palette, &width, &height);
 	}
 	else if (strcmp(texFileExtension, ".wal") == 0)
 	{
-		bpp = 8;
+		format = DXGI_FORMAT_R8_UNORM;
 		Utils::LoadWal(nonConstNamePtr, &image, &width, &height);
 	}
 	else if (strcmp(texFileExtension, ".tga") == 0)
 	{
-		bpp = 32;
+		format = DXGI_FORMAT_R8G8B8A8_UNORM;
 		Utils::LoadTGA(nonConstNamePtr, &image, &width, &height);
 	}
 	else
@@ -486,10 +486,10 @@ Texture* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContext
 	//#TODO I ignore texture type (which is basically represents is this texture sky or
 	// or something else. It's kind of important here, as we need to handle pictures
 	// differently sometimes depending on type. I will need to take care of it later.
-	if (bpp == 8)
+	if (format == DXGI_FORMAT_R8_UNORM)
 	{
 		Renderer::Inst().ImageBpp8To32(image, width, height, fixedImage);
-		bpp = 32;
+		format = DXGI_FORMAT_R8G8B8A8_UNORM;
 
 		image32 = fixedImage;
 	}
@@ -512,7 +512,7 @@ Texture* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContext
 	//	image32 = resampledImage.data();
 	//}
 
-	Texture* createdTex = _CreateTextureFromData(reinterpret_cast<std::byte*>(image32), width, height, bpp, name, context);
+	Texture* createdTex = _CreateTextureFromData(reinterpret_cast<std::byte*>(image32), width, height, format, name, context);
 
 	if (image != nullptr)
 	{
@@ -527,13 +527,13 @@ Texture* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContext
 	return createdTex;
 }
 
-void ResourceManager::_CreateGpuTexture(const unsigned int* raw, int width, int height, int bpp, GPUJobContext& context, Texture& outTex)
+void ResourceManager::_CreateGpuTexture(const unsigned int* raw, int width, int height, DXGI_FORMAT format, GPUJobContext& context, Texture& outTex)
 {
 	CommandList& commandList = context.commandList;
 
 	D3D12_RESOURCE_DESC textureDesc = {};
 	textureDesc.MipLevels = 1;
-	textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	textureDesc.Format = format;
 	textureDesc.Width = width;
 	textureDesc.Height = height;
 	textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
@@ -564,7 +564,7 @@ void ResourceManager::_CreateGpuTexture(const unsigned int* raw, int width, int 
 	D3D12_SUBRESOURCE_DATA textureData = {};
 	textureData.pData = raw;
 	// Divide by 8 cause bpp is bits per pixel, not bytes
-	textureData.RowPitch = width * bpp / 8;
+	textureData.RowPitch = width * Texture::BPPFromFormat(format) / 8;
 	// Not SlicePitch but texture size in our case
 	textureData.SlicePitch = textureData.RowPitch * height;
 
