@@ -6,6 +6,7 @@
 #include "dx_rendercallbacks.h"
 #include "dx_diagnostics.h"
 
+const std::string FrameGraph::INTERNAL_TEX_PREFIX = "__FRAMEGRAPG_INTERNAL_TEX__";
 
 namespace
 {
@@ -368,6 +369,16 @@ FrameGraph::~FrameGraph()
 			pass.ReleasePersistentResources();
 
 		}, pass);
+	}
+
+	if (internalTextureNames.use_count() == 1)
+	{
+		ResourceManager& resourceManager = ResourceManager::Inst();
+
+		for (const std::string& name : *internalTextureNames)
+		{
+			resourceManager.DeleteTexture(name.c_str());
+		}
 	}
 }
 
@@ -982,4 +993,9 @@ void FrameGraph::UpdateGlobalPasslRes(GPUJobContext& context)
 
 		ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 	}
+}
+
+std::string FrameGraph::GenInternalTextureFullName(const std::string& texInternalName)
+{
+	return INTERNAL_TEX_PREFIX + texInternalName;
 }

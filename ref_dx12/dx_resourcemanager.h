@@ -53,19 +53,20 @@ public:
 	Texture* CreateTextureFromFileDeferred(const char* name, Frame& frame);
 	Texture* CreateTextureFromFile(const char* name, GPUJobContext& context);
 	Texture* CreateTextureFromDataDeferred(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, Frame& frame);
-	Texture* CreateTextureFromData(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, GPUJobContext& context);
+	Texture* CreateTextureFromData(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, GPUJobContext* context);
 	void CreateDeferredTextures(GPUJobContext& context);
 
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
 	void UpdateTexture(Texture& tex, const std::byte* data, GPUJobContext& context);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
+	void DeleteTexture(const char* name);
 
 private:
 
 	/* Textures */
-	Texture* _CreateTextureFromData(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, GPUJobContext& context);
+	Texture* _CreateTextureFromData(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, GPUJobContext* context);
 	Texture* _CreateTextureFromFile(const char* name, GPUJobContext& context);
-	void _CreateGpuTexture(const unsigned int* raw, int width, int height, DXGI_FORMAT format, GPUJobContext& context, Texture& outTex);
+	void _CreateGpuTexture(const unsigned int* raw, int width, int height, DXGI_FORMAT format, GPUJobContext* context, Texture& outTex);
 
 
 private:

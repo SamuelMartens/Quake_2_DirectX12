@@ -562,6 +562,28 @@ int Renderer::GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType) c
 	return Infr::Inst().GetDevice()->GetDescriptorHandleIncrementSize(descriptorHeapType);
 }
 
+void Renderer::RebuildFrameGraph()
+{
+	Logs::Log(Logs::Category::Parser, "RebuildFrameGraph");
+
+	FlushAllFrames();
+
+	// Delete old framegraph
+	for (int i = 0; i < frames.size(); ++i)
+	{
+		frames[i].frameGraph.reset(nullptr);
+	}
+
+	FrameGraphBuilder::Inst().BuildFrameGraph(frames[0].frameGraph);
+
+	// Frame graph has changed new frame graph is stored in the first frame,
+	// populate this change to other frames
+	for (int i = 1; i < frames.size(); ++i)
+	{
+		frames[i].frameGraph = std::make_unique<FrameGraph>(FrameGraph(*frames[0].frameGraph));
+	}
+}
+
 Frame& Renderer::GetMainThreadFrame()
 {
 	ASSERT_MAIN_THREAD;
@@ -1537,14 +1559,9 @@ void Renderer::BeginFrame()
 
 	// Frame graph processing
 
-	if (FrameGraphBuilder::Inst().BuildFrameGraph(frames[0].frameGraph) == true)
+	if (FrameGraphBuilder::Inst().IsSourceChanged() == true)
 	{
-		// Frame graph has changed new frame graph is stored in the first frame,
-		// populate this change to other frames
-		for (int i = 1 ; i < frames.size(); ++i)
-		{
-			frames[i].frameGraph = std::make_unique<FrameGraph>(FrameGraph(*frames[0].frameGraph));
-		}
+		RebuildFrameGraph();
 	}
 
 	// Start work on the current frame

@@ -113,7 +113,8 @@ public:
 
 public:
 
-	bool BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph);
+	bool IsSourceChanged();
+	void BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph);
 
 	std::filesystem::path GenPathToFile(const std::string fileName) const;
 
@@ -122,8 +123,7 @@ private:
 	/* FrameGraph generation */
 	FrameGraphSource GenerateFrameGraphSource() const;
 
-	[[nodiscard]]
-	std::unordered_map<int, ComPtr<ID3D12Resource>> CreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls) const;
+	std::vector<std::string> CreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls) const;
 
 	[[nodiscard]]
 	FrameGraph CompileFrameGraph(FrameGraphSource&& source) const;
@@ -140,8 +140,6 @@ private:
 
 	std::shared_ptr<Parsing::PassParametersContext> ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles) const;
 	std::shared_ptr<Parsing::FrameGraphSourceContext> ParseFrameGraphFile(const std::string& materialFileContent) const;
-
-	bool IsSourceChanged();
 
 	void PreprocessPassFiles(std::unordered_map<std::string, std::string>& passFiles, Parsing::PreprocessorContext& context) const;
 

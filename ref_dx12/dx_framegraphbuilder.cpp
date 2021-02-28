@@ -26,6 +26,7 @@
 #include "dx_infrastructure.h"
 #include "dx_memorymanager.h"
 #include "dx_diagnostics.h"
+#include "dx_resourcemanager.h"
 
 namespace
 {
@@ -776,6 +777,7 @@ namespace
 			desc.SampleDesc.Count = 1;
 			desc.SampleDesc.Quality = 0;
 			desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+			desc.Alignment = 0;
 			
 			desc.Width = dimensions[0];
 			desc.Height = dimensions[1];
@@ -787,9 +789,6 @@ namespace
 			if (desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) 
 			{
 				desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-				//#DEBUG verify if it's ok to set alignment to 0 for texture ok
-				// so there is no special case
-				desc.Alignment = 0;
 			}
 
 			return FrameGraphSource::FrameGraphResourceDecl{ peg::any_cast<std::string>(sv[0]), desc };
@@ -817,6 +816,8 @@ namespace
 			dimensions[0] = peg::any_cast<int>(sv[0]);
 			dimensions[1] = sv.size() > 1 ? peg::any_cast<int>(sv[1]) : 1;
 			dimensions[2] = sv.size() > 2 ? peg::any_cast<int>(sv[2]) : 1;
+
+			return dimensions;
 		};
 
 		parser["ResourceDeclFormat"] = [](const peg::SemanticValues& sv) 
@@ -1192,19 +1193,11 @@ FrameGraphBuilder& FrameGraphBuilder::Inst()
 	return *matCompiler;
 }
 
-bool FrameGraphBuilder::BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph)
+void FrameGraphBuilder::BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph)
 {
-	if (IsSourceChanged() == false)
-	{
-		return false;
-	}
-
 	Logs::Log(Logs::Category::Parser, "BuildFrameGraph");
 
-	Renderer::Inst().FlushAllFrames();
 	outFrameGraph = std::make_unique<FrameGraph>(CompileFrameGraph(GenerateFrameGraphSource()));
-
-	return true;
 }
 
 FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
@@ -1267,6 +1260,8 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 
 	}
 
+	frameGraph.internalTextureNames = std::make_shared<std::vector<std::string>>(CreateFrameGraphResources(source.resourceDeclarations));
+
 	return frameGraph;
 }
 
@@ -1278,16 +1273,33 @@ FrameGraphSource FrameGraphBuilder::GenerateFrameGraphSource() const
 
 	std::shared_ptr<Parsing::FrameGraphSourceContext> parseCtx = ParseFrameGraphFile(LoadFrameGraphFile());
 
-	//#DEBUG make this move
-	frameGraphSource.passes = parseCtx->passes;
+	frameGraphSource.passes = std::move(parseCtx->passes);
 	frameGraphSource.resourceDeclarations = std::move(parseCtx->resources);
 
 	return frameGraphSource;
 }
 
-std::unordered_map<int, ComPtr<ID3D12Resource>> FrameGraphBuilder::CreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls) const
+std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls) const
 {
-	return std::unordered_map<int, ComPtr<ID3D12Resource>>();
+	ResourceManager& resourceManager = ResourceManager::Inst();
+
+	std::vector<std::string> internalResourcesName;
+	internalResourcesName.reserve(resourceDecls.size());
+
+	for (const FrameGraphSource::FrameGraphResourceDecl& resourceDecl : resourceDecls)
+	{
+		const std::string& resourceName = internalResourcesName.emplace_back(FrameGraph::GenInternalTextureFullName(resourceDecl.name));
+
+		assert(resourceManager.FindTexture(resourceName) == nullptr && "Trying create internal texture that already exists");
+		
+		assert(resourceDecl.desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && 
+			"Only 2D textures are implemented as frame graph internal res");
+
+		resourceManager.CreateTextureFromData(nullptr, resourceDecl.desc.Width, resourceDecl.desc.Height, resourceDecl.desc.Format, 
+			resourceName.c_str(), nullptr);
+	}
+
+	return internalResourcesName;
 }
 
 std::vector<PassParametersSource> FrameGraphBuilder::GeneratePassesParameterSources() const

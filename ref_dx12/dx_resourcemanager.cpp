@@ -255,7 +255,7 @@ Texture* ResourceManager::CreateTextureFromDataDeferred(const std::byte* data, i
 	return result;
 }
 
-Texture* ResourceManager::CreateTextureFromData(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, GPUJobContext& context)
+Texture* ResourceManager::CreateTextureFromData(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, GPUJobContext* context)
 {
 	std::scoped_lock<std::mutex> lock(textures.mutex);
 
@@ -299,7 +299,7 @@ void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
 					texRequest.texture.height,
 					texRequest.texture.format,
 					name.c_str(),
-					context);
+					&context);
 			}
 			else
 			{
@@ -409,7 +409,20 @@ void ResourceManager::ResampleTexture(const unsigned *in, int inwidth, int inhei
 	}
 }
 
-Texture* ResourceManager::_CreateTextureFromData(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, GPUJobContext& context)
+void ResourceManager::DeleteTexture(const char* name)
+{
+	std::scoped_lock<std::mutex> lock(textures.mutex);
+
+	Logs::Logf(Logs::Category::Textures, "Delete texture %s", name);
+
+	auto texIt = textures.obj.find(name);
+
+	assert(texIt != textures.obj.end() && "Trying to delete texture that doesn't exist");
+	
+	textures.obj.erase(texIt);
+}
+
+Texture* ResourceManager::_CreateTextureFromData(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, GPUJobContext* context)
 {
 	Logs::Logf(Logs::Category::Textures, "Create texture %s", name);
 
@@ -512,7 +525,7 @@ Texture* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContext
 	//	image32 = resampledImage.data();
 	//}
 
-	Texture* createdTex = _CreateTextureFromData(reinterpret_cast<std::byte*>(image32), width, height, format, name, context);
+	Texture* createdTex = _CreateTextureFromData(reinterpret_cast<std::byte*>(image32), width, height, format, name, &context);
 
 	if (image != nullptr)
 	{
@@ -527,10 +540,8 @@ Texture* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContext
 	return createdTex;
 }
 
-void ResourceManager::_CreateGpuTexture(const unsigned int* raw, int width, int height, DXGI_FORMAT format, GPUJobContext& context, Texture& outTex)
+void ResourceManager::_CreateGpuTexture(const unsigned int* raw, int width, int height, DXGI_FORMAT format, GPUJobContext* context, Texture& outTex)
 {
-	CommandList& commandList = context.commandList;
-
 	D3D12_RESOURCE_DESC textureDesc = {};
 	textureDesc.MipLevels = 1;
 	textureDesc.Format = format;
@@ -549,30 +560,38 @@ void ResourceManager::_CreateGpuTexture(const unsigned int* raw, int width, int 
 		&heapProperties,
 		D3D12_HEAP_FLAG_NONE,
 		&textureDesc,
-		D3D12_RESOURCE_STATE_COPY_DEST,
+		raw != nullptr ? D3D12_RESOURCE_STATE_COPY_DEST : D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
 		nullptr,
 		IID_PPV_ARGS(&outTex.buffer)));
 
-	// Count alignment and go for what we need
-	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(outTex.buffer.Get(), 0, 1);
+	if (raw != nullptr)
+	{
+		assert(context != nullptr && "If texture is initialized on creation GPU Context is required");
 
-	ComPtr<ID3D12Resource> textureUploadBuffer = CreateUploadHeapBuffer(uploadBufferSize);
-	Diagnostics::SetResourceNameWithAutoId(textureUploadBuffer.Get(), "TextureUploadBuffer_CreateTexture");
+		CommandList& commandList = context->commandList;
 
-	DO_IN_LOCK(context.frame.uploadResources, push_back(textureUploadBuffer));
+		// Count alignment and go for what we need
+		const UINT64 uploadBufferSize = GetRequiredIntermediateSize(outTex.buffer.Get(), 0, 1);
 
-	D3D12_SUBRESOURCE_DATA textureData = {};
-	textureData.pData = raw;
-	// Divide by 8 cause bpp is bits per pixel, not bytes
-	textureData.RowPitch = width * Texture::BPPFromFormat(format) / 8;
-	// Not SlicePitch but texture size in our case
-	textureData.SlicePitch = textureData.RowPitch * height;
+		ComPtr<ID3D12Resource> textureUploadBuffer = CreateUploadHeapBuffer(uploadBufferSize);
+		Diagnostics::SetResourceNameWithAutoId(textureUploadBuffer.Get(), "TextureUploadBuffer_CreateTexture");
 
-	CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(
-		outTex.buffer.Get(),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		DO_IN_LOCK(context->frame.uploadResources, push_back(textureUploadBuffer));
 
-	UpdateSubresources(commandList.GetGPUList(), outTex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
-	commandList.GetGPUList()->ResourceBarrier(1, &transition);
+		D3D12_SUBRESOURCE_DATA textureData = {};
+		textureData.pData = raw;
+		// Divide by 8 cause bpp is bits per pixel, not bytes
+		textureData.RowPitch = width * Texture::BPPFromFormat(format) / 8;
+		// Not SlicePitch but texture size in our case
+		textureData.SlicePitch = textureData.RowPitch * height;
+
+		UpdateSubresources(commandList.GetGPUList(), outTex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
+
+		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(
+			outTex.buffer.Get(),
+			D3D12_RESOURCE_STATE_COPY_DEST,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		commandList.GetGPUList()->ResourceBarrier(1, &transition);
+	}
+
 }

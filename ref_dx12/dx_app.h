@@ -115,6 +115,8 @@ class Renderer
 	void CreateDepthStencilBuffer(ComPtr<ID3D12Resource>& buffer);
 	int  GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType) const;
 
+	void RebuildFrameGraph();
+
 public:
 
 	// Public because it is already wrapped up in class

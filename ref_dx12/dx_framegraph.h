@@ -42,6 +42,7 @@ class FrameGraph
 public:
 
 	static const int SINGLE_PARTICLE_SIZE = sizeof(ShDef::Vert::PosCol);
+	static const std::string INTERNAL_TEX_PREFIX;
 
 	using PerObjectGlobalTemplate_t = std::tuple<
 		// Static
@@ -108,6 +109,8 @@ private:
 	void RegisterGlobaPasslRes(GPUJobContext& context);
 	void UpdateGlobalPasslRes(GPUJobContext& context);
 
+	static std::string GenInternalTextureFullName(const std::string& texInternalName);
+
 	// Frame also keeps data. Try to put only stuff directly related to passes here.
 	// Everything else should go to Frame
 	std::vector<Pass_t> passes;
@@ -142,9 +145,8 @@ private:
 
 	BufferHandler particlesVertexMemory = Const::INVALID_BUFFER_HANDLER;
 
-	// This resources are shared between frame graphs of different frames
-	//#DEBUG can't do this with textures. Textures should be managed by texture manager
-	std::unordered_map<int, ComPtr<ID3D12Resource>> frameGraphInternalResource;
+	// This is shared pointer to imply that all framegraphs share this resource
+	std::shared_ptr<std::vector<std::string>> internalTextureNames;
 
 	//#TODO delete when proper runtime load is developed.
 	// this is temp hack
