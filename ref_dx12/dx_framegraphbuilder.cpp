@@ -179,6 +179,46 @@ namespace
 			parseCtx.passSources.back().vertAttrSlots = std::move(std::any_cast<std::vector<std::tuple<unsigned int, int>>>(sv[0]));
 		};
 
+		parser["PassType"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		{
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			
+			PassParametersSource::Type type = PassParametersSource::Type::Rasterisation;
+
+			switch (HASH(peg::any_cast<std::string>(sv[0]).c_str()))
+			{
+			case HASH("Rasterisation"):
+				type = PassParametersSource::Type::Rasterisation;
+				break;
+			case HASH("Compute"):
+				type = PassParametersSource::Type::Compute;
+				break;
+			default:
+				break;
+			}
+
+			// I should really do this kind of checks in parser, as this is syntax error :( 
+			assert(parseCtx.passSources.back().type.has_value() == false && "PassType was already defined in this pass");
+			//#DEBUG I need this, eh?
+			// if no delete this in grammar as well
+			*parseCtx.passSources.back().type = type;
+		};
+
+		parser["PassThreadGroups"] = [](const peg::SemanticValues& sv, peg::any& ctx) 
+		{
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			PassParametersSource& currentPass =  parseCtx.passSources.back();
+			//#DEBUG can I use sv.size() here instead of just 3?
+			std::array<int,3> threadGroups;
+
+			for (int i = 0; i < 3; ++i) 
+			{
+				threadGroups[i] = std::any_cast<int>(sv[i]);
+			}
+
+			*currentPass.threadGroups = threadGroups;
+		};
+
 		// --- State
 		parser["ColorTargetSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
@@ -223,7 +263,7 @@ namespace
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.psoDesc.BlendState.RenderTarget[0].BlendEnable = peg::any_cast<bool>(sv[0]);
+			currentPass.rasterPsoDesc.BlendState.RenderTarget[0].BlendEnable = peg::any_cast<bool>(sv[0]);
 		};
 
 		parser["SrcBlendSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
@@ -231,7 +271,7 @@ namespace
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.psoDesc.BlendState.RenderTarget[0].SrcBlend = peg::any_cast<D3D12_BLEND>(sv[0]);
+			currentPass.rasterPsoDesc.BlendState.RenderTarget[0].SrcBlend = peg::any_cast<D3D12_BLEND>(sv[0]);
 		};
 
 		parser["DestBlendSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
@@ -239,7 +279,7 @@ namespace
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.psoDesc.BlendState.RenderTarget[0].DestBlend = peg::any_cast<D3D12_BLEND>(sv[0]);
+			currentPass.rasterPsoDesc.BlendState.RenderTarget[0].DestBlend = peg::any_cast<D3D12_BLEND>(sv[0]);
 		};
 
 		parser["TopologySt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
@@ -250,7 +290,7 @@ namespace
 			auto topology = peg::any_cast<std::tuple<D3D_PRIMITIVE_TOPOLOGY, D3D12_PRIMITIVE_TOPOLOGY_TYPE>>(sv[0]);
 
 			currentPass.primitiveTopology = std::get<D3D_PRIMITIVE_TOPOLOGY>(topology);
-			currentPass.psoDesc.PrimitiveTopologyType = std::get<D3D12_PRIMITIVE_TOPOLOGY_TYPE>(topology);
+			currentPass.rasterPsoDesc.PrimitiveTopologyType = std::get<D3D12_PRIMITIVE_TOPOLOGY_TYPE>(topology);
 		};
 
 		parser["DepthWriteMaskSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
@@ -258,7 +298,7 @@ namespace
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.psoDesc.DepthStencilState.DepthWriteMask = peg::any_cast<bool>(sv[0]) ?
+			currentPass.rasterPsoDesc.DepthStencilState.DepthWriteMask = peg::any_cast<bool>(sv[0]) ?
 				D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
 		};
 
@@ -402,6 +442,10 @@ namespace
 				{
 					descTable.entities.push_back(peg::any_cast<Parsing::RootParam_SamplerView>(token));
 				}
+				else if (token.type() == typeid(Parsing::RootParam_UAView))
+				{
+					descTable.entities.push_back(peg::any_cast<Parsing::RootParam_UAView>(token));
+				}
 				else
 				{
 					assert(false && "Unknown type for desc table entity");
@@ -467,7 +511,29 @@ namespace
 
 		parser["RSigUAVDecl"] = [](const peg::SemanticValues& sv) 
 		{
-			assert(false && "UAV is not implemented");
+			int num = 1;
+
+			for (int i = 1; i < sv.size(); ++i)
+			{
+				auto option = peg::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
+
+				switch (std::get<Parsing::Option>(option))
+				{
+				case Parsing::Option::NumDecl:
+					num = std::get<int>(option);
+					break;
+				case Parsing::Option::Visibility:
+					break;
+				default:
+					assert(false && "Invalid root param option in UAV decl");
+					break;
+				}
+			}
+
+			return Parsing::RootParam_UAView{
+				peg::any_cast<int>(sv[0]),
+				num
+			};
 		};
 
 		parser["RSigDescTableSampler"] = [](const peg::SemanticValues& sv)
@@ -542,6 +608,10 @@ namespace
 			{
 				currentPass.resources.emplace_back(std::any_cast<Parsing::Resource_Sampler>(sv[1]));
 			}
+			else if (sv[1].type() == typeid(Parsing::Resource_RWTexture))
+			{
+				currentPass.resources.emplace_back(std::any_cast<Parsing::Resource_RWTexture>(sv[1]));
+			}
 			else
 			{
 				assert(false && "Resource callback invalid type. Local scope");
@@ -559,8 +629,8 @@ namespace
 				std::nullopt,
 				std::nullopt,
 				peg::any_cast<int>(sv[1]),
-				peg::any_cast<std::vector<RootArg::ConstBuffField>>(sv[2]),
-				sv.str()};
+				sv.str(),
+				peg::any_cast<std::vector<RootArg::ConstBuffField>>(sv[2])};
 		};
 
 		parser["Texture"] = [](const peg::SemanticValues& sv)
@@ -573,6 +643,15 @@ namespace
 				sv.str()};
 		};
 
+		parser["RWTexture"] = [](const peg::SemanticValues& sv)
+		{
+			return Parsing::Resource_RWTexture{
+				peg::any_cast<std::string>(sv[1]),
+				std::nullopt,
+				std::nullopt,
+				peg::any_cast<int>(sv[2]),
+				sv.str() };
+		};
 
 		parser["Sampler"] = [](const peg::SemanticValues& sv)
 		{
@@ -671,7 +750,7 @@ namespace
 			return std::make_tuple(HASH(peg::any_cast<std::string>(sv[0]).c_str()), peg::any_cast<int>(sv[1]));
 		};
 
-		parser["ResourceFieldType"] = [](const peg::SemanticValues& sv)
+		parser["DataType"] = [](const peg::SemanticValues& sv)
 		{
 			return static_cast<Parsing::DataType>(sv.choice());
 		};
@@ -776,15 +855,15 @@ namespace
 			desc.MipLevels = 1;
 			desc.SampleDesc.Count = 1;
 			desc.SampleDesc.Quality = 0;
-			desc.Flags = D3D12_RESOURCE_FLAG_NONE;
 			desc.Alignment = 0;
 			
 			desc.Width = dimensions[0];
 			desc.Height = dimensions[1];
 			desc.DepthOrArraySize = dimensions[2];
 			
-			desc.Format = peg::any_cast<DXGI_FORMAT>(sv[3]);
 			desc.Dimension = peg::any_cast<D3D12_RESOURCE_DIMENSION>(sv[1]);
+			desc.Format = peg::any_cast<DXGI_FORMAT>(sv[3]);
+			desc.Flags = peg::any_cast<D3D12_RESOURCE_FLAGS>(sv[4]);
 			
 			if (desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) 
 			{
@@ -834,6 +913,38 @@ namespace
 			}
 
 			return DXGI_FORMAT_UNKNOWN;
+		};
+
+		parser["ResourceDeclFlags"] = [](const peg::SemanticValues& sv)
+		{
+			D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
+
+			for (int i = 0; i < sv.size(); ++i)
+			{
+				switch (HASH(peg::any_cast<std::string>(sv[i]).c_str()))
+				{
+				case HASH("NONE"):
+					flags |= D3D12_RESOURCE_FLAG_NONE;
+					break;
+				case HASH("ALLOW_RENDER_TARGET"):
+					flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+					break;
+				case HASH("ALLOW_DEPTH_STENCIL"):
+					flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+					break;
+				case HASH("ALLOW_UNORDERED_ACCESS"):
+					flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+					break;
+				case HASH("DENY_SHADER_RESOURCE"):
+					flags |= D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
+					break;
+				default:
+					assert(false && "Unknown flag in resource declaration");
+					break;
+				}
+			}
+
+			return flags;
 		};
 
 		// --- Tokens
@@ -1195,8 +1306,6 @@ FrameGraphBuilder& FrameGraphBuilder::Inst()
 
 void FrameGraphBuilder::BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph)
 {
-	Logs::Log(Logs::Category::Parser, "BuildFrameGraph");
-
 	outFrameGraph = std::make_unique<FrameGraph>(CompileFrameGraph(GenerateFrameGraphSource()));
 }
 
@@ -1207,6 +1316,8 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 	FrameGraph frameGraph;
 
 	ValidateResources(source.passesParametersSources);
+
+	frameGraph.internalTextureNames = std::make_shared<std::vector<std::string>>(CreateFrameGraphResources(source.resourceDeclarations));
 
 	// Add passes to frame graph in proper order
 	for (const std::string& passName : source.passes)
@@ -1246,6 +1357,11 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 			frameGraph.passes.emplace_back(Pass_Particles{});
 		}
 		break;
+		case Parsing::PassInputType::PostProcess:
+		{
+			frameGraph.passes.emplace_back(Pass_PostProcess{});
+		}
+		break;
 		default:
 			assert(false && "Pass with undefined input is detected");
 			break;
@@ -1259,8 +1375,6 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 		}, frameGraph.passes.back());
 
 	}
-
-	frameGraph.internalTextureNames = std::make_shared<std::vector<std::string>>(CreateFrameGraphResources(source.resourceDeclarations));
 
 	return frameGraph;
 }
@@ -1288,14 +1402,20 @@ std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std:
 
 	for (const FrameGraphSource::FrameGraphResourceDecl& resourceDecl : resourceDecls)
 	{
-		const std::string& resourceName = internalResourcesName.emplace_back(FrameGraph::GenInternalTextureFullName(resourceDecl.name));
+		const std::string& resourceName = internalResourcesName.emplace_back(resourceDecl.name);
 
 		assert(resourceManager.FindTexture(resourceName) == nullptr && "Trying create internal texture that already exists");
 		
 		assert(resourceDecl.desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && 
 			"Only 2D textures are implemented as frame graph internal res");
 
-		resourceManager.CreateTextureFromData(nullptr, resourceDecl.desc.Width, resourceDecl.desc.Height, resourceDecl.desc.Format, 
+		TextureDesc desc;
+		desc.width = resourceDecl.desc.Width;
+		desc.height = resourceDecl.desc.Height;
+		desc.format = resourceDecl.desc.Format;
+		desc.flags = resourceDecl.desc.Flags;
+
+		resourceManager.CreateTextureFromData(nullptr, desc, 
 			resourceName.c_str(), nullptr);
 	}
 
@@ -1561,8 +1681,8 @@ ComPtr<ID3D12RootSignature> FrameGraphBuilder::GenerateRootSignature(const PassP
 
 	const ComPtr<ID3DBlob>& shaderBlob = shaders.front().second;
 
-	Infr::Inst().GetDevice()->CreateRootSignature(0, shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize(),
-		IID_PPV_ARGS(rootSig.GetAddressOf()));
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateRootSignature(0, shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize(),
+		IID_PPV_ARGS(rootSig.GetAddressOf())));
 
 	Diagnostics::SetResourceName(rootSig.Get(), std::string("Root sig, pass: ") + pass.name);
 
@@ -1573,47 +1693,90 @@ ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const
 {
 	Logs::Logf(Logs::Category::Parser, "GeneratePipelineStateObject, start, pass %s", passSource.name.c_str());
 
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = passSource.psoDesc;
+	assert(passSource.input.has_value() == true && "Can't generate pipeline state object. Pass type is undefined ");
 
-	// Set up root sig
-	psoDesc.pRootSignature = rootSig.Get();
-	
-	// Set up shaders
-	for (const std::pair<PassParametersSource::ShaderType, ComPtr<ID3DBlob>>& shaders : shaders)
+	switch (*passSource.input)
 	{
-		D3D12_SHADER_BYTECODE shaderByteCode = {
-			reinterpret_cast<BYTE*>(shaders.second->GetBufferPointer()),
-			shaders.second->GetBufferSize()
+	case Parsing::PassInputType::Static:
+	case Parsing::PassInputType::Dynamic:
+	case Parsing::PassInputType::Particles:
+	case Parsing::PassInputType::UI:
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = passSource.rasterPsoDesc;
+
+		// Set up root sig
+		psoDesc.pRootSignature = rootSig.Get();
+
+		// Set up shaders
+		for (const std::pair<PassParametersSource::ShaderType, ComPtr<ID3DBlob>>& shader : shaders)
+		{
+			D3D12_SHADER_BYTECODE shaderByteCode = {
+				reinterpret_cast<BYTE*>(shader.second->GetBufferPointer()),
+				shader.second->GetBufferSize()
+			};
+
+			switch (shader.first)
+			{
+			case PassParametersSource::Vs:
+				psoDesc.VS = shaderByteCode;
+				break;
+			case PassParametersSource::Gs:
+				psoDesc.GS = shaderByteCode;
+				break;
+			case PassParametersSource::Ps:
+				psoDesc.PS = shaderByteCode;
+				break;
+			default:
+				assert(false && "Can't generate pipeline state object. Invalid shader type");
+				break;
+			}
+		}
+
+		// Set up input layout
+		std::vector<D3D12_INPUT_ELEMENT_DESC> inputLayout = GenerateInputLayout(passSource);
+		psoDesc.InputLayout = { inputLayout.data(), static_cast<UINT>(inputLayout.size()) };
+
+		ComPtr<ID3D12PipelineState> pipelineState;
+
+		ThrowIfFailed(Infr::Inst().GetDevice()->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipelineState)));
+
+		Diagnostics::SetResourceName(pipelineState.Get(), std::string("Raster PSO, pass: ") + passSource.name);
+
+		return pipelineState;
+	}
+	case Parsing::PassInputType::PostProcess:
+	{
+		D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = passSource.computePsoDesc;
+
+		// Set up root sig
+		psoDesc.pRootSignature = rootSig.Get();
+
+		auto shaderIt = std::find_if(shaders.begin(), shaders.end(), [](const std::pair<PassParametersSource::ShaderType, ComPtr<ID3DBlob>>& shader)
+		{
+			return shader.first == PassParametersSource::Cs;
+		});
+
+		assert(shaderIt != shaders.end() && "Can't generate compute pipeline state object, shader is not found");
+
+		psoDesc.CS = {
+				reinterpret_cast<BYTE*>(shaderIt->second->GetBufferPointer()),
+				shaderIt->second->GetBufferSize()
 		};
 
-		switch (shaders.first)
-		{
-		case PassParametersSource::Vs:
-			psoDesc.VS = shaderByteCode;
-			break;
-		case PassParametersSource::Gs:
-			psoDesc.GS = shaderByteCode;
-			break;
-		case PassParametersSource::Ps:
-			psoDesc.PS = shaderByteCode;
-			break;
-		default:
-			assert(false && "Generate pipeline state object. Invalid shader type");
-			break;
-		}
+		ComPtr<ID3D12PipelineState> pipelineState;
+
+		ThrowIfFailed(Infr::Inst().GetDevice()->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&pipelineState)));
+
+		Diagnostics::SetResourceName(pipelineState.Get(), std::string("Compute PSO, pass: ") + passSource.name);
+
+		return pipelineState;
+	}
+	default:
+		assert(false && "Can't generate pipeline state object, unknown type");
+		break;
 	}
 
-	// Set up input layout
-	std::vector<D3D12_INPUT_ELEMENT_DESC> inputLayout = GenerateInputLayout(passSource);
-	psoDesc.InputLayout = { inputLayout.data(), static_cast<UINT>(inputLayout.size()) };
-
-	ComPtr<ID3D12PipelineState> pipelineState;
-
-	ThrowIfFailed(Infr::Inst().GetDevice()->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipelineState)));
-
-	Diagnostics::SetResourceName(pipelineState.Get(), std::string("PSO, pass: ") + passSource.name);
-
-	return pipelineState;
+	return ComPtr<ID3D12PipelineState>();
 }
 
 void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& passSource, FrameGraph& frameGraph, PassParameters& pass) const
@@ -1635,7 +1798,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 				const Parsing::Resource_ConstBuff* res =
 					FindResourceOfTypeAndRegId<Parsing::Resource_ConstBuff>(passResources, rootParam.registerId);
 
-				assert(rootParam.num == 1 && "Const buffer view should always have numDescriptors 1");
+				assert(rootParam.num == 1 && "Inline const buffer view should always have numDescriptors 1");
 
 				AddRootArg(pass,
 					frameGraph,
@@ -1648,6 +1811,23 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 						Const::INVALID_BUFFER_HANDLER
 				});
 
+			}
+			else if constexpr (std::is_same_v<T, Parsing::RootParam_UAView>)
+			{
+				const Parsing::Resource_RWTexture* res =
+					FindResourceOfTypeAndRegId<Parsing::Resource_RWTexture>(passResources, rootParam.registerId);
+
+				assert(rootParam.num == 1 && "Inline UAV should always have numDescriptors 1");
+
+				AddRootArg(pass,
+					frameGraph,
+					*res->bindFrequency,
+					*res->scope,
+					RootArg::UAView{
+						paramIndex,
+						HASH(res->name.c_str()),
+						Const::INVALID_BUFFER_HANDLER
+					});
 			}
 			else if constexpr (std::is_same_v<T, Parsing::RootParam_DescTable>)
 			{
@@ -1705,7 +1885,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 							{
 								const Parsing::Resource_Texture* res =
 									FindResourceOfTypeAndRegId<Parsing::Resource_Texture>(passResources, descTableParam.registerId + i);
-
+								//#DEBUG find some way reuse this code
 								// Set or validate update frequency
 								if (bindFrequency.has_value() == false)
 								{
@@ -1762,6 +1942,37 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 									});
 							}
 						}
+						else if constexpr (std::is_same_v<T, Parsing::RootParam_UAView>)
+						{
+							for (int i = 0; i < descTableParam.num; ++i)
+							{
+								const Parsing::Resource_RWTexture* res =
+									FindResourceOfTypeAndRegId<Parsing::Resource_RWTexture>(passResources, descTableParam.registerId + i);
+								
+								// Set or validate update frequency
+								if (bindFrequency.has_value() == false)
+								{
+									bindFrequency = res->bindFrequency;
+								}
+								else
+								{
+									assert(*bindFrequency == res->bindFrequency && "All resources in desc table should have the same update frequency");
+								}
+
+								if (scope.has_value() == false)
+								{
+									scope = res->scope;
+								}
+								else
+								{
+									assert(*scope == res->scope && "All resources in desc table should have the same scope");
+								}
+
+								descTableArgument.content.emplace_back(RootArg::DescTableEntity_UAView{
+									HASH(res->name.c_str())
+									});
+							}
+						}
 						else
 						{
 							static_assert(false, "Invalid desc table entity type");
@@ -1787,10 +1998,13 @@ PassParameters FrameGraphBuilder::CompilePassParameters(PassParametersSource&& p
 	PassParameters passParam;
 
 	passParam.input = passSource.input;
+	passParam.threadGroups = passSource.threadGroups;
 	passParam.name = passSource.name;
 	passParam.primitiveTopology = passSource.primitiveTopology;
 	passParam.colorTargetNameHash = HASH(passSource.colorTargetName.c_str());
 	passParam.depthTargetNameHash = HASH(passSource.depthTargetName.c_str());
+	passParam.colorTargetName = passSource.colorTargetName;
+	passParam.depthTargetName = passSource.depthTargetName;
 	passParam.viewport = passSource.viewport;
 	passParam.vertAttr = GetPassInputVertAttr(passSource);
 

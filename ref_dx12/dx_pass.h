@@ -199,12 +199,77 @@ private:
 	BufferHandler passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
 };
 
-using Pass_t = std::variant<Pass_UI, Pass_Static, Pass_Dynamic, Pass_Particles>;
+class Pass_PostProcess
+{
+	friend class PassUtils;
+
+public:
+
+	void Execute(GPUJobContext& context);
+	void Init(PassParameters&& parameters);
+
+	void RegisterPassResources(GPUJobContext& context);
+
+	void ReleasePerFrameResources();
+	void ReleasePersistentResources();
+
+private:
+
+	void UpdatePassResources(GPUJobContext& context);
+
+	void Dispatch(GPUJobContext& context);
+
+	void SetComputeState(GPUJobContext& context);
+
+	PassParameters passParameters;
+
+	int passMemorySize = Const::INVALID_SIZE;
+	BufferHandler passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
+
+};
+
+using Pass_t = std::variant<Pass_UI, Pass_Static, Pass_Dynamic, Pass_Particles, Pass_PostProcess>;
 
 
 class PassUtils
 {
 public:
+
+	template<typename T>
+	static int AllocateRenderTargetView(std::string_view renderTargetName, T& descriptorHeap)
+	{
+		if (renderTargetName == PassParameters::BACK_BUFFER_NAME)
+		{
+			return Const::INVALID_INDEX;
+		}
+		//#DEBUG you allocate this? Make sure it is destroyed
+		Texture* tex = ResourceManager::Inst().FindTexture(renderTargetName);
+
+		assert(tex != nullptr && "AllocateRenderTargetView failed. No such texture");
+
+		return descriptorHeap.Allocate(tex->buffer.Get());
+	}
+
+	static void AllocateColorDepthRenderTargetViews(PassParameters& passParams);
+
+	template<typename T>
+	static void ReleaseRenderTargetView(std::string_view renderTargetName, int& renderTargetIndex, T& descriptorHeap)
+	{
+		if (renderTargetName == PassParameters::BACK_BUFFER_NAME)
+		{
+			assert(renderTargetIndex == Const::INVALID_INDEX && "Render target view index should be clean if it is back buffer");
+			return;
+		}
+
+		if (renderTargetIndex != Const::INVALID_INDEX)
+		{
+			descriptorHeap.Delete(renderTargetIndex);
+			renderTargetIndex = Const::INVALID_INDEX;
+		}
+	}
+
+	//#DEBUG CONTINUE here
+	static void ReleaseColorDepthRenderTargetViews(PassParameters& passParams);
 
 	template<typename T>
 	static std::string_view GetPassName(const T& pass)

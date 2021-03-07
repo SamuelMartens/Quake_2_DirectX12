@@ -46,6 +46,14 @@ namespace RootArg
 		// Doesn't own memory in this buffer, so no need to dealloc in destructor
 		BufferPiece gpuMem;
 	};
+	
+	struct UAView
+	{
+		int bindIndex = Const::INVALID_INDEX;
+		unsigned int hashedName = 0;
+		// Doesn't own memory in this buffer, so no need to dealloc in destructor
+		BufferPiece gpuMem;
+	};
 
 	struct DescTableEntity_ConstBufferView
 	{
@@ -64,10 +72,16 @@ namespace RootArg
 		unsigned int hashedName = 0;
 	};
 
+	struct DescTableEntity_UAView
+	{
+		unsigned int hashedName = 0;
+	};
+
 	using DescTableEntity_t = std::variant<
 		DescTableEntity_ConstBufferView,
 		DescTableEntity_Texture,
-		DescTableEntity_Sampler>;
+		DescTableEntity_Sampler,
+		DescTableEntity_UAView>;
 
 	struct DescTable
 	{
@@ -86,11 +100,12 @@ namespace RootArg
 		int viewIndex = Const::INVALID_INDEX;
 	};
 
-	using Arg_t = std::variant<RootConstant, ConstBuffView, DescTable>;
+	using Arg_t = std::variant<RootConstant, ConstBuffView, UAView, DescTable>;
 
 	int FindArg(const std::vector<Arg_t>& args, const Arg_t& arg);
 
 	void Bind(const Arg_t& rootArg, CommandList& commandList);
+	void BindCompute(const Arg_t& rootArg, CommandList& commandList);
 
 	int AllocateDescTableView(const DescTable& descTable);
 
@@ -157,6 +172,7 @@ namespace Parsing
 		Dynamic,
 		Particles,
 		UI,
+		PostProcess,
 		SIZE
 	};
 
@@ -187,7 +203,7 @@ namespace Parsing
 		std::string rawView;
 	};
 
-	struct Resource_ConstBuff
+	struct Resource_Base
 	{
 		std::string name;
 
@@ -195,42 +211,33 @@ namespace Parsing
 		std::optional<ResourceScope> scope;
 
 		int registerId = Const::INVALID_INDEX;
-		std::vector<RootArg::ConstBuffField> content;
 		std::string rawView;
+		
+		bool IsEqual(const Resource_Base& other) const;
+	};
 
+	struct Resource_ConstBuff : public Resource_Base
+	{
+		std::vector<RootArg::ConstBuffField> content;
+		
 		bool IsEqual(const Resource_ConstBuff& other) const;
 	};
 
-	struct Resource_Texture
-	{
-		std::string name;
+	struct Resource_Texture : public Resource_Base
+	{};
 
-		std::optional<ResourceBindFrequency> bindFrequency;
-		std::optional<ResourceScope> scope;
+	struct Resource_RWTexture : public Resource_Base
+	{};
 
-		int registerId = Const::INVALID_INDEX;
-		std::string rawView;
-
-		bool IsEqual(const Resource_Texture& other) const;
-	};
-
-	struct Resource_Sampler
-	{
-		std::string name;
-
-		std::optional<ResourceBindFrequency> bindFrequency;
-		std::optional<ResourceScope> scope;
-
-		int registerId = Const::INVALID_INDEX;
-		std::string rawView;
-
-		bool IsEqual(const Resource_Sampler& other) const;
-	};
+	struct Resource_Sampler : public Resource_Base
+	{};
 
 	using  Resource_t = std::variant<
 		Resource_ConstBuff, 
 		Resource_Texture,
-		Resource_Sampler>;
+		Resource_Sampler,
+		Resource_RWTexture
+	>;
 
 	bool IsEqual(const Resource_t& res1, const Resource_t& res2);
 
@@ -245,11 +252,18 @@ class PassParametersSource
 {
 public:
 
+	enum class Type
+	{
+		Rasterisation,
+		Compute
+	};
+
 	enum ShaderType
 	{
 		Vs = 0,
 		Gs = 1,
 		Ps = 2,
+		Cs = 3,
 		SIZE
 	};
 
@@ -284,11 +298,14 @@ public:
 
 	D3D12_VIEWPORT viewport = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
 
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC rasterPsoDesc;
+	D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc;
 
 	D3D_PRIMITIVE_TOPOLOGY primitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
 
 	std::optional<Parsing::PassInputType> input;
+	std::optional<PassParametersSource::Type> type;
+	std::optional<std::array<int, 3>> threadGroups;
 
 	std::vector<Parsing::Function> functions;
 	std::vector<Parsing::VertAttr> vertAttr;
@@ -301,6 +318,8 @@ public:
 class PassParameters
 {
 public:
+
+	static const std::string BACK_BUFFER_NAME;
 
 	PassParameters() = default;
 
@@ -323,8 +342,15 @@ public:
 
 	std::string name;
 
+	//#DEBUG delete this
 	unsigned int colorTargetNameHash = 0;
 	unsigned int depthTargetNameHash = 0;
+
+	std::string colorTargetName;
+	std::string depthTargetName;
+
+	int colorTargetViewIndex = Const::INVALID_INDEX;
+	int depthTargetViewIndex = Const::INVALID_INDEX;
 
 	D3D12_VIEWPORT viewport = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
 
@@ -335,6 +361,7 @@ public:
 	Parsing::VertAttr vertAttr;
 
 	std::optional<Parsing::PassInputType> input;
+	std::optional<std::array<int, 3>> threadGroups;
 
 	ComPtr<ID3D12PipelineState>		  pipelineState;
 	ComPtr<ID3D12RootSignature>		  rootSingature;

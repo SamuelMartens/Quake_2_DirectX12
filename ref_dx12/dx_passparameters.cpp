@@ -7,6 +7,9 @@
 #include "dx_app.h"
 #include "dx_memorymanager.h"
 #include "dx_framegraphbuilder.h"
+#include "dx_pass.h"
+
+const std::string PassParameters::BACK_BUFFER_NAME = "BACK_BUFFER";
 
 namespace RootArg
 {
@@ -19,8 +22,10 @@ namespace RootArg
 		{
 			using T = std::decay_t<decltype(descTableEntity)>;
 
-			if constexpr (std::is_same_v<T, DescTableEntity_ConstBufferView> ||
-				std::is_same_v<T, DescTableEntity_Texture>)
+			if constexpr (
+				std::is_same_v<T, DescTableEntity_ConstBufferView> ||
+				std::is_same_v<T, DescTableEntity_Texture> ||
+				std::is_same_v<T, DescTableEntity_UAView>)
 			{
 				return Renderer::Inst().cbvSrvHeap->AllocateRange(size);
 			}
@@ -260,6 +265,62 @@ namespace RootArg
 		}, rootArg);
 	}
 
+	void BindCompute(const Arg_t& rootArg, CommandList& commandList)
+	{
+		std::visit([&commandList](auto&& rootArg)
+		{
+			using T = std::decay_t<decltype(rootArg)>;
+			Renderer& renderer = Renderer::Inst();
+
+			auto& uploadMemory =
+				MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+
+			assert(rootArg.bindIndex != Const::INVALID_INDEX && "Can't bind RootArg, invalid index");
+
+			if constexpr (std::is_same_v<T, RootConstant>)
+			{
+				assert(false && "Root constants are not implemented");
+			}
+			if constexpr (std::is_same_v<T, ConstBuffView>)
+			{
+				D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
+
+				cbAddress += uploadMemory.GetOffset(rootArg.gpuMem.handler) + rootArg.gpuMem.offset;
+				commandList.GetGPUList()->SetComputeRootConstantBufferView(rootArg.bindIndex, cbAddress);
+			}
+			if constexpr (std::is_same_v<T, UAView>)
+			{
+				D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
+
+				cbAddress += uploadMemory.GetOffset(rootArg.gpuMem.handler) + rootArg.gpuMem.offset;
+				commandList.GetGPUList()->SetComputeRootUnorderedAccessView(rootArg.bindIndex, cbAddress);
+			}
+			else if constexpr (std::is_same_v<T, DescTable>)
+			{
+				assert(rootArg.content.empty() == false && "Trying to bind empty desc table");
+				assert(rootArg.viewIndex != Const::INVALID_INDEX && "Invalid view index. Can't bind root arg");
+
+				std::visit([&commandList, &renderer, &rootArg](auto&& descTableEntity)
+				{
+					using T = std::decay_t<decltype(descTableEntity)>;
+
+					if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Sampler>)
+					{
+						commandList.GetGPUList()->SetComputeRootDescriptorTable(rootArg.bindIndex,
+							renderer.samplerHeap->GetHandleGPU(rootArg.viewIndex));
+					}
+					else
+					{
+						commandList.GetGPUList()->SetComputeRootDescriptorTable(rootArg.bindIndex,
+							renderer.cbvSrvHeap->GetHandleGPU(rootArg.viewIndex));
+					}
+
+				}, rootArg.content[0]);
+			}
+
+		}, rootArg);
+	}
+
 	DescTable::DescTable(DescTable&& other)
 	{
 		*this = std::move(other);
@@ -389,11 +450,17 @@ namespace Parsing
 		}, res1, res2);
 	}
 
-	bool Resource_ConstBuff::IsEqual(const Resource_ConstBuff& other) const
+	bool Resource_Base::IsEqual(const Resource_Base& other) const
 	{
 		return name == other.name &&
 			bindFrequency == other.bindFrequency &&
-			registerId == other.registerId &&
+			registerId == other.registerId;
+	}
+
+
+	bool Resource_ConstBuff::IsEqual(const Resource_ConstBuff& other) const
+	{
+		return Resource_Base::IsEqual(other) &&
 			content.size() == other.content.size() &&
 			std::equal(content.cbegin(), content.cend(), other.content.cbegin(),
 				[](const RootArg::ConstBuffField& f1, const RootArg::ConstBuffField& r2) 
@@ -402,21 +469,6 @@ namespace Parsing
 		});
 		
 	}
-
-	bool Resource_Texture::IsEqual(const Resource_Texture& other) const
-	{
-		return name == other.name &&
-			bindFrequency == other.bindFrequency &&
-			registerId == other.registerId;
-	}
-
-	bool Resource_Sampler::IsEqual(const Resource_Sampler& other) const
-	{
-		return name == other.name &&
-			bindFrequency == other.bindFrequency &&
-			registerId == other.registerId;
-	}
-
 
 	std::string_view GetResourceName(const Parsing::Resource_t& res)
 	{
@@ -453,23 +505,24 @@ namespace Parsing
 		},
 			res);
 	}
-
 }
 
 PassParametersSource::PassParametersSource()
 {
-	ZeroMemory(&psoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+	ZeroMemory(&rasterPsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
 
-	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	psoDesc.SampleMask = UINT_MAX;
-	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	psoDesc.NumRenderTargets = 1;
-	psoDesc.RTVFormats[0] = Settings::BACK_BUFFER_FORMAT;
-	psoDesc.SampleDesc.Count = Renderer::Inst().GetMSAASampleCount();
-	psoDesc.SampleDesc.Quality = Renderer::Inst().GetMSAAQuality();
-	psoDesc.DSVFormat = Settings::DEPTH_STENCIL_FORMAT;
+	rasterPsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	rasterPsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	rasterPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	rasterPsoDesc.SampleMask = UINT_MAX;
+	rasterPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	rasterPsoDesc.NumRenderTargets = 1;
+	rasterPsoDesc.RTVFormats[0] = Settings::BACK_BUFFER_FORMAT;
+	rasterPsoDesc.SampleDesc.Count = Renderer::Inst().GetMSAASampleCount();
+	rasterPsoDesc.SampleDesc.Quality = Renderer::Inst().GetMSAAQuality();
+	rasterPsoDesc.DSVFormat = Settings::DEPTH_STENCIL_FORMAT;
+
+	ZeroMemory(&computePsoDesc, sizeof(D3D12_COMPUTE_PIPELINE_STATE_DESC));
 
 	rootSignature = std::make_unique<Parsing::RootSignature>();
 }
@@ -484,6 +537,8 @@ std::string PassParametersSource::ShaderTypeToStr(ShaderType type)
 		return "Gs";
 	case ShaderType::Ps:
 		return "Ps";
+	case ShaderType::Cs:
+		return "Cs";
 	default:
 		assert(false && "Undefined shader type");
 		break;

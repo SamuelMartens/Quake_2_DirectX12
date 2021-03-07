@@ -32,32 +32,39 @@ namespace Parsing
 
 	// All these views can be used for both inline descriptor declaration and
 	// as a part of descriptor table
-	struct RootParam_ConstBuffView
+	struct RootParam_BaseView
 	{
 		int registerId = Const::INVALID_INDEX;
 		int num = Const::INVALID_SIZE;
 	};
 
-	struct RootParam_TextView
-	{
-		int registerId = Const::INVALID_INDEX;
-		int num = Const::INVALID_SIZE;
-	};
+	struct RootParam_ConstBuffView : public RootParam_BaseView
+	{};
 
-	struct RootParam_SamplerView
-	{
-		int registerId = Const::INVALID_INDEX;
-		int num = Const::INVALID_SIZE;
-	};
+	struct RootParam_TextView : public RootParam_BaseView
+	{};
 
-	using DescTableEntity_t = std::variant<RootParam_ConstBuffView, RootParam_TextView, RootParam_SamplerView>;
+	struct RootParam_SamplerView : public RootParam_BaseView
+	{};
+
+	struct RootParam_UAView : public RootParam_BaseView
+	{};
+
+	using DescTableEntity_t = std::variant<
+		RootParam_ConstBuffView,
+		RootParam_TextView,
+		RootParam_SamplerView,
+		RootParam_UAView>;
 
 	struct RootParam_DescTable
 	{
 		std::vector<DescTableEntity_t> entities;
 	};
 
-	using RootParma_t = std::variant<RootParam_ConstBuffView, RootParam_DescTable>;
+	using RootParma_t = std::variant<
+		RootParam_ConstBuffView,
+		RootParam_DescTable,
+		RootParam_UAView>;
 	
 	struct RootSignature
 	{
@@ -157,13 +164,14 @@ private:
 		PassCompiledShaders_t& shaders,
 		ComPtr<ID3D12RootSignature>& rootSig) const;
 
-	/*  Root arguments */
+	/* Root arguments */
 	void CreateResourceArguments(const PassParametersSource& passSource, FrameGraph& frameGraph, PassParameters& pass) const;
 	static void AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
 		Parsing::ResourceBindFrequency updateFrequency, Parsing::ResourceScope scope, RootArg::Arg_t&& arg);
 
 	/* Utils */
 	void ValidateResources(const std::vector<PassParametersSource>& passesParametersSources) const;
+
 
 	std::filesystem::path ROOT_DIR_PATH;
 	HANDLE sourceWatchHandle = INVALID_HANDLE_VALUE;

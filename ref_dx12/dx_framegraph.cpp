@@ -6,8 +6,6 @@
 #include "dx_rendercallbacks.h"
 #include "dx_diagnostics.h"
 
-const std::string FrameGraph::INTERNAL_TEX_PREFIX = "__FRAMEGRAPG_INTERNAL_TEX__";
-
 namespace
 {
 	template<
@@ -264,6 +262,11 @@ namespace
 
 				}
 
+				if constexpr (std::is_same_v<T, RootArg::UAView>)
+				{
+
+				}
+
 				if constexpr (std::is_same_v<T, RootArg::DescTable>)
 				{
 					arg.viewIndex = RootArg::AllocateDescTableView(arg);
@@ -284,7 +287,8 @@ namespace
 
 							}
 
-							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
+							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||
+								std::is_same_v<T, RootArg::DescTableEntity_UAView>)
 							{
 								RenderCallbacks::RegisterGlobalObject(
 									descTableEntitiy.hashedName,
@@ -505,6 +509,14 @@ void FrameGraph::BindPassGlobalRes(const std::vector<int>& resIndices, CommandLi
 	for (const int index : resIndices)
 	{
 		RootArg::Bind(passesGlobalRes[index], commandList);
+	}
+}
+
+void FrameGraph::BindComputePassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const
+{
+	for (const int index : resIndices)
+	{
+		RootArg::BindCompute(passesGlobalRes[index], commandList);
 	}
 }
 
@@ -897,7 +909,8 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 							offset += RootArg::GetConstBufftSize(descTableEntitiy);
 						}
 
-						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
+						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||
+							std::is_same_v<T, RootArg::DescTableEntity_UAView>)
 						{
 							RenderCallbacks::RegisterGlobalPass(
 								descTableEntitiy.hashedName,
@@ -963,7 +976,8 @@ void FrameGraph::UpdateGlobalPasslRes(GPUJobContext& context)
 							assert(false && "Desc table view is probably not implemented! Make sure it is");
 						}
 
-						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
+						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||
+							std::is_same_v<T, RootArg::DescTableEntity_UAView>)
 						{
 							RenderCallbacks::UpdateGlobalPass(
 								descTableEntity.hashedName,
@@ -993,9 +1007,4 @@ void FrameGraph::UpdateGlobalPasslRes(GPUJobContext& context)
 
 		ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
 	}
-}
-
-std::string FrameGraph::GenInternalTextureFullName(const std::string& texInternalName)
-{
-	return INTERNAL_TEX_PREFIX + texInternalName;
 }

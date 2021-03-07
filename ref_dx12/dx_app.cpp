@@ -342,7 +342,7 @@ void Renderer::EnableDebugLayer()
 
 void Renderer::SetDebugMessageFilter()
 {
-	if (!Settings::DEBUG_LAYER_ENABLED || !Settings::DEBUG_MESSAGE_FILTER_ENABLED)
+	if constexpr (!Settings::DEBUG_LAYER_ENABLED || !Settings::DEBUG_MESSAGE_FILTER_ENABLED)
 	{
 		return;
 	}
@@ -1424,8 +1424,8 @@ void Renderer::GetDrawTextureSize(int* x, int* y, const char* name)
 
 	if (tex != nullptr)
 	{
-		*x = tex->width;
-		*y = tex->height;
+		*x = tex->desc.width;
+		*y = tex->desc.height;
 	}
 	else
 	{
@@ -1509,11 +1509,11 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 	Texture* rawTex = ResourceManager::Inst().FindTexture(Texture::RAW_TEXTURE_NAME);
 
 	if (rawTex == nullptr 
-		|| rawTex->width != textureWidth
-		|| rawTex->height != textureHeight)
+		|| rawTex->desc.width != textureWidth
+		|| rawTex->desc.height != textureHeight)
 	{
-		rawTex = ResourceManager::Inst().CreateTextureFromDataDeferred(data,
-			textureWidth, textureHeight, DXGI_FORMAT_R8G8B8A8_UNORM, Texture::RAW_TEXTURE_NAME, GetMainThreadFrame());
+		TextureDesc desc = { textureWidth, textureHeight, DXGI_FORMAT_R8G8B8A8_UNORM };
+		rawTex = ResourceManager::Inst().CreateTextureFromDataDeferred(data, desc, Texture::RAW_TEXTURE_NAME, GetMainThreadFrame());
 	}
 	else
 	{

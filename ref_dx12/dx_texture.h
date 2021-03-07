@@ -10,6 +10,14 @@
 #include "dx_common.h"
 #include "dx_utils.h"
 
+struct TextureDesc
+{
+	int width = 0;
+	int height = 0;
+	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+	D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
+};
+
 class Texture
 {
 public:
@@ -39,11 +47,8 @@ public:
 	std::string name;
 
 	int samplerInd = 0;
-
-	int width = 0;
-	int height = 0;
-
-	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+	
+	TextureDesc desc;
 };
 
 

@@ -42,8 +42,7 @@ class FrameGraph
 public:
 
 	static const int SINGLE_PARTICLE_SIZE = sizeof(ShDef::Vert::PosCol);
-	static const std::string INTERNAL_TEX_PREFIX;
-
+	
 	using PerObjectGlobalTemplate_t = std::tuple<
 		// Static
 		std::vector<RootArg::Arg_t>,
@@ -71,6 +70,7 @@ public:
 
 	/* Inner resource management  */
 	void BindPassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const;
+	void BindComputePassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const;
 
 	template<Parsing::PassInputType INPUT_TYPE>
 	void BindObjGlobalRes(const std::vector<int>& resIndices, int objIndex, CommandList& commandList) const
@@ -108,8 +108,6 @@ private:
 
 	void RegisterGlobaPasslRes(GPUJobContext& context);
 	void UpdateGlobalPasslRes(GPUJobContext& context);
-
-	static std::string GenInternalTextureFullName(const std::string& texInternalName);
 
 	// Frame also keeps data. Try to put only stuff directly related to passes here.
 	// Everything else should go to Frame

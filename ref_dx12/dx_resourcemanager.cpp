@@ -232,20 +232,18 @@ Texture* ResourceManager::CreateTextureFromFile(const char* name, GPUJobContext&
 	return _CreateTextureFromFile(name, context);
 }
 
-Texture* ResourceManager::CreateTextureFromDataDeferred(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, Frame& frame)
+Texture* ResourceManager::CreateTextureFromDataDeferred(const std::byte* data, const TextureDesc& desc, const char* name, Frame& frame)
 {
 	std::scoped_lock<std::mutex> lock(textures.mutex);
 
 	Texture tex;
 	tex.name = name;
-	tex.width = width;
-	tex.height = height;
-	tex.format = format;
+	tex.desc = desc;
 
 	Texture* result = &textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
 
 	TexCreationRequest_FromData texRequest(*result);
-	const int texSize = width * height;
+	const int texSize = desc.width * desc.height;
 	
 	texRequest.data.resize(texSize);
 	memcpy(texRequest.data.data(), data, texSize);
@@ -255,11 +253,11 @@ Texture* ResourceManager::CreateTextureFromDataDeferred(const std::byte* data, i
 	return result;
 }
 
-Texture* ResourceManager::CreateTextureFromData(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, GPUJobContext* context)
+Texture* ResourceManager::CreateTextureFromData(const std::byte* data, const TextureDesc& desc, const char* name, GPUJobContext* context)
 {
 	std::scoped_lock<std::mutex> lock(textures.mutex);
 
-	return _CreateTextureFromData(data, width, height, format, name, context);
+	return _CreateTextureFromData(data, desc, name, context);
 }
 
 void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
@@ -282,7 +280,7 @@ void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
 			else if constexpr (std::is_same_v<T, TexCreationRequest_FromData>)
 			{
 				// Get tex actual color
-				const int textureSize = texRequest.texture.width * texRequest.texture.height;
+				const int textureSize = texRequest.texture.desc.width * texRequest.texture.desc.height;
 				std::vector<unsigned int> texture(textureSize, 0);
 
 				const auto& rawPalette = Renderer::Inst().GetRawPalette();
@@ -295,9 +293,7 @@ void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
 				std::string name = texRequest.texture.name;
 				_CreateTextureFromData(
 					reinterpret_cast<std::byte*>(texture.data()),
-					texRequest.texture.width,
-					texRequest.texture.height,
-					texRequest.texture.format,
+					texRequest.texture.desc,
 					name.c_str(),
 					&context);
 			}
@@ -340,9 +336,9 @@ void ResourceManager::UpdateTexture(Texture& tex, const std::byte* data, GPUJobC
 	D3D12_SUBRESOURCE_DATA textureData = {};
 	textureData.pData = data;
 	// Divide by 8 cause bpp is bits per pixel, not bytes
-	textureData.RowPitch = tex.width * Texture::BPPFromFormat(tex.format) / 8;
+	textureData.RowPitch = tex.desc.width * Texture::BPPFromFormat(tex.desc.format) / 8;
 	// Not SlicePitch but texture size in our case
-	textureData.SlicePitch = textureData.RowPitch * tex.height;
+	textureData.SlicePitch = textureData.RowPitch * tex.desc.height;
 
 	CD3DX12_RESOURCE_BARRIER copyDestTransition = CD3DX12_RESOURCE_BARRIER::Transition(
 		tex.buffer.Get(),
@@ -422,17 +418,14 @@ void ResourceManager::DeleteTexture(const char* name)
 	textures.obj.erase(texIt);
 }
 
-Texture* ResourceManager::_CreateTextureFromData(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, GPUJobContext* context)
+Texture* ResourceManager::_CreateTextureFromData(const std::byte* data, const TextureDesc& desc, const char* name, GPUJobContext* context)
 {
 	Logs::Logf(Logs::Category::Textures, "Create texture %s", name);
 
 	Texture tex;
-	_CreateGpuTexture(reinterpret_cast<const unsigned int*>(data), width, height, format, context, tex);
+	_CreateGpuTexture(reinterpret_cast<const unsigned int*>(data), desc, context, tex);
 
-	tex.width = width;
-	tex.height = height;
-	tex.format = format;
-
+	tex.desc = desc;
 	tex.name = name;
 
 	Diagnostics::SetResourceName(tex.buffer.Get(), tex.name);
@@ -524,8 +517,9 @@ Texture* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContext
 	//	ResampleTexture(image32, width, height, resampledImage.data(), scaledHeight, scaledWidth);
 	//	image32 = resampledImage.data();
 	//}
+	const TextureDesc desc = { width, height, format };
 
-	Texture* createdTex = _CreateTextureFromData(reinterpret_cast<std::byte*>(image32), width, height, format, name, &context);
+	Texture* createdTex = _CreateTextureFromData(reinterpret_cast<std::byte*>(image32), desc, name, &context);
 
 	if (image != nullptr)
 	{
@@ -540,14 +534,14 @@ Texture* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContext
 	return createdTex;
 }
 
-void ResourceManager::_CreateGpuTexture(const unsigned int* raw, int width, int height, DXGI_FORMAT format, GPUJobContext* context, Texture& outTex)
+void ResourceManager::_CreateGpuTexture(const unsigned int* raw, const TextureDesc& desc, GPUJobContext* context, Texture& outTex)
 {
 	D3D12_RESOURCE_DESC textureDesc = {};
 	textureDesc.MipLevels = 1;
-	textureDesc.Format = format;
-	textureDesc.Width = width;
-	textureDesc.Height = height;
-	textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+	textureDesc.Format = desc.format;
+	textureDesc.Width = desc.width;
+	textureDesc.Height = desc.height;
+	textureDesc.Flags = desc.flags;
 	textureDesc.DepthOrArraySize = 1;
 	textureDesc.SampleDesc.Count = 1;
 	textureDesc.SampleDesc.Quality = 0;
@@ -581,9 +575,9 @@ void ResourceManager::_CreateGpuTexture(const unsigned int* raw, int width, int 
 		D3D12_SUBRESOURCE_DATA textureData = {};
 		textureData.pData = raw;
 		// Divide by 8 cause bpp is bits per pixel, not bytes
-		textureData.RowPitch = width * Texture::BPPFromFormat(format) / 8;
+		textureData.RowPitch = desc.width * Texture::BPPFromFormat(desc.format) / 8;
 		// Not SlicePitch but texture size in our case
-		textureData.SlicePitch = textureData.RowPitch * height;
+		textureData.SlicePitch = textureData.RowPitch * desc.height;
 
 		UpdateSubresources(commandList.GetGPUList(), outTex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
 

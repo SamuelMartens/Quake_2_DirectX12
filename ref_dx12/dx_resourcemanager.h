@@ -35,6 +35,7 @@ class ResourceManager
 public:
 
 	DEFINE_SINGLETON(ResourceManager);
+	
 
 	/* Buffers */
 	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, GPUJobContext& context);
@@ -52,8 +53,8 @@ public:
 	
 	Texture* CreateTextureFromFileDeferred(const char* name, Frame& frame);
 	Texture* CreateTextureFromFile(const char* name, GPUJobContext& context);
-	Texture* CreateTextureFromDataDeferred(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, Frame& frame);
-	Texture* CreateTextureFromData(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, GPUJobContext* context);
+	Texture* CreateTextureFromDataDeferred(const std::byte* data, const TextureDesc& desc, const char* name, Frame& frame);
+	Texture* CreateTextureFromData(const std::byte* data, const TextureDesc& desc, const char* name, GPUJobContext* context);
 	void CreateDeferredTextures(GPUJobContext& context);
 
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
@@ -64,9 +65,9 @@ public:
 private:
 
 	/* Textures */
-	Texture* _CreateTextureFromData(const std::byte* data, int width, int height, DXGI_FORMAT format, const char* name, GPUJobContext* context);
+	Texture* _CreateTextureFromData(const std::byte* data, const TextureDesc& desc, const char* name, GPUJobContext* context);
 	Texture* _CreateTextureFromFile(const char* name, GPUJobContext& context);
-	void _CreateGpuTexture(const unsigned int* raw, int width, int height, DXGI_FORMAT format, GPUJobContext* context, Texture& outTex);
+	void _CreateGpuTexture(const unsigned int* raw, const TextureDesc& desc, GPUJobContext* context, Texture& outTex);
 
 
 private:

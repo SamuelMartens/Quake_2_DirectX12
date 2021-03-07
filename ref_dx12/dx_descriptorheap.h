@@ -43,7 +43,6 @@ public:
 	int Allocate() 
 	{
 		return alloc.Allocate();
-
 	};
 
 	int Allocate(ID3D12Resource* resource, Descriptor_t* desc = nullptr) 

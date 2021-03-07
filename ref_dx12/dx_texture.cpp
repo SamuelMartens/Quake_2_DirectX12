@@ -21,10 +21,7 @@ Texture& Texture::operator=(Texture&& other)
 
 	samplerInd = other.samplerInd;
 
-	width = other.width;
-	height = other.height;
-
-	format = other.format;
+	desc = other.desc;
 
 	return *this;
 }
