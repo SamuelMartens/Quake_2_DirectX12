@@ -23,10 +23,7 @@
 // 1) Implement proper tex samplers handling. When I need more samplers
 // 2) Implement root constants
 // 3) Implement const buffers in descriptor table 
-// 4) Implement custom render targets and resource creation
-// 5) Implement include
-// 6) Do proper logging for parsing and execution
-// 7) Proper name generation for D3D objects
+// 4) Do command list creation
 class Pass_UI
 {
 	friend class PassUtils;

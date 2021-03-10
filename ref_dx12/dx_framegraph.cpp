@@ -284,12 +284,14 @@ namespace
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 							{
 								assert(false && "Desc table view is probably not implemented! Make sure it is");
-
 							}
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||
 								std::is_same_v<T, RootArg::DescTableEntity_UAView>)
 							{
+								assert(descTableEntitiy.internalBindName.has_value() == false &&
+									"PerObject resources is not suited to use internal bind");
+
 								RenderCallbacks::RegisterGlobalObject(
 									descTableEntitiy.hashedName,
 									obj,
@@ -912,11 +914,22 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||
 							std::is_same_v<T, RootArg::DescTableEntity_UAView>)
 						{
-							RenderCallbacks::RegisterGlobalPass(
-								descTableEntitiy.hashedName,
-								currentViewIndex,
-								globalPassContext
-							);
+							if (descTableEntitiy.internalBindName.has_value())
+							{
+								// This is internal resource
+								RenderCallbacks::RegisterInternal(
+									currentViewIndex,
+									*descTableEntitiy.internalBindName
+								);
+							}
+							else
+							{
+								RenderCallbacks::RegisterGlobalPass(
+									descTableEntitiy.hashedName,
+									currentViewIndex,
+									globalPassContext
+								);
+							}
 						}
 
 					}, descTableEntitiy);

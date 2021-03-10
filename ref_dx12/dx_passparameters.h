@@ -51,6 +51,9 @@ namespace RootArg
 	{
 		int bindIndex = Const::INVALID_INDEX;
 		unsigned int hashedName = 0;
+
+		std::optional<std::string> internalBindName;
+
 		// Doesn't own memory in this buffer, so no need to dealloc in destructor
 		BufferPiece gpuMem;
 	};
@@ -65,6 +68,8 @@ namespace RootArg
 	struct DescTableEntity_Texture
 	{
 		unsigned int hashedName = 0;
+
+		std::optional<std::string> internalBindName;
 	};
 
 	struct DescTableEntity_Sampler
@@ -75,6 +80,8 @@ namespace RootArg
 	struct DescTableEntity_UAView
 	{
 		unsigned int hashedName = 0;
+
+		std::optional<std::string> internalBindName;
 	};
 
 	using DescTableEntity_t = std::variant<
@@ -209,6 +216,7 @@ namespace Parsing
 
 		std::optional<ResourceBindFrequency> bindFrequency;
 		std::optional<ResourceScope> scope;
+		std::optional<std::string> bind;
 
 		int registerId = Const::INVALID_INDEX;
 		std::string rawView;

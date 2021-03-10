@@ -59,12 +59,23 @@ namespace
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||
 								std::is_same_v<T, RootArg::DescTableEntity_UAView>)
 							{
-								RenderCallbacks::RegisterLocalPass(
-									HASH(passParameters.name.c_str()),
-									descTableEntitiy.hashedName,
-									pass,
-									currentViewIndex,
-									localPassContext);
+								if (descTableEntitiy.internalBindName.has_value())
+								{
+									// This is internal resource
+									RenderCallbacks::RegisterInternal(
+										currentViewIndex,
+										*descTableEntitiy.internalBindName
+									);
+								}
+								else
+								{
+									RenderCallbacks::RegisterLocalPass(
+										HASH(passParameters.name.c_str()),
+										descTableEntitiy.hashedName,
+										pass,
+										currentViewIndex,
+										localPassContext);
+								}
 							}
 
 						}, descTableEntitiy);
@@ -206,6 +217,8 @@ namespace
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||
 								std::is_same_v<T, RootArg::DescTableEntity_UAView>)
 							{
+								assert(descTableEntitiy.internalBindName.has_value() == false && 
+									"PerObject resources is not suited to use internal bind");
 
 								RenderCallbacks::RegisterLocalObject(
 									passHashedName,

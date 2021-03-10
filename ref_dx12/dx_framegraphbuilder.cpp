@@ -75,6 +75,14 @@ namespace
 		return nullptr;
 	}
 
+	void SetResourceBind(Parsing::Resource_t& r, const std::string& bind)
+	{
+		std::visit([&bind](auto&& resource)
+		{
+			resource.bind = bind;
+		}, r);
+	}
+
 	void SetResourceBindFrequency(Parsing::Resource_t& r, Parsing::ResourceBindFrequency bind)
 	{
 		std::visit([bind](auto&& resource) 
@@ -590,8 +598,11 @@ namespace
 
 		parser["Resource"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
-			std::tuple<Parsing::ResourceScope, Parsing::ResourceBindFrequency> resourceAttr =
-				peg::any_cast<std::tuple<Parsing::ResourceScope, Parsing::ResourceBindFrequency>>(sv[0]);
+			auto resourceAttr =
+				peg::any_cast<std::tuple<
+				Parsing::ResourceScope,
+				Parsing::ResourceBindFrequency,
+				std::optional<std::string>>>(sv[0]);
 
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
@@ -617,8 +628,17 @@ namespace
 				assert(false && "Resource callback invalid type. Local scope");
 			}
 
-			SetResourceBindFrequency(currentPass.resources.back(), std::get<Parsing::ResourceBindFrequency>(resourceAttr));
-			SetResourceScope(currentPass.resources.back(), std::get<Parsing::ResourceScope>(resourceAttr));
+			Parsing::Resource_t& currentRes = currentPass.resources.back();
+
+			SetResourceBindFrequency(currentRes, std::get<Parsing::ResourceBindFrequency>(resourceAttr));
+			SetResourceScope(currentRes, std::get<Parsing::ResourceScope>(resourceAttr));
+
+			const auto& resBind = std::get<std::optional<std::string>>(resourceAttr);
+
+			if (resBind.has_value())
+			{
+				SetResourceBind(currentRes, resBind.value());
+			}
 
 		};
 
@@ -626,6 +646,7 @@ namespace
 		{
 			return Parsing::Resource_ConstBuff{
 				peg::any_cast<std::string>(sv[0]),
+				std::nullopt,
 				std::nullopt,
 				std::nullopt,
 				peg::any_cast<int>(sv[1]),
@@ -639,6 +660,7 @@ namespace
 				peg::any_cast<std::string>(sv[0]),
 				std::nullopt,
 				std::nullopt,
+				std::nullopt,
 				peg::any_cast<int>(sv[1]),
 				sv.str()};
 		};
@@ -647,6 +669,7 @@ namespace
 		{
 			return Parsing::Resource_RWTexture{
 				peg::any_cast<std::string>(sv[1]),
+				std::nullopt,
 				std::nullopt,
 				std::nullopt,
 				peg::any_cast<int>(sv[2]),
@@ -659,20 +682,24 @@ namespace
 				peg::any_cast<std::string>(sv[0]),
 				std::nullopt,
 				std::nullopt,
+				std::nullopt,
 				peg::any_cast<int>(sv[1]),
 				sv.str()};
 		};
 
 		parser["ResourceAttr"] = [](const peg::SemanticValues& sv)
 		{
-			return std::make_tuple(
+			auto attr = std::make_tuple(
 				peg::any_cast<Parsing::ResourceScope>(sv[0]),
-				peg::any_cast<Parsing::ResourceBindFrequency>(sv[1]));
-		};
+				peg::any_cast<Parsing::ResourceBindFrequency>(sv[1]),
+				std::optional<std::string>(std::nullopt));
 
-		parser["ResourceBind"] = [](const peg::SemanticValues& sv)
-		{
-			assert(false && "Implement resource bind");
+			if (sv.size() > 2)
+			{
+				*std::get<2>(attr) = peg::any_cast<std::string>(sv[2]);
+			}
+
+			return attr;
 		};
 
 		parser["ResourceScope"] = [](const peg::SemanticValues& sv)
@@ -701,6 +728,11 @@ namespace
 			});
 
 			return constBufferContent;
+		};
+
+		parser["ResourceBind"] = [](const peg::SemanticValues& sv)
+		{
+			return sv[0];
 		};
 
 		parser["ConstBuffField"] = [](const peg::SemanticValues& sv)
@@ -775,11 +807,6 @@ namespace
 		parser["RegisterId"] = [](const peg::SemanticValues& sv) 
 		{
 			return peg::any_cast<int>(sv[0]);
-		};
-
-		parser["ResourceContent"] = [](const peg::SemanticValues& sv)
-		{
-			return sv.token();
 		};
 
 		// -- Types
@@ -1799,6 +1826,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 					FindResourceOfTypeAndRegId<Parsing::Resource_ConstBuff>(passResources, rootParam.registerId);
 
 				assert(rootParam.num == 1 && "Inline const buffer view should always have numDescriptors 1");
+				assert(res->bind.has_value() == false && "Internal bind for inline const buffer view is not implemented");
 
 				AddRootArg(pass,
 					frameGraph,
@@ -1826,6 +1854,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 					RootArg::UAView{
 						paramIndex,
 						HASH(res->name.c_str()),
+						res->bind,
 						Const::INVALID_BUFFER_HANDLER
 					});
 			}
@@ -1871,6 +1900,8 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 									assert(*scope == res->scope && "All resources in desc table should have the same scope");
 								}
 								
+								assert(res->bind.has_value() == false && "Internal bind for const buffer view is not implemented");
+
 								descTableArgument.content.emplace_back(RootArg::DescTableEntity_ConstBufferView{
 									HASH(res->name.c_str()),
 									res->content,
@@ -1906,7 +1937,8 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 								}
 
 								descTableArgument.content.emplace_back(RootArg::DescTableEntity_Texture{
-									HASH(res->name.c_str())						
+									HASH(res->name.c_str()),
+									res->bind
 								});
 							}
 
@@ -1936,6 +1968,8 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 								{
 									assert(*scope == res->scope && "All resources in desc table should have the same scope");
 								}
+
+								assert(res->bind.has_value() == false && "Internal bind for sampler view is not implemented");
 
 								descTableArgument.content.emplace_back(RootArg::DescTableEntity_Sampler{
 									HASH(res->name.c_str())
@@ -1969,7 +2003,8 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 								}
 
 								descTableArgument.content.emplace_back(RootArg::DescTableEntity_UAView{
-									HASH(res->name.c_str())
+									HASH(res->name.c_str()),
+									res->bind
 									});
 							}
 						}

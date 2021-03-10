@@ -264,7 +264,7 @@ namespace RootArg
 
 		}, rootArg);
 	}
-
+	
 	void BindCompute(const Arg_t& rootArg, CommandList& commandList)
 	{
 		std::visit([&commandList](auto&& rootArg)

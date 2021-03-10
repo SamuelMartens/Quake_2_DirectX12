@@ -254,6 +254,20 @@ namespace RenderCallbacks
 
 	}
 
+
+	template<typename bT>
+	void RegisterInternal(bT& bindPoint, std::string_view internalResourceName)
+	{
+		// For internal resource there is no difference if it is global or local,
+		// object or pass. No context passed as well because essentially those kind of
+		// resources are handled on GPU side.
+		Texture* tex = ResourceManager::Inst().FindTexture(internalResourceName);
+
+		assert(tex != nullptr && "Can register internal resource. Target texture doesn't exist");
+
+		Renderer::Inst().cbvSrvHeap->AllocateDescriptor(reinterpret_cast<int&>(bindPoint), tex->buffer.Get(), nullptr);
+	}
+
 	template<typename bT>
 	void RegisterGlobalPass(unsigned int paramName, bT& bindPoint, RegisterGlobalPassContext& ctx)
 	{
