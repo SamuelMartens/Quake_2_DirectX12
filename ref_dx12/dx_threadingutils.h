@@ -86,7 +86,7 @@ class GPUJobContext
 public:
 
 	/* SHOULD BE SAFE TO COPY */
-	GPUJobContext(Frame& frameVal, CommandList& commandListVal);
+	GPUJobContext(Frame& frameVal, CommandList* commandListVal = nullptr);
 
 	void CreateDependencyFrom(std::vector<GPUJobContext*> dependsFromList);
 	void CreateDependencyFrom(std::vector<GPUJobContext>& dependsFromList);
@@ -95,7 +95,7 @@ public:
 	void WaitDependency() const;
 
 	Frame& frame;
-	CommandList& commandList;
+	CommandList* commandList = nullptr;
 
 private:
 
@@ -112,7 +112,7 @@ private:
 // when adding something
 #define JOB_GUARD( context ) \
 	DependenciesRAIIGuard_t dependenciesGuard(context); \
-	CommandListRAIIGuard_t commandListGuard(context.commandList)
+	CommandListRAIIGuard_t commandListGuard(*context.commandList)
 
 using DependenciesRAIIGuard_t = Utils::RAIIGuard<GPUJobContext,
 	nullptr, &GPUJobContext::SignalDependencies>;

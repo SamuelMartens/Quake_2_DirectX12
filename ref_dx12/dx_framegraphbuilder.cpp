@@ -8,6 +8,7 @@
 #include <d3dcompiler.h>
 #include <optional>
 #include <windows.h>
+#include <DirectXColors.h>
 
 
 #ifdef max
@@ -1223,6 +1224,62 @@ void FrameGraphBuilder::ValidateResources(const std::vector<PassParametersSource
 #endif
 }
 
+void FrameGraphBuilder::AttachPostPreCallbacks(std::vector<PassTask>& passTasks) const
+{
+	assert(passTasks.empty() == false && "AttachPostPreCallbacks failed. No pass tasks");
+
+	// Begin frame routine
+	passTasks.front().prePassCallbacks.push_back([](GPUJobContext& context) 
+	{
+		CommandList& commandList = *context.commandList;
+		Frame& frame = context.frame;
+
+		CD3DX12_RESOURCE_BARRIER resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+			frame.colorBufferAndView->buffer.Get(),
+			D3D12_RESOURCE_STATE_PRESENT,
+			D3D12_RESOURCE_STATE_RENDER_TARGET
+		);
+
+		// Indicate buffer transition to write state
+		commandList.GetGPUList()->ResourceBarrier(
+			1,
+			&resourceBarrier
+		);
+
+		Renderer& renderer = Renderer::Inst();
+
+		D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = renderer.rtvHeap->GetHandleCPU(frame.colorBufferAndView->viewIndex);
+		D3D12_CPU_DESCRIPTOR_HANDLE depthTargetView = renderer.dsvHeap->GetHandleCPU(frame.depthBufferViewIndex);
+
+		//#DEBUG clear operations should be implemented as framegraph operations
+		// Clear back buffer and depth buffer
+		commandList.GetGPUList()->ClearRenderTargetView(renderTargetView, DirectX::Colors::Black, 0, nullptr);
+		commandList.GetGPUList()->ClearDepthStencilView(
+			depthTargetView,
+			D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
+			1.0f,
+			0,
+			0,
+			nullptr);
+	});
+
+	// End frame routine
+	passTasks.back().postPassCallbacks.push_back([](GPUJobContext& context)
+	{
+
+		CD3DX12_RESOURCE_BARRIER resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+			context.frame.colorBufferAndView->buffer.Get(),
+			D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_PRESENT
+		);
+
+		context.commandList->GetGPUList()->ResourceBarrier(
+			1,
+			&resourceBarrier
+		);
+	});
+}
+
 FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const PassParametersSource& pass) const
 {
 	PassCompiledShaders_t passCompiledShaders;
@@ -1366,27 +1423,27 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 		{
 		case Parsing::PassInputType::UI:
 		{
-			frameGraph.passes.emplace_back(Pass_UI{});
+			frameGraph.passTasks.emplace_back(PassTask{ Pass_UI{} });
 		}
 		break;
 		case Parsing::PassInputType::Static:
 		{
-			frameGraph.passes.emplace_back(Pass_Static{});
+			frameGraph.passTasks.emplace_back(PassTask{ Pass_Static{} });
 		}
 		break;
 		case Parsing::PassInputType::Dynamic:
 		{
-			frameGraph.passes.emplace_back(Pass_Dynamic{});
+			frameGraph.passTasks.emplace_back(PassTask{ Pass_Dynamic{} });
 		}
 		break;
 		case Parsing::PassInputType::Particles:
 		{
-			frameGraph.passes.emplace_back(Pass_Particles{});
+			frameGraph.passTasks.emplace_back(PassTask{ Pass_Particles{} });
 		}
 		break;
 		case Parsing::PassInputType::PostProcess:
 		{
-			frameGraph.passes.emplace_back(Pass_PostProcess{});
+			frameGraph.passTasks.emplace_back(PassTask{ Pass_PostProcess{} });
 		}
 		break;
 		default:
@@ -1399,9 +1456,11 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 		{
 			pass.Init(std::move(passParam));
 
-		}, frameGraph.passes.back());
+		}, frameGraph.passTasks.back().pass);
 
 	}
+
+	AttachPostPreCallbacks(frameGraph.passTasks);
 
 	return frameGraph;
 }

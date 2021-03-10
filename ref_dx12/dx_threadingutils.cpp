@@ -127,7 +127,7 @@ void ThreadingUtils::AssertMainThread()
 }
 
 
-GPUJobContext::GPUJobContext(Frame& frameVal, CommandList& commandListVal) :
+GPUJobContext::GPUJobContext(Frame& frameVal, CommandList* commandListVal) :
 	frame(frameVal),
 	commandList(commandListVal)
 {}

@@ -367,14 +367,14 @@ FrameGraph::~FrameGraph()
 		}
 	}
 
-	for (Pass_t& pass : passes)
+	for (PassTask& passTask : passTasks)
 	{
 		std::visit([](auto&& pass)
 		{
 			pass.ReleasePerFrameResources();
 			pass.ReleasePersistentResources();
 
-		}, pass);
+		}, passTask.pass);
 	}
 
 	if (internalTextureNames.use_count() == 1)
@@ -400,22 +400,20 @@ void FrameGraph::Execute(Frame& frame)
 
 	/*  Handle dependencies */
 	GPUJobContext updateGlobalResJobContext = renderer.CreateContext(frame);
-	GPUJobContext beginFrameJobContext = renderer.CreateContext(frame);
 
 	std::vector<GPUJobContext> framePassContexts;
-	for (Pass_t& pass : passes)
+	for (PassTask& passTask : passTasks)
 	{
 		framePassContexts.emplace_back(renderer.CreateContext(frame));
 
 		framePassContexts.back().CreateDependencyFrom({&updateGlobalResJobContext});
 	};
 
-	GPUJobContext endFrameJobContext = renderer.CreateContext(frame);
+	GPUJobContext endFrameJobContext = renderer.CreateContext(frame, false);
 
 	std::vector<GPUJobContext*> endFrameDependency;
 
 	endFrameDependency.reserve(1 + endFrameDependency.size());
-	endFrameDependency.push_back(&beginFrameJobContext);
 
 	std::transform(framePassContexts.begin(), framePassContexts.end(), std::back_inserter(endFrameDependency),
 		[](GPUJobContext& context) 
@@ -438,36 +436,25 @@ void FrameGraph::Execute(Frame& frame)
 
 	}));
 
-	jobQueue.Enqueue(Job([beginFrameJobContext, &renderer]() mutable
+	for (int i = 0; i < passTasks.size(); ++i)
 	{
-		renderer.BeginFrameJob(beginFrameJobContext);
-	}));
+		jobQueue.Enqueue(Job(
+			[passJobContext = framePassContexts[i], &passTask = passTasks[i]]() mutable
+		{
+			JOB_GUARD(passJobContext);
 
-	for (int i = 0; i < passes.size(); ++i)
-	{
-		std::visit([
-			&jobQueue,
-				passJobContext = framePassContexts[i]](auto&& pass)
-			{
-				jobQueue.Enqueue(Job(
-					[passJobContext, &pass]() mutable
-				{
-					JOB_GUARD(passJobContext);
+			std::string_view passName = PassUtils::GetPassName(passTask.pass);
 
-					std::string_view passName = PassUtils::GetPassName(pass);
+			Diagnostics::BeginEvent(passJobContext.commandList->GetGPUList(), passName);
+			Logs::Logf(Logs::Category::Job, "Pass job started: %s", passName);
 
-					Diagnostics::BeginEvent(passJobContext.commandList.GetGPUList(), passName);
-					Logs::Logf(Logs::Category::Job, "Pass job started: %s", passName);
+			passJobContext.WaitDependency();
 
-					passJobContext.WaitDependency();
+			passTask.Execute(passJobContext);
 
-					pass.Execute(passJobContext);
-
-					Logs::Logf(Logs::Category::Job, "Pass job end: %s", passName);
-					Diagnostics::EndEvent(passJobContext.commandList.GetGPUList());
-				}));
-
-			}, passes[i]);
+			Logs::Logf(Logs::Category::Job, "Pass job end: %s", passName);
+			Diagnostics::EndEvent(passJobContext.commandList->GetGPUList());
+		}));
 	}
 
 	jobQueue.Enqueue(Job([endFrameJobContext, &renderer, this]() mutable
@@ -491,7 +478,7 @@ void FrameGraph::Init(GPUJobContext& context)
 	RegisterGlobaPasslRes(context);
 
 	// Pass local
-	for (Pass_t& pass : passes)
+	for (PassTask& passTask : passTasks)
 	{
 		std::visit([&context](auto&& pass) 
 		{
@@ -499,7 +486,7 @@ void FrameGraph::Init(GPUJobContext& context)
 
 			pass.RegisterPassResources(context);
 
-		}, pass);
+		}, passTask.pass);
 	}
 
 	// Register static objects
@@ -554,7 +541,7 @@ void FrameGraph::RegisterObjects(const std::vector<StaticObject>& objects, GPUJo
 	}
 
 
-	for (Pass_t& pass : passes)
+	for (PassTask& passTask : passTasks)
 	{
 		std::visit([&objects ,&context](auto&& pass) 
 		{
@@ -565,7 +552,7 @@ void FrameGraph::RegisterObjects(const std::vector<StaticObject>& objects, GPUJo
 				pass.RegisterObjects(objects, context);
 			}
 
-		}, pass);
+		}, passTask.pass);
 	}
 }
 
@@ -614,7 +601,7 @@ void FrameGraph::RegisterGlobalObjectsResDynamicEntities(GPUJobContext& context)
 
 void FrameGraph::UpdateGlobalResources(GPUJobContext& context)
 {
-	Diagnostics::BeginEvent(context.commandList.GetGPUList(), "UpdateGlobalResources");
+	Diagnostics::BeginEvent(context.commandList->GetGPUList(), "UpdateGlobalResources");
 
 	// This just doesn't belong here. I will do proper Initialization when
 	// runtime load of frame graph will be implemented
@@ -637,17 +624,17 @@ void FrameGraph::UpdateGlobalResources(GPUJobContext& context)
 
 	UpdateGlobalPasslRes(context);
 
-	Diagnostics::EndEvent(context.commandList.GetGPUList());
+	Diagnostics::EndEvent(context.commandList->GetGPUList());
 }
 
 void FrameGraph::ReleasePerFrameResources()
 {
-	for (Pass_t& pass : passes)
+	for (PassTask& passTask : passTasks)
 	{
 		std::visit([](auto&& pass)
 		{
 			pass.ReleasePerFrameResources();
-		}, pass);
+		}, passTask.pass);
 	}
 
 	std::get<static_cast<int>(Parsing::PassInputType::UI)>(objGlobalRes).clear();

@@ -228,6 +228,16 @@ private:
 using Pass_t = std::variant<Pass_UI, Pass_Static, Pass_Dynamic, Pass_Particles, Pass_PostProcess>;
 
 
+struct PassTask
+{
+	Pass_t pass;
+
+	std::vector<std::function<void(GPUJobContext&)>> prePassCallbacks;
+	std::vector<std::function<void(GPUJobContext&)>> postPassCallbacks;
+
+	void Execute(GPUJobContext& context);
+};
+
 class PassUtils
 {
 public:

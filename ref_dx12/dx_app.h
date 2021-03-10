@@ -133,11 +133,10 @@ public:
 	XMFLOAT4X4 m_yInverseAndCenterMatrix;
 
 	[[nodiscard]]
-	GPUJobContext CreateContext(Frame& frame);
+	GPUJobContext CreateContext(Frame& frame, bool acquireCommandList = true);
 
 	/* Job  */
 	void EndFrameJob(GPUJobContext& context);
-	void BeginFrameJob(GPUJobContext& context);
 
 	std::vector<int> BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const;
 	std::vector<int> BuildVisibleDynamicObjectsList(const Camera& camera, const std::vector<entity_t>& entities) const;

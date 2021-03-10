@@ -51,8 +51,12 @@ public:
 		// Particles
 		std::vector<RootArg::Arg_t>,
 		// UI
+		std::vector<RootArg::Arg_t>,
+		// Post process
 		std::vector<RootArg::Arg_t>
 	>;
+
+
 
 	FrameGraph();
 
@@ -111,7 +115,7 @@ private:
 
 	// Frame also keeps data. Try to put only stuff directly related to passes here.
 	// Everything else should go to Frame
-	std::vector<Pass_t> passes;
+	std::vector<PassTask> passTasks;
 
 	std::vector<RootArg::Arg_t> passesGlobalRes;
 
@@ -126,7 +130,9 @@ private:
 	// Particles
 	std::vector<std::vector<RootArg::Arg_t>>,
 	// UI
-	std::vector<std::vector<RootArg::Arg_t>>
+	std::vector<std::vector<RootArg::Arg_t>>,
+	// Post process
+	std::vector<RootArg::Arg_t>
 	> objGlobalRes;
 
 

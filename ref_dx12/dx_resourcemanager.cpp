@@ -34,7 +34,7 @@ ComPtr<ID3D12Resource> ResourceManager::CreateDefaultHeapBuffer(const void* data
 		IID_PPV_ARGS(&buffer)
 	));
 
-	ID3D12GraphicsCommandList* commandList = context.commandList.GetGPUList();
+	ID3D12GraphicsCommandList* commandList = context.commandList->GetGPUList();
 
 	if (data != nullptr)
 	{
@@ -131,7 +131,7 @@ void ResourceManager::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
 	const unsigned int dataSize = args.alignment != 0 ? Utils::Align(args.byteSize, args.alignment) : args.byteSize;
 
 	Frame& frame = args.context->frame;
-	CommandList& commandList = args.context->commandList;
+	CommandList& commandList = *args.context->commandList;
 
 	// Create upload buffer
 	ComPtr<ID3D12Resource> uploadBuffer = CreateUploadHeapBuffer(args.byteSize);
@@ -262,7 +262,7 @@ Texture* ResourceManager::CreateTextureFromData(const std::byte* data, const Tex
 
 void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
 {
-	CommandListRAIIGuard_t commandListGuard(context.commandList);
+	CommandListRAIIGuard_t commandListGuard(*context.commandList);
 
 	std::scoped_lock<std::mutex> lock(textures.mutex);
 
@@ -323,7 +323,7 @@ void ResourceManager::UpdateTexture(Texture& tex, const std::byte* data, GPUJobC
 {
 	Logs::Logf(Logs::Category::Textures, "Update Texture with name %s", tex.name.c_str());
 
-	CommandList& commandList = context.commandList;
+	CommandList& commandList = *context.commandList;
 
 	// Count alignment and go for what we need
 	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(tex.buffer.Get(), 0, 1);
@@ -562,7 +562,7 @@ void ResourceManager::_CreateGpuTexture(const unsigned int* raw, const TextureDe
 	{
 		assert(context != nullptr && "If texture is initialized on creation GPU Context is required");
 
-		CommandList& commandList = context->commandList;
+		CommandList& commandList = *context->commandList;
 
 		// Count alignment and go for what we need
 		const UINT64 uploadBufferSize = GetRequiredIntermediateSize(outTex.buffer.Get(), 0, 1);

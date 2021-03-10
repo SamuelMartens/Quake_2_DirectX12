@@ -311,7 +311,7 @@ namespace
 	void _SetRenderState(const PassParameters& params, GPUJobContext& context)
 	{
 		Frame& frame = context.frame;
-		ID3D12GraphicsCommandList* commandList = context.commandList.GetGPUList();
+		ID3D12GraphicsCommandList* commandList = context.commandList->GetGPUList();
 
 
 		commandList->RSSetViewports(1, &params.viewport);
@@ -554,7 +554,7 @@ void Pass_UI::SetRenderState(GPUJobContext& context)
 
 void Pass_UI::Draw(GPUJobContext& context)
 {
-	CommandList& commandList = context.commandList;
+	CommandList& commandList = *context.commandList;
 	Renderer& renderer = Renderer::Inst();
 	const FrameGraph& frameGraph = *context.frame.frameGraph;
 
@@ -591,7 +591,7 @@ void Pass_UI::Draw(GPUJobContext& context)
 		// Bind local args
 		for (const RootArg::Arg_t& rootArg : obj.rootArgs)
 		{
-			RootArg::Bind(rootArg, context.commandList);
+			RootArg::Bind(rootArg, *context.commandList);
 		}
 
 		commandList.GetGPUList()->DrawInstanced(perObjectVertexMemorySize / perVertexMemorySize, 1, 0, 0);
@@ -782,7 +782,7 @@ void Pass_Static::SetRenderState(GPUJobContext& context)
 
 void Pass_Static::Draw(GPUJobContext& context)
 {
-	CommandList& commandList = context.commandList;
+	CommandList& commandList = *context.commandList;
 	Renderer& renderer = Renderer::Inst();
 	const FrameGraph& frameGraph = *context.frame.frameGraph;
 
@@ -818,7 +818,7 @@ void Pass_Static::Draw(GPUJobContext& context)
 		// Bind local args
 		for (const RootArg::Arg_t& rootArg : obj.rootArgs)
 		{
-			RootArg::Bind(rootArg, context.commandList);
+			RootArg::Bind(rootArg, *context.commandList);
 		}
 
 		// Vertices
@@ -994,7 +994,7 @@ void Pass_Dynamic::UpdateDrawEntities(GPUJobContext& context)
 
 void Pass_Dynamic::Draw(GPUJobContext& context)
 {
-	CommandList& commandList = context.commandList;
+	CommandList& commandList = *context.commandList;
 	Renderer& renderer = Renderer::Inst();
 	const FrameGraph& frameGraph = *context.frame.frameGraph;
 
@@ -1039,7 +1039,7 @@ void Pass_Dynamic::Draw(GPUJobContext& context)
 		// Bind local 
 		for (const RootArg::Arg_t& rootArg : drawEntitiy.rootArgs)
 		{
-			RootArg::Bind(rootArg, context.commandList);
+			RootArg::Bind(rootArg, *context.commandList);
 		}
 
 		// Set up vertex data
@@ -1143,7 +1143,7 @@ void Pass_Particles::UpdatePassResources(GPUJobContext& context)
 
 void Pass_Particles::Draw(GPUJobContext& context)
 {
-	CommandList& commandList = context.commandList;
+	CommandList& commandList = *context.commandList;
 	const FrameGraph& frameGraph = *context.frame.frameGraph;
 
 	// Bind pass global argument
@@ -1228,7 +1228,7 @@ void Pass_PostProcess::UpdatePassResources(GPUJobContext& context)
 
 void Pass_PostProcess::Dispatch(GPUJobContext& context)
 {
-	CommandList& commandList = context.commandList;
+	CommandList& commandList = *context.commandList;
 	const FrameGraph& frameGraph = *context.frame.frameGraph;
 
 	// Bind pass global argument
@@ -1250,7 +1250,7 @@ void Pass_PostProcess::Dispatch(GPUJobContext& context)
 
 void Pass_PostProcess::SetComputeState(GPUJobContext& context)
 {
-	ID3D12GraphicsCommandList* commandList = context.commandList.GetGPUList();
+	ID3D12GraphicsCommandList* commandList = context.commandList->GetGPUList();
 
 	//#DEBUG do I need this?
 	Renderer& renderer = Renderer::Inst();
@@ -1261,6 +1261,24 @@ void Pass_PostProcess::SetComputeState(GPUJobContext& context)
 
 	commandList->SetComputeRootSignature(passParameters.rootSingature.Get());
 	commandList->SetPipelineState(passParameters.pipelineState.Get());
+}
+
+void PassTask::Execute(GPUJobContext& context)
+{
+	for (std::function<void(GPUJobContext&)>& callback : prePassCallbacks)
+	{
+		callback(context);
+	}
+
+	std::visit([&context](auto&& pass) 
+	{
+		pass.Execute(context);
+	}, pass);
+
+	for (std::function<void(GPUJobContext&)>& callback : postPassCallbacks)
+	{
+		callback(context);
+	}
 }
 
 void PassUtils::AllocateColorDepthRenderTargetViews(PassParameters& passParams)

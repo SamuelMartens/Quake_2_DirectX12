@@ -321,7 +321,7 @@ namespace RenderCallbacks
 				{
 					const int textureSize = movieDrawCall.textureWidth * movieDrawCall.textureHeight;
 
-					CommandList& commandList = ctx.jobContext.commandList;
+					CommandList& commandList = *ctx.jobContext.commandList;
 
 					std::vector<unsigned int> texture(textureSize, 0);
 					const std::array<unsigned int, 256>&  rawPalette = Renderer::Inst().GetRawPalette();

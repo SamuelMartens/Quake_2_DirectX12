@@ -171,7 +171,7 @@ private:
 
 	/* Utils */
 	void ValidateResources(const std::vector<PassParametersSource>& passesParametersSources) const;
-
+	void AttachPostPreCallbacks(std::vector<PassTask>& passTasks) const;
 
 	std::filesystem::path ROOT_DIR_PATH;
 	HANDLE sourceWatchHandle = INVALID_HANDLE_VALUE;

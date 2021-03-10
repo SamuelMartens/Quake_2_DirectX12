@@ -306,7 +306,7 @@ void Renderer::InitDx()
 	AcquireMainThreadFrame();
 	GPUJobContext initContext = CreateContext(GetMainThreadFrame());
 
-	initContext.commandList.Open();
+	initContext.commandList->Open();
 
 	// -- Steps that require command list --
 
@@ -314,7 +314,7 @@ void Renderer::InitDx()
 
 	// ------- Close and execute init command list -----
 
-	initContext.commandList.Close();
+	initContext.commandList->Close();
 
 	CloseFrame(initContext.frame);
 
@@ -844,9 +844,9 @@ void Renderer::RegisterObjectsAtFrameGraphs()
 
 		GPUJobContext regContext = CreateContext(GetMainThreadFrame());
 
-		regContext.commandList.Open();
+		regContext.commandList->Open();
 		regContext.frame.frameGraph->RegisterObjects(staticObjects, regContext);
-		regContext.commandList.Close();
+		regContext.commandList->Close();
 
 		CloseFrame(regContext.frame);
 		ReleaseFrameResources(regContext.frame);
@@ -919,30 +919,7 @@ std::vector<int> Renderer::BuildVisibleDynamicObjectsList(const Camera& camera, 
 
 void Renderer::EndFrameJob(GPUJobContext& context)
 {
-	Logs::Logf(Logs::Category::Job, "EndFrame job started frame %d", context.frame.frameNumber);
-
-	context.commandList.Open();
-
-	Diagnostics::BeginEvent(context.commandList.GetGPUList(), "End Frame");
-
 	Frame& frame = context.frame;
-
-	CD3DX12_RESOURCE_BARRIER resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-		frame.colorBufferAndView->buffer.Get(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET,
-		D3D12_RESOURCE_STATE_PRESENT
-	);
-
-	// This is stupid. I use separate command list just for a few commands, bruh
-	context.commandList.GetGPUList()->ResourceBarrier(
-		1,
-		&resourceBarrier
-	);
-
-	Diagnostics::EndEvent(context.commandList.GetGPUList());
-
-	context.commandList.Close();
-
 	// Make sure everything else is done
 	context.WaitDependency();
 
@@ -964,43 +941,6 @@ void Renderer::EndFrameJob(GPUJobContext& context)
 	ResourceManager::Inst().DeleteRequestedResources();
 
 	Logs::Log(Logs::Category::Job, "EndFrame job ended");
-}
-
-void Renderer::BeginFrameJob(GPUJobContext& context)
-{
-	Logs::Logf(Logs::Category::Job, "BeginFrame job started frame %d", context.frame.frameNumber);
-
-	JOB_GUARD(context);
-	
-	CommandList& commandList = context.commandList;
-	Frame& frame = context.frame;
-
-	CD3DX12_RESOURCE_BARRIER resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-		frame.colorBufferAndView->buffer.Get(),
-		D3D12_RESOURCE_STATE_PRESENT,
-		D3D12_RESOURCE_STATE_RENDER_TARGET
-	);
-
-	// Indicate buffer transition to write state
-	commandList.GetGPUList()->ResourceBarrier(
-		1,
-		&resourceBarrier
-	);
-
-	D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = rtvHeap->GetHandleCPU(frame.colorBufferAndView->viewIndex);
-	D3D12_CPU_DESCRIPTOR_HANDLE depthTargetView = dsvHeap->GetHandleCPU(frame.depthBufferViewIndex);
-
-	// Clear back buffer and depth buffer
-	commandList.GetGPUList()->ClearRenderTargetView(renderTargetView, DirectX::Colors::Black, 0, nullptr);
-	commandList.GetGPUList()->ClearDepthStencilView(
-		depthTargetView,
-		D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
-		1.0f,
-		0,
-		0,
-		nullptr);
-
-	Logs::Logf(Logs::Category::Job, "BeginFrame job ended frame %d", frame.frameNumber);
 }
 
 void Renderer::ShutdownWin32()
@@ -1237,14 +1177,21 @@ void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, G
 	}
 }
 
-GPUJobContext Renderer::CreateContext(Frame& frame)
+GPUJobContext Renderer::CreateContext(Frame& frame, bool acquireCommandList)
 {
 	ASSERT_MAIN_THREAD;
 
-	const int commandListIndex = commandListBuffer.allocator.Allocate();
-	frame.acquiredCommandListsIndices.push_back(commandListIndex);
+	CommandList* commandList = nullptr;
 
-	return GPUJobContext(frame, commandListBuffer.commandLists[commandListIndex]);
+	if (acquireCommandList)
+	{
+		const int commandListIndex = commandListBuffer.allocator.Allocate();
+		frame.acquiredCommandListsIndices.push_back(commandListIndex);
+
+		commandList = &commandListBuffer.commandLists[commandListIndex];
+	}
+	
+	return GPUJobContext(frame, commandList);
 }
 
 void Renderer::GetDrawAreaSize(int* Width, int* Height)
@@ -1468,7 +1415,7 @@ void Renderer::EndLevelLoading()
 
 	Frame& frame = dynamicModelRegContext->frame;
 
-	dynamicModelRegContext->commandList.Close();
+	dynamicModelRegContext->commandList->Close();
 	
 	GPUJobContext createDeferredTextureContext = CreateContext(frame);
 	ResourceManager::Inst().CreateDeferredTextures(createDeferredTextureContext);
@@ -1676,7 +1623,7 @@ void Renderer::RegisterWorldModel(const char* model)
 	GPUJobContext context = CreateContext(frame);
 	staticModelRegContext = std::make_unique<GPUJobContext>(context);
 
-	context.commandList.Open();
+	context.commandList->Open();
 
 	char fullName[MAX_QPATH];
 	Utils::Sprintf(fullName, sizeof(fullName), "maps/%s.bsp", model);
@@ -1699,7 +1646,7 @@ void Renderer::RegisterWorldModel(const char* model)
 	DecomposeGLModelNode(*mapModel, *mapModel->nodes, context);
 
 	// Submit frame
-	context.commandList.Close();
+	context.commandList->Close();
 	DetachMainThreadFrame();
 
 	JobSystem::Inst().GetJobQueue().Enqueue(Job(
@@ -1729,7 +1676,7 @@ void Renderer::BeginLevelLoading(const char* mapName)
 	Frame& frame = GetMainThreadFrame();
 
 	dynamicModelRegContext = std::make_unique<GPUJobContext>(CreateContext(frame));
-	dynamicModelRegContext->commandList.Open();
+	dynamicModelRegContext->commandList->Open();
 
 	DetachMainThreadFrame();
 }
