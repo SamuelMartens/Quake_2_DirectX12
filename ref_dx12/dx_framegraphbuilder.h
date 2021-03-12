@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <filesystem>
 #include <memory>
+#include <functional>
 
 #include "dx_passparameters.h"
 #include "dx_framegraph.h"
@@ -93,7 +94,8 @@ namespace Parsing
 
 	struct FrameGraphSourceContext
 	{
-		std::vector<std::string> passes;
+		std::vector<FrameGraphSource::Step_t> steps;
+
 		std::vector<FrameGraphSource::FrameGraphResourceDecl> resources;
 	};
 
@@ -138,6 +140,7 @@ private:
 	/* Pass Parameters */
 	std::vector<PassParametersSource> GeneratePassesParameterSources() const;
 	PassParameters CompilePassParameters(PassParametersSource&& passSource, FrameGraph& frameGraph) const;
+	std::vector<std::function<void(GPUJobContext&)>> CompilePassCallbacks(const std::vector<PassParametersSource::FixedFunction_t>& fixedFunctions, const PassParameters& passParams) const;
 
 	/*  Files processing */
 	std::unordered_map<std::string, std::string> LoadPassFiles() const;
@@ -171,7 +174,7 @@ private:
 
 	/* Utils */
 	void ValidateResources(const std::vector<PassParametersSource>& passesParametersSources) const;
-	void AttachPostPreCallbacks(std::vector<PassTask>& passTasks) const;
+	void AttachSpecialPostPreCallbacks(std::vector<PassTask>& passTasks, const std::vector<FrameGraphSource::Step_t>& renderSteps) const;
 
 	std::filesystem::path ROOT_DIR_PATH;
 	HANDLE sourceWatchHandle = INVALID_HANDLE_VALUE;

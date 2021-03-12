@@ -1,10 +1,10 @@
-// Input geometry type
+PassProperties
 {
 PassInput : UI
 PassVertAttr: VertexIn
 }
 
-// State
+State
 {
 ColorTarget  : BACK_BUFFER
 DepthTarget  : BACK_BUFFER
@@ -13,7 +13,7 @@ BlendEnabled : false
 Topology	 : Triangle
 }
 
-// Root signature
+RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 DescriptorTable(SRV(t0, numDescriptors = 1)),
@@ -22,6 +22,11 @@ DescriptorTable(Sampler(s0)),
 CBV(b0)
 }
 
+PrePass
+{
+ClearColor(0.0, 0.0, 0.0, 1.0)
+ClearDepth(1.0)
+}
 
 // Attributes
 

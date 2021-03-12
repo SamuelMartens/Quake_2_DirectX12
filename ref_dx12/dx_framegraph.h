@@ -12,6 +12,22 @@ class FrameGraphSource
 {
 public:
 
+	struct Pass
+	{
+		std::string name;
+	};
+
+	struct FixedFunctionCopy
+	{
+		std::string source;
+		std::string destination;
+	};
+
+	using Step_t = std::variant<
+		Pass,
+		FixedFunctionCopy
+	>;
+
 	struct FrameGraphResourceDecl
 	{
 		std::string name;
@@ -28,8 +44,9 @@ public:
 	FrameGraphSource& operator=(FrameGraphSource&&) = default;
 
 	~FrameGraphSource() = default;
+	
+	std::vector<Step_t> steps;
 
-	std::vector<std::string> passes;
 	std::vector<FrameGraphResourceDecl> resourceDeclarations;
 
 	std::vector<PassParametersSource> passesParametersSources;

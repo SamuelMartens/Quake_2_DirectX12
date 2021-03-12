@@ -241,7 +241,7 @@ struct PassTask
 class PassUtils
 {
 public:
-
+	//#DEBUG alloca should be moved to framebuilder
 	template<typename T>
 	static int AllocateRenderTargetView(std::string_view renderTargetName, T& descriptorHeap)
 	{
@@ -275,7 +275,6 @@ public:
 		}
 	}
 
-	//#DEBUG CONTINUE here
 	static void ReleaseColorDepthRenderTargetViews(PassParameters& passParams);
 
 	template<typename T>
@@ -292,4 +291,10 @@ public:
 			return GetPassName(pass);
 		}, pass);
 	}
+
+	static void ClearColorBackBufferCallback(XMFLOAT4 color, GPUJobContext& context);
+	static void ClearColorCallback(XMFLOAT4 color, int colorRenderTargetViewIndex, GPUJobContext& context);
+
+	static void ClearDepthBackBufferCallback(float value, GPUJobContext& context);
+	static void ClearDeptCallback(float value, int depthRenderTargetViewIndex, GPUJobContext& context);
 };

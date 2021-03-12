@@ -282,6 +282,17 @@ public:
 		std::string source;
 	};
 
+	struct FixedFunctionClearColor
+	{
+		XMFLOAT4 color = { 0.0f, 0.0f, 0.0f, 1.0f };
+	};
+
+	struct FixedFunctionClearDepth
+	{
+		float value = 1.0f;
+	};
+
+	using FixedFunction_t = std::variant<FixedFunctionClearColor, FixedFunctionClearDepth>;
 
 	PassParametersSource();
 
@@ -321,6 +332,9 @@ public:
 	std::string inputVertAttr;
 	std::vector<std::tuple<unsigned int, int>> vertAttrSlots;
 	std::unique_ptr<Parsing::RootSignature> rootSignature;
+
+	std::vector<FixedFunction_t> prePassFuncs;
+	std::vector<FixedFunction_t> postPassFuncs;
 };
 
 class PassParameters

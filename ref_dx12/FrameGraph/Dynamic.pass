@@ -1,10 +1,11 @@
-// Input geometry type
+PassProperties
 {
 PassInput : Dynamic
 PassVertAttr: VertexIn
 PassSlotLayout: [Pos0 : 0, Pos1 : 1, Tex : 2]
 }
-// State
+
+State
 {
 ColorTarget  : BACK_BUFFER
 DepthTarget  : BACK_BUFFER
@@ -13,7 +14,7 @@ BlendEnabled : false
 Topology	 : Triangle
 }
 
-// Root signature
+RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0),

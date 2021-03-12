@@ -574,6 +574,50 @@ namespace
 			return peg::any_cast<int>(sv[0]);
 		};
 
+		// --- PrePostPass
+		parser["PrePass"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		{
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			std::vector<PassParametersSource::FixedFunction_t>& prePass = parseCtx.passSources.back().prePassFuncs;
+
+			for (int i = 0; i < sv.size(); ++i)
+			{
+				prePass.push_back(peg::any_cast<PassParametersSource::FixedFunction_t>(sv[i]));
+			}
+		};
+
+		parser["PostPass"] = [](const peg::SemanticValues& sv, peg::any& ctx) 
+		{
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			std::vector<PassParametersSource::FixedFunction_t>& postPass = parseCtx.passSources.back().postPassFuncs;
+
+			for (int i = 0; i < sv.size(); ++i)
+			{
+				postPass.push_back(peg::any_cast<PassParametersSource::FixedFunction_t>(sv[i]));
+			}
+		};
+
+		parser["FixedFunction"] = [](const peg::SemanticValues& sv)
+		{
+			return peg::any_cast<PassParametersSource::FixedFunction_t>(sv[0]);
+		};
+
+		parser["FixedFunctionClearColor"] = [](const peg::SemanticValues& sv)
+		{
+			return PassParametersSource::FixedFunction_t{
+				PassParametersSource::FixedFunctionClearColor{
+					peg::any_cast<XMFLOAT4>(sv[0]),
+			} };
+		};
+
+		parser["FixedFunctionClearDepth"] = [](const peg::SemanticValues& sv)
+		{
+			return PassParametersSource::FixedFunction_t{
+				PassParametersSource::FixedFunctionClearDepth{
+					peg::any_cast<float>(sv[0]),
+			} };
+		};
+
 
 		// --- ShaderDefs
 		parser["Function"] = [](const peg::SemanticValues& sv, peg::any& ctx) 
@@ -830,9 +874,20 @@ namespace
 		{
 			return sv.token();
 		};
+
+		parser["Float4"] = [](const peg::SemanticValues& sv)
+		{
+			return XMFLOAT4
+			{
+				peg::any_cast<float>(sv[0]),
+				peg::any_cast<float>(sv[1]),
+				peg::any_cast<float>(sv[2]),
+				peg::any_cast<float>(sv[3]),
+			};
+		};
 	};
 
-	void InitFrameGraphSourceParser(peg::parser& parser)
+	void InitFrameGraphParser(peg::parser& parser)
 	{
 		// Load grammar
 		const std::string frameGraphGrammar = ReadFile(FrameGraphBuilder::Inst().GenPathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_FRAMEGRAPH_FILENAME));
@@ -847,20 +902,30 @@ namespace
 		const bool loadGrammarResult = parser.load_grammar(frameGraphGrammar.c_str());
 		assert(loadGrammarResult && "Can't load pass grammar");
 
-		parser["Passes"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["RenderStep"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
 			Parsing::FrameGraphSourceContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::FrameGraphSourceContext>&>(ctx);
 			
 			std::for_each(sv.begin(), sv.end(),
 				[&parseCtx](const peg::any& pass) 
 			{
-				parseCtx.passes.push_back(peg::any_cast<std::string>(pass));
+				parseCtx.steps.push_back(peg::any_cast<FrameGraphSource::Step_t>(pass));
 			});
 		};
 
 		parser["Pass"] = [](const peg::SemanticValues& sv)
 		{
-			return sv.token();
+			return FrameGraphSource::Step_t{ 
+				FrameGraphSource::Pass{ peg::any_cast<std::string>(sv[0]) } };
+		};
+
+		parser["FixedFunctionClearDepth"] = [](const peg::SemanticValues& sv)
+		{
+			return FrameGraphSource::Step_t{
+				FrameGraphSource::FixedFunctionCopy{
+					peg::any_cast<std::string>(sv[0]),
+					peg::any_cast<std::string>(sv[1])
+			} };
 		};
 
 		// --- Resource Declaration
@@ -987,9 +1052,9 @@ namespace
 			return stoi(sv.token());
 		};
 
-		parser["Word"] = [](const peg::SemanticValues& sv)
+		parser["Float"] = [](const peg::SemanticValues& sv)
 		{
-			return sv.token();
+			return stof(sv.token());
 		};
 
 	};
@@ -1224,12 +1289,14 @@ void FrameGraphBuilder::ValidateResources(const std::vector<PassParametersSource
 #endif
 }
 
-void FrameGraphBuilder::AttachPostPreCallbacks(std::vector<PassTask>& passTasks) const
+//#DEBUG verify signature
+void FrameGraphBuilder::AttachSpecialPostPreCallbacks(std::vector<PassTask>& passTasks, const std::vector<FrameGraphSource::Step_t>& renderSteps) const
 {
 	assert(passTasks.empty() == false && "AttachPostPreCallbacks failed. No pass tasks");
 
-	// Begin frame routine
-	passTasks.front().prePassCallbacks.push_back([](GPUJobContext& context) 
+	// Begin frame routine. This callback should be the very first one
+	passTasks.front().prePassCallbacks.insert(passTasks.front().prePassCallbacks.begin(),
+		[](GPUJobContext& context) 
 	{
 		CommandList& commandList = *context.commandList;
 		Frame& frame = context.frame;
@@ -1245,22 +1312,6 @@ void FrameGraphBuilder::AttachPostPreCallbacks(std::vector<PassTask>& passTasks)
 			1,
 			&resourceBarrier
 		);
-
-		Renderer& renderer = Renderer::Inst();
-
-		D3D12_CPU_DESCRIPTOR_HANDLE renderTargetView = renderer.rtvHeap->GetHandleCPU(frame.colorBufferAndView->viewIndex);
-		D3D12_CPU_DESCRIPTOR_HANDLE depthTargetView = renderer.dsvHeap->GetHandleCPU(frame.depthBufferViewIndex);
-
-		//#DEBUG clear operations should be implemented as framegraph operations
-		// Clear back buffer and depth buffer
-		commandList.GetGPUList()->ClearRenderTargetView(renderTargetView, DirectX::Colors::Black, 0, nullptr);
-		commandList.GetGPUList()->ClearDepthStencilView(
-			depthTargetView,
-			D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
-			1.0f,
-			0,
-			0,
-			nullptr);
 	});
 
 	// End frame routine
@@ -1404,63 +1455,80 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 	frameGraph.internalTextureNames = std::make_shared<std::vector<std::string>>(CreateFrameGraphResources(source.resourceDeclarations));
 
 	// Add passes to frame graph in proper order
-	for (const std::string& passName : source.passes)
+	for (const FrameGraphSource::Step_t& step : source.steps)
 	{
-		Logs::Logf(Logs::Category::Parser, "Compile pass, start: %s", passName.c_str());
+		std::visit([&frameGraph, &source, this](auto&& step) 
+		{
+			using T = std::decay_t<decltype(step)>;
 
-		auto passParamIt = std::find_if(source.passesParametersSources.begin(), source.passesParametersSources.end(), 
-			[&passName](const PassParametersSource& paramSource)
-		{
-			return paramSource.name == passName;
-		});
+			if constexpr (std::is_same_v<T, FrameGraphSource::Pass>)
+			{
+				const std::string& passName = step.name;
 
-		assert(passParamIt != source.passesParametersSources.end() && "Can't find PassParameters source for pass creation");
+				Logs::Logf(Logs::Category::Parser, "Compile pass, start: %s", passName.c_str());
 
-		PassParameters passParam = CompilePassParameters(std::move(*passParamIt), frameGraph);
+				auto passParamIt = std::find_if(source.passesParametersSources.begin(), source.passesParametersSources.end(),
+					[&passName](const PassParametersSource& paramSource)
+				{
+					return paramSource.name == passName;
+				});
 
-		// Add pass
-		switch (*passParam.input)
-		{
-		case Parsing::PassInputType::UI:
-		{
-			frameGraph.passTasks.emplace_back(PassTask{ Pass_UI{} });
-		}
-		break;
-		case Parsing::PassInputType::Static:
-		{
-			frameGraph.passTasks.emplace_back(PassTask{ Pass_Static{} });
-		}
-		break;
-		case Parsing::PassInputType::Dynamic:
-		{
-			frameGraph.passTasks.emplace_back(PassTask{ Pass_Dynamic{} });
-		}
-		break;
-		case Parsing::PassInputType::Particles:
-		{
-			frameGraph.passTasks.emplace_back(PassTask{ Pass_Particles{} });
-		}
-		break;
-		case Parsing::PassInputType::PostProcess:
-		{
-			frameGraph.passTasks.emplace_back(PassTask{ Pass_PostProcess{} });
-		}
-		break;
-		default:
-			assert(false && "Pass with undefined input is detected");
-			break;
-		}
+				//#DEBUG think if you can improve this and get rid of this hack
+				// Ugly hack to save data before they will be moved
+				std::vector<PassParametersSource::FixedFunction_t> prePassFuncs = passParamIt->prePassFuncs;
+				std::vector<PassParametersSource::FixedFunction_t> postPassFuncs = passParamIt->postPassFuncs;
 
-		// Init pass
-		std::visit([&passParam](auto&& pass)
-		{
-			pass.Init(std::move(passParam));
+				PassParameters passParam = CompilePassParameters(std::move(*passParamIt), frameGraph);
 
-		}, frameGraph.passTasks.back().pass);
+				// Add pass
+				switch (*passParam.input)
+				{
+				case Parsing::PassInputType::UI:
+				{
+					frameGraph.passTasks.emplace_back(PassTask{ Pass_UI{} });
+				}
+				break;
+				case Parsing::PassInputType::Static:
+				{
+					frameGraph.passTasks.emplace_back(PassTask{ Pass_Static{} });
+				}
+				break;
+				case Parsing::PassInputType::Dynamic:
+				{
+					frameGraph.passTasks.emplace_back(PassTask{ Pass_Dynamic{} });
+				}
+				break;
+				case Parsing::PassInputType::Particles:
+				{
+					frameGraph.passTasks.emplace_back(PassTask{ Pass_Particles{} });
+				}
+				break;
+				case Parsing::PassInputType::PostProcess:
+				{
+					frameGraph.passTasks.emplace_back(PassTask{ Pass_PostProcess{} });
+				}
+				break;
+				default:
+					assert(false && "Pass with undefined input is detected");
+					break;
+				}
 
+				PassTask& currentPassTask = frameGraph.passTasks.back();
+				currentPassTask.prePassCallbacks = CompilePassCallbacks(prePassFuncs, passParam);
+				currentPassTask.postPassCallbacks = CompilePassCallbacks(postPassFuncs, passParam);
+
+				// Init pass
+				std::visit([&passParam](auto&& pass)
+				{
+					pass.Init(std::move(passParam));
+
+				}, currentPassTask.pass);
+				
+			}
+		}, step);
 	}
 
-	AttachPostPreCallbacks(frameGraph.passTasks);
+	AttachSpecialPostPreCallbacks(frameGraph.passTasks, source.steps);
 
 	return frameGraph;
 }
@@ -1473,7 +1541,7 @@ FrameGraphSource FrameGraphBuilder::GenerateFrameGraphSource() const
 
 	std::shared_ptr<Parsing::FrameGraphSourceContext> parseCtx = ParseFrameGraphFile(LoadFrameGraphFile());
 
-	frameGraphSource.passes = std::move(parseCtx->passes);
+	frameGraphSource.steps = std::move(parseCtx->steps);
 	frameGraphSource.resourceDeclarations = std::move(parseCtx->resources);
 
 	return frameGraphSource;
@@ -1620,7 +1688,7 @@ std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFile
 std::shared_ptr<Parsing::FrameGraphSourceContext> FrameGraphBuilder::ParseFrameGraphFile(const std::string& frameGraphSourceFileContent) const
 {
 	peg::parser parser;
-	InitFrameGraphSourceParser(parser);
+	InitFrameGraphParser(parser);
 
 	std::shared_ptr<Parsing::FrameGraphSourceContext> context = std::make_shared<Parsing::FrameGraphSourceContext>();
 	peg::any ctx = context;
@@ -2108,7 +2176,49 @@ PassParameters FrameGraphBuilder::CompilePassParameters(PassParametersSource&& p
 
 	CreateResourceArguments(passSource, frameGraph, passParam);
 
+	PassUtils::AllocateColorDepthRenderTargetViews(passParam);
+
 	return passParam;
+}
+
+std::vector<std::function<void(GPUJobContext&)>> FrameGraphBuilder::CompilePassCallbacks(const std::vector<PassParametersSource::FixedFunction_t>& fixedFunctions, const PassParameters& passParams) const
+{
+	std::vector<std::function<void(GPUJobContext&)>> callbacks;
+
+	for (const PassParametersSource::FixedFunction_t& fixedFunction : fixedFunctions)
+	{
+		std::visit([&callbacks, &passParams](auto&& fixedFunction) 
+		{
+			using T = std::decay_t<decltype(fixedFunction)>;
+
+			if constexpr (std::is_same_v<T, PassParametersSource::FixedFunctionClearColor>)
+			{
+				if (passParams.colorTargetName == PassParameters::BACK_BUFFER_NAME)
+				{
+					callbacks.push_back(std::bind(PassUtils::ClearColorBackBufferCallback, fixedFunction.color, std::placeholders::_1));
+				}
+				else
+				{
+					callbacks.push_back(std::bind(PassUtils::ClearColorCallback, fixedFunction.color, passParams.colorTargetViewIndex, std::placeholders::_1));
+				}
+			}
+
+			if constexpr (std::is_same_v<T, PassParametersSource::FixedFunctionClearDepth>)
+			{
+				if (passParams.depthTargetName == PassParameters::BACK_BUFFER_NAME)
+				{
+					callbacks.push_back(std::bind(PassUtils::ClearDepthBackBufferCallback, fixedFunction.value, std::placeholders::_1));
+				}
+				else
+				{
+					callbacks.push_back(std::bind(PassUtils::ClearDeptCallback, fixedFunction.value, passParams.depthTargetViewIndex, std::placeholders::_1));
+				}
+			}
+
+		}, fixedFunction);
+	}
+
+	return callbacks;
 }
 
 std::filesystem::path FrameGraphBuilder::GenPathToFile(const std::string fileName) const

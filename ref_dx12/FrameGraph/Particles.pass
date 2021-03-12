@@ -1,11 +1,11 @@
-// Input geometry type
+PassProperties
 {
 PassInput : Particles
 PassVertAttr: VertexIn
 }
 
 
-// State
+State
 {
 ColorTarget  	: BACK_BUFFER
 DepthTarget  	: BACK_BUFFER
@@ -17,7 +17,7 @@ DepthWriteMask	: false
 Topology	 	: Point
 }
 
-// Root signature
+RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0)

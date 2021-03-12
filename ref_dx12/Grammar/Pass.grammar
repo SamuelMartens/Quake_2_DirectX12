@@ -1,11 +1,11 @@
-Pass <- PassProps State RSig ShaderDefs ShaderList
+Pass <- PassProps State RSig PrePostPass ShaderDefs ShaderList
 
 ShaderDefs	<- T( < ( Resource / VertAttr / Function )* > )
-State       <- T( '{' < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendSt / DestBlendSt )* > '}' )
+State       <- T( 'State' _ '{' < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendSt / DestBlendSt )* > '}' )
 ShaderList  <- T( < Shader* > )
 
 # --- Pass properties
-PassProps               <- T( '{' < ( PassInput / PassVertAttr / PassVertAttrSlots / PassType / PassThreadGroups )* > '}' )
+PassProps               <- T( 'PassProperties' _ '{' < ( PassInput / PassVertAttr / PassVertAttrSlots / PassType / PassThreadGroups )* > '}' )
 PassInput               <- T( 'PassInput' _ ':' PassInputIdent )
 PassInputIdent          <- _ 'Static' _ / _ 'Dynamic' _ / _ 'Particles' _ / _ 'UI' _ / _ 'PostProcess' _
 PassVertAttr            <- T( 'PassVertAttr' _ ':' Ident )
@@ -34,7 +34,7 @@ BlendStValues		<- _ 'SrcAlpha' _ / _ 'InvSrcAlpha' _
 TopologyStValues    <- _ 'Triangle' _ / _ 'Point' _
 
 # --- Root Signature ---
-RSig                <- T( '{' < RSigFlagsDecl ( Comma RSigEntity )+ > '}' )
+RSig                <- T( 'RootSignature' _ '{' < RSigFlagsDecl ( Comma RSigEntity )+ > '}' )
 RSigEntity          <- RSigCBVDecl / RSigSRVDecl / RSigUAVDecl / RSigRootConstDecl / RSigStatSamplerDecl / RSigDescTableDecl
 
 RSigFlagsDecl   	<- T( < 'RootFlags' _ '(' RSigFlags? ( _ '|' _ RSigFlags )* ')' > )
@@ -56,6 +56,14 @@ RSigDeclOptions     <- _ RSigVisibilityDecl _ / _ RSDescNumDecl _
 RSigVisibilityDecl  <- T( 'visibility' _ '=' RSigVisibilityFlags )
 RSigVisibilityFlags	<- _ 'SHADER_VISIBILITY_ALL' _ / _ 'SHADER_VISIBILITY_VERTEX' _ / _ 'SHADER_VISIBILITY_HULL' _ / _ 'SHADER_VISIBILITY_DOMAIN' _ / _ 'SHADER_VISIBILITY_GEOMETRY' _ / _ 'SHADER_VISIBILITY_PIXEL' _
 RSDescNumDecl       <- T( 'numDescriptors' _ '=' Int )
+
+# --- PrePostPass ---
+PrePostPass             <-  T( (PrePass/ PostPass){0, 2} )
+PrePass                 <-  T( 'PrePass' _ '{' FixedFunction* '}' )
+PostPass                <-  T( 'PostPass' _ '{' FixedFunction* '}' )
+FixedFunction           <-  T( FixedFunctionClearColor / FixedFunctionClearDepth )
+FixedFunctionClearColor	<-	T( 'ClearColor' _ '(' Float4 ')' )
+FixedFunctionClearDepth <-  T( 'ClearDepth' _ '(' Float ')' )
 
 # --- ShaderDefs ---
 Function 			<- T( < Ident Ident '(' ( !')' . )* ')' _ '{' ( !'}' . )* '}' > )
@@ -100,6 +108,7 @@ Bool    <- _ 'true' _ / _ 'false' _
 Float   <- T( < [0-9][0-9]* '.' [0-9][0-9]* > )
 Int     <- T( < [0-9][0-9]* > )
 Word    <- T( < [a-zA-Z_][a-zA-Z_]* > )
+Float4	<- T( Float Comma Float Comma Float Comma Float )
 
 # --- Punctuation ---
 ~Comma <-  T( < ',' > )

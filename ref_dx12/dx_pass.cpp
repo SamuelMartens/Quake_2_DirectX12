@@ -381,8 +381,6 @@ void Pass_UI::Init(PassParameters&& parameters)
 	assert(perObjectVertexMemorySize == Const::INVALID_SIZE && "Per Object Vertex Memory should be uninitialized");
 	// Every UI object is quad that consists of two triangles
 	perObjectVertexMemorySize = perVertexMemorySize * 6;
-
-	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
 }
 
 void Pass_UI::RegisterObjects(GPUJobContext& context)
@@ -680,8 +678,6 @@ void Pass_Static::Init(PassParameters&& parameters)
 
 	assert(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Static perObject memory size should be unitialized");
 	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
-
-	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
 }
 
 void Pass_Static::RegisterPassResources(GPUJobContext& context)
@@ -888,8 +884,6 @@ void Pass_Dynamic::Init(PassParameters&& parameters)
 
 	assert(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Static perObject memory size should be unitialized");
 	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
-
-	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
 }
 
 void Pass_Dynamic::RegisterPassResources(GPUJobContext& context)
@@ -1110,8 +1104,6 @@ void Pass_Particles::Init(PassParameters&& parameters)
 
 	assert(passParameters.perObjectLocalRootArgsTemplate.empty() == true && "Particle pass is not suited to have local per object resources");
 	assert(passParameters.perObjGlobalRootArgsIndicesTemplate.empty() == true && "Particle pass is not suited to have global per object resources");
-
-	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
 }
 
 void Pass_Particles::RegisterPassResources(GPUJobContext& context)
@@ -1294,4 +1286,45 @@ void PassUtils::ReleaseColorDepthRenderTargetViews(PassParameters& passParams)
 {
 	PassUtils::ReleaseRenderTargetView(passParams.colorTargetName, passParams.colorTargetViewIndex, *Renderer::Inst().rtvHeap);
 	PassUtils::ReleaseRenderTargetView(passParams.depthTargetName, passParams.depthTargetViewIndex, *Renderer::Inst().dsvHeap);
+}
+
+void PassUtils::ClearColorBackBufferCallback(XMFLOAT4 color, GPUJobContext& context)
+{
+	D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = Renderer::Inst().rtvHeap->GetHandleCPU(context.frame.colorBufferAndView->viewIndex);
+	context.commandList->GetGPUList()->ClearRenderTargetView(colorRenderTargetView, &color.x, 0, nullptr);
+}
+
+void PassUtils::ClearColorCallback(XMFLOAT4 color, int colorRenderTargetViewIndex, GPUJobContext& context)
+{
+	assert(colorRenderTargetViewIndex != Const::INVALID_INDEX && "ClearColorCallback invalid index");
+
+	D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = Renderer::Inst().rtvHeap->GetHandleCPU(colorRenderTargetViewIndex);
+	context.commandList->GetGPUList()->ClearRenderTargetView(colorRenderTargetView, &color.x, 0, nullptr);
+}
+
+void PassUtils::ClearDepthBackBufferCallback(float value, GPUJobContext& context)
+{
+	D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = Renderer::Inst().dsvHeap->GetHandleCPU(context.frame.depthBufferViewIndex);
+	context.commandList->GetGPUList()->ClearDepthStencilView(
+		depthRenderTargetView,
+		D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
+		value,
+		0,
+		0,
+		nullptr);
+
+}
+
+void PassUtils::ClearDeptCallback(float value, int depthRenderTargetViewIndex, GPUJobContext& context)
+{
+	assert(depthRenderTargetViewIndex != Const::INVALID_INDEX && "ClearDeptCallback invalid index");
+
+	D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = Renderer::Inst().dsvHeap->GetHandleCPU(depthRenderTargetViewIndex);
+	context.commandList->GetGPUList()->ClearDepthStencilView(
+		depthRenderTargetView,
+		D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
+		value,
+		0,
+		0,
+		nullptr);
 }
