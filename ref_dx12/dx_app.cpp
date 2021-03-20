@@ -648,9 +648,6 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 
 	DO_IN_LOCK(frame.uploadResources, clear());
 
-	auto& uploadMemory = 
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
-
 	frame.entities.clear();
 	frame.particles.clear();
 

@@ -236,7 +236,8 @@ namespace RootArg
 			{
 				D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
 
-				cbAddress += uploadMemory.GetOffset(rootArg.gpuMem.handler) + rootArg.gpuMem.offset;
+				cbAddress += uploadMemory.GetOffset(rootArg.gpuMem.handler) + static_cast<D3D12_GPU_VIRTUAL_ADDRESS>(rootArg.gpuMem.offset);
+
 				commandList.GetGPUList()->SetGraphicsRootConstantBufferView(rootArg.bindIndex, cbAddress);
 			}
 			else if constexpr (std::is_same_v<T, DescTable>)

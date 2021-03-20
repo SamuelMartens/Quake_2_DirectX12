@@ -18,8 +18,12 @@ struct TextureDesc
 	D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
 };
 
+//#DEBUG delete this
+class ResourceManager;
+
 class Texture
 {
+
 public:
 
 	constexpr static char	RAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
@@ -39,14 +43,12 @@ public:
 	
 	// bits per pixel from format
 	static int BPPFromFormat(DXGI_FORMAT format);
-
+	
 public:
 
 	ComPtr<ID3D12Resource> buffer;
 
 	std::string name;
-
-	int samplerInd = 0;
 	
 	TextureDesc desc;
 };
@@ -69,6 +71,39 @@ struct TexCreationRequest_FromData
 
 	Texture& texture;
 	std::vector<std::byte> data;
+};
+
+/*
+	I need to manage state of internal resources. I can't keep 
+	this data inside Texture class itself, because multiple jobs might work
+	on this resource in the same time, so what I am going to do is just have this
+	proxy object that every frame will use to access it's internal texture
+	NOTE: this is only intended for internal resources. 
+*/
+struct ResourceProxy
+{
+	// When a job is started it expects resource to be in this state.
+	// When a job is finished it leaves resource in this state.
+	const static D3D12_RESOURCE_STATES INTER_JOB_STATE = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+
+	explicit ResourceProxy(ID3D12Resource& initTexture);
+	ResourceProxy(ID3D12Resource& initTexture, D3D12_RESOURCE_STATES initState);
+
+	void TransitionTo(D3D12_RESOURCE_STATES newSate, ID3D12GraphicsCommandList* commandList);
+	
+	void static FindAndTranslateTo(
+		const std::string& name,
+		std::vector<ResourceProxy>& proxies,
+		D3D12_RESOURCE_STATES newSate,
+		ID3D12GraphicsCommandList* commandList);
+	
+	//#DEBUG this is bad. Only resource can own this. Not proxy
+	ID3D12Resource& resource;
+	unsigned int hashedName = Const::INVALID_HASHED_NAME;
+
+private:
+
+	D3D12_RESOURCE_STATES state = INTER_JOB_STATE;
 };
 
 using TextureCreationRequest_t = std::variant<TexCreationRequest_FromData, TexCreationRequest_FromFile>;

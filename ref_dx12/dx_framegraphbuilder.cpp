@@ -225,7 +225,7 @@ namespace
 				threadGroups[i] = std::any_cast<int>(sv[i]);
 			}
 
-			*currentPass.threadGroups = threadGroups;
+			currentPass.threadGroups = threadGroups;
 		};
 
 		// --- State
@@ -741,7 +741,7 @@ namespace
 
 			if (sv.size() > 2)
 			{
-				*std::get<2>(attr) = peg::any_cast<std::string>(sv[2]);
+				std::get<2>(attr) = peg::any_cast<std::string>(sv[2]);
 			}
 
 			return attr;
@@ -919,7 +919,7 @@ namespace
 				FrameGraphSource::Pass{ peg::any_cast<std::string>(sv[0]) } };
 		};
 
-		parser["FixedFunctionClearDepth"] = [](const peg::SemanticValues& sv)
+		parser["FixedFunctionCopy"] = [](const peg::SemanticValues& sv)
 		{
 			return FrameGraphSource::Step_t{
 				FrameGraphSource::FixedFunctionCopy{
@@ -1151,6 +1151,10 @@ void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
 		_AddRootArg<Parsing::PassInputType::Particles>(pass, frameGraph.passesGlobalRes, frameGraph.objGlobalResTemplate,
 			updateFrequency, scope, std::move(arg));
 		break;
+	case Parsing::PassInputType::PostProcess:
+		_AddRootArg<Parsing::PassInputType::PostProcess>(pass, frameGraph.passesGlobalRes, frameGraph.objGlobalResTemplate,
+			updateFrequency, scope, std::move(arg));
+		break;
 	default:
 		assert(false && "Unknown pass input for adding root argument");
 		break;
@@ -1293,40 +1297,30 @@ void FrameGraphBuilder::ValidateResources(const std::vector<PassParametersSource
 void FrameGraphBuilder::AttachSpecialPostPreCallbacks(std::vector<PassTask>& passTasks, const std::vector<FrameGraphSource::Step_t>& renderSteps) const
 {
 	assert(passTasks.empty() == false && "AttachPostPreCallbacks failed. No pass tasks");
-
-	// Begin frame routine. This callback should be the very first one
-	passTasks.front().prePassCallbacks.insert(passTasks.front().prePassCallbacks.begin(),
-		[](GPUJobContext& context) 
+	//#DEBUG move these callbacks to proper place. FrameBuilder only binds it. No lambdas should be here
+	for (PassTask& passTask : passTasks)
 	{
-		CommandList& commandList = *context.commandList;
-		Frame& frame = context.frame;
+		// Watch callbacks order here
+		if (PassUtils::GetPassInputType(passTask.pass) != Parsing::PassInputType::PostProcess)
+		{
+			passTask.prePassCallbacks.insert(
+				passTask.prePassCallbacks.begin(),
+				std::bind(PassUtils::RenderTargetToRenderStateCallback, std::string(PassUtils::GetPassRenderTargetName(passTask.pass)), std::placeholders::_1)
+			);
+		}
 
-		CD3DX12_RESOURCE_BARRIER resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-			frame.colorBufferAndView->buffer.Get(),
-			D3D12_RESOURCE_STATE_PRESENT,
-			D3D12_RESOURCE_STATE_RENDER_TARGET
-		);
-
-		// Indicate buffer transition to write state
-		commandList.GetGPUList()->ResourceBarrier(
-			1,
-			&resourceBarrier
-		);
-	});
+		
+		passTask.postPassCallbacks.push_back(PassUtils::InternalTextureProxiesToInterPassStateCallback);
+	}
 
 	// End frame routine
 	passTasks.back().postPassCallbacks.push_back([](GPUJobContext& context)
 	{
-
-		CD3DX12_RESOURCE_BARRIER resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-			context.frame.colorBufferAndView->buffer.Get(),
-			D3D12_RESOURCE_STATE_RENDER_TARGET,
-			D3D12_RESOURCE_STATE_PRESENT
-		);
-
-		context.commandList->GetGPUList()->ResourceBarrier(
-			1,
-			&resourceBarrier
+		ResourceProxy::FindAndTranslateTo(
+			PassParameters::BACK_BUFFER_NAME,
+			context.internalTextureProxies,
+			D3D12_RESOURCE_STATE_PRESENT,
+			context.commandList->GetGPUList()
 		);
 	});
 }
@@ -1377,7 +1371,7 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 
 			}, &pass.resources, &pass.vertAttr, &pass.functions);
 
-			assert(result == true && "Some include shader resource was not found");
+			assert(result == true && "Some external shader resource was not found");
 
 			shaderDefsToInclude += ";";
 		}
@@ -1453,11 +1447,14 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 	ValidateResources(source.passesParametersSources);
 
 	frameGraph.internalTextureNames = std::make_shared<std::vector<std::string>>(CreateFrameGraphResources(source.resourceDeclarations));
+	frameGraph.internalTextureProxy = CreateFrameGraphTextureProxies(*frameGraph.internalTextureNames);
+
+	std::vector<std::function<void(GPUJobContext&)>> pendingCallbacks;
 
 	// Add passes to frame graph in proper order
 	for (const FrameGraphSource::Step_t& step : source.steps)
 	{
-		std::visit([&frameGraph, &source, this](auto&& step) 
+		std::visit([&frameGraph, &source, &pendingCallbacks, this](auto&& step) 
 		{
 			using T = std::decay_t<decltype(step)>;
 
@@ -1517,6 +1514,14 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 				currentPassTask.prePassCallbacks = CompilePassCallbacks(prePassFuncs, passParam);
 				currentPassTask.postPassCallbacks = CompilePassCallbacks(postPassFuncs, passParam);
 
+				if (pendingCallbacks.empty() == false)
+				{
+					currentPassTask.postPassCallbacks.insert(
+						pendingCallbacks.begin(),
+						pendingCallbacks.end(),
+						currentPassTask.postPassCallbacks.end());
+				}
+
 				// Init pass
 				std::visit([&passParam](auto&& pass)
 				{
@@ -1525,6 +1530,23 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 				}, currentPassTask.pass);
 				
 			}
+			
+			if constexpr (std::is_same_v<T, FrameGraphSource::FixedFunctionCopy>)
+			{
+				std::function<void(GPUJobContext&)> copyCallback = std::bind(
+					PassUtils::CopyTextureCallback,
+					step.source, step.destination, std::placeholders::_1);
+
+				if (frameGraph.passTasks.empty())
+				{
+					pendingCallbacks.push_back(copyCallback);
+				}
+				else
+				{
+					frameGraph.passTasks.back().postPassCallbacks.push_back(copyCallback);
+				}
+			}
+
 		}, step);
 	}
 
@@ -1574,6 +1596,25 @@ std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std:
 	}
 
 	return internalResourcesName;
+}
+
+std::vector<ResourceProxy> FrameGraphBuilder::CreateFrameGraphTextureProxies(const std::vector<std::string>& internalTextureList) const
+{
+	std::vector<ResourceProxy> proxies;
+
+	ResourceManager& resMan = ResourceManager::Inst();
+
+	for(const std::string& textureName : internalTextureList)
+	{
+		Texture* texture = resMan.FindTexture(textureName);
+
+		assert(texture != nullptr && "Failed to create texture proxy. No such texture is found");
+
+		ResourceProxy& newProxy = proxies.emplace_back(ResourceProxy{ *texture->buffer.Get() });
+		newProxy.hashedName = HASH(texture->name.c_str());
+	}
+
+	return proxies;
 }
 
 std::vector<PassParametersSource> FrameGraphBuilder::GeneratePassesParameterSources() const
@@ -1773,7 +1814,9 @@ void FrameGraphBuilder::PreprocessPassFiles(std::unordered_map<std::string, std:
 
 std::vector<D3D12_INPUT_ELEMENT_DESC> FrameGraphBuilder::GenerateInputLayout(const PassParametersSource& pass) const
 {
-	const Parsing::VertAttr& vertAttr = GetPassInputVertAttr(pass);
+	const Parsing::VertAttr& vertAttr = *GetPassInputVertAttr(pass);
+
+	assert(GetPassInputVertAttr(pass) != nullptr && "Can't generate input layout, no input vert attr is found");
 
 	assert((pass.vertAttrSlots.empty() || pass.vertAttrSlots.size() == vertAttr.content.size())
 		&& "Invalid vert attr slots num, for input layout generation");
@@ -1813,8 +1856,13 @@ std::vector<D3D12_INPUT_ELEMENT_DESC> FrameGraphBuilder::GenerateInputLayout(con
 	return inputLayout;
 }
 
-const Parsing::VertAttr& FrameGraphBuilder::GetPassInputVertAttr(const PassParametersSource& pass) const
+const Parsing::VertAttr* FrameGraphBuilder::GetPassInputVertAttr(const PassParametersSource& pass) const
 {
+	if (*pass.input == Parsing::PassInputType::PostProcess)
+	{
+		return nullptr;
+	}
+
 	const std::string& inputName = pass.inputVertAttr;
 
 	const auto attrIt = std::find_if(pass.vertAttr.cbegin(), pass.vertAttr.cend(),
@@ -1822,7 +1870,7 @@ const Parsing::VertAttr& FrameGraphBuilder::GetPassInputVertAttr(const PassParam
 
 	assert(attrIt != pass.vertAttr.cend() && "Can't find input vert attribute");
 
-	return *attrIt;
+	return &(*attrIt);
 }
 
 ComPtr<ID3D12RootSignature> FrameGraphBuilder::GenerateRootSignature(const PassParametersSource& pass, const PassCompiledShaders_t& shaders) const
@@ -2163,12 +2211,14 @@ PassParameters FrameGraphBuilder::CompilePassParameters(PassParametersSource&& p
 	passParam.threadGroups = passSource.threadGroups;
 	passParam.name = passSource.name;
 	passParam.primitiveTopology = passSource.primitiveTopology;
-	passParam.colorTargetNameHash = HASH(passSource.colorTargetName.c_str());
-	passParam.depthTargetNameHash = HASH(passSource.depthTargetName.c_str());
 	passParam.colorTargetName = passSource.colorTargetName;
 	passParam.depthTargetName = passSource.depthTargetName;
 	passParam.viewport = passSource.viewport;
-	passParam.vertAttr = GetPassInputVertAttr(passSource);
+
+	if (const Parsing::VertAttr* inputVertAttr = GetPassInputVertAttr(passSource))
+	{
+		passParam.vertAttr = *inputVertAttr;
+	}
 
 	PassCompiledShaders_t compiledShaders = CompileShaders(passSource);
 	passParam.rootSingature = GenerateRootSignature(passSource, compiledShaders);

@@ -39,6 +39,7 @@ namespace Const
 	constexpr int INVALID_OFFSET = -1;
 	constexpr int INVALID_INDEX = -1;
 	constexpr int INVALID_SIZE = -1;
+	constexpr int INVALID_HASHED_NAME = -1;
 };
 
 

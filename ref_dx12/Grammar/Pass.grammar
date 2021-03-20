@@ -1,7 +1,7 @@
 Pass <- PassProps State RSig PrePostPass ShaderDefs ShaderList
 
 ShaderDefs	<- T( < ( Resource / VertAttr / Function )* > )
-State       <- T( 'State' _ '{' < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendSt / DestBlendSt )* > '}' )
+State       <- T( 'State' _ '{' _ < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendSt / DestBlendSt )* > '}' )
 ShaderList  <- T( < Shader* > )
 
 # --- Pass properties

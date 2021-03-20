@@ -9,6 +9,7 @@
 
 #include "dx_common.h"
 #include "dx_utils.h"
+#include "dx_texture.h"
 
 class Frame;
 class CommandList;
@@ -85,7 +86,11 @@ class GPUJobContext
 {
 public:
 
-	/* SHOULD BE SAFE TO COPY */
+	/* 
+		SHOULD BE SAFE TO COPY
+
+		Watch this to be lightweight
+	*/
 	GPUJobContext(Frame& frameVal, CommandList* commandListVal = nullptr);
 
 	void CreateDependencyFrom(std::vector<GPUJobContext*> dependsFromList);
@@ -94,8 +99,12 @@ public:
 	void SignalDependencies();
 	void WaitDependency() const;
 
+
+
 	Frame& frame;
 	CommandList* commandList = nullptr;
+
+	std::vector<ResourceProxy> internalTextureProxies;
 
 private:
 

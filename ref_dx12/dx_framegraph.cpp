@@ -404,16 +404,18 @@ void FrameGraph::Execute(Frame& frame)
 	std::vector<GPUJobContext> framePassContexts;
 	for (PassTask& passTask : passTasks)
 	{
-		framePassContexts.emplace_back(renderer.CreateContext(frame));
+		GPUJobContext& jobContext = framePassContexts.emplace_back(renderer.CreateContext(frame));
 
-		framePassContexts.back().CreateDependencyFrom({&updateGlobalResJobContext});
+		jobContext.CreateDependencyFrom({&updateGlobalResJobContext});
 	};
+
+	AddTexturesProxiesToPassJobContexts(framePassContexts);
 
 	GPUJobContext endFrameJobContext = renderer.CreateContext(frame, false);
 
 	std::vector<GPUJobContext*> endFrameDependency;
 
-	endFrameDependency.reserve(1 + endFrameDependency.size());
+	endFrameDependency.reserve(endFrameDependency.size());
 
 	std::transform(framePassContexts.begin(), framePassContexts.end(), std::back_inserter(endFrameDependency),
 		[](GPUJobContext& context) 
@@ -670,6 +672,47 @@ void FrameGraph::ReleasePerFrameResources()
 BufferHandler FrameGraph::GetParticlesVertexMemory() const
 {
 	return particlesVertexMemory;
+}
+
+std::vector<ResourceProxy> FrameGraph::GetTextureProxy() const
+{
+	return internalTextureProxy;
+}
+
+void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>& jobContexts) const
+{
+	assert(jobContexts.empty() == false && "Can't attach texture proxies to job contexts, cause it is empty");
+
+	// Attach internal texture proxies 
+	for (GPUJobContext& jobContext : jobContexts)
+	{
+		jobContext.internalTextureProxies = GetTextureProxy();
+	}
+
+	// Deal with back buffer
+	{
+		GPUJobContext& firstContext = jobContexts.front();
+
+		ResourceProxy& backBufferProxy = firstContext.internalTextureProxies.emplace_back(ResourceProxy
+			{
+				*firstContext.frame.colorBufferAndView->buffer.Get(),
+				D3D12_RESOURCE_STATE_PRESENT
+			});
+
+		backBufferProxy.hashedName = HASH(PassParameters::BACK_BUFFER_NAME.c_str());
+	}
+
+	for (int i = 1; i < jobContexts.size(); ++i)
+	{
+		GPUJobContext& context = jobContexts[i];
+
+		ResourceProxy& backBufferProxy = context.internalTextureProxies.emplace_back(ResourceProxy
+			{
+				*context.frame.colorBufferAndView->buffer.Get()
+			});
+
+		backBufferProxy.hashedName = HASH(PassParameters::BACK_BUFFER_NAME.c_str());
+	}
 }
 
 void FrameGraph::RegisterGlobalObjectsResUI(GPUJobContext& context)

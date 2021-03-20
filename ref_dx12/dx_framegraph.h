@@ -113,6 +113,8 @@ public:
 
 	/* Utils */
 	BufferHandler GetParticlesVertexMemory() const;
+	std::vector<ResourceProxy> GetTextureProxy() const;
+	void AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>& jobContexts) const;
 
 private:
 
@@ -168,6 +170,10 @@ private:
 
 	// This is shared pointer to imply that all framegraphs share this resource
 	std::shared_ptr<std::vector<std::string>> internalTextureNames;
+
+	// This data is copied whenever job needs texture proxy list.
+	// Once created, don't change this
+	std::vector<ResourceProxy> internalTextureProxy;
 
 	//#TODO delete when proper runtime load is developed.
 	// this is temp hack

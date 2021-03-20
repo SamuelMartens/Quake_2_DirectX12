@@ -9,6 +9,7 @@
 
 #include "dx_passparameters.h"
 #include "dx_framegraph.h"
+#include "dx_texture.h"
 
 namespace Parsing
 {
@@ -133,6 +134,7 @@ private:
 	FrameGraphSource GenerateFrameGraphSource() const;
 
 	std::vector<std::string> CreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls) const;
+	std::vector<ResourceProxy> CreateFrameGraphTextureProxies(const std::vector<std::string>& internalTextureList) const;
 
 	[[nodiscard]]
 	FrameGraph CompileFrameGraph(FrameGraphSource&& source) const;
@@ -158,7 +160,7 @@ private:
 	
 	/* Input layout */
 	std::vector<D3D12_INPUT_ELEMENT_DESC> GenerateInputLayout(const PassParametersSource& pass) const;
-	const Parsing::VertAttr& GetPassInputVertAttr(const PassParametersSource& pass) const;
+	const Parsing::VertAttr* GetPassInputVertAttr(const PassParametersSource& pass) const;
 
 	/* State objects processing */
 	ComPtr<ID3D12RootSignature> GenerateRootSignature(const PassParametersSource& pass, const PassCompiledShaders_t& shaders) const;

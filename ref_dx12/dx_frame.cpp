@@ -42,6 +42,7 @@ void Frame::ResetSyncData()
 
 std::shared_ptr<Semaphore> Frame::GetFinishSemaphore() const
 {
+	std::scoped_lock<std::mutex> lock(ownershipMutex);
 	return frameFinishedSemaphore;
 }
 

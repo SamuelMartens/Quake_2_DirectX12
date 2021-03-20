@@ -364,10 +364,6 @@ public:
 
 	std::string name;
 
-	//#DEBUG delete this
-	unsigned int colorTargetNameHash = 0;
-	unsigned int depthTargetNameHash = 0;
-
 	std::string colorTargetName;
 	std::string depthTargetName;
 
@@ -380,7 +376,7 @@ public:
 	// Indices of global RootArgs in objects global RootArg storage that are needed for this pass
 	std::vector<int> perObjGlobalRootArgsIndicesTemplate;
 
-	Parsing::VertAttr vertAttr;
+	std::optional<Parsing::VertAttr> vertAttr;
 
 	std::optional<Parsing::PassInputType> input;
 	std::optional<std::array<int, 3>> threadGroups;

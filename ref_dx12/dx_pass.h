@@ -245,6 +245,8 @@ public:
 	template<typename T>
 	static int AllocateRenderTargetView(std::string_view renderTargetName, T& descriptorHeap)
 	{
+		assert(renderTargetName.empty() == false && "AllocateRenderTargetView failed. Invalid render target name");
+
 		if (renderTargetName == PassParameters::BACK_BUFFER_NAME)
 		{
 			return Const::INVALID_INDEX;
@@ -278,6 +280,21 @@ public:
 	static void ReleaseColorDepthRenderTargetViews(PassParameters& passParams);
 
 	template<typename T>
+	static const std::string_view GetPassRenderTargetName(const T& pass)
+	{
+		return pass.passParameters.colorTargetName;
+	}
+
+	template<>
+	static const std::string_view GetPassRenderTargetName<Pass_t>(const Pass_t& pass)
+	{
+		return std::visit([](auto&& pass)
+		{
+			return GetPassRenderTargetName(pass);
+		}, pass);
+	}
+
+	template<typename T>
 	static std::string_view GetPassName(const T& pass)
 	{
 		return pass.passParameters.name;
@@ -292,9 +309,31 @@ public:
 		}, pass);
 	}
 
+	template<typename T>
+	static Parsing::PassInputType GetPassInputType(const T& pass)
+	{
+		return *pass.passParameters.input;
+	}
+
+	template<>
+	static Parsing::PassInputType GetPassInputType<Pass_t>(const Pass_t& pass)
+	{
+		return std::visit([](auto&& pass)
+		{
+			return GetPassInputType(pass);
+		}, pass);
+	}
+
+	//#DEBUG callbacks like ClearRenderTarget and An render target to render state are spread 
+	// across entire codebase. I need to bring this stuff together if possible
+	//#DEBUG should I put these callbacks in a separate namespace?
 	static void ClearColorBackBufferCallback(XMFLOAT4 color, GPUJobContext& context);
 	static void ClearColorCallback(XMFLOAT4 color, int colorRenderTargetViewIndex, GPUJobContext& context);
 
 	static void ClearDepthBackBufferCallback(float value, GPUJobContext& context);
 	static void ClearDeptCallback(float value, int depthRenderTargetViewIndex, GPUJobContext& context);
+
+	static void InternalTextureProxiesToInterPassStateCallback(GPUJobContext& context);
+	static void RenderTargetToRenderStateCallback(const std::string renderTargetName, GPUJobContext& context);
+	static void CopyTextureCallback(const std::string sourceName, const std::string destinationName, GPUJobContext& context);
 };

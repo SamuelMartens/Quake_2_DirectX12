@@ -115,7 +115,8 @@ void ResourceManager::UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) con
 
 	memcpy(mappedMemory + args.offset, args.data, dataSize);
 
-	args.buffer->Unmap(0, &mappedRange);
+	D3D12_RANGE unmappedRange = { static_cast<SIZE_T>(args.offset),  static_cast<SIZE_T>(args.offset) + dataSize };
+	args.buffer->Unmap(0, &unmappedRange);
 }
 
 void ResourceManager::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
@@ -166,6 +167,41 @@ void ResourceManager::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
 	);
 
 	commandList.GetGPUList()->ResourceBarrier(1, &readTransition);
+}
+
+void ResourceManager::ZeroMemoryUploadHeapBuff(FArg::ZeroUploadHeapBuff& args)
+{
+	assert(args.buffer != nullptr && 
+		args.byteSize != Const::INVALID_SIZE &&
+		args.offset != Const::INVALID_OFFSET && "Uninitialized arguments in zero upload buff");
+
+	BYTE* mappedMemory = nullptr;
+	// This parameter indicates the range that CPU might read. If begin and end are equal, we promise
+	// that CPU will never try to read from this memory
+	D3D12_RANGE mappedRange = { 0, 0 };
+
+	ThrowIfFailed(args.buffer->Map(0, &mappedRange, reinterpret_cast<void**>(&mappedMemory)));
+
+	memset(mappedMemory + args.offset, 0, args.byteSize);
+
+	D3D12_RANGE unmappedRange = { static_cast<SIZE_T>(args.offset),  static_cast<SIZE_T>(args.offset) + args.byteSize };
+	args.buffer->Unmap(0, &unmappedRange);
+}
+
+void ResourceManager::VerifyZeroUploadHeapBuff(FArg::VerifyZeroUploadHeapBuff& args) const
+{
+	BYTE* mappedMemory = nullptr;
+	// This parameter indicates the range that CPU might read. If begin and end are equal, we promise
+	// that CPU will never try to read from this memory
+	D3D12_RANGE mappedRange = { static_cast<SIZE_T>(args.offset), static_cast<SIZE_T>(args.offset) + args.byteSize };
+
+	std::vector<std::byte> v(args.byteSize, static_cast<std::byte>(0));
+
+	ThrowIfFailed(args.buffer->Map(0, &mappedRange, reinterpret_cast<void**>(&mappedMemory)));
+
+	assert(memcmp(mappedMemory + args.offset, v.data(), args.byteSize) == 0 && "VerifyZeroUploadHeapBuff failed.");
+
+	args.buffer->Unmap(0, &mappedRange);
 }
 
 void ResourceManager::RequestResourceDeletion(ComPtr<ID3D12Resource> resourceToDelete)
@@ -342,7 +378,8 @@ void ResourceManager::UpdateTexture(Texture& tex, const std::byte* data, GPUJobC
 
 	CD3DX12_RESOURCE_BARRIER copyDestTransition = CD3DX12_RESOURCE_BARRIER::Transition(
 		tex.buffer.Get(),
-		//#TODO figure out what's up with this NON PIXEL SHADER resource. Everywhere it is used
+		//#DEBUG figure out what's up with this NON PIXEL SHADER resource. Everywhere it is used
+		// I assume that's because of visibility
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
 		D3D12_RESOURCE_STATE_COPY_DEST
 	);
@@ -357,7 +394,6 @@ void ResourceManager::UpdateTexture(Texture& tex, const std::byte* data, GPUJobC
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
 	commandList.GetGPUList()->ResourceBarrier(1, &pixelResourceTransition);
-
 }
 
 void ResourceManager::ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight)
@@ -549,12 +585,16 @@ void ResourceManager::_CreateGpuTexture(const unsigned int* raw, const TextureDe
 
 	CD3DX12_HEAP_PROPERTIES heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 
+	const D3D12_RESOURCE_STATES initState = raw != nullptr ?
+		D3D12_RESOURCE_STATE_COPY_DEST : 
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+
 	// Create destination texture
 	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommittedResource(
 		&heapProperties,
 		D3D12_HEAP_FLAG_NONE,
 		&textureDesc,
-		raw != nullptr ? D3D12_RESOURCE_STATE_COPY_DEST : D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+		initState,
 		nullptr,
 		IID_PPV_ARGS(&outTex.buffer)));
 
@@ -580,7 +620,7 @@ void ResourceManager::_CreateGpuTexture(const unsigned int* raw, const TextureDe
 		textureData.SlicePitch = textureData.RowPitch * desc.height;
 
 		UpdateSubresources(commandList.GetGPUList(), outTex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
-
+		
 		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(
 			outTex.buffer.Get(),
 			D3D12_RESOURCE_STATE_COPY_DEST,

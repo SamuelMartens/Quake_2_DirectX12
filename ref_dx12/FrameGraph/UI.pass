@@ -6,7 +6,7 @@ PassVertAttr: VertexIn
 
 State
 {
-ColorTarget  : BACK_BUFFER
+ColorTarget  : gBackBuffer
 DepthTarget  : BACK_BUFFER
 Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
@@ -103,6 +103,10 @@ float4 main(VertexOut vOut) : SV_Target
 	else if (type == 2)
 	{
 		color =	gMovieTex.Sample(gSamLinearWrap, vOut.Tex);
+	}
+	else
+	{
+		color = float4(1.0, 0.0, 0.0, 1.0);
 	}
 	
     

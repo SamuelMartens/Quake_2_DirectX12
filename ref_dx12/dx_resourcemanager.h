@@ -28,6 +28,20 @@ namespace FArg
 		int alignment = -1;
 		GPUJobContext* context = nullptr;
 	};
+
+	struct ZeroUploadHeapBuff
+	{
+		ID3D12Resource* buffer = nullptr;
+		int offset = Const::INVALID_OFFSET;
+		int byteSize = Const::INVALID_SIZE;
+	};
+
+	struct VerifyZeroUploadHeapBuff
+	{
+		ID3D12Resource* buffer = nullptr;
+		int offset = Const::INVALID_OFFSET;
+		int byteSize = Const::INVALID_SIZE;
+	};
 };
 
 class ResourceManager
@@ -42,6 +56,9 @@ public:
 	ComPtr<ID3D12Resource> CreateUploadHeapBuffer(UINT64 byteSize) const;
 	void UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const;
 	void UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args);
+
+	void ZeroMemoryUploadHeapBuff(FArg::ZeroUploadHeapBuff& args);
+	void VerifyZeroUploadHeapBuff(FArg::VerifyZeroUploadHeapBuff& args) const;
 
 	/* Resource management */
 	void RequestResourceDeletion(ComPtr<ID3D12Resource> resourceToDelete);

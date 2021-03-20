@@ -372,7 +372,7 @@ void Pass_UI::Init(PassParameters&& parameters)
 	// Calculate amount of memory for vertex buffers per objects
 	assert(perVertexMemorySize == Const::INVALID_SIZE && "Per Vertex Memory should be uninitialized");
 
-	perVertexMemorySize = std::accumulate(passParameters.vertAttr.content.cbegin(), passParameters.vertAttr.content.cend(),
+	perVertexMemorySize = std::accumulate(passParameters.vertAttr->content.cbegin(), passParameters.vertAttr->content.cend(),
 		0, [](int& sum, const Parsing::VertAttrField& field) 
 	{
 		return sum + Parsing::GetParseDataTypeSize(field.type);
@@ -1275,6 +1275,11 @@ void PassTask::Execute(GPUJobContext& context)
 
 void PassUtils::AllocateColorDepthRenderTargetViews(PassParameters& passParams)
 {
+	if (*passParams.input == Parsing::PassInputType::PostProcess)
+	{
+		return;
+	}
+
 	passParams.colorTargetViewIndex =
 		PassUtils::AllocateRenderTargetView(passParams.colorTargetName, *Renderer::Inst().rtvHeap);
 
@@ -1327,4 +1332,57 @@ void PassUtils::ClearDeptCallback(float value, int depthRenderTargetViewIndex, G
 		0,
 		0,
 		nullptr);
+}
+
+void PassUtils::InternalTextureProxiesToInterPassStateCallback(GPUJobContext& context)
+{
+	// In case I will have performance problems, it is extremely easy to optimize this.
+	// Just batch barriers.
+	ID3D12GraphicsCommandList* commandList = context.commandList->GetGPUList();
+	
+	for (ResourceProxy& textureProxy : context.internalTextureProxies) 
+	{
+		textureProxy.TransitionTo(ResourceProxy::INTER_JOB_STATE, commandList);
+	}
+}
+//#DEBUG pass by ref?
+void PassUtils::RenderTargetToRenderStateCallback(const std::string renderTargetName, GPUJobContext& context)
+{
+	ResourceProxy::FindAndTranslateTo(
+		renderTargetName,
+		context.internalTextureProxies,
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		context.commandList->GetGPUList()
+	);
+}
+
+void PassUtils::CopyTextureCallback(const std::string sourceName, const std::string destinationName, GPUJobContext& context)
+{
+	std::vector<ResourceProxy>& proxies = context.internalTextureProxies;
+
+	unsigned int sourceHashedName = HASH(sourceName.c_str());
+
+	auto sourceProxyIt = std::find_if(proxies.begin(), proxies.end(), [sourceHashedName]
+	(const ResourceProxy& proxy)
+	{
+		return proxy.hashedName == sourceHashedName;
+	});
+
+	assert(sourceProxyIt != proxies.end() && "CopyTextureCallback failed. Can't find source proxy");
+	sourceProxyIt->TransitionTo(D3D12_RESOURCE_STATE_COPY_SOURCE, context.commandList->GetGPUList());
+
+
+	unsigned int destinationHashedName = HASH(destinationName.c_str());
+
+	auto destinationProxyIt = std::find_if(proxies.begin(), proxies.end(), [destinationHashedName]
+	(const ResourceProxy& proxy)
+	{
+		return proxy.hashedName == destinationHashedName;
+	});
+
+	assert(destinationProxyIt != proxies.end() && "CopyTextureCallback failed. Can't find source proxy");
+	destinationProxyIt->TransitionTo(D3D12_RESOURCE_STATE_COPY_DEST, context.commandList->GetGPUList());
+
+	context.commandList->GetGPUList()->CopyResource(&destinationProxyIt->resource, &sourceProxyIt->resource);
+
 }

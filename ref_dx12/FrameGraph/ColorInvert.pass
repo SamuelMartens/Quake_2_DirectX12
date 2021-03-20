@@ -1,0 +1,38 @@
+PassProperties
+{
+PassInput : PostProcess
+PassThreadGroups : 50, 37, 1
+}
+
+State
+{
+ 
+}
+
+RootSignature
+{
+RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
+DescriptorTable(SRV(t0, numDescriptors = 1), UAV(u0, numDescriptors = 1))
+}
+
+[Global, PerPass, Bind: gBackBuffer]
+Texture2D gBackBuffer : register(t0)
+
+[Global, PerPass, Bind: gBackBufferInvert]
+RWTexture2D<float4> gBackBufferInvert : register(u0)
+
+Type : CS
+External : gBackBuffer, gBackBufferInvert
+<[
+[numthreads(32, 32, 1)]
+void main(int3 dispatchThreadID : SV_DispatchThreadID)
+{
+	gBackBufferInvert[dispatchThreadID.xy] = float4(
+		float3(1.0, 1.0, 1.0) -
+		gBackBuffer[dispatchThreadID.xy].xyz,
+		1.0);
+		
+
+}
+ 
+]>
