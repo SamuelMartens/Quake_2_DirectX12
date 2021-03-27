@@ -484,8 +484,7 @@ void FrameGraph::Init(GPUJobContext& context)
 	{
 		std::visit([&context](auto&& pass) 
 		{
-			using passT = std::decay_t<decltype(pass)>;
-
+			pass.Init();
 			pass.RegisterPassResources(context);
 
 		}, passTask.pass);
@@ -941,16 +940,35 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 							offset += RootArg::GetConstBufftSize(descTableEntitiy);
 						}
 
-						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||
-							std::is_same_v<T, RootArg::DescTableEntity_UAView>)
+						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
 						{
 							if (descTableEntitiy.internalBindName.has_value())
 							{
 								// This is internal resource
-								RenderCallbacks::RegisterInternal(
+								RenderCallbacks::RegisterInternal<D3D12_SHADER_RESOURCE_VIEW_DESC>(
 									currentViewIndex,
 									*descTableEntitiy.internalBindName
 								);
+							}
+							else
+							{
+								RenderCallbacks::RegisterGlobalPass(
+									descTableEntitiy.hashedName,
+									currentViewIndex,
+									globalPassContext
+								);
+							}
+						}
+
+						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_UAView>)
+						{
+							if (descTableEntitiy.internalBindName.has_value())
+							{
+								// This is internal resource
+								RenderCallbacks::RegisterInternal<D3D12_UNORDERED_ACCESS_VIEW_DESC>(
+									currentViewIndex,
+									*descTableEntitiy.internalBindName
+									);
 							}
 							else
 							{

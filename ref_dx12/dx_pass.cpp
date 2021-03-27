@@ -56,16 +56,36 @@ namespace
 								assert(false && "Desc table view is probably not implemented! Make sure it is");
 							}
 
-							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||
-								std::is_same_v<T, RootArg::DescTableEntity_UAView>)
+							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
 							{
 								if (descTableEntitiy.internalBindName.has_value())
 								{
 									// This is internal resource
-									RenderCallbacks::RegisterInternal(
+									RenderCallbacks::RegisterInternal<D3D12_SHADER_RESOURCE_VIEW_DESC>(
 										currentViewIndex,
 										*descTableEntitiy.internalBindName
 									);
+								}
+								else
+								{
+									RenderCallbacks::RegisterLocalPass(
+										HASH(passParameters.name.c_str()),
+										descTableEntitiy.hashedName,
+										pass,
+										currentViewIndex,
+										localPassContext);
+								}
+							}
+
+							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_UAView>)
+							{
+								if (descTableEntitiy.internalBindName.has_value())
+								{
+									// This is internal resource
+									RenderCallbacks::RegisterInternal<D3D12_UNORDERED_ACCESS_VIEW_DESC>(
+										currentViewIndex,
+										*descTableEntitiy.internalBindName
+										);
 								}
 								else
 								{
@@ -344,12 +364,8 @@ namespace
 
 
 
-void Pass_UI::Init(PassParameters&& parameters)
+void Pass_UI::Init()
 {
-	ASSERT_MAIN_THREAD;
-
-	passParameters = std::move(parameters);
-
 	// Pass memory exists have the same lifetime as pass itself. So unlike objects memory
 	// I can allocate it only one time
 	assert(passMemorySize == Const::INVALID_SIZE && "Pass_UI memory size should be uninitialized");
@@ -381,6 +397,8 @@ void Pass_UI::Init(PassParameters&& parameters)
 	assert(perObjectVertexMemorySize == Const::INVALID_SIZE && "Per Object Vertex Memory should be uninitialized");
 	// Every UI object is quad that consists of two triangles
 	perObjectVertexMemorySize = perVertexMemorySize * 6;
+
+	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
 }
 
 void Pass_UI::RegisterObjects(GPUJobContext& context)
@@ -415,10 +433,15 @@ void Pass_UI::RegisterObjects(GPUJobContext& context)
 		RootArg::AttachConstBufferToArgs(obj.rootArgs, objectOffset, objectConstBuffMemory);
 	}
 
+	constexpr int VERTICES_PER_UI_OBJECT = 6;
+
+	std::vector<ShDef::Vert::PosTexCoord> vertices;
+	vertices.resize(objects.size() * VERTICES_PER_UI_OBJECT);
+
 	// Init vertex data
 	for (int i = 0; i < objects.size(); ++i)
 	{
-		std::visit([i, this](auto&& drawCall) 
+		std::visit([i, &vertices, VERTICES_PER_UI_OBJECT, this](auto&& drawCall) 
 		{
 			using T = std::decay_t<decltype(drawCall)>;
 
@@ -434,23 +457,11 @@ void Pass_UI::RegisterObjects(GPUJobContext& context)
 
 				const Texture& texture = *ResourceManager::Inst().FindTexture(texFullName.data());
 
-				std::array<ShDef::Vert::PosTexCoord, 6> vertices;
 				Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
 					XMFLOAT2(texture.desc.width, texture.desc.height),
 					XMFLOAT2(0.0f, 0.0f),
 					XMFLOAT2(1.0f, 1.0f),
-					vertices.data());
-
-				const int uploadBuffOffset = uploadMemory.GetOffset(vertexMemory) + perObjectVertexMemorySize * i;
-
-				FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
-				updateVertexBufferArgs.buffer = uploadMemory.GetGpuBuffer();
-				updateVertexBufferArgs.offset = uploadBuffOffset;
-				updateVertexBufferArgs.data = vertices.data();
-				updateVertexBufferArgs.byteSize = perObjectVertexMemorySize;
-				updateVertexBufferArgs.alignment = 0;
-
-				ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
+					&vertices[VERTICES_PER_UI_OBJECT * i]);
 			}
 			else if constexpr (std::is_same_v<T, DrawCall_Char>)
 			{
@@ -462,48 +473,32 @@ void Pass_UI::RegisterObjects(GPUJobContext& context)
 				const float vCoord = (num >> 4) * texCoordScale;
 				const float texSize = texCoordScale;
 
-				std::array<ShDef::Vert::PosTexCoord, 6> vertices;
 				Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
 					XMFLOAT2(Settings::CHAR_SIZE, Settings::CHAR_SIZE),
 					XMFLOAT2(uCoord, vCoord),
 					XMFLOAT2(uCoord + texSize, vCoord + texSize),
-					vertices.data());
-
-				const int uploadBuffOffset = uploadMemory.GetOffset(vertexMemory) + perObjectVertexMemorySize * i;
-
-				FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
-				updateVertexBufferArgs.buffer = uploadMemory.GetGpuBuffer();
-				updateVertexBufferArgs.offset = uploadBuffOffset;
-				updateVertexBufferArgs.data = vertices.data();
-				updateVertexBufferArgs.byteSize = perObjectVertexMemorySize;
-				updateVertexBufferArgs.alignment = 0;
-
-				ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
-
+					&vertices[VERTICES_PER_UI_OBJECT * i]);
 			}
 			else if constexpr (std::is_same_v<T, DrawCall_StretchRaw>)
 			{
-				std::array<ShDef::Vert::PosTexCoord, 6> vertices;
 				Utils::MakeQuad(XMFLOAT2(0.0f, 0.0f),
 					XMFLOAT2(drawCall.quadWidth, drawCall.quadHeight),
 					XMFLOAT2(0.0f, 0.0f),
 					XMFLOAT2(1.0f, 1.0f),
-					vertices.data());
-
-				const int uploadBuffOffset = uploadMemory.GetOffset(vertexMemory) + perObjectVertexMemorySize * i;
-
-				FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
-				updateVertexBufferArgs.buffer = uploadMemory.GetGpuBuffer();
-				updateVertexBufferArgs.offset = uploadBuffOffset;
-				updateVertexBufferArgs.data = vertices.data();
-				updateVertexBufferArgs.byteSize = perObjectVertexMemorySize;
-				updateVertexBufferArgs.alignment = 0;
-
-				ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
+					&vertices[VERTICES_PER_UI_OBJECT * i]);
 			}
 
 		}, objects[i]);
 	}
+
+	FArg::UpdateUploadHeapBuff updateVertexBufferArgs;
+	updateVertexBufferArgs.buffer = uploadMemory.GetGpuBuffer();
+	updateVertexBufferArgs.offset =  uploadMemory.GetOffset(vertexMemory);
+	updateVertexBufferArgs.data = vertices.data();
+	updateVertexBufferArgs.byteSize = perObjectVertexMemorySize * objects.size();
+	updateVertexBufferArgs.alignment = 0;
+
+	ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
 }
 
 void Pass_UI::RegisterPassResources(GPUJobContext& context)
@@ -661,12 +656,8 @@ void Pass_Static::Execute(GPUJobContext& context)
 	Draw(context);
 }
 
-void Pass_Static::Init(PassParameters&& parameters)
+void Pass_Static::Init()
 {
-	ASSERT_MAIN_THREAD;
-
-	passParameters = std::move(parameters);
-
 	assert(passMemorySize == Const::INVALID_SIZE && "Pass_Static memory size should be unitialized");
 	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
 
@@ -678,6 +669,8 @@ void Pass_Static::Init(PassParameters&& parameters)
 
 	assert(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Static perObject memory size should be unitialized");
 	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
+
+	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
 }
 
 void Pass_Static::RegisterPassResources(GPUJobContext& context)
@@ -867,12 +860,8 @@ void Pass_Dynamic::Execute(GPUJobContext& context)
 	Draw(context);
 }
 
-void Pass_Dynamic::Init(PassParameters&& parameters)
+void Pass_Dynamic::Init()
 {
-	ASSERT_MAIN_THREAD;
-
-	passParameters = std::move(parameters);
-
 	assert(passMemorySize == Const::INVALID_SIZE && "Pass_Dynamic memory size should be unitialized");
 	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
 
@@ -884,6 +873,8 @@ void Pass_Dynamic::Init(PassParameters&& parameters)
 
 	assert(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Static perObject memory size should be unitialized");
 	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
+
+	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
 }
 
 void Pass_Dynamic::RegisterPassResources(GPUJobContext& context)
@@ -1087,12 +1078,8 @@ void Pass_Particles::Execute(GPUJobContext& context)
 	Draw(context);
 }
 
-void Pass_Particles::Init(PassParameters&& parameters)
+void Pass_Particles::Init()
 {
-	ASSERT_MAIN_THREAD;
-
-	passParameters = std::move(parameters);
-
 	assert(passMemorySize == Const::INVALID_SIZE && "Pass_Particles memory size should be uninitialized");
 	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
 
@@ -1104,6 +1091,8 @@ void Pass_Particles::Init(PassParameters&& parameters)
 
 	assert(passParameters.perObjectLocalRootArgsTemplate.empty() == true && "Particle pass is not suited to have local per object resources");
 	assert(passParameters.perObjGlobalRootArgsIndicesTemplate.empty() == true && "Particle pass is not suited to have global per object resources");
+
+	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
 }
 
 void Pass_Particles::RegisterPassResources(GPUJobContext& context)
@@ -1173,12 +1162,8 @@ void Pass_PostProcess::Execute(GPUJobContext& context)
 	Dispatch(context);
 }
 
-void Pass_PostProcess::Init(PassParameters&& parameters)
+void Pass_PostProcess::Init()
 {
-	ASSERT_MAIN_THREAD;
-
-	passParameters = std::move(parameters);
-
 	assert(passMemorySize == Const::INVALID_SIZE && "Pass_PostProcess memory size should be uninitialized");
 	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
 
@@ -1244,12 +1229,10 @@ void Pass_PostProcess::SetComputeState(GPUJobContext& context)
 {
 	ID3D12GraphicsCommandList* commandList = context.commandList->GetGPUList();
 
-	//#DEBUG do I need this?
 	Renderer& renderer = Renderer::Inst();
 
 	ID3D12DescriptorHeap* descriptorHeaps[] = { renderer.cbvSrvHeap->GetHeapResource(),	renderer.samplerHeap->GetHeapResource() };
 	commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-	//END
 
 	commandList->SetComputeRootSignature(passParameters.rootSingature.Get());
 	commandList->SetPipelineState(passParameters.pipelineState.Get());
@@ -1257,9 +1240,9 @@ void Pass_PostProcess::SetComputeState(GPUJobContext& context)
 
 void PassTask::Execute(GPUJobContext& context)
 {
-	for (std::function<void(GPUJobContext&)>& callback : prePassCallbacks)
+	for (Callback_t& callback : prePassCallbacks)
 	{
-		callback(context);
+		callback(context, &pass);
 	}
 
 	std::visit([&context](auto&& pass) 
@@ -1267,19 +1250,14 @@ void PassTask::Execute(GPUJobContext& context)
 		pass.Execute(context);
 	}, pass);
 
-	for (std::function<void(GPUJobContext&)>& callback : postPassCallbacks)
+	for (Callback_t& callback : postPassCallbacks)
 	{
-		callback(context);
+		callback(context, &pass);
 	}
 }
 
 void PassUtils::AllocateColorDepthRenderTargetViews(PassParameters& passParams)
 {
-	if (*passParams.input == Parsing::PassInputType::PostProcess)
-	{
-		return;
-	}
-
 	passParams.colorTargetViewIndex =
 		PassUtils::AllocateRenderTargetView(passParams.colorTargetName, *Renderer::Inst().rtvHeap);
 
@@ -1293,21 +1271,25 @@ void PassUtils::ReleaseColorDepthRenderTargetViews(PassParameters& passParams)
 	PassUtils::ReleaseRenderTargetView(passParams.depthTargetName, passParams.depthTargetViewIndex, *Renderer::Inst().dsvHeap);
 }
 
-void PassUtils::ClearColorBackBufferCallback(XMFLOAT4 color, GPUJobContext& context)
+void PassUtils::ClearColorBackBufferCallback(XMFLOAT4 color, GPUJobContext& context, const Pass_t* pass)
 {
 	D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = Renderer::Inst().rtvHeap->GetHandleCPU(context.frame.colorBufferAndView->viewIndex);
 	context.commandList->GetGPUList()->ClearRenderTargetView(colorRenderTargetView, &color.x, 0, nullptr);
 }
 
-void PassUtils::ClearColorCallback(XMFLOAT4 color, int colorRenderTargetViewIndex, GPUJobContext& context)
+void PassUtils::ClearColorCallback(XMFLOAT4 color, GPUJobContext& context, const Pass_t* pass)
 {
-	assert(colorRenderTargetViewIndex != Const::INVALID_INDEX && "ClearColorCallback invalid index");
+	assert(pass != nullptr && "Pass value is nullptr");
 
-	D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = Renderer::Inst().rtvHeap->GetHandleCPU(colorRenderTargetViewIndex);
+	const PassParameters& params = GetPassParameters(*pass);
+
+	assert(params.colorTargetViewIndex != Const::INVALID_INDEX && "ClearColorCallback invalid index");
+
+	D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = Renderer::Inst().rtvHeap->GetHandleCPU(params.colorTargetViewIndex);
 	context.commandList->GetGPUList()->ClearRenderTargetView(colorRenderTargetView, &color.x, 0, nullptr);
 }
 
-void PassUtils::ClearDepthBackBufferCallback(float value, GPUJobContext& context)
+void PassUtils::ClearDepthBackBufferCallback(float value, GPUJobContext& context, const Pass_t* pass)
 {
 	D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = Renderer::Inst().dsvHeap->GetHandleCPU(context.frame.depthBufferViewIndex);
 	context.commandList->GetGPUList()->ClearDepthStencilView(
@@ -1320,11 +1302,15 @@ void PassUtils::ClearDepthBackBufferCallback(float value, GPUJobContext& context
 
 }
 
-void PassUtils::ClearDeptCallback(float value, int depthRenderTargetViewIndex, GPUJobContext& context)
+void PassUtils::ClearDeptCallback(float value, GPUJobContext& context, const Pass_t* pass)
 {
-	assert(depthRenderTargetViewIndex != Const::INVALID_INDEX && "ClearDeptCallback invalid index");
+	assert(pass != nullptr && "Pass value is nullptr");
 
-	D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = Renderer::Inst().dsvHeap->GetHandleCPU(depthRenderTargetViewIndex);
+	const PassParameters& params = GetPassParameters(*pass);
+
+	assert(params.depthTargetViewIndex != Const::INVALID_INDEX && "ClearDeptCallback invalid index");
+
+	D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = Renderer::Inst().dsvHeap->GetHandleCPU(params.depthTargetViewIndex);
 	context.commandList->GetGPUList()->ClearDepthStencilView(
 		depthRenderTargetView,
 		D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
@@ -1334,7 +1320,7 @@ void PassUtils::ClearDeptCallback(float value, int depthRenderTargetViewIndex, G
 		nullptr);
 }
 
-void PassUtils::InternalTextureProxiesToInterPassStateCallback(GPUJobContext& context)
+void PassUtils::InternalTextureProxiesToInterPassStateCallback(GPUJobContext& context, const Pass_t* pass)
 {
 	// In case I will have performance problems, it is extremely easy to optimize this.
 	// Just batch barriers.
@@ -1342,21 +1328,25 @@ void PassUtils::InternalTextureProxiesToInterPassStateCallback(GPUJobContext& co
 	
 	for (ResourceProxy& textureProxy : context.internalTextureProxies) 
 	{
-		textureProxy.TransitionTo(ResourceProxy::INTER_JOB_STATE, commandList);
+		textureProxy.TransitionTo(Texture::DEFAULT_STATE, commandList);
 	}
 }
-//#DEBUG pass by ref?
-void PassUtils::RenderTargetToRenderStateCallback(const std::string renderTargetName, GPUJobContext& context)
+
+void PassUtils::RenderTargetToRenderStateCallback(GPUJobContext& context, const Pass_t* pass)
 {
+	assert(pass != nullptr && "Pass value is nullptr");
+
+	const PassParameters& params = GetPassParameters(*pass);
+
 	ResourceProxy::FindAndTranslateTo(
-		renderTargetName,
+		params.colorTargetName,
 		context.internalTextureProxies,
 		D3D12_RESOURCE_STATE_RENDER_TARGET,
 		context.commandList->GetGPUList()
 	);
 }
 
-void PassUtils::CopyTextureCallback(const std::string sourceName, const std::string destinationName, GPUJobContext& context)
+void PassUtils::CopyTextureCallback(const std::string sourceName, const std::string destinationName, GPUJobContext& context, const Pass_t* pass)
 {
 	std::vector<ResourceProxy>& proxies = context.internalTextureProxies;
 
@@ -1385,4 +1375,22 @@ void PassUtils::CopyTextureCallback(const std::string sourceName, const std::str
 
 	context.commandList->GetGPUList()->CopyResource(&destinationProxyIt->resource, &sourceProxyIt->resource);
 
+}
+
+void PassUtils::BackBufferToPresentStateCallback(GPUJobContext& context, const Pass_t* pass)
+{
+	ResourceProxy::FindAndTranslateTo(
+		PassParameters::BACK_BUFFER_NAME,
+		context.internalTextureProxies,
+		D3D12_RESOURCE_STATE_PRESENT,
+		context.commandList->GetGPUList()
+	);
+}
+
+const PassParameters& PassUtils::GetPassParameters(const Pass_t& pass)
+{
+	return std::visit([](auto&& pass) -> const PassParameters&
+	{
+		return pass.passParameters;
+	}, pass);
 }

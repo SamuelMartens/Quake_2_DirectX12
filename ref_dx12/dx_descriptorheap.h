@@ -3,19 +3,22 @@
 #include <d3d12.h>
 #include <vector>
 #include <variant>
+#include <optional>
 
 #include "d3dx12.h"
 #include "dx_common.h"
 #include "dx_allocators.h"
 #include "dx_infrastructure.h"
 
-using Descriptor_t = std::variant<
+using ViewDescription_t = std::variant<
 	D3D12_RENDER_TARGET_VIEW_DESC,
 	D3D12_DEPTH_STENCIL_VIEW_DESC,
-	D3D12_SHADER_RESOURCE_VIEW_DESC,
+	std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>,
+	std::optional<D3D12_CONSTANT_BUFFER_VIEW_DESC>,
+	std::optional<D3D12_UNORDERED_ACCESS_VIEW_DESC>,
 	D3D12_SAMPLER_DESC>;
 
-void _AllocDescriptorInternal(CD3DX12_CPU_DESCRIPTOR_HANDLE& handle, ID3D12Resource* resource, Descriptor_t* desc, D3D12_DESCRIPTOR_HEAP_TYPE type);
+void _AllocDescriptorInternal(CD3DX12_CPU_DESCRIPTOR_HANDLE& handle, ID3D12Resource* resource, const ViewDescription_t* desc, D3D12_DESCRIPTOR_HEAP_TYPE type);
 
 template<int DESCRIPTORS_NUM, D3D12_DESCRIPTOR_HEAP_TYPE TYPE>
 class DescriptorHeap
@@ -45,7 +48,7 @@ public:
 		return alloc.Allocate();
 	};
 
-	int Allocate(ID3D12Resource* resource, Descriptor_t* desc = nullptr) 
+	int Allocate(ID3D12Resource* resource, const ViewDescription_t* desc = nullptr) 
 	{
 		const int allocatedIndex = alloc.Allocate();
 
@@ -64,7 +67,7 @@ public:
 		return alloc.AllocateRange(size);
 	};
 
-	int AllocateRange(std::vector<ID3D12Resource*>& resources, std::vector<Descriptor_t*> descs) 
+	int AllocateRange(std::vector<ID3D12Resource*>& resources, std::vector<const ViewDescription_t*> descs) 
 	{
 		assert(resources.empty() == false && "DescHeap AllocateRange error. Resources array can't be empty");
 		assert(resources.size() == descs.size() && "DescHeap AllocateRange error. Resource and descriptor array sizes should be equal.");
@@ -107,7 +110,7 @@ public:
 		return CD3DX12_GPU_DESCRIPTOR_HANDLE(heap->GetGPUDescriptorHandleForHeapStart(), index, DESCRIPTOR_SIZE);
 	};
 
-	void AllocateDescriptor(int allocatedIndex, ID3D12Resource* resource, Descriptor_t* desc) 
+	void AllocateDescriptor(int allocatedIndex, ID3D12Resource* resource, const ViewDescription_t* desc) 
 	{
 		CD3DX12_CPU_DESCRIPTOR_HANDLE handle = GetHandleCPU(allocatedIndex);
 		
@@ -124,3 +127,9 @@ private:
 
 	const int DESCRIPTOR_SIZE = Const::INVALID_SIZE;
 };
+
+namespace DescriptorHeapUtils
+{
+	D3D12_SHADER_RESOURCE_VIEW_DESC GetSRVTexture2DNullDescription();
+	
+}

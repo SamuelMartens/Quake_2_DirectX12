@@ -260,12 +260,6 @@ class PassParametersSource
 {
 public:
 
-	enum class Type
-	{
-		Rasterisation,
-		Compute
-	};
-
 	enum ShaderType
 	{
 		Vs = 0,
@@ -323,7 +317,6 @@ public:
 	D3D_PRIMITIVE_TOPOLOGY primitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
 
 	std::optional<Parsing::PassInputType> input;
-	std::optional<PassParametersSource::Type> type;
 	std::optional<std::array<int, 3>> threadGroups;
 
 	std::vector<Parsing::Function> functions;

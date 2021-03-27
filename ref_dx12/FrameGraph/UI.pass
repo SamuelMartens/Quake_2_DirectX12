@@ -6,7 +6,7 @@ PassVertAttr: VertexIn
 
 State
 {
-ColorTarget  : gBackBuffer
+ColorTarget  : BACK_BUFFER
 DepthTarget  : BACK_BUFFER
 Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false

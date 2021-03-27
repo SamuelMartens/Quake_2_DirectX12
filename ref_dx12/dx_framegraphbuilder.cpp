@@ -76,6 +76,29 @@ namespace
 		return nullptr;
 	}
 
+	template<typename T>
+	void SetScopeAndBindFrequency(std::optional<Parsing::ResourceBindFrequency>& bindFrequency, std::optional<Parsing::ResourceScope>& scope, const T& res)
+	{
+		// Set or validate update frequency
+		if (bindFrequency.has_value() == false)
+		{
+			bindFrequency = res->bindFrequency;
+		}
+		else
+		{
+			assert(*bindFrequency == res->bindFrequency && "All resources in desc table should have the same bind frequency");
+		}
+
+		if (scope.has_value() == false)
+		{
+			scope = res->scope;
+		}
+		else
+		{
+			assert(*scope == res->scope && "All resources in desc table should have the same scope");
+		}
+	}
+
 	void SetResourceBind(Parsing::Resource_t& r, const std::string& bind)
 	{
 		std::visit([&bind](auto&& resource)
@@ -188,39 +211,14 @@ namespace
 			parseCtx.passSources.back().vertAttrSlots = std::move(std::any_cast<std::vector<std::tuple<unsigned int, int>>>(sv[0]));
 		};
 
-		parser["PassType"] = [](const peg::SemanticValues& sv, peg::any& ctx)
-		{
-			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
-			
-			PassParametersSource::Type type = PassParametersSource::Type::Rasterisation;
-
-			switch (HASH(peg::any_cast<std::string>(sv[0]).c_str()))
-			{
-			case HASH("Rasterisation"):
-				type = PassParametersSource::Type::Rasterisation;
-				break;
-			case HASH("Compute"):
-				type = PassParametersSource::Type::Compute;
-				break;
-			default:
-				break;
-			}
-
-			// I should really do this kind of checks in parser, as this is syntax error :( 
-			assert(parseCtx.passSources.back().type.has_value() == false && "PassType was already defined in this pass");
-			//#DEBUG I need this, eh?
-			// if no delete this in grammar as well
-			*parseCtx.passSources.back().type = type;
-		};
-
 		parser["PassThreadGroups"] = [](const peg::SemanticValues& sv, peg::any& ctx) 
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass =  parseCtx.passSources.back();
-			//#DEBUG can I use sv.size() here instead of just 3?
+			
 			std::array<int,3> threadGroups;
 
-			for (int i = 0; i < 3; ++i) 
+			for (int i = 0; i < threadGroups.size(); ++i) 
 			{
 				threadGroups[i] = std::any_cast<int>(sv[i]);
 			}
@@ -454,6 +452,10 @@ namespace
 				else if (token.type() == typeid(Parsing::RootParam_UAView))
 				{
 					descTable.entities.push_back(peg::any_cast<Parsing::RootParam_UAView>(token));
+				}
+				else if (token.type() == typeid(std::tuple<Parsing::Option, int>))
+				{
+
 				}
 				else
 				{
@@ -963,7 +965,11 @@ namespace
 				desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 			}
 
-			return FrameGraphSource::FrameGraphResourceDecl{ peg::any_cast<std::string>(sv[0]), desc };
+			assert(sv.size() <= 6 && "ResourceDecl invalid amount of input tokens. Make sure you handled optional attributes");
+
+			const XMFLOAT4 clearValue = sv.size() == 6 ? peg::any_cast<XMFLOAT4>(sv[5]) : XMFLOAT4{0.0f, 0.0f, 0.0f, 1.0f};
+
+			return FrameGraphSource::FrameGraphResourceDecl{ peg::any_cast<std::string>(sv[0]), desc, clearValue };
 		};
 
 		parser["ResourceDeclType"] = [](const peg::SemanticValues& sv) 
@@ -1038,6 +1044,21 @@ namespace
 			}
 
 			return flags;
+		};
+
+		parser["ResourceDeclClearVal"] = [](const peg::SemanticValues& sv)
+		{
+			XMFLOAT4 clearValue{0.0f, 0.0f, 0.0f, 1.0f};
+
+			assert((sv.size() == 1 || sv.size() == 4) && "Internal resource clear value is invalid");
+
+			for (int i = 0; i < sv.size(); ++i)
+			{
+				(&clearValue.x)[i] = peg::any_cast<float>(sv[i]);
+			}
+
+			return clearValue;
+
 		};
 
 		// --- Tokens
@@ -1293,11 +1314,10 @@ void FrameGraphBuilder::ValidateResources(const std::vector<PassParametersSource
 #endif
 }
 
-//#DEBUG verify signature
-void FrameGraphBuilder::AttachSpecialPostPreCallbacks(std::vector<PassTask>& passTasks, const std::vector<FrameGraphSource::Step_t>& renderSteps) const
+void FrameGraphBuilder::AttachSpecialPostPreCallbacks(std::vector<PassTask>& passTasks) const
 {
 	assert(passTasks.empty() == false && "AttachPostPreCallbacks failed. No pass tasks");
-	//#DEBUG move these callbacks to proper place. FrameBuilder only binds it. No lambdas should be here
+
 	for (PassTask& passTask : passTasks)
 	{
 		// Watch callbacks order here
@@ -1305,7 +1325,7 @@ void FrameGraphBuilder::AttachSpecialPostPreCallbacks(std::vector<PassTask>& pas
 		{
 			passTask.prePassCallbacks.insert(
 				passTask.prePassCallbacks.begin(),
-				std::bind(PassUtils::RenderTargetToRenderStateCallback, std::string(PassUtils::GetPassRenderTargetName(passTask.pass)), std::placeholders::_1)
+				std::bind(PassUtils::RenderTargetToRenderStateCallback, std::placeholders::_1, std::placeholders::_2)
 			);
 		}
 
@@ -1314,15 +1334,7 @@ void FrameGraphBuilder::AttachSpecialPostPreCallbacks(std::vector<PassTask>& pas
 	}
 
 	// End frame routine
-	passTasks.back().postPassCallbacks.push_back([](GPUJobContext& context)
-	{
-		ResourceProxy::FindAndTranslateTo(
-			PassParameters::BACK_BUFFER_NAME,
-			context.internalTextureProxies,
-			D3D12_RESOURCE_STATE_PRESENT,
-			context.commandList->GetGPUList()
-		);
-	});
+	passTasks.back().postPassCallbacks.push_back(PassUtils::BackBufferToPresentStateCallback);
 }
 
 FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const PassParametersSource& pass) const
@@ -1449,7 +1461,7 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 	frameGraph.internalTextureNames = std::make_shared<std::vector<std::string>>(CreateFrameGraphResources(source.resourceDeclarations));
 	frameGraph.internalTextureProxy = CreateFrameGraphTextureProxies(*frameGraph.internalTextureNames);
 
-	std::vector<std::function<void(GPUJobContext&)>> pendingCallbacks;
+	std::vector<PassTask::Callback_t> pendingCallbacks;
 
 	// Add passes to frame graph in proper order
 	for (const FrameGraphSource::Step_t& step : source.steps)
@@ -1470,7 +1482,6 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 					return paramSource.name == passName;
 				});
 
-				//#DEBUG think if you can improve this and get rid of this hack
 				// Ugly hack to save data before they will be moved
 				std::vector<PassParametersSource::FixedFunction_t> prePassFuncs = passParamIt->prePassFuncs;
 				std::vector<PassParametersSource::FixedFunction_t> postPassFuncs = passParamIt->postPassFuncs;
@@ -1522,10 +1533,10 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 						currentPassTask.postPassCallbacks.end());
 				}
 
-				// Init pass
+				// Set up pass parameters
 				std::visit([&passParam](auto&& pass)
 				{
-					pass.Init(std::move(passParam));
+					pass.passParameters = std::move(passParam);
 
 				}, currentPassTask.pass);
 				
@@ -1533,9 +1544,9 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 			
 			if constexpr (std::is_same_v<T, FrameGraphSource::FixedFunctionCopy>)
 			{
-				std::function<void(GPUJobContext&)> copyCallback = std::bind(
+				PassTask::Callback_t copyCallback = std::bind(
 					PassUtils::CopyTextureCallback,
-					step.source, step.destination, std::placeholders::_1);
+					step.source, step.destination, std::placeholders::_1, std::placeholders::_2);
 
 				if (frameGraph.passTasks.empty())
 				{
@@ -1550,7 +1561,7 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 		}, step);
 	}
 
-	AttachSpecialPostPreCallbacks(frameGraph.passTasks, source.steps);
+	AttachSpecialPostPreCallbacks(frameGraph.passTasks);
 
 	return frameGraph;
 }
@@ -1591,8 +1602,14 @@ std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std:
 		desc.format = resourceDecl.desc.Format;
 		desc.flags = resourceDecl.desc.Flags;
 
-		resourceManager.CreateTextureFromData(nullptr, desc, 
-			resourceName.c_str(), nullptr);
+		FArg::CreateTextureFromData createTexArgs;
+		createTexArgs.data = nullptr;
+		createTexArgs.desc = &desc;
+		createTexArgs.name = resourceName.c_str();
+		createTexArgs.context = nullptr;
+		createTexArgs.clearValue = &resourceDecl.clearValue;
+
+		resourceManager.CreateTextureFromData(createTexArgs);
 	}
 
 	return internalResourcesName;
@@ -2056,24 +2073,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 								const Parsing::Resource_ConstBuff* res =
 									FindResourceOfTypeAndRegId<Parsing::Resource_ConstBuff>(passResources, descTableParam.registerId + i);
 
-								// Set or validate update frequency
-								if (bindFrequency.has_value() == false)
-								{
-									bindFrequency = res->bindFrequency;
-								}
-								else
-								{
-									assert(*bindFrequency == res->bindFrequency && "All resources in desc table should have the same bind frequency");
-								}
-
-								if (scope.has_value() == false)
-								{
-									scope = res->scope;
-								}
-								else
-								{
-									assert(*scope == res->scope && "All resources in desc table should have the same scope");
-								}
+								SetScopeAndBindFrequency(bindFrequency, scope, res);
 								
 								assert(res->bind.has_value() == false && "Internal bind for const buffer view is not implemented");
 
@@ -2091,25 +2091,8 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 							{
 								const Parsing::Resource_Texture* res =
 									FindResourceOfTypeAndRegId<Parsing::Resource_Texture>(passResources, descTableParam.registerId + i);
-								//#DEBUG find some way reuse this code
-								// Set or validate update frequency
-								if (bindFrequency.has_value() == false)
-								{
-									bindFrequency = res->bindFrequency;
-								}
-								else
-								{
-									assert(*bindFrequency == res->bindFrequency && "All resources in desc table should have the same update frequency");
-								}
 
-								if (scope.has_value() == false)
-								{
-									scope = res->scope;
-								}
-								else
-								{
-									assert(*scope == res->scope && "All resources in desc table should have the same scope");
-								}
+								SetScopeAndBindFrequency(bindFrequency, scope, res);
 
 								descTableArgument.content.emplace_back(RootArg::DescTableEntity_Texture{
 									HASH(res->name.c_str()),
@@ -2125,24 +2108,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 								const Parsing::Resource_Sampler* res =
 									FindResourceOfTypeAndRegId<Parsing::Resource_Sampler>(passResources, descTableParam.registerId + i);
 
-								// Set or validate update frequency
-								if (bindFrequency.has_value() == false)
-								{
-									bindFrequency = res->bindFrequency;
-								}
-								else
-								{
-									assert(*bindFrequency == res->bindFrequency && "All resources in desc table should have the same update frequency");
-								}
-
-								if (scope.has_value() == false)
-								{
-									scope = res->scope;
-								}
-								else
-								{
-									assert(*scope == res->scope && "All resources in desc table should have the same scope");
-								}
+								SetScopeAndBindFrequency(bindFrequency, scope, res);
 
 								assert(res->bind.has_value() == false && "Internal bind for sampler view is not implemented");
 
@@ -2158,24 +2124,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 								const Parsing::Resource_RWTexture* res =
 									FindResourceOfTypeAndRegId<Parsing::Resource_RWTexture>(passResources, descTableParam.registerId + i);
 								
-								// Set or validate update frequency
-								if (bindFrequency.has_value() == false)
-								{
-									bindFrequency = res->bindFrequency;
-								}
-								else
-								{
-									assert(*bindFrequency == res->bindFrequency && "All resources in desc table should have the same update frequency");
-								}
-
-								if (scope.has_value() == false)
-								{
-									scope = res->scope;
-								}
-								else
-								{
-									assert(*scope == res->scope && "All resources in desc table should have the same scope");
-								}
+								SetScopeAndBindFrequency(bindFrequency, scope, res);
 
 								descTableArgument.content.emplace_back(RootArg::DescTableEntity_UAView{
 									HASH(res->name.c_str()),
@@ -2226,14 +2175,12 @@ PassParameters FrameGraphBuilder::CompilePassParameters(PassParametersSource&& p
 
 	CreateResourceArguments(passSource, frameGraph, passParam);
 
-	PassUtils::AllocateColorDepthRenderTargetViews(passParam);
-
 	return passParam;
 }
 
-std::vector<std::function<void(GPUJobContext&)>> FrameGraphBuilder::CompilePassCallbacks(const std::vector<PassParametersSource::FixedFunction_t>& fixedFunctions, const PassParameters& passParams) const
+std::vector<PassTask::Callback_t> FrameGraphBuilder::CompilePassCallbacks(const std::vector<PassParametersSource::FixedFunction_t>& fixedFunctions, const PassParameters& passParams) const
 {
-	std::vector<std::function<void(GPUJobContext&)>> callbacks;
+	std::vector<PassTask::Callback_t> callbacks;
 
 	for (const PassParametersSource::FixedFunction_t& fixedFunction : fixedFunctions)
 	{
@@ -2245,11 +2192,11 @@ std::vector<std::function<void(GPUJobContext&)>> FrameGraphBuilder::CompilePassC
 			{
 				if (passParams.colorTargetName == PassParameters::BACK_BUFFER_NAME)
 				{
-					callbacks.push_back(std::bind(PassUtils::ClearColorBackBufferCallback, fixedFunction.color, std::placeholders::_1));
+					callbacks.push_back(std::bind(PassUtils::ClearColorBackBufferCallback, fixedFunction.color, std::placeholders::_1, std::placeholders::_2));
 				}
 				else
 				{
-					callbacks.push_back(std::bind(PassUtils::ClearColorCallback, fixedFunction.color, passParams.colorTargetViewIndex, std::placeholders::_1));
+					callbacks.push_back(std::bind(PassUtils::ClearColorCallback, fixedFunction.color, std::placeholders::_1, std::placeholders::_2));
 				}
 			}
 
@@ -2257,11 +2204,11 @@ std::vector<std::function<void(GPUJobContext&)>> FrameGraphBuilder::CompilePassC
 			{
 				if (passParams.depthTargetName == PassParameters::BACK_BUFFER_NAME)
 				{
-					callbacks.push_back(std::bind(PassUtils::ClearDepthBackBufferCallback, fixedFunction.value, std::placeholders::_1));
+					callbacks.push_back(std::bind(PassUtils::ClearDepthBackBufferCallback, fixedFunction.value, std::placeholders::_1, std::placeholders::_2));
 				}
 				else
 				{
-					callbacks.push_back(std::bind(PassUtils::ClearDeptCallback, fixedFunction.value, passParams.depthTargetViewIndex, std::placeholders::_1));
+					callbacks.push_back(std::bind(PassUtils::ClearDeptCallback, fixedFunction.value, std::placeholders::_1,  std::placeholders::_2));
 				}
 			}
 

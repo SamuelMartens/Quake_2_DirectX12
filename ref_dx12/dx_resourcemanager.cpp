@@ -5,6 +5,7 @@
 #include "dx_app.h"
 #include "dx_threadingutils.h"
 
+
 ComPtr<ID3D12Resource> ResourceManager::CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, GPUJobContext& context)
 {
 	// Create actual buffer 
@@ -268,32 +269,32 @@ Texture* ResourceManager::CreateTextureFromFile(const char* name, GPUJobContext&
 	return _CreateTextureFromFile(name, context);
 }
 
-Texture* ResourceManager::CreateTextureFromDataDeferred(const std::byte* data, const TextureDesc& desc, const char* name, Frame& frame)
+Texture* ResourceManager::CreateTextureFromDataDeferred(FArg::CreateTextureFromDataDeferred& args)
 {
 	std::scoped_lock<std::mutex> lock(textures.mutex);
 
 	Texture tex;
-	tex.name = name;
-	tex.desc = desc;
+	tex.name = args.name;
+	tex.desc = *args.desc;
 
 	Texture* result = &textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
 
 	TexCreationRequest_FromData texRequest(*result);
-	const int texSize = desc.width * desc.height;
+	const int texSize = tex.desc.width * tex.desc.height;
 	
 	texRequest.data.resize(texSize);
-	memcpy(texRequest.data.data(), data, texSize);
+	memcpy(texRequest.data.data(), args.data, texSize);
 
-	frame.texCreationRequests.push_back(std::move(texRequest));
+	args.frame->texCreationRequests.push_back(std::move(texRequest));
 
 	return result;
 }
 
-Texture* ResourceManager::CreateTextureFromData(const std::byte* data, const TextureDesc& desc, const char* name, GPUJobContext* context)
+Texture* ResourceManager::CreateTextureFromData(FArg::CreateTextureFromData& args)
 {
 	std::scoped_lock<std::mutex> lock(textures.mutex);
 
-	return _CreateTextureFromData(data, desc, name, context);
+	return _CreateTextureFromData(args);
 }
 
 void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
@@ -327,11 +328,14 @@ void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
 				}
 
 				std::string name = texRequest.texture.name;
-				_CreateTextureFromData(
-					reinterpret_cast<std::byte*>(texture.data()),
-					texRequest.texture.desc,
-					name.c_str(),
-					&context);
+
+				FArg::CreateTextureFromData createTexArgs;
+				createTexArgs.data = reinterpret_cast<std::byte*>(texture.data());
+				createTexArgs.desc = &texRequest.texture.desc;
+				createTexArgs.name = name.c_str();
+				createTexArgs.context = &context;
+
+				_CreateTextureFromData(createTexArgs);
 			}
 			else
 			{
@@ -378,9 +382,7 @@ void ResourceManager::UpdateTexture(Texture& tex, const std::byte* data, GPUJobC
 
 	CD3DX12_RESOURCE_BARRIER copyDestTransition = CD3DX12_RESOURCE_BARRIER::Transition(
 		tex.buffer.Get(),
-		//#DEBUG figure out what's up with this NON PIXEL SHADER resource. Everywhere it is used
-		// I assume that's because of visibility
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+		Texture::DEFAULT_STATE,
 		D3D12_RESOURCE_STATE_COPY_DEST
 	);
 
@@ -391,7 +393,7 @@ void ResourceManager::UpdateTexture(Texture& tex, const std::byte* data, GPUJobC
 	CD3DX12_RESOURCE_BARRIER pixelResourceTransition = CD3DX12_RESOURCE_BARRIER::Transition(
 		tex.buffer.Get(),
 		D3D12_RESOURCE_STATE_COPY_DEST,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		Texture::DEFAULT_STATE);
 
 	commandList.GetGPUList()->ResourceBarrier(1, &pixelResourceTransition);
 }
@@ -454,15 +456,23 @@ void ResourceManager::DeleteTexture(const char* name)
 	textures.obj.erase(texIt);
 }
 
-Texture* ResourceManager::_CreateTextureFromData(const std::byte* data, const TextureDesc& desc, const char* name, GPUJobContext* context)
+Texture* ResourceManager::_CreateTextureFromData(FArg::CreateTextureFromData& args)
 {
-	Logs::Logf(Logs::Category::Textures, "Create texture %s", name);
+	Logs::Logf(Logs::Category::Textures, "Create texture %s", args.name);
 
 	Texture tex;
-	_CreateGpuTexture(reinterpret_cast<const unsigned int*>(data), desc, context, tex);
 
-	tex.desc = desc;
-	tex.name = name;
+	FArg::_CreateGpuTexture createTexArgs;
+	createTexArgs.raw = reinterpret_cast<const unsigned int*>(args.data);
+	createTexArgs.desc = args.desc;
+	createTexArgs.context = args.context;
+	createTexArgs.outTex = &tex;
+	createTexArgs.clearValue = args.clearValue;
+
+	_CreateGpuTexture(createTexArgs);
+
+	tex.desc = *args.desc;
+	tex.name = args.name;
 
 	Diagnostics::SetResourceName(tex.buffer.Get(), tex.name);
 
@@ -555,7 +565,13 @@ Texture* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContext
 	//}
 	const TextureDesc desc = { width, height, format };
 
-	Texture* createdTex = _CreateTextureFromData(reinterpret_cast<std::byte*>(image32), desc, name, &context);
+	FArg::CreateTextureFromData createTexArgs;
+	createTexArgs.data = reinterpret_cast<std::byte*>(image32);
+	createTexArgs.desc = &desc;
+	createTexArgs.name = name;
+	createTexArgs.context = &context;
+
+	Texture* createdTex = _CreateTextureFromData(createTexArgs);
 
 	if (image != nullptr)
 	{
@@ -570,14 +586,14 @@ Texture* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContext
 	return createdTex;
 }
 
-void ResourceManager::_CreateGpuTexture(const unsigned int* raw, const TextureDesc& desc, GPUJobContext* context, Texture& outTex)
+void ResourceManager::_CreateGpuTexture(FArg::_CreateGpuTexture& args)
 {
 	D3D12_RESOURCE_DESC textureDesc = {};
 	textureDesc.MipLevels = 1;
-	textureDesc.Format = desc.format;
-	textureDesc.Width = desc.width;
-	textureDesc.Height = desc.height;
-	textureDesc.Flags = desc.flags;
+	textureDesc.Format = args.desc->format;
+	textureDesc.Width = args.desc->width;
+	textureDesc.Height = args.desc->height;
+	textureDesc.Flags = args.desc->flags;
 	textureDesc.DepthOrArraySize = 1;
 	textureDesc.SampleDesc.Count = 1;
 	textureDesc.SampleDesc.Quality = 0;
@@ -585,9 +601,22 @@ void ResourceManager::_CreateGpuTexture(const unsigned int* raw, const TextureDe
 
 	CD3DX12_HEAP_PROPERTIES heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 
-	const D3D12_RESOURCE_STATES initState = raw != nullptr ?
+	const D3D12_RESOURCE_STATES initState = args.raw != nullptr ?
 		D3D12_RESOURCE_STATE_COPY_DEST : 
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+		Texture::DEFAULT_STATE;
+
+	D3D12_CLEAR_VALUE clearValue;
+	ZeroMemory(&clearValue, sizeof(clearValue));
+	
+	if (args.clearValue != nullptr)
+	{
+		clearValue.Format = textureDesc.Format;
+		
+		clearValue.Color[0] = args.clearValue->x;
+		clearValue.Color[1] = args.clearValue->y;
+		clearValue.Color[2] = args.clearValue->z;
+		clearValue.Color[3] = args.clearValue->w;
+	}
 
 	// Create destination texture
 	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommittedResource(
@@ -595,36 +624,36 @@ void ResourceManager::_CreateGpuTexture(const unsigned int* raw, const TextureDe
 		D3D12_HEAP_FLAG_NONE,
 		&textureDesc,
 		initState,
-		nullptr,
-		IID_PPV_ARGS(&outTex.buffer)));
+		args.clearValue == nullptr ? nullptr : &clearValue,
+		IID_PPV_ARGS(&args.outTex->buffer)));
 
-	if (raw != nullptr)
+	if (args.raw != nullptr)
 	{
-		assert(context != nullptr && "If texture is initialized on creation GPU Context is required");
+		assert(args.context != nullptr && "If texture is initialized on creation GPU Context is required");
 
-		CommandList& commandList = *context->commandList;
+		CommandList& commandList = *args.context->commandList;
 
 		// Count alignment and go for what we need
-		const UINT64 uploadBufferSize = GetRequiredIntermediateSize(outTex.buffer.Get(), 0, 1);
+		const UINT64 uploadBufferSize = GetRequiredIntermediateSize(args.outTex->buffer.Get(), 0, 1);
 
 		ComPtr<ID3D12Resource> textureUploadBuffer = CreateUploadHeapBuffer(uploadBufferSize);
 		Diagnostics::SetResourceNameWithAutoId(textureUploadBuffer.Get(), "TextureUploadBuffer_CreateTexture");
 
-		DO_IN_LOCK(context->frame.uploadResources, push_back(textureUploadBuffer));
+		DO_IN_LOCK(args.context->frame.uploadResources, push_back(textureUploadBuffer));
 
 		D3D12_SUBRESOURCE_DATA textureData = {};
-		textureData.pData = raw;
+		textureData.pData = args.raw;
 		// Divide by 8 cause bpp is bits per pixel, not bytes
-		textureData.RowPitch = desc.width * Texture::BPPFromFormat(desc.format) / 8;
+		textureData.RowPitch = args.desc->width * Texture::BPPFromFormat(args.desc->format) / 8;
 		// Not SlicePitch but texture size in our case
-		textureData.SlicePitch = textureData.RowPitch * desc.height;
+		textureData.SlicePitch = textureData.RowPitch * args.desc->height;
 
-		UpdateSubresources(commandList.GetGPUList(), outTex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
+		UpdateSubresources(commandList.GetGPUList(), args.outTex->buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
 		
 		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			outTex.buffer.Get(),
+			args.outTex->buffer.Get(),
 			D3D12_RESOURCE_STATE_COPY_DEST,
-			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+			Texture::DEFAULT_STATE);
 		commandList.GetGPUList()->ResourceBarrier(1, &transition);
 	}
 

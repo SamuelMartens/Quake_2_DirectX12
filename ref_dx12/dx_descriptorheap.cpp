@@ -1,6 +1,6 @@
 #include "dx_descriptorheap.h"
 
-void _AllocDescriptorInternal(CD3DX12_CPU_DESCRIPTOR_HANDLE& handle, ID3D12Resource* resource, Descriptor_t* desc, D3D12_DESCRIPTOR_HEAP_TYPE type)
+void _AllocDescriptorInternal(CD3DX12_CPU_DESCRIPTOR_HANDLE& handle, ID3D12Resource* resource, const ViewDescription_t* desc, D3D12_DESCRIPTOR_HEAP_TYPE type)
 {
 	// For some unknown reason compilation fails if I put this code inside AllocateDescriptor()
 
@@ -8,9 +8,10 @@ void _AllocDescriptorInternal(CD3DX12_CPU_DESCRIPTOR_HANDLE& handle, ID3D12Resou
 	{
 	case D3D12_DESCRIPTOR_HEAP_TYPE_RTV:
 	{
-		assert(resource != nullptr && "RTV allocation failure. Resource shall not be nullptr");
+		assert((resource != nullptr || desc != nullptr) 
+			&& "RTV allocation failure. Resource or Description shall not be nullptr");
 
-		D3D12_RENDER_TARGET_VIEW_DESC* rtvDesc = (desc == nullptr) ?
+		const D3D12_RENDER_TARGET_VIEW_DESC* rtvDesc = (desc == nullptr) ?
 			nullptr : &std::get<D3D12_RENDER_TARGET_VIEW_DESC>(*desc);
 
 		Infr::Inst().GetDevice()->CreateRenderTargetView(resource, rtvDesc, handle);
@@ -18,9 +19,10 @@ void _AllocDescriptorInternal(CD3DX12_CPU_DESCRIPTOR_HANDLE& handle, ID3D12Resou
 	}
 	case D3D12_DESCRIPTOR_HEAP_TYPE_DSV:
 	{
-		assert(resource != nullptr && "DSV allocation failure. Resource shall not be nullptr");
+		assert((resource != nullptr || desc != nullptr)
+			&& "DSV allocation failure. Resource or Description shall not be nullptr");
 
-		D3D12_DEPTH_STENCIL_VIEW_DESC* dsvDesc = (desc == nullptr) ?
+		const D3D12_DEPTH_STENCIL_VIEW_DESC* dsvDesc = (desc == nullptr) ?
 			nullptr : &std::get<D3D12_DEPTH_STENCIL_VIEW_DESC>(*desc);
 
 		Infr::Inst().GetDevice()->CreateDepthStencilView(resource, dsvDesc, handle);
@@ -28,19 +30,40 @@ void _AllocDescriptorInternal(CD3DX12_CPU_DESCRIPTOR_HANDLE& handle, ID3D12Resou
 	}
 	case D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV:
 	{
-		assert(resource != nullptr && "UAV allocation failure. Resource shall not be nullptr");
+		assert(desc != nullptr
+			&& "CBV_SRV_UAV allocation failure. Description shall not be nullptr");
 
-		//#TODO implement CBV
-		// this works only with Shader resource view, but not CBV. Which requires different handle D3D12_CONSTANT_BUFFER_VIEW_DESC
-		D3D12_SHADER_RESOURCE_VIEW_DESC* cbvSrvDesc = (desc == nullptr) ?
-			nullptr : &std::get<D3D12_SHADER_RESOURCE_VIEW_DESC>(*desc);
+		std::visit([&resource, &handle](auto&& description) 
+		{
+			using T = std::decay_t<decltype(description)>;
 
-		Infr::Inst().GetDevice()->CreateShaderResourceView(resource, cbvSrvDesc, handle);
+			if constexpr (std::is_same_v<T, std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>>)
+			{
+				const D3D12_SHADER_RESOURCE_VIEW_DESC* srvDesc = description.has_value() ?
+					&description.value() : nullptr;
+
+				Infr::Inst().GetDevice()->CreateShaderResourceView(resource, srvDesc, handle);
+			}
+			
+			if constexpr (std::is_same_v<T, std::optional<D3D12_UNORDERED_ACCESS_VIEW_DESC>>)
+			{
+				const D3D12_UNORDERED_ACCESS_VIEW_DESC* uavDesc = description.has_value() ?
+					&description.value() : nullptr;
+
+				Infr::Inst().GetDevice()->CreateUnorderedAccessView(resource, nullptr, uavDesc, handle);
+			}
+			
+			if constexpr (std::is_same_v<T, std::optional<D3D12_CONSTANT_BUFFER_VIEW_DESC>>)
+			{
+				assert(false && "Not implemented");
+			}
+
+		}, *desc);
 		break;
 	}
 	case D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER:
 	{
-		D3D12_SAMPLER_DESC* samplerDesc = &std::get<D3D12_SAMPLER_DESC>(*desc);
+		const D3D12_SAMPLER_DESC* samplerDesc = &std::get<D3D12_SAMPLER_DESC>(*desc);
 
 		Infr::Inst().GetDevice()->CreateSampler(samplerDesc, handle);
 
@@ -52,4 +75,14 @@ void _AllocDescriptorInternal(CD3DX12_CPU_DESCRIPTOR_HANDLE& handle, ID3D12Resou
 		break;
 	}
 	}
+}
+
+D3D12_SHADER_RESOURCE_VIEW_DESC DescriptorHeapUtils::GetSRVTexture2DNullDescription()
+{
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+
+	return srvDesc;
 }

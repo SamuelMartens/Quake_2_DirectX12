@@ -142,7 +142,7 @@ private:
 	/* Pass Parameters */
 	std::vector<PassParametersSource> GeneratePassesParameterSources() const;
 	PassParameters CompilePassParameters(PassParametersSource&& passSource, FrameGraph& frameGraph) const;
-	std::vector<std::function<void(GPUJobContext&)>> CompilePassCallbacks(const std::vector<PassParametersSource::FixedFunction_t>& fixedFunctions, const PassParameters& passParams) const;
+	std::vector<PassTask::Callback_t> CompilePassCallbacks(const std::vector<PassParametersSource::FixedFunction_t>& fixedFunctions, const PassParameters& passParams) const;
 
 	/*  Files processing */
 	std::unordered_map<std::string, std::string> LoadPassFiles() const;
@@ -176,7 +176,7 @@ private:
 
 	/* Utils */
 	void ValidateResources(const std::vector<PassParametersSource>& passesParametersSources) const;
-	void AttachSpecialPostPreCallbacks(std::vector<PassTask>& passTasks, const std::vector<FrameGraphSource::Step_t>& renderSteps) const;
+	void AttachSpecialPostPreCallbacks(std::vector<PassTask>& passTasks) const;
 
 	std::filesystem::path ROOT_DIR_PATH;
 	HANDLE sourceWatchHandle = INVALID_HANDLE_VALUE;

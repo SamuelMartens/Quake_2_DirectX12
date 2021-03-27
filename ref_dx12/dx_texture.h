@@ -18,9 +18,6 @@ struct TextureDesc
 	D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
 };
 
-//#DEBUG delete this
-class ResourceManager;
-
 class Texture
 {
 
@@ -30,6 +27,11 @@ public:
 	constexpr static char	FONT_TEXTURE_NAME[] = "conchars";
 
 public:
+
+	// When a job is started it expects resource to be in this state.
+	// When a job is finished it leaves resource in this state.
+	//#PERF parsing of visibility can allow to have appropriate state like D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE instead of this generic one
+	const static D3D12_RESOURCE_STATES DEFAULT_STATE = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 
 	Texture() = default;
 
@@ -82,10 +84,6 @@ struct TexCreationRequest_FromData
 */
 struct ResourceProxy
 {
-	// When a job is started it expects resource to be in this state.
-	// When a job is finished it leaves resource in this state.
-	const static D3D12_RESOURCE_STATES INTER_JOB_STATE = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-
 	explicit ResourceProxy(ID3D12Resource& initTexture);
 	ResourceProxy(ID3D12Resource& initTexture, D3D12_RESOURCE_STATES initState);
 
@@ -97,13 +95,12 @@ struct ResourceProxy
 		D3D12_RESOURCE_STATES newSate,
 		ID3D12GraphicsCommandList* commandList);
 	
-	//#DEBUG this is bad. Only resource can own this. Not proxy
 	ID3D12Resource& resource;
 	unsigned int hashedName = Const::INVALID_HASHED_NAME;
 
 private:
 
-	D3D12_RESOURCE_STATES state = INTER_JOB_STATE;
+	D3D12_RESOURCE_STATES state = Texture::DEFAULT_STATE;
 };
 
 using TextureCreationRequest_t = std::variant<TexCreationRequest_FromData, TexCreationRequest_FromFile>;

@@ -27,6 +27,7 @@
 class Pass_UI
 {
 	friend class PassUtils;
+	friend class FrameGraphBuilder;
 
 public:
 	struct PassObj
@@ -38,7 +39,7 @@ public:
 public:
 
 	void Execute(GPUJobContext& context);
-	void Init(PassParameters&& parameters);
+	void Init();
 
 	void RegisterPassResources(GPUJobContext& context);
 	
@@ -79,6 +80,7 @@ private:
 class Pass_Static
 {
 	friend class PassUtils;
+	friend class FrameGraphBuilder;
 
 public:
 
@@ -94,7 +96,7 @@ public:
 public:
 
 	void Execute(GPUJobContext& context);
-	void Init(PassParameters&& parameters);
+	void Init();
 
 	void RegisterPassResources(GPUJobContext& context);
 	
@@ -126,6 +128,7 @@ private:
 class Pass_Dynamic
 {
 	friend class PassUtils;
+	friend class FrameGraphBuilder;
 
 public:
 
@@ -138,7 +141,7 @@ public:
 public:
 
 	void Execute(GPUJobContext& context);
-	void Init(PassParameters&& parameters);
+	void Init();
 
 	void RegisterPassResources(GPUJobContext& context);
 
@@ -171,11 +174,12 @@ private:
 class Pass_Particles
 {
 	friend class PassUtils;
+	friend class FrameGraphBuilder;
 
 public:
 
 	void Execute(GPUJobContext& context);
-	void Init(PassParameters&& parameters);
+	void Init();
 
 	void RegisterPassResources(GPUJobContext& context);
 
@@ -199,11 +203,12 @@ private:
 class Pass_PostProcess
 {
 	friend class PassUtils;
+	friend class FrameGraphBuilder;
 
 public:
 
 	void Execute(GPUJobContext& context);
-	void Init(PassParameters&& parameters);
+	void Init();
 
 	void RegisterPassResources(GPUJobContext& context);
 
@@ -230,10 +235,12 @@ using Pass_t = std::variant<Pass_UI, Pass_Static, Pass_Dynamic, Pass_Particles, 
 
 struct PassTask
 {
+	using Callback_t = std::function<void(GPUJobContext&, const Pass_t*)>;
+
 	Pass_t pass;
 
-	std::vector<std::function<void(GPUJobContext&)>> prePassCallbacks;
-	std::vector<std::function<void(GPUJobContext&)>> postPassCallbacks;
+	std::vector<Callback_t> prePassCallbacks;
+	std::vector<Callback_t> postPassCallbacks;
 
 	void Execute(GPUJobContext& context);
 };
@@ -241,7 +248,7 @@ struct PassTask
 class PassUtils
 {
 public:
-	//#DEBUG alloca should be moved to framebuilder
+	
 	template<typename T>
 	static int AllocateRenderTargetView(std::string_view renderTargetName, T& descriptorHeap)
 	{
@@ -251,7 +258,7 @@ public:
 		{
 			return Const::INVALID_INDEX;
 		}
-		//#DEBUG you allocate this? Make sure it is destroyed
+		
 		Texture* tex = ResourceManager::Inst().FindTexture(renderTargetName);
 
 		assert(tex != nullptr && "AllocateRenderTargetView failed. No such texture");
@@ -324,16 +331,20 @@ public:
 		}, pass);
 	}
 
-	//#DEBUG callbacks like ClearRenderTarget and An render target to render state are spread 
-	// across entire codebase. I need to bring this stuff together if possible
-	//#DEBUG should I put these callbacks in a separate namespace?
-	static void ClearColorBackBufferCallback(XMFLOAT4 color, GPUJobContext& context);
-	static void ClearColorCallback(XMFLOAT4 color, int colorRenderTargetViewIndex, GPUJobContext& context);
+	static void ClearColorBackBufferCallback(XMFLOAT4 color, GPUJobContext& context, const Pass_t* pass);
+	static void ClearColorCallback(XMFLOAT4 color, GPUJobContext& context, const Pass_t* pass);
 
-	static void ClearDepthBackBufferCallback(float value, GPUJobContext& context);
-	static void ClearDeptCallback(float value, int depthRenderTargetViewIndex, GPUJobContext& context);
+	static void ClearDepthBackBufferCallback(float value, GPUJobContext& context, const Pass_t* pass);
+	static void ClearDeptCallback(float value, GPUJobContext& context, const Pass_t* pass);
 
-	static void InternalTextureProxiesToInterPassStateCallback(GPUJobContext& context);
-	static void RenderTargetToRenderStateCallback(const std::string renderTargetName, GPUJobContext& context);
-	static void CopyTextureCallback(const std::string sourceName, const std::string destinationName, GPUJobContext& context);
+	static void InternalTextureProxiesToInterPassStateCallback(GPUJobContext& context, const Pass_t* pass);
+	static void RenderTargetToRenderStateCallback(GPUJobContext& context, const Pass_t* pass);
+
+	static void CopyTextureCallback(const std::string sourceName, const std::string destinationName, GPUJobContext& context, const Pass_t* pass);
+	static void BackBufferToPresentStateCallback(GPUJobContext& context, const Pass_t* pass);
+
+private:
+
+	static const PassParameters& GetPassParameters(const Pass_t& pass);
+
 };

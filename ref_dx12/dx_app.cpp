@@ -781,7 +781,7 @@ int Renderer::GetFenceValue() const
 
 void Renderer::CreateTextureSampler()
 {
-	Descriptor_t samplerDesc = D3D12_SAMPLER_DESC{};
+	ViewDescription_t samplerDesc = D3D12_SAMPLER_DESC{};
 	D3D12_SAMPLER_DESC& samplerDescRef = std::get<D3D12_SAMPLER_DESC>(samplerDesc);
 	samplerDescRef.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
 	samplerDescRef.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -1457,7 +1457,14 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 		|| rawTex->desc.height != textureHeight)
 	{
 		TextureDesc desc = { textureWidth, textureHeight, DXGI_FORMAT_R8G8B8A8_UNORM };
-		rawTex = ResourceManager::Inst().CreateTextureFromDataDeferred(data, desc, Texture::RAW_TEXTURE_NAME, GetMainThreadFrame());
+
+		FArg::CreateTextureFromDataDeferred createTexArgs;
+		createTexArgs.data = data;
+		createTexArgs.desc = &desc;
+		createTexArgs.name = Texture::RAW_TEXTURE_NAME;
+		createTexArgs.frame = &GetMainThreadFrame();
+
+		rawTex = ResourceManager::Inst().CreateTextureFromDataDeferred(createTexArgs);
 	}
 	else
 	{

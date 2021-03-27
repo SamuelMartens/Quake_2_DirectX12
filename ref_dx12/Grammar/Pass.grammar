@@ -5,12 +5,11 @@ State       <- T( 'State' _ '{' _ < ( ColorTargetSt / DepthTargetSt / ViewportSt
 ShaderList  <- T( < Shader* > )
 
 # --- Pass properties
-PassProps               <- T( 'PassProperties' _ '{' < ( PassInput / PassVertAttr / PassVertAttrSlots / PassType / PassThreadGroups )* > '}' )
+PassProps               <- T( 'PassProperties' _ '{' < ( PassInput / PassVertAttr / PassVertAttrSlots / PassThreadGroups )* > '}' )
 PassInput               <- T( 'PassInput' _ ':' PassInputIdent )
 PassInputIdent          <- _ 'Static' _ / _ 'Dynamic' _ / _ 'Particles' _ / _ 'UI' _ / _ 'PostProcess' _
 PassVertAttr            <- T( 'PassVertAttr' _ ':' Ident )
 PassVertAttrSlots       <- T( 'PassSlotLayout' _ ':' VertAttrSlots )
-PassType			    <- T( 'PassType' _ ':' Ident )
 PassThreadGroups        <- T( 'PassThreadGroups' _ ':' Int Comma Int Comma Int )
 
 # --- Shader code ---
@@ -49,7 +48,7 @@ RSigRootConstDecl	<- T( 'RootConstants' _ '(' _ 'num32BitConstants' _ '=' Int Co
 RSigStatSamplerDecl <- T( 'StaticSampler' _ '(' RegisterId ( Comma ( !')' . )* )? ')' )
 
 RSigDescTableDecl       <- T( 'DescriptorTable' _ '(' RSigDescTableEntity ( Comma RSigDescTableEntity )*  ')' )
-RSigDescTableEntity     <- _ RSigCBVDecl _ / _ RSigSRVDecl _ / _ RSigUAVDecl _ / _ RSigDescTableSampler _
+RSigDescTableEntity     <- _ RSigCBVDecl _ / _ RSigSRVDecl _ / _ RSigUAVDecl _ / _ RSigDescTableSampler _ / _ RSigDeclOptions _
 RSigDescTableSampler    <- T( 'Sampler' _ '(' RegisterId ( Comma RSDescNumDecl )? ')' )
 
 RSigDeclOptions     <- _ RSigVisibilityDecl _ / _ RSDescNumDecl _

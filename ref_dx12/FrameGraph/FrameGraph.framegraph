@@ -1,28 +1,7 @@
-Resources
-{
-	gBackBuffer
-	[
-		Type : Texture2D
-		Dimensions : 1600, 1200, 1
-		Format : R8G8B8A8_UNORM
-		Flags : ALLOW_RENDER_TARGET
-	]
-	
-	gBackBufferInvert
-	[
-		Type : Texture2D
-		Dimensions : 1600, 1200, 1
-		Format : R8G8B8A8_UNORM
-		Flags : ALLOW_RENDER_TARGET, ALLOW_UNORDERED_ACCESS
-	]
-}
-
 Steps
 {
     UI
     Static
     Dynamic
     Particles
-	ColorInvert
-	Copy(gBackBufferInvert, BACK_BUFFER)
 }

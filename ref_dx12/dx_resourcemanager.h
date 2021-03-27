@@ -42,6 +42,32 @@ namespace FArg
 		int offset = Const::INVALID_OFFSET;
 		int byteSize = Const::INVALID_SIZE;
 	};
+
+	struct CreateTextureFromData
+	{
+		const std::byte* data = nullptr;
+		const TextureDesc* desc = nullptr;
+		const char* name = nullptr;
+		GPUJobContext* context = nullptr;
+		const XMFLOAT4* clearValue = nullptr;
+	};
+
+	struct CreateTextureFromDataDeferred
+	{
+		const std::byte* data = nullptr;
+		const TextureDesc* desc = nullptr;
+		const char* name = nullptr;
+		Frame* frame = nullptr;
+	};
+
+	struct _CreateGpuTexture
+	{
+		const unsigned int* raw = nullptr; 
+		const TextureDesc* desc = nullptr;
+		GPUJobContext* context = nullptr; 
+		Texture* outTex = nullptr;
+		const XMFLOAT4* clearValue = nullptr;
+	};
 };
 
 class ResourceManager
@@ -50,7 +76,6 @@ public:
 
 	DEFINE_SINGLETON(ResourceManager);
 	
-
 	/* Buffers */
 	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, GPUJobContext& context);
 	ComPtr<ID3D12Resource> CreateUploadHeapBuffer(UINT64 byteSize) const;
@@ -70,8 +95,8 @@ public:
 	
 	Texture* CreateTextureFromFileDeferred(const char* name, Frame& frame);
 	Texture* CreateTextureFromFile(const char* name, GPUJobContext& context);
-	Texture* CreateTextureFromDataDeferred(const std::byte* data, const TextureDesc& desc, const char* name, Frame& frame);
-	Texture* CreateTextureFromData(const std::byte* data, const TextureDesc& desc, const char* name, GPUJobContext* context);
+	Texture* CreateTextureFromDataDeferred(FArg::CreateTextureFromDataDeferred& args);
+	Texture* CreateTextureFromData(FArg::CreateTextureFromData& args);
 	void CreateDeferredTextures(GPUJobContext& context);
 
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
@@ -82,9 +107,9 @@ public:
 private:
 
 	/* Textures */
-	Texture* _CreateTextureFromData(const std::byte* data, const TextureDesc& desc, const char* name, GPUJobContext* context);
+	Texture* _CreateTextureFromData(FArg::CreateTextureFromData& args);
 	Texture* _CreateTextureFromFile(const char* name, GPUJobContext& context);
-	void _CreateGpuTexture(const unsigned int* raw, const TextureDesc& desc, GPUJobContext* context, Texture& outTex);
+	void _CreateGpuTexture(FArg::_CreateGpuTexture& args);
 
 
 private:
