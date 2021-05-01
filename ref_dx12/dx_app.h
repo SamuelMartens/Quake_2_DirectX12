@@ -30,6 +30,7 @@
 #include "dx_commandlist.h"
 #include "dx_pass.h"
 #include "dx_utils.h"
+#include "dx_bsp.h"
 
 extern "C"
 {
@@ -138,7 +139,6 @@ public:
 	/* Job  */
 	void EndFrameJob(GPUJobContext& context);
 
-	std::vector<int> BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const;
 	std::vector<int> BuildVisibleDynamicObjectsList(const Camera& camera, const std::vector<entity_t>& entities) const;
 
 private:
@@ -237,10 +237,11 @@ private:
 	std::array<unsigned int, 256> Table8To24;
 	std::array<unsigned int, 256> rawPalette;
 
-	std::vector<Utils::AABB> staticObjectsAABB;
 	std::vector<StaticObject> staticObjects;
 
 	std::unordered_map<model_t*, DynamicObjectModel> dynamicObjectsModels;
+
+	BSPTree bspTree;
 
 	std::array<Frame, Settings::FRAMES_NUM> frames;
 	int currentFrameIndex = Const::INVALID_INDEX;

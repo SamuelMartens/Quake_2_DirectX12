@@ -40,30 +40,6 @@ StaticObject& StaticObject::StaticObject::operator=(StaticObject&& other)
 	return *this;
 }
 
-std::tuple<XMFLOAT4, XMFLOAT4> StaticObject::GenerateAABB(const std::vector<XMFLOAT4>& vertices) const
-{
-	constexpr float minFloat = std::numeric_limits<float>::min();
-	constexpr float maxFloat = std::numeric_limits<float>::max();
-
-	XMVECTOR sseBBMin = XMVectorSet( maxFloat, maxFloat, maxFloat, 1.0f );
-	XMVECTOR sseBBMax = XMVectorSet( minFloat, minFloat, minFloat, 1.0f );
-	
-	for (const XMFLOAT4& vertex : vertices)
-	{
-		const FXMVECTOR sseVertex = XMLoadFloat4(&vertex);
-
-		sseBBMin = XMVectorMin(sseVertex, sseBBMin);
-		sseBBMax = XMVectorMax(sseVertex, sseBBMax);
-	}
-
-	XMFLOAT4 bbMin, bbMax;
-
-	XMStoreFloat4(&bbMin, sseBBMin);
-	XMStoreFloat4(&bbMax, sseBBMax);
-
-	return std::make_tuple(bbMin, bbMax);
-}
-
 StaticObject::~StaticObject()
 {
 	if (vertices != Const::INVALID_BUFFER_HANDLER)

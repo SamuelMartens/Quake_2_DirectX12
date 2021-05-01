@@ -17,10 +17,13 @@ struct Camera
 	void Update(const refdef_t& updateData);
 	void GenerateViewProjMat();
 
+	[[nodiscard]]
 	XMMATRIX GetViewProjMatrix() const;
 
 	// Yaw, Pitch , Roll
 	std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> GetBasis() const;
+	[[nodiscard]]
+	std::array<Utils::Plane, 6> GetFrustumPlanes() const;
 	
 	// Result is in world space
 	Utils::AABB GetAABB() const;

@@ -1291,7 +1291,7 @@ void R_MarkLeaves (void)
 			r_worldmodel->nodes[i].visframe = r_visframecount;
 		return;
 	}
-
+	// vis is array of bytes where we have info about every cluster
 	vis = Mod_ClusterPVS (r_viewcluster, r_worldmodel);
 	// may have to combine two clusters because of solid water boundaries
 	if (r_viewcluster2 != r_viewcluster)
@@ -1304,13 +1304,19 @@ void R_MarkLeaves (void)
 		vis = fatvis;
 	}
 	
+	// Iterate over every leaf
 	for (i=0,leaf=r_worldmodel->leafs ; i<r_worldmodel->numleafs ; i++, leaf++)
 	{
+		// Get leaf cluster
 		cluster = leaf->cluster;
 		if (cluster == -1)
+			// Leaf doesn't have cluster, move on
 			continue;
+
+		// Check if this cluster in PVS
 		if (vis[cluster>>3] & (1<<(cluster&7)))
 		{
+			// Mark all parents clusters as visible as well
 			node = (mnode_t *)leaf;
 			do
 			{

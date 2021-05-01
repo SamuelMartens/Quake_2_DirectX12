@@ -106,6 +106,51 @@ std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> Camera::GetBasis() const
 	return std::make_tuple(yaw, pitch, roll);
 }
 
+std::array<Utils::Plane, 6> Camera::GetFrustumPlanes() const
+{
+	std::array<XMFLOAT4, 8> frustum = 
+	{
+		XMFLOAT4(-1.0f, -1.0f, 0.0f, 1.0f ),
+		XMFLOAT4(-1.0f,  1.0f, 0.0f, 1.0f),
+		XMFLOAT4(1.0f,  1.0f, 0.0f, 1.0f),
+		XMFLOAT4(1.0f, -1.0f, 0.0f, 1.0f),
+		XMFLOAT4(-1.0f, -1.0f, 1.0f, 1.0f),
+		XMFLOAT4(-1.0f,  1.0f, 1.0f, 1.0f),
+		XMFLOAT4(1.0f,  1.0f, 1.0f, 1.0f),
+		XMFLOAT4(1.0f, -1.0f, 1.0f, 1.0f)
+	};
+
+	XMVECTOR sseCameraTransformDeterminant;
+	
+	const XMMATRIX sseCameraInvTransform = XMMatrixInverse(&sseCameraTransformDeterminant,
+		XMMatrixMultiply(GenerateViewMatrix(), GenerateProjectionMatrix()));
+	
+	assert(XMVectorGetX(sseCameraTransformDeterminant) != 0.0f && "Camera transform inv can't be found. Determinant is zero");
+
+	std::for_each(frustum.begin(), frustum.end(), [sseCameraInvTransform](XMFLOAT4& point)
+	{
+		XMVECTOR ssePoint = XMLoadFloat4(&point);
+
+		ssePoint = XMVector4Transform(ssePoint, sseCameraInvTransform);
+		const float w = XMVectorGetW(ssePoint);
+
+		ssePoint = XMVectorDivide(ssePoint, XMVectorSet(w, w, w, w));
+
+		XMStoreFloat4(&point, ssePoint);
+	});
+
+	return {
+		Utils::ConstructPlane(frustum[3], frustum[0], frustum[1]), // near
+		Utils::ConstructPlane(frustum[5], frustum[4], frustum[7]), // far
+
+		Utils::ConstructPlane(frustum[7], frustum[3], frustum[2]), // right
+		Utils::ConstructPlane(frustum[1], frustum[0], frustum[4]), // left
+
+		Utils::ConstructPlane(frustum[2], frustum[1], frustum[5]), // top
+		Utils::ConstructPlane(frustum[4], frustum[0], frustum[3]), // bottom
+	};
+}
+
 Utils::AABB Camera::GetAABB() const
 {
 	std::array<XMVECTOR, 8> frustum = 

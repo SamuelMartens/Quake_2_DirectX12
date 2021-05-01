@@ -33,9 +33,7 @@ public:
 	StaticObject& operator=(StaticObject&& other);
 
 	~StaticObject();
-	// min, max
-	std::tuple<XMFLOAT4, XMFLOAT4> GenerateAABB(const std::vector<XMFLOAT4>& vertices) const;
-
+	
 	std::string textureKey;
 	
 	BufferHandler vertices = Const::INVALID_BUFFER_HANDLER;

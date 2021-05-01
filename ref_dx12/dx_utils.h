@@ -63,6 +63,11 @@ namespace Utils
 		XMFLOAT4 bbMax = { 0.0f, 0.0f, 0.0f, 1.0f };
 	};
 
+	struct Plane
+	{
+		XMFLOAT4 normal = { 0.0f, 0.0f, 0.0f, 0.0f };
+		float distance = 0.0f;
+	};
 
 	class Exception : public std::exception
 	{
@@ -168,6 +173,9 @@ namespace Utils
 
 		return std::abs(v1.x - v2.x) < epsilon && std::abs(v1.y - v2.y) < epsilon;
 	}
+
+	Plane ConstructPlane(const XMFLOAT4& p0, const XMFLOAT4& p1, const XMFLOAT4& p2);
+	bool IsAABBBehindPlane(const Plane& plane, const AABB& aabb);
 }
 
 #define PREVENT_SELF_MOVE_ASSIGN if (this == &other) { return *this; }

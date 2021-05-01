@@ -413,6 +413,8 @@ void Mod_LoadVisibility (lump_t *l)
 		return;
 	}
 	loadmodel->vis = (dvis_t*)Hunk_Alloc ( l->filelen);	
+	loadmodel->vissize = l->filelen;
+
 	memcpy (loadmodel->vis, mod_base + l->fileofs, l->filelen);
 
 	loadmodel->vis->numclusters = LittleLong (loadmodel->vis->numclusters);
@@ -1325,6 +1327,16 @@ void Mod_Free (model_t *mod)
 {
 	Hunk_Free (mod->extradata);
 	memset (mod, 0, sizeof(*mod));
+}
+
+bool Node_IsLeaf(const mnode_t* node)
+{
+	return node->contents != -1;
+}
+
+bool Surf_IsEmpty(const msurface_t* surf)
+{
+	return surf->polys == nullptr;
 }
 
 /*

@@ -222,6 +222,7 @@ typedef struct model_s
 	int			nummarksurfaces;
 	msurface_t	**marksurfaces;
 
+	int			vissize;
 	dvis_t		*vis;
 
 	byte		*lightdata;
@@ -251,3 +252,6 @@ void	Hunk_Free(void *base);
 void	Mod_FreeAll(void);
 void	Mod_FreeAll(void);
 void	Mod_Free(model_t *mod);
+
+bool	Node_IsLeaf(const mnode_t* node);
+bool	Surf_IsEmpty(const msurface_t* surf);

@@ -861,38 +861,6 @@ void Renderer::RegisterObjectsAtFrameGraphs()
 	}
 }
 
-std::vector<int> Renderer::BuildObjectsInFrustumList(const Camera& camera, const std::vector<Utils::AABB>& objCulling) const
-{
-	Utils::AABB cameraAABB = camera.GetAABB();
-
-	const FXMVECTOR sseCameraBBMin = XMLoadFloat4(&cameraAABB.bbMin);
-	const FXMVECTOR sseCameraBBMax = XMLoadFloat4(&cameraAABB.bbMax);
-
-	std::size_t currentIndex = 0;
-
-	std::vector<int> res;
-	// Just heuristic 
-	res.reserve(objCulling.size() / 2);
-
-	std::for_each(objCulling.cbegin(), objCulling.cend(), 
-		[sseCameraBBMin, 
-		sseCameraBBMax,
-		&currentIndex,
-		&res](const Utils::AABB& objCulling) 
-	{
-		if (XMVector4LessOrEqual(XMLoadFloat4(&objCulling.bbMin), sseCameraBBMax) &&
-			XMVector4GreaterOrEqual(XMLoadFloat4(&objCulling.bbMax), sseCameraBBMin))
-		{
-			res.push_back(currentIndex);
-		}
-	
-		++currentIndex;
-	});
-
-	res.shrink_to_fit();
-	return res;
-}
-
 std::vector<int> Renderer::BuildVisibleDynamicObjectsList(const Camera& camera, const std::vector<entity_t>& entities) const
 {
 	std::vector<int> visibleObjects;
@@ -1087,13 +1055,9 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 		}
 	}
 
-	if (vertices.empty())
-	{
-		return;
-	}
+	assert(vertices.empty() == false && "Static object cannot be created from empty vertices");
 
 	StaticObject& obj = staticObjects.emplace_back(StaticObject());
-	Utils::AABB& objCulling = staticObjectsAABB.emplace_back();
 
 	auto& defaultMemory =
 		MemoryManager::Inst().GetBuff<DefaultBuffer_t>();
@@ -1140,37 +1104,33 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	{
 		verticesPos.push_back(vertex.position);
 	}
-
-	const auto [bbMin, bbMax] = obj.GenerateAABB(verticesPos);
-	
-	objCulling.bbMin = bbMin;
-	objCulling.bbMax = bbMax;
 }
 
 void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, GPUJobContext& context)
 {
-	// Looks like if leaf return, leafs don't contain any geom
-	if (node.contents != -1)
+	// WARNING: this function should process surfaces in the same order as
+	// BSPTree::AddNode
+	if (Node_IsLeaf(&node))
 	{
-		return;
+		// Each surface inside node represents stand alone object with its own texture
+		const mleaf_t& leaf = reinterpret_cast<const mleaf_t&>(node);
+
+		const msurface_t* const * surf = leaf.firstmarksurface;
+
+		for (int i = 0; i < leaf.nummarksurfaces; ++i, ++surf)
+		{
+			if (Surf_IsEmpty(*surf) == false)
+			{
+				CreateGraphicalObjectFromGLSurface(**surf, context);
+			}
+		}
 	}
-
-	// This is intermediate node, keep going for a leafs
-	DecomposeGLModelNode(model, *node.children[0], context);
-	DecomposeGLModelNode(model, *node.children[1], context);
-
-	// Each surface inside node represents stand alone object with its own texture
-
-	const unsigned int lastSurfInd = node.firstsurface + node.numsurfaces;
-	const msurface_t* surf = &model.surfaces[node.firstsurface];
-
-	for (unsigned int surfInd = node.firstsurface;
-		surfInd < lastSurfInd;
-		++surfInd, ++surf)
+	else
 	{
-		assert(surf != nullptr && "Error during graphical objects generation");
 
-		CreateGraphicalObjectFromGLSurface(*surf, context);
+		// This is intermediate node, keep going for a leafs
+		DecomposeGLModelNode(model, *node.children[0], context);
+		DecomposeGLModelNode(model, *node.children[1], context);
 	}
 }
 
@@ -1562,7 +1522,7 @@ void Renderer::PreRenderSetUpFrame(Frame& frame)
 	XMStoreFloat4x4(&frame.uiProjectionMat, tempMat);
 	
 	// Static objects
-	frame.visibleStaticObjectsIndices = BuildObjectsInFrustumList(frame.camera, staticObjectsAABB);
+	frame.visibleStaticObjectsIndices = bspTree.GetVisibleObjectsIndices(frame.camera);
 
 	// Dynamic objects
 	frame.visibleEntitiesIndices = BuildVisibleDynamicObjectsList(frame.camera, frame.entities);
@@ -1648,6 +1608,10 @@ void Renderer::RegisterWorldModel(const char* model)
 	r_worldmodel = mapModel;
 
 	DecomposeGLModelNode(*mapModel, *mapModel->nodes, context);
+
+	// Init bsp
+	bspTree.Create(*mapModel->nodes);
+	bspTree.InitClusterVisibility(*mapModel->vis, mapModel->vissize);
 
 	// Submit frame
 	context.commandList->Close();

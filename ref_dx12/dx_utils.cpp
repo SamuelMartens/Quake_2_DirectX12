@@ -12,6 +12,40 @@
 const XMFLOAT4 Utils::axisX = XMFLOAT4(1.0, 0.0, 0.0, 0.0);
 const XMFLOAT4 Utils::axisY = XMFLOAT4(0.0, 1.0, 0.0, 0.0);
 const XMFLOAT4 Utils::axisZ = XMFLOAT4(0.0, 0.0, 1.0, 0.0);
+ 
+bool Utils::IsAABBBehindPlane(const Plane& plane, const AABB& aabb)
+{
+	XMVECTOR sseAABBMin = XMLoadFloat4(&aabb.bbMin);
+	XMVECTOR sseAABBMax = XMLoadFloat4(&aabb.bbMax);
+
+	XMVECTOR sseAABBCenter = XMVectorDivide(XMVectorAdd(sseAABBMax, sseAABBMin), XMVectorSet(2.0f, 2.0f, 2.0f, 2.0f));
+	XMVECTOR sseAABBPositiveHalfDiagonal = XMVectorDivide(XMVectorSubtract(sseAABBMax, sseAABBMin), XMVectorSet(2.0f, 2.0f, 2.0f, 2.0f));
+
+	XMVECTOR ssePlaneNormal = XMLoadFloat4(&plane.normal);
+
+	const float AABBExtent = XMVectorGetX(XMVector4Dot(XMVectorAbs(ssePlaneNormal), sseAABBPositiveHalfDiagonal));
+	const float AABBCenterToPlaneDist = XMVectorGetX(XMVector4Dot(sseAABBCenter, ssePlaneNormal)) + plane.distance;
+
+	return AABBCenterToPlaneDist - AABBExtent > 0;
+}
+
+Utils::Plane Utils::ConstructPlane(const XMFLOAT4& p0, const XMFLOAT4& p1, const XMFLOAT4& p2)
+{
+	// Point are expected to be clockwise
+	Plane plane;
+
+	XMVECTOR sseP1 = XMLoadFloat4(&p1);
+
+	XMVECTOR sseNormal = XMVector4Normalize(XMVector3Cross(
+		XMVectorSubtract(XMLoadFloat4(&p0), sseP1),
+		XMVectorSubtract(XMLoadFloat4(&p2), sseP1)));
+	
+	XMStoreFloat4(&plane.normal, sseNormal);
+
+	plane.distance = -1.0f * XMVectorGetX(XMVector4Dot(sseP1, sseNormal));
+	
+	return plane;
+}
 
 /*
 =================

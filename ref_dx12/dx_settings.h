@@ -28,7 +28,7 @@ namespace Settings
 	constexpr int		 UPLOAD_MEMORY_BUFFER_HANDLERS_NUM = 64 * 1024;
 	// 256 MB of default memory
 	constexpr int		 DEFAULT_MEMORY_BUFFER_SIZE = 256 * 1024 * 1024;
-	constexpr int		 DEFAULT_MEMORY_BUFFER_HANDLERS_NUM = 16 * 1024;
+	constexpr int		 DEFAULT_MEMORY_BUFFER_HANDLERS_NUM = 64 * 1024;
 
 	constexpr bool		 DEBUG_LAYER_ENABLED = false;
 	constexpr bool		 DEBUG_MESSAGE_FILTER_ENABLED = true;
