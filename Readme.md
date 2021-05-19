@@ -17,3 +17,4 @@ How to run:
   4) Click on User Macros
   5) Change GameDir to point on the root directory of the original game
   
+ I write a blog about this project, check it out if you want more details https://515dev.tech/
