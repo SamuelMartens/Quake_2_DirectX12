@@ -1177,7 +1177,7 @@ void Com_PageInMemory (byte *buffer, int size)
 */
 
 // FIXME: replace all Q_stricmp with Q_strcasecmp
-int Q_stricmp (char *s1, char *s2)
+int Q_stricmp (const char *s1, const char *s2)
 {
 #if defined(WIN32)
 	return _stricmp (s1, s2);
@@ -1186,6 +1186,26 @@ int Q_stricmp (char *s1, char *s2)
 #endif
 }
 
+int Q_strlcpy(char* dst, const char* src, int size)
+{
+	const char* s = src;
+
+	while (*s)
+	{
+		if (size > 1)
+		{
+			*dst++ = *s;
+			size--;
+		}
+		s++;
+	}
+	if (size > 0)
+	{
+		*dst = '\0';
+	}
+
+	return s - src;
+}
 
 int Q_strncasecmp (char *s1, char *s2, int n)
 {

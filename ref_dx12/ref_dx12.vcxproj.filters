@@ -120,6 +120,9 @@
     <ClInclude Include="dx_bsp.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="dx_light.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ref_dx12.def">
@@ -207,6 +210,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="dx_bsp.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dx_light.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

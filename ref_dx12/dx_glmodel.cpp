@@ -28,7 +28,14 @@ model_t* currentmodel;
 Texture* r_notexture;
 model_t* r_worldmodel;
 
+PointLight* staticpointlights = NULL;
+int staticpointlightsnum = 0;
+
 #define	MAX_LBM_HEIGHT		480
+
+#define POINT_LIGHTS_MAX_ENTITY_LIGHTS		2048
+#define POINT_LIGHTS_MAX_BSP_TREE_DEPTH		32
+#define POINT_LIGHTS_MAX_CLUSTERS			8192
 
 #define	BLOCK_WIDTH		128
 #define	BLOCK_HEIGHT	128
@@ -103,6 +110,347 @@ void BuildPolygonFromSurface(msurface_t *fa)
 	}
 
 	poly->numverts = lnumverts;
+
+}
+
+const PointLight* Mod_StaticPointLights(int* numlights)
+{
+	assert(staticpointlights != NULL && "Asking for empty static point lights");
+	assert(numlights != NULL && "Argument for Mod_StaticPointLights is NULL");
+
+	*numlights = staticpointlightsnum;
+
+	return staticpointlights;
+}
+
+void Mod_AllocStaticPointLights()
+{
+	assert(staticpointlights == NULL && "Static point lights is not cleaned up");
+
+	staticpointlights = new PointLight[POINT_LIGHTS_MAX_ENTITY_LIGHTS];
+	staticpointlightsnum = 0;
+}
+
+void Mod_FreeStaticPointLights()
+{
+	assert(staticpointlights != NULL && "Trying to free static point lights array, but it is empty");
+
+	delete[] (staticpointlights);
+
+	staticpointlights = nullptr;
+	staticpointlightsnum = 0;
+}
+
+qboolean SphereIntersectsAnySolidLeaf(vec3_t origin, float radius)
+{
+	mnode_t* node_stack[POINT_LIGHTS_MAX_BSP_TREE_DEPTH];
+	int stack_size;
+	mnode_t* node;
+	float d;
+	cplane_t* plane;
+	model_t* model;
+
+	stack_size = 0;
+	model = r_worldmodel;
+
+	node_stack[stack_size++] = model->nodes;
+
+	while (stack_size > 0)
+	{
+		node = node_stack[--stack_size];
+
+		if (node->contents != -1)
+		{
+			if (node->contents == CONTENTS_SOLID || ((mleaf_t*)node)->cluster == -1)
+				return qTrue;
+			else
+				continue;
+		}
+
+		plane = node->plane;
+		d = DotProduct(origin, plane->normal) - plane->dist;
+
+		if (d > -radius)
+		{
+			if (stack_size < POINT_LIGHTS_MAX_BSP_TREE_DEPTH)
+				node_stack[stack_size++] = node->children[0];
+		}
+
+		if (d < +radius)
+		{
+			if (stack_size < POINT_LIGHTS_MAX_BSP_TREE_DEPTH)
+				node_stack[stack_size++] = node->children[1];
+		}
+	}
+
+	return qFalse;
+}
+
+void EnsurePointLightDoesNotIntersectWalls(PointLight *pointlight)
+{
+	const refimport_t& ri = Renderer::Inst().GetRefImport();
+
+	mleaf_t *leaf;
+	
+	assert(pointlight != NULL);
+
+	vec3_t origin;
+	origin[0] = pointlight->origin.x;
+	origin[1] = pointlight->origin.y;
+	origin[2] = pointlight->origin.z;
+
+	leaf = Mod_PointInLeaf(origin, r_worldmodel);
+	
+	if (!leaf || leaf->contents == CONTENTS_SOLID || leaf->cluster == -1)
+	{
+		// I always hit this, and it doesn't seems to be that critical. Comment for now,
+		// it might bite me later tho
+		//char msg[] = "EnsureEntityLightDoesNotIntersectWalls: Entity's origin is within a wall.\n";
+		//
+		//ri.Sys_Error(PRINT_DEVELOPER, msg);
+		pointlight->radius = 0;
+		return;
+	}
+
+	/* If the entity intersects a solid wall then reduce it's radius by half repeatedly until either
+		it becomes free or it becomes too small. */
+
+	while (SphereIntersectsAnySolidLeaf(origin, pointlight->radius) && pointlight->radius > 1.0f / 8.0f)
+	{
+		pointlight->radius /= 2.0f;
+	}
+}
+
+void ParseEntityVector(XMFLOAT4* vec, const char* str)
+{
+	assert(vec != NULL);
+	assert(str != NULL);
+
+	sscanf(str, "%f %f %f", &vec->x, &vec->y, &vec->z);
+}
+
+void BuildClusterListForPointLight(PointLight* pointlight)
+{
+	mnode_t* node_stack[POINT_LIGHTS_MAX_BSP_TREE_DEPTH];
+	int i, stack_size;
+	mnode_t* node;
+	float d, r;
+	cplane_t* plane;
+	model_t* model;
+	mleaf_t* leaf;
+	short num_clusters;
+	qboolean already_listed;
+
+	assert(pointlight != NULL);
+
+	stack_size = 0;
+	r = pointlight->radius;
+	model = r_worldmodel;
+	num_clusters = 0;
+
+	node_stack[stack_size++] = model->nodes;
+
+	while (stack_size > 0)
+	{
+		node = node_stack[--stack_size];
+
+		if (node->contents != -1)
+		{
+			leaf = (mleaf_t*)node;
+
+			if (leaf->cluster == -1 || leaf->cluster >= POINT_LIGHTS_MAX_CLUSTERS)
+				continue;
+
+			already_listed = qFalse;
+
+			for (i = 0; i < num_clusters; ++i)
+				if (pointlight->clusters[i] == leaf->cluster)
+				{
+					already_listed = qTrue;
+					break;
+				}
+
+			if (!already_listed && num_clusters < POINT_LIGHTS_MAX_ENTITY_LIGHTS)
+				pointlight->clusters[num_clusters++] = leaf->cluster;
+
+			continue;
+		}
+
+		plane = node->plane;
+
+		vec3_t origin;
+		origin[0] = pointlight->origin.x;
+		origin[1] = pointlight->origin.y;
+		origin[2] = pointlight->origin.z;
+
+		d = DotProduct(origin, plane->normal) - plane->dist;
+
+		if (d > -r)
+		{
+			if (stack_size < POINT_LIGHTS_MAX_BSP_TREE_DEPTH)
+				node_stack[stack_size++] = node->children[0];
+		}
+
+		if (d < +r)
+		{
+			if (stack_size < POINT_LIGHTS_MAX_BSP_TREE_DEPTH)
+				node_stack[stack_size++] = node->children[1];
+		}
+	}
+}
+
+char* ParseEntityDictionary(char* data, PointLight* pointlights, int* numlights)
+{
+	const refimport_t& ri = Renderer::Inst().GetRefImport();
+
+	char keyname[256];
+	const char* com_token;
+	char classname[256];
+	char origin[256];
+	char color[256];
+	char light[256];
+	char style[256];
+
+	classname[0] = 0;
+	origin[0] = 0;
+	color[0] = 0;
+	light[0] = 0;
+	style[0] = 0;
+
+	/* go through all the dictionary pairs */
+	while (1)
+	{
+		/* parse key */
+		com_token = COM_Parse(&data);
+
+		if (com_token[0] == '}')
+		{
+			break;
+		}
+
+		if (!data)
+		{
+			char msg[] = "ParseEntityDictionary: EOF without closing brace\n";
+
+			ri.Sys_Error(ERR_DROP, msg);
+		}
+
+		Q_strlcpy(keyname, com_token, sizeof(keyname));
+
+		/* parse value */
+		com_token = COM_Parse(&data);
+
+		if (!data)
+		{
+			char msg[] = "ParseEntityDictionary: EOF without closing brace\n";
+			ri.Sys_Error(ERR_DROP, msg);
+		}
+
+		if (com_token[0] == '}')
+		{
+			char msg[] = "ParseEntityDictionary: closing brace without data\n";
+			ri.Sys_Error(ERR_DROP, msg);
+		}
+
+		if (!Q_stricmp(keyname, "classname"))
+		{
+			Q_strlcpy(classname, com_token, sizeof(classname));
+		}
+		else if (!Q_stricmp(keyname, "origin"))
+		{
+			Q_strlcpy(origin, com_token, sizeof(origin));
+		}
+		else if (!Q_stricmp(keyname, "_color"))
+		{
+			Q_strlcpy(color, com_token, sizeof(color));
+		}
+		else if (!Q_stricmp(keyname, "_light") || !Q_stricmp(keyname, "light"))
+		{
+			Q_strlcpy(light, com_token, sizeof(light));
+		}
+		else if (!Q_stricmp(keyname, "_style") || !Q_stricmp(keyname, "style"))
+		{
+			Q_strlcpy(style, com_token, sizeof(style));
+		}
+	}
+
+	if (!Q_stricmp(classname, "light") && *numlights < POINT_LIGHTS_MAX_ENTITY_LIGHTS)
+	{
+		PointLight* pointlight = pointlights + *numlights;
+		(*numlights)++;
+
+		ParseEntityVector(&pointlight->origin, origin);
+
+		// Clear point light cluster data
+		pointlight->clusters.clear();
+		// Resize, with appropriate new values
+		pointlight->clusters.resize(POINT_LIGHTS_MAX_CLUSTERS, Const::INVALID_INDEX);
+
+		
+		if (color[0])
+		{
+			ParseEntityVector(&pointlight->color, color);
+		}
+		else
+		{
+			pointlight->color.x = pointlight->color.y = pointlight->color.z = 1.0;
+		}
+
+		pointlight->intensity = atof(light);
+
+		/* The default radius is set to stay within the QUAKED bounding box specified for lights in g_misc.c */
+		pointlight->radius = 8;
+
+		/* Enforce the same defaults and restrictions that qrad3 enforces. */
+
+		if (pointlight->intensity == 0)
+			pointlight->intensity = 300;
+		
+		EnsurePointLightDoesNotIntersectWalls(pointlight);
+		BuildClusterListForPointLight(pointlight);
+	}
+
+	return data;
+}
+
+/* A lot of the code used for extraction of static light data is taken from 
+* https://github.com/eddbiddulph/yquake2/tree/pathtracing
+*/
+void ParseStaticEntityLights(char* entitystring, PointLight* pointlight, int* numlights)
+{
+	const refimport_t& ri = Renderer::Inst().GetRefImport();
+
+	const char* com_token;
+
+	if (!entitystring)
+	{
+		return;
+	}
+
+	/* parse ents */
+	while (1)
+	{
+		/* parse the opening brace */
+		com_token = COM_Parse(&entitystring);
+
+		if (!entitystring)
+		{
+			break;
+		}
+
+		if (com_token[0] != '{')
+		{
+			char msg[] = "ParseStaticEntityLights: found %s when expecting {\n";
+
+			ri.Sys_Error(ERR_DROP, msg, com_token);
+			return;
+		}
+		
+		if (*numlights >= POINT_LIGHTS_MAX_ENTITY_LIGHTS)
+			break;
+
+		entitystring = ParseEntityDictionary(entitystring, pointlight, numlights);
+	}
 
 }
 
@@ -345,7 +693,7 @@ model_t * Mod_ForName(char *name, qboolean crash, GPUJobContext& context)
 		break;
 
 	case IDSPRITEHEADER:
-		//#TODO implement proper Spite loading
+		//#TODO implement proper Sprite loading
 		//loadmodel->extradata = Hunk_Begin (0x10000);
 		//Mod_LoadSpriteModel (mod, buf);
 		break;
@@ -379,6 +727,17 @@ model_t * Mod_ForName(char *name, qboolean crash, GPUJobContext& context)
 */
 
 byte	*mod_base;
+
+
+char* Mod_LoadEntityString(lump_t* l, int* numentitychars)
+{
+	*numentitychars = l->filelen;
+	char* entitystring = (char*)Hunk_Alloc(l->filelen);
+
+	memcpy(entitystring, mod_base + l->fileofs, l->filelen);
+
+	return entitystring;
+}
 
 
 /*
@@ -596,6 +955,8 @@ void Mod_LoadTexinfo(lump_t *l, GPUJobContext& context)
 		Com_sprintf(name, sizeof(name), texNameFormat, in->texture);
 
 		out->image = ResourceManager::Inst().FindOrCreateTexture(name, context);
+
+		out->image->desc.radiance = in->value;
 
 		if (!out->image)
 		{
@@ -1101,6 +1462,16 @@ void Mod_LoadBrushModel(model_t *mod, void *buffer, GPUJobContext& context)
 
 		starmod->numleafs = bm->visleafs;
 	}
+
+	r_worldmodel = mod;
+
+	int entitiystringlength = 0;
+	char* entitystring = Mod_LoadEntityString(&header->lumps[LUMP_ENTITIES], &entitiystringlength);
+
+	Mod_AllocStaticPointLights();
+	ParseStaticEntityLights(entitystring, staticpointlights, &staticpointlightsnum);
+
+	Hunk_Free(entitystring);
 }
 
 /*

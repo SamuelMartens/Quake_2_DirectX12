@@ -31,6 +31,7 @@
 #include "dx_pass.h"
 #include "dx_utils.h"
 #include "dx_bsp.h"
+#include "dx_light.h"
 
 extern "C"
 {
@@ -238,8 +239,10 @@ private:
 	std::array<unsigned int, 256> rawPalette;
 
 	std::vector<StaticObject> staticObjects;
-
 	std::unordered_map<model_t*, DynamicObjectModel> dynamicObjectsModels;
+
+	std::vector<PointLight> staticPointLights;
+	std::vector<SurfaceLight> staticSurfaceLights;
 
 	BSPTree bspTree;
 

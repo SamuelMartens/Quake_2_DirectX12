@@ -16,6 +16,7 @@ struct TextureDesc
 	int height = 0;
 	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
 	D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
+	int radiance = 0;
 };
 
 class Texture

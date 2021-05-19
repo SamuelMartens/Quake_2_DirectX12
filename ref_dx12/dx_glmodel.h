@@ -15,6 +15,7 @@ extern "C"
 
 #include "dx_texture.h"
 #include "dx_threadingutils.h"
+#include "dx_light.h"
 
 /*
 ==============================================================================
@@ -70,6 +71,7 @@ typedef struct mtexinfo_s
 	int			numframes;
 	struct mtexinfo_s	*next;		// animation chain
 	Texture		*image;
+
 } mtexinfo_t;
 
 #define	VERTEXSIZE	7
@@ -241,6 +243,7 @@ void	Mod_ClearAll(void);
 model_t *Mod_ForName(char *name, qboolean crash, GPUJobContext& context);
 mleaf_t *Mod_PointInLeaf(float *p, model_t *model);
 byte	*Mod_ClusterPVS(int cluster, model_t *model);
+const PointLight* Mod_StaticPointLights(int* numlights);
 
 void	Mod_Modellist_f(void);
 
@@ -252,6 +255,7 @@ void	Hunk_Free(void *base);
 void	Mod_FreeAll(void);
 void	Mod_FreeAll(void);
 void	Mod_Free(model_t *mod);
+void	Mod_FreeStaticPointLights();
 
 bool	Node_IsLeaf(const mnode_t* node);
 bool	Surf_IsEmpty(const msurface_t* surf);

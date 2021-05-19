@@ -1059,6 +1059,15 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 
 	StaticObject& obj = staticObjects.emplace_back(StaticObject());
 
+	// If this is a light surface, add it to the list
+	if ((surf.texinfo->flags & SURF_WARP) == 0 && 
+		(surf.texinfo->flags & (SURF_LIGHT | SURF_SKY)) != 0 &&
+		surf.texinfo->image->desc.radiance > 0)
+	{
+		staticSurfaceLights.emplace_back(SurfaceLight{ 
+			static_cast<int>(staticObjects.size()) - 1 });
+	}
+
 	auto& defaultMemory =
 		MemoryManager::Inst().GetBuff<DefaultBuffer_t>();
 
@@ -1604,8 +1613,17 @@ void Renderer::RegisterWorldModel(const char* model)
 	// Create new world model
 	model_t* mapModel = Mod_ForName(fullName, qTrue, context);
 
-	// Legacy from quake 2 model handling system
-	r_worldmodel = mapModel;
+	// Read static point lights
+	int numStaticPointLights = 0;
+	const PointLight* pointLights = Mod_StaticPointLights(&numStaticPointLights);
+
+	staticPointLights.resize(numStaticPointLights);
+	for (int i = 0; i < numStaticPointLights; ++pointLights, ++i)
+	{
+		staticPointLights[i] = *pointLights;
+	}
+
+	Mod_FreeStaticPointLights();
 
 	DecomposeGLModelNode(*mapModel, *mapModel->nodes, context);
 

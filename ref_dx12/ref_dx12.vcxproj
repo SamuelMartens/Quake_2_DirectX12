@@ -38,6 +38,7 @@
     <ClInclude Include="dx_infrastructure.h" />
     <ClInclude Include="dx_jobmultithreading.h" />
     <ClInclude Include="dx_framegraphbuilder.h" />
+    <ClInclude Include="dx_light.h" />
     <ClInclude Include="dx_memorymanager.h" />
     <ClInclude Include="dx_objects.h" />
     <ClInclude Include="dx_local.h" />
@@ -76,6 +77,7 @@
     <ClCompile Include="dx_infrastructure.cpp" />
     <ClCompile Include="dx_jobmultithreading.cpp" />
     <ClCompile Include="dx_framegraphbuilder.cpp" />
+    <ClCompile Include="dx_light.cpp" />
     <ClCompile Include="dx_memorymanager.cpp" />
     <ClCompile Include="dx_objects.cpp" />
     <ClCompile Include="dx_passparameters.cpp" />
