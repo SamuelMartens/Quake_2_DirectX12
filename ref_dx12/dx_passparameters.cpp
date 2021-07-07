@@ -13,40 +13,6 @@ const std::string PassParameters::BACK_BUFFER_NAME = "BACK_BUFFER";
 
 namespace RootArg
 {
-	int AllocateDescTableView(const DescTable& descTable)
-	{
-		assert(descTable.content.empty() == false && "Allocation view error. Desc table content can't be empty.");
-
-		// Figure what kind of desc hep to use from inspection of the first element
-		return std::visit([size = descTable.content.size()](auto&& descTableEntity)
-		{
-			using T = std::decay_t<decltype(descTableEntity)>;
-
-			if constexpr (
-				std::is_same_v<T, DescTableEntity_ConstBufferView> ||
-				std::is_same_v<T, DescTableEntity_Texture> ||
-				std::is_same_v<T, DescTableEntity_UAView>)
-			{
-				return Renderer::Inst().cbvSrvHeap->AllocateRange(size);
-			}
-			else if constexpr (std::is_same_v<T, DescTableEntity_Sampler>)
-			{
-				// Samplers are hard coded to 0 for now. Always use 0
-				// Samplers live in descriptor heap, which makes things more complicated, because
-				// I loose one of indirections that I rely on.
-				return 0;
-				//return Renderer::Inst().samplerHeap->AllocateRange(size);
-			}
-			else
-			{
-				assert(false && "AllocateDescTableView error. Unknown type of desc table entity ");
-			}
-
-			return -1;
-
-		}, descTable.content[0]);
-	}
-
 	void AttachConstBufferToArgs(std::vector<Arg_t>& rootArgs, int offset, BufferHandler gpuHandler)
 	{
 		for (RootArg::Arg_t& rootArg : rootArgs)
@@ -218,10 +184,11 @@ namespace RootArg
 
 	void Bind(const Arg_t& rootArg, CommandList& commandList)
 	{
-		std::visit([&commandList](auto&& rootArg)
+		Renderer& renderer = Renderer::Inst();
+
+		std::visit([&commandList, &renderer](auto&& rootArg)
 		{
 			using T = std::decay_t<decltype(rootArg)>;
-			Renderer& renderer = Renderer::Inst();
 
 			auto& uploadMemory =
 				MemoryManager::Inst().GetBuff<UploadBuffer_t>();
@@ -252,12 +219,12 @@ namespace RootArg
 					if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Sampler>)
 					{
 						commandList.GetGPUList()->SetGraphicsRootDescriptorTable(rootArg.bindIndex,
-							renderer.samplerHeap->GetHandleGPU(rootArg.viewIndex));
+							renderer.GetSamplerHandleGPU(rootArg.viewIndex));
 					}
 					else
 					{
 						commandList.GetGPUList()->SetGraphicsRootDescriptorTable(rootArg.bindIndex,
-							renderer.cbvSrvHeap->GetHandleGPU(rootArg.viewIndex));
+							renderer.GetCbvSrvHandleGPU(rootArg.viewIndex));
 					}
 
 				}, rootArg.content[0]);
@@ -265,13 +232,14 @@ namespace RootArg
 
 		}, rootArg);
 	}
-	
+
 	void BindCompute(const Arg_t& rootArg, CommandList& commandList)
 	{
-		std::visit([&commandList](auto&& rootArg)
+		Renderer& renderer = Renderer::Inst();
+
+		std::visit([&commandList, &renderer](auto&& rootArg)
 		{
 			using T = std::decay_t<decltype(rootArg)>;
-			Renderer& renderer = Renderer::Inst();
 
 			auto& uploadMemory =
 				MemoryManager::Inst().GetBuff<UploadBuffer_t>();
@@ -308,12 +276,12 @@ namespace RootArg
 					if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Sampler>)
 					{
 						commandList.GetGPUList()->SetComputeRootDescriptorTable(rootArg.bindIndex,
-							renderer.samplerHeap->GetHandleGPU(rootArg.viewIndex));
+							renderer.GetSamplerHandleGPU(rootArg.viewIndex));
 					}
 					else
 					{
 						commandList.GetGPUList()->SetComputeRootDescriptorTable(rootArg.bindIndex,
-							renderer.cbvSrvHeap->GetHandleGPU(rootArg.viewIndex));
+							renderer.GetCbvSrvHandleGPU(rootArg.viewIndex));
 					}
 
 				}, rootArg.content[0]);
@@ -356,29 +324,6 @@ namespace RootArg
 		other.viewIndex = Const::INVALID_INDEX;
 
 		return *this;
-	}
-
-	DescTable::~DescTable()
-	{
-		if (content.empty() == true)
-		{
-			return;
-		}
-
-		std::visit([this](auto&& desctTableEntity)
-		{
-			using T = std::decay_t<decltype(desctTableEntity)>;
-
-			//#TODO fix this when samplers are handled properly
-			if constexpr (std::is_same_v<T, DescTableEntity_Sampler> == false)
-			{
-				if (viewIndex != Const::INVALID_INDEX)
-				{
-					Renderer::Inst().cbvSrvHeap->DeleteRange(viewIndex, content.size());
-				}
-			}
-
-		}, content[0]);
 	}
 
 	bool ConstBuffField::IsEqual(const ConstBuffField& other) const

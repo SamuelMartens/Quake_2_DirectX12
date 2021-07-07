@@ -29,7 +29,7 @@
     <ClInclude Include="dx_commandlist.h" />
     <ClInclude Include="dx_common.h" />
     <ClInclude Include="dx_bsp.h" />
-    <ClInclude Include="dx_descriptorheap.h" />
+    <ClInclude Include="dx_descriptorheapallocator.h" />
     <ClInclude Include="dx_diagnostics.h" />
     <ClInclude Include="dx_drawcalls.h" />
     <ClInclude Include="dx_frame.h" />
@@ -68,7 +68,7 @@
     <ClCompile Include="dx_camera.cpp" />
     <ClCompile Include="dx_commandlist.cpp" />
     <ClCompile Include="dx_bsp.cpp" />
-    <ClCompile Include="dx_descriptorheap.cpp" />
+    <ClCompile Include="dx_descriptorheapallocator.cpp" />
     <ClCompile Include="dx_diagnostics.cpp" />
     <ClCompile Include="dx_drawcalls.cpp" />
     <ClCompile Include="dx_frame.cpp" />

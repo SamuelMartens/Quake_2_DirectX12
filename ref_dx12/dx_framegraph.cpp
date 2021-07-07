@@ -243,12 +243,12 @@ namespace
 		}
 	}
 
-	template<typename T>
-	void _RegisterGlobalObjectRes(const T& obj, std::vector<RootArg::Arg_t>& objRes, RenderCallbacks::RegisterGlobalObjectContext& regContext)
+	template<typename objT, typename AllocT>
+	void _RegisterGlobalObjectRes(const objT& obj, std::vector<RootArg::Arg_t>& objRes, RenderCallbacks::RegisterGlobalObjectContext& regContext, AllocT& alloc)
 	{
 		for (RootArg::Arg_t& arg : objRes)
 		{
-			std::visit([&obj, &regContext](auto&& arg)
+			std::visit([&obj, &regContext, &alloc](auto&& arg)
 			{
 				using T = std::decay_t<decltype(arg)>;
 
@@ -269,7 +269,7 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::DescTable>)
 				{
-					arg.viewIndex = RootArg::AllocateDescTableView(arg);
+					arg.viewIndex = RootArg::AllocateDescTableView(arg, alloc);
 
 					for (int i = 0; i < arg.content.size(); ++i)
 					{
@@ -309,8 +309,8 @@ namespace
 		}
 	}
 
-	template< Parsing::PassInputType INPUT_TYPE, typename T, typename ResContextT>
-	void _RegisterGlobalObjectsRes(const std::vector<T>& objects, GPUJobContext& context, ResContextT resContext)
+	template< Parsing::PassInputType INPUT_TYPE, typename T, typename ResContextT, typename AllocT>
+	void _RegisterGlobalObjectsRes(const std::vector<T>& objects, GPUJobContext& context, ResContextT resContext, AllocT& alloc)
 	{
 		assert(objects.empty() == false && "Register global object res received request with empty objects");
 		
@@ -329,7 +329,7 @@ namespace
 
 			std::vector<RootArg::Arg_t>& objRes = objResources.emplace_back(objResTemplate);
 
-			_RegisterGlobalObjectRes(obj, objRes, regContext);
+			_RegisterGlobalObjectRes(obj, objRes, regContext, alloc);
 
 		};
 
@@ -367,16 +367,6 @@ FrameGraph::~FrameGraph()
 		}
 	}
 
-	for (PassTask& passTask : passTasks)
-	{
-		std::visit([](auto&& pass)
-		{
-			pass.ReleasePerFrameResources();
-			pass.ReleasePersistentResources();
-
-		}, passTask.pass);
-	}
-
 	if (internalTextureNames.use_count() == 1)
 	{
 		ResourceManager& resourceManager = ResourceManager::Inst();
@@ -386,6 +376,55 @@ FrameGraph::~FrameGraph()
 			resourceManager.DeleteTexture(name.c_str());
 		}
 	}
+
+	auto& rendererAllocator = *Renderer::Inst().cbvSrvHeapAllocator;
+
+	// Delete global per pass resources
+	for (RootArg::Arg_t& arg : passesGlobalRes)
+	{
+		RootArg::Release(arg, rendererAllocator);
+	}
+
+	// Deal with global per object resources
+
+	for (std::vector<RootArg::Arg_t>& argList : std::get<static_cast<int>(Parsing::PassInputType::Static)>(objGlobalRes))
+	{
+		for (RootArg::Arg_t& arg : argList)
+		{
+			RootArg::Release(arg, rendererAllocator);
+		}
+	}
+	std::get<static_cast<int>(Parsing::PassInputType::Static)>(objGlobalRes).clear();
+
+	for (std::vector<RootArg::Arg_t>& argList : std::get<static_cast<int>(Parsing::PassInputType::Particles)>(objGlobalRes))
+	{
+		for (RootArg::Arg_t& arg : argList)
+		{
+			RootArg::Release(arg, rendererAllocator);
+		}
+	}
+	std::get<static_cast<int>(Parsing::PassInputType::Particles)>(objGlobalRes).clear();
+
+	for (RootArg::Arg_t& arg : std::get<static_cast<int>(Parsing::PassInputType::PostProcess)>(objGlobalRes))
+	{
+		RootArg::Release(arg, rendererAllocator);
+	}
+	std::get<static_cast<int>(Parsing::PassInputType::PostProcess)>(objGlobalRes).clear();
+
+#ifdef _DEBUG
+	// Dirty way to make sure I cleaned up everything
+	std::apply([](const auto&... resources) 
+	{
+		((assert(resources.empty() == true && "Not all resources were deleted on FrameGraph destruction")), ...);
+
+	}, objGlobalRes);
+#endif
+
+	assert(std::get<static_cast<int>(Parsing::PassInputType::Dynamic)>(objGlobalRes).empty() == true &&
+		"Dynamic per frame resources were not cleaned up");
+
+	assert(std::get<static_cast<int>(Parsing::PassInputType::UI)>(objGlobalRes).empty() == true &&
+		"UI per frame resources were not cleaned up");
 }
 
 void FrameGraph::Execute(Frame& frame)
@@ -526,7 +565,7 @@ void FrameGraph::RegisterObjects(const std::vector<StaticObject>& objects, GPUJo
 	auto resContext = ResContext{ objGlobalResTemplate, objGlobalRes, objGlobalResMemory, perObjectGlobalMemorySize };
 
 	// Register global object resources
-	_RegisterGlobalObjectsRes<Parsing::PassInputType::Static>(objects, context, resContext);
+	_RegisterGlobalObjectsRes<Parsing::PassInputType::Static>(objects, context, resContext, *Renderer::Inst().cbvSrvHeapAllocator);
 
 	// Allocate and attach memory
 	_AllocateGlobalObjectConstMem<Parsing::PassInputType::Static>(objects.size(), resContext);
@@ -582,7 +621,7 @@ void FrameGraph::RegisterGlobalObjectsResDynamicEntities(GPUJobContext& context)
 	{
 		std::vector<RootArg::Arg_t>& objRes = entityRes.emplace_back(objResTemplate);
 
-		_RegisterGlobalObjectRes(context.frame.entities[visibleIndex], objRes, regContext);
+		_RegisterGlobalObjectRes(context.frame.entities[visibleIndex], objRes, regContext, *context.frame.streamingCbvSrvAllocator);
 	}
 
 	// Allocate and attach memory
@@ -628,18 +667,34 @@ void FrameGraph::UpdateGlobalResources(GPUJobContext& context)
 	Diagnostics::EndEvent(context.commandList->GetGPUList());
 }
 
-void FrameGraph::ReleasePerFrameResources()
+void FrameGraph::ReleasePerFrameResources(Frame& frame)
 {
 	for (PassTask& passTask : passTasks)
 	{
-		std::visit([](auto&& pass)
+		std::visit([&frame](auto&& pass)
 		{
-			pass.ReleasePerFrameResources();
+			pass.ReleasePerFrameResources(frame);
 		}, passTask.pass);
 	}
-
+	
+	for (std::vector<RootArg::Arg_t>& argList : std::get<static_cast<int>(Parsing::PassInputType::UI)>(objGlobalRes))
+	{
+		for (RootArg::Arg_t& arg : argList)
+		{
+			RootArg::Release(arg, *frame.streamingCbvSrvAllocator);
+		}
+	}
 	std::get<static_cast<int>(Parsing::PassInputType::UI)>(objGlobalRes).clear();
+
+	for (std::vector<RootArg::Arg_t>& argList : std::get<static_cast<int>(Parsing::PassInputType::Dynamic)>(objGlobalRes))
+	{
+		for (RootArg::Arg_t& arg : argList)
+		{
+			RootArg::Release(arg, *frame.streamingCbvSrvAllocator);
+		}
+	}
 	std::get<static_cast<int>(Parsing::PassInputType::Dynamic)>(objGlobalRes).clear();
+
 
 	auto& updateBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
@@ -723,7 +778,7 @@ void FrameGraph::RegisterGlobalObjectsResUI(GPUJobContext& context)
 
 	auto resContext = ResContext{ objGlobalResTemplate, objGlobalRes, objGlobalResMemory, perObjectGlobalMemorySize };
 
-	_RegisterGlobalObjectsRes<Parsing::PassInputType::UI>(context.frame.uiDrawCalls, context, resContext);
+	_RegisterGlobalObjectsRes<Parsing::PassInputType::UI>(context.frame.uiDrawCalls, context, resContext, *context.frame.streamingCbvSrvAllocator);
 
 	// Allocate and attach memory
 	_AllocateGlobalObjectConstMem<Parsing::PassInputType::UI>(context.frame.uiDrawCalls.size(), resContext);
@@ -918,7 +973,7 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 
 			if constexpr (std::is_same_v<T, RootArg::DescTable>)
 			{
-				arg.viewIndex = RootArg::AllocateDescTableView(arg);
+				arg.viewIndex = RootArg::AllocateDescTableView(arg, *Renderer::Inst().cbvSrvHeapAllocator);
 
 				for (int i = 0; i < arg.content.size(); ++i)
 				{

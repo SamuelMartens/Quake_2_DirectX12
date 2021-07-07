@@ -110,7 +110,7 @@ public:
 	void RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& context);
 	
 	void UpdateGlobalResources(GPUJobContext& context);
-	void ReleasePerFrameResources();
+	void ReleasePerFrameResources(Frame& frame);
 
 	/* Utils */
 	BufferHandler GetParticlesVertexMemory() const;

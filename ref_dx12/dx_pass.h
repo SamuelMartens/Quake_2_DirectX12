@@ -43,7 +43,7 @@ public:
 
 	void RegisterPassResources(GPUJobContext& context);
 	
-	void ReleasePerFrameResources();
+	void ReleasePerFrameResources(Frame& frame);
 	void ReleasePersistentResources();
 
 private:
@@ -100,7 +100,7 @@ public:
 
 	void RegisterPassResources(GPUJobContext& context);
 	
-	void ReleasePerFrameResources();
+	void ReleasePerFrameResources(Frame& frame);
 	void ReleasePersistentResources();
 
 	void RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& context);
@@ -145,7 +145,7 @@ public:
 
 	void RegisterPassResources(GPUJobContext& context);
 
-	void ReleasePerFrameResources();
+	void ReleasePerFrameResources(Frame& frame);
 	void ReleasePersistentResources();
 
 private:
@@ -183,7 +183,7 @@ public:
 
 	void RegisterPassResources(GPUJobContext& context);
 
-	void ReleasePerFrameResources();
+	void ReleasePerFrameResources(Frame& frame);
 	void ReleasePersistentResources();
 
 private:
@@ -212,7 +212,7 @@ public:
 
 	void RegisterPassResources(GPUJobContext& context);
 
-	void ReleasePerFrameResources();
+	void ReleasePerFrameResources(Frame& frame);
 	void ReleasePersistentResources();
 
 private:
@@ -250,7 +250,7 @@ class PassUtils
 public:
 	
 	template<typename T>
-	static int AllocateRenderTargetView(std::string_view renderTargetName, T& descriptorHeap)
+	static int AllocateRenderTargetView(std::string_view renderTargetName, T& descriptorHeapAllocator)
 	{
 		assert(renderTargetName.empty() == false && "AllocateRenderTargetView failed. Invalid render target name");
 
@@ -263,13 +263,13 @@ public:
 
 		assert(tex != nullptr && "AllocateRenderTargetView failed. No such texture");
 
-		return descriptorHeap.Allocate(tex->buffer.Get());
+		return descriptorHeapAllocator.Allocate(tex->buffer.Get());
 	}
 
 	static void AllocateColorDepthRenderTargetViews(PassParameters& passParams);
 
 	template<typename T>
-	static void ReleaseRenderTargetView(std::string_view renderTargetName, int& renderTargetIndex, T& descriptorHeap)
+	static void ReleaseRenderTargetView(std::string_view renderTargetName, int& renderTargetIndex, T& descriptorHeapAllocator)
 	{
 		if (renderTargetName == PassParameters::BACK_BUFFER_NAME)
 		{
@@ -279,7 +279,7 @@ public:
 
 		if (renderTargetIndex != Const::INVALID_INDEX)
 		{
-			descriptorHeap.Delete(renderTargetIndex);
+			descriptorHeapAllocator.Delete(renderTargetIndex);
 			renderTargetIndex = Const::INVALID_INDEX;
 		}
 	}

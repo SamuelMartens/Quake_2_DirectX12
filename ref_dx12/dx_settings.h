@@ -15,7 +15,8 @@ namespace Settings
 	constexpr int		 TRANSPARENT_TABLE_VAL = 255;
 	constexpr int		 CONST_BUFFER_ALIGNMENT = 256;
 
-	constexpr int		 CBV_SRV_DESCRIPTOR_HEAP_SIZE = 64 * 1024;
+	constexpr int		 FRAME_STREAMING_CBV_SRV_DESCRIPTOR_HEAP_SIZE = 16 * 1024;
+	constexpr int		 CBV_SRV_DESCRIPTOR_HEAP_SIZE = 32 * 1024;
 	constexpr int		 RTV_DTV_DESCRIPTOR_HEAP_SIZE = 16;
 	constexpr int		 SAMPLER_DESCRIPTOR_HEAP_SIZE = 16;
 

@@ -69,7 +69,7 @@
     <ClInclude Include="dx_frame.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="dx_descriptorheap.h">
+    <ClInclude Include="dx_descriptorheapallocator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="dx_allocators.h">
@@ -170,7 +170,7 @@
     <ClCompile Include="dx_frame.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="dx_descriptorheap.cpp">
+    <ClCompile Include="dx_descriptorheapallocator.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="dx_allocators.cpp">

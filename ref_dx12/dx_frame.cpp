@@ -13,7 +13,7 @@ void Frame::Init(int arrayIndexVal)
 
 	renderer.CreateDepthStencilBuffer(depthStencilBuffer);
 	
-	depthBufferViewIndex = renderer.dsvHeap->Allocate(depthStencilBuffer.Get());
+	depthBufferViewIndex = renderer.dsvHeapAllocator->Allocate(depthStencilBuffer.Get());
 
 	camera.Init();
 
@@ -26,6 +26,9 @@ void Frame::Init(int arrayIndexVal)
 	sseYInverseAndCenterMat = XMMatrixTranslation(-drawAreaWidth / 2, -drawAreaHeight / 2, 0.0f) * sseYInverseAndCenterMat;
 
 	XMStoreFloat4x4(&uiYInverseAndCenterMat, sseYInverseAndCenterMat);
+
+	streamingCbvSrvAllocator = std::make_unique<std::remove_reference_t<decltype(*streamingCbvSrvAllocator)>>(
+			Settings::CBV_SRV_DESCRIPTOR_HEAP_SIZE + arrayIndex * Settings::FRAME_STREAMING_CBV_SRV_DESCRIPTOR_HEAP_SIZE);
 }
 
 void Frame::ResetSyncData()
@@ -84,7 +87,7 @@ Frame::~Frame()
 {
 	if (depthBufferViewIndex != Const::INVALID_INDEX)
 	{
-		Renderer::Inst().rtvHeap->Delete(depthBufferViewIndex);
+		Renderer::Inst().rtvHeapAllocator->Delete(depthBufferViewIndex);
 	}
 
 	if (executeCommandListEvenHandle != INVALID_HANDLE_VALUE)

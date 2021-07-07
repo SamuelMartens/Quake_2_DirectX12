@@ -1,6 +1,8 @@
-#include "dx_descriptorheap.h"
+#include "dx_descriptorheapallocator.h"
 
-void _AllocDescriptorInternal(CD3DX12_CPU_DESCRIPTOR_HANDLE& handle, ID3D12Resource* resource, const ViewDescription_t* desc, D3D12_DESCRIPTOR_HEAP_TYPE type)
+#include "dx_app.h"
+
+void _AllocDescriptorInternal(int allocatedIndex, ID3D12Resource* resource, const ViewDescription_t* desc, D3D12_DESCRIPTOR_HEAP_TYPE type)
 {
 	// For some unknown reason compilation fails if I put this code inside AllocateDescriptor()
 
@@ -8,6 +10,8 @@ void _AllocDescriptorInternal(CD3DX12_CPU_DESCRIPTOR_HANDLE& handle, ID3D12Resou
 	{
 	case D3D12_DESCRIPTOR_HEAP_TYPE_RTV:
 	{
+		CD3DX12_CPU_DESCRIPTOR_HANDLE handle = Renderer::Inst().GetRtvHandleCPU(allocatedIndex);
+
 		assert((resource != nullptr || desc != nullptr) 
 			&& "RTV allocation failure. Resource or Description shall not be nullptr");
 
@@ -19,6 +23,8 @@ void _AllocDescriptorInternal(CD3DX12_CPU_DESCRIPTOR_HANDLE& handle, ID3D12Resou
 	}
 	case D3D12_DESCRIPTOR_HEAP_TYPE_DSV:
 	{
+		CD3DX12_CPU_DESCRIPTOR_HANDLE handle = Renderer::Inst().GetDsvHandleCPU(allocatedIndex);
+
 		assert((resource != nullptr || desc != nullptr)
 			&& "DSV allocation failure. Resource or Description shall not be nullptr");
 
@@ -30,6 +36,8 @@ void _AllocDescriptorInternal(CD3DX12_CPU_DESCRIPTOR_HANDLE& handle, ID3D12Resou
 	}
 	case D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV:
 	{
+		CD3DX12_CPU_DESCRIPTOR_HANDLE handle = Renderer::Inst().GetCbvSrvHandleCPU(allocatedIndex);
+
 		assert(desc != nullptr
 			&& "CBV_SRV_UAV allocation failure. Description shall not be nullptr");
 
@@ -63,6 +71,8 @@ void _AllocDescriptorInternal(CD3DX12_CPU_DESCRIPTOR_HANDLE& handle, ID3D12Resou
 	}
 	case D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER:
 	{
+		CD3DX12_CPU_DESCRIPTOR_HANDLE handle = Renderer::Inst().GetSamplerHandleCPU(allocatedIndex);
+
 		const D3D12_SAMPLER_DESC* samplerDesc = &std::get<D3D12_SAMPLER_DESC>(*desc);
 
 		Infr::Inst().GetDevice()->CreateSampler(samplerDesc, handle);

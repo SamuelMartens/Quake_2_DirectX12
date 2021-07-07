@@ -14,6 +14,7 @@
 #include "dx_buffer.h"
 #include "dx_commandlist.h"
 #include "dx_settings.h"
+#include "dx_memorymanager.h"
 
 namespace Parsing
 {
@@ -100,7 +101,7 @@ namespace RootArg
 		DescTable(DescTable&& other);
 		DescTable& operator=(DescTable&& other);
 
-		~DescTable();
+		~DescTable() = default;
 
 		int bindIndex = Const::INVALID_INDEX;
 		std::vector<DescTableEntity_t> content;
@@ -112,9 +113,78 @@ namespace RootArg
 	int FindArg(const std::vector<Arg_t>& args, const Arg_t& arg);
 
 	void Bind(const Arg_t& rootArg, CommandList& commandList);
+
 	void BindCompute(const Arg_t& rootArg, CommandList& commandList);
 
-	int AllocateDescTableView(const DescTable& descTable);
+	template<typename T>
+	int AllocateDescTableView(const DescTable& descTable, T& allocator)
+	{ 
+		assert(descTable.content.empty() == false && "Allocation view error. Desc table content can't be empty.");
+
+		// Figure what kind of desc hep to use from inspection of the first element
+		return std::visit([size = descTable.content.size(), &allocator](auto&& descTableEntity)
+		{
+			using T = std::decay_t<decltype(descTableEntity)>;
+
+			if constexpr (
+				std::is_same_v<T, DescTableEntity_ConstBufferView> ||
+				std::is_same_v<T, DescTableEntity_Texture> ||
+				std::is_same_v<T, DescTableEntity_UAView>)
+			{
+				return allocator.AllocateRange(size);
+			}
+			else if constexpr (std::is_same_v<T, DescTableEntity_Sampler>)
+			{
+				// Samplers are hard coded to 0 for now. Always use 0
+				// Samplers live in descriptor heap, which makes things more complicated, because
+				// I loose one of indirections that I rely on.
+				return 0;
+			}
+			else
+			{
+				assert(false && "AllocateDescTableView error. Unknown type of desc table entity ");
+			}
+
+			return -1;
+
+		}, descTable.content[0]);
+	}
+
+	template<typename T>
+	void ReleaseDescTableView(DescTable& descTable, T& allocator)
+	{
+		assert(descTable.content.empty() == false && "DesctTable release error. Desc table content can't be empty.");
+
+		std::visit([&allocator, &descTable](auto&& desctTableEntity)
+		{
+			using T = std::decay_t<decltype(desctTableEntity)>;
+
+			//#TODO fix this when samplers are handled properly
+			if constexpr (std::is_same_v<T, DescTableEntity_Sampler> == false)
+			{
+				if (descTable.viewIndex != Const::INVALID_INDEX)
+				{
+					allocator.DeleteRange(descTable.viewIndex, descTable.content.size());
+				}
+			}
+
+		}, descTable.content[0]);
+	}
+
+	template<typename T>
+	void Release(Arg_t& arg, T& allocator)
+	{
+		std::visit([&allocator](auto&& arg) 
+		{
+			using T = std::decay_t<decltype(arg)>;
+
+			if constexpr (std::is_same_v<T, DescTable>)
+			{
+				ReleaseDescTableView(arg, allocator);
+			}
+
+		}, arg);
+	}
 
 	void AttachConstBufferToArgs(std::vector<RootArg::Arg_t>& rootArgs, int offset, BufferHandler gpuHandler);
 
@@ -145,7 +215,7 @@ namespace RootArg
 		{
 			return (GetSize(args) + ...);
 		}, args);
-	};
+	}
 };
 
 

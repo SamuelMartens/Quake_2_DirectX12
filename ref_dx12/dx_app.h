@@ -26,7 +26,7 @@
 #include "dx_camera.h"
 #include "dx_threadingutils.h"
 #include "dx_frame.h"
-#include "dx_descriptorheap.h"
+#include "dx_descriptorheapallocator.h"
 #include "dx_commandlist.h"
 #include "dx_pass.h"
 #include "dx_utils.h"
@@ -119,13 +119,37 @@ class Renderer
 
 	void RebuildFrameGraph();
 
+	ID3D12DescriptorHeap* GetRtvHeap();
+	ID3D12DescriptorHeap* GetDsvHeap();
+	ID3D12DescriptorHeap* GetCbvSrvHeap();
+	ID3D12DescriptorHeap* GetSamplerHeap();
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE GetRtvHandleCPU(int index) const;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE GetRtvHandleGPU(int index) const;
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE GetDsvHandleCPU(int index) const;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE GetDsvHandleGPU(int index) const;
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE GetCbvSrvHandleCPU(int index) const;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE GetCbvSrvHandleGPU(int index) const;
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE GetSamplerHandleCPU(int index) const;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE GetSamplerHandleGPU(int index) const;
+
 public:
 
 	// Public because it is already wrapped up in class
-	std::unique_ptr<DescriptorHeap<Settings::RTV_DTV_DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_RTV>>	rtvHeap = nullptr;
-	std::unique_ptr<DescriptorHeap<Settings::RTV_DTV_DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_DSV>>	dsvHeap = nullptr;
-	std::unique_ptr<DescriptorHeap<Settings::CBV_SRV_DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV>> cbvSrvHeap = nullptr;
-	std::unique_ptr<DescriptorHeap<Settings::SAMPLER_DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER>> samplerHeap = nullptr;
+	std::unique_ptr<SequentialDescriptorHeapAllocator_t<Settings::RTV_DTV_DESCRIPTOR_HEAP_SIZE,
+		D3D12_DESCRIPTOR_HEAP_TYPE_RTV>>	rtvHeapAllocator = nullptr;
+	
+	std::unique_ptr<SequentialDescriptorHeapAllocator_t<Settings::RTV_DTV_DESCRIPTOR_HEAP_SIZE,
+		D3D12_DESCRIPTOR_HEAP_TYPE_DSV>>	dsvHeapAllocator = nullptr;
+	
+	std::unique_ptr<SequentialDescriptorHeapAllocator_t<Settings::CBV_SRV_DESCRIPTOR_HEAP_SIZE,
+		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV>> cbvSrvHeapAllocator = nullptr;
+	
+	std::unique_ptr<SequentialDescriptorHeapAllocator_t<Settings::SAMPLER_DESCRIPTOR_HEAP_SIZE,
+		D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER>> samplerHeapAllocator = nullptr;
 
 	//#TODO remove this when FrameGraph is implemented properly
 	// DirectX and OpenGL have different directions for Y axis,
@@ -163,6 +187,10 @@ private:
 	void CreateSwapChainBuffersAndViews();
 
 	void CreateDescriptorHeaps();
+
+	void InitDescriptorSizes();
+
+	void CreateDescriptorHeapsAllocators();
 
 	void CreateSwapChain();
 
@@ -253,6 +281,16 @@ private:
 	ComPtr<ID3D12Fence>	fence;
 
 	int frameCounter = 0;
+
+	ComPtr<ID3D12DescriptorHeap> rtvHeap = nullptr;
+	ComPtr<ID3D12DescriptorHeap> dsvHeap = nullptr;
+	ComPtr<ID3D12DescriptorHeap> cbvSrvHeap = nullptr;
+	ComPtr<ID3D12DescriptorHeap> samplerHeap = nullptr;
+
+	int rtvDescriptorSize = Const::INVALID_SIZE;
+	int dsvDescriptorSize = Const::INVALID_SIZE;
+	int cbvSrvDescriptorSize = Const::INVALID_SIZE;
+	int samplerDescriptorSize = Const::INVALID_SIZE;
 
 	/* Level registration data */
 	std::unique_ptr<GPUJobContext> staticModelRegContext;

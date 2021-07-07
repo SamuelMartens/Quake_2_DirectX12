@@ -15,14 +15,14 @@
 
 namespace
 {
-	template<typename T>
-	void _RegisterPassResources(T& pass, PassParameters& passParameters, GPUJobContext& context)
+	template<typename PassT, typename AllocT>
+	void _RegisterPassResources(PassT& pass, PassParameters& passParameters, AllocT& allocator, GPUJobContext& context)
 	{
 		RenderCallbacks::RegisterLocalPassContext localPassContext = { context };
 
 		for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
 		{
-			std::visit([&pass, &localPassContext, &passParameters]
+			std::visit([&pass, &localPassContext, &passParameters, &allocator]
 			(auto&& arg)
 			{
 				using T = std::decay_t<decltype(arg)>;
@@ -39,7 +39,7 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::DescTable>)
 				{
-					arg.viewIndex = RootArg::AllocateDescTableView(arg);
+					arg.viewIndex = RootArg::AllocateDescTableView(arg, allocator);
 
 					for (int i = 0; i < arg.content.size(); ++i)
 					{
@@ -195,12 +195,12 @@ namespace
 		}
 	}
 
-	template<typename T>
-	void _RegisterObjectArgs(T& obj, unsigned int passHashedName, RenderCallbacks::RegisterLocalObjectContext& regCtx)
+	template<typename objT, typename AllocT>
+	void _RegisterObjectArgs(objT& obj, unsigned int passHashedName, RenderCallbacks::RegisterLocalObjectContext& regCtx, AllocT& allocator)
 	{
 		for (RootArg::Arg_t& rootArg : obj.rootArgs)
 		{
-			std::visit([&obj, &regCtx, passHashedName]
+			std::visit([&obj, &regCtx, passHashedName, &allocator]
 			(auto&& rootArg)
 			{
 				using T = std::decay_t<decltype(rootArg)>;
@@ -217,7 +217,7 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::DescTable>)
 				{
-					rootArg.viewIndex = RootArg::AllocateDescTableView(rootArg);
+					rootArg.viewIndex = RootArg::AllocateDescTableView(rootArg, allocator);
 
 					for (int i = 0; i < rootArg.content.size(); ++i)
 					{
@@ -343,17 +343,17 @@ namespace
 			frame.colorBufferAndView->viewIndex :
 			params.colorTargetViewIndex;
 
-		D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = renderer.rtvHeap->GetHandleCPU(colorRenderTargetViewIndex);
+		D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = renderer.GetRtvHandleCPU(colorRenderTargetViewIndex);
 
 		const int depthRenderTargetViewIndex = params.depthTargetName == PassParameters::BACK_BUFFER_NAME ?
 			frame.depthBufferViewIndex :
 			params.depthTargetViewIndex;
 
-		D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = renderer.dsvHeap->GetHandleCPU(depthRenderTargetViewIndex);
+		D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = renderer.GetDsvHandleCPU(depthRenderTargetViewIndex);
 
 		commandList->OMSetRenderTargets(1, &colorRenderTargetView, true, &depthRenderTargetView);
 
-		ID3D12DescriptorHeap* descriptorHeaps[] = { renderer.cbvSrvHeap->GetHeapResource(),	renderer.samplerHeap->GetHeapResource() };
+		ID3D12DescriptorHeap* descriptorHeaps[] = { renderer.GetCbvSrvHeap(), renderer.GetSamplerHeap() };
 		commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
 		commandList->SetGraphicsRootSignature(params.rootSingature.Get());
@@ -429,7 +429,7 @@ void Pass_UI::RegisterObjects(GPUJobContext& context)
 
 		const int objectOffset = i * perObjectConstBuffMemorySize;
 
-		_RegisterObjectArgs(obj, passHashedName, regContext);
+		_RegisterObjectArgs(obj, passHashedName, regContext, *context.frame.streamingCbvSrvAllocator);
 		RootArg::AttachConstBufferToArgs(obj.rootArgs, objectOffset, objectConstBuffMemory);
 	}
 
@@ -503,7 +503,7 @@ void Pass_UI::RegisterObjects(GPUJobContext& context)
 
 void Pass_UI::RegisterPassResources(GPUJobContext& context)
 {
-	_RegisterPassResources(*this, passParameters, context);
+	_RegisterPassResources(*this, passParameters, *Renderer::Inst().cbvSrvHeapAllocator, context);
 	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
 }
 
@@ -607,7 +607,7 @@ void Pass_UI::Execute(GPUJobContext& context)
 	Draw(context);
 }
 
-void Pass_UI::ReleasePerFrameResources()
+void Pass_UI::ReleasePerFrameResources(Frame& frame)
 {
 	auto& uploadMemory =
 		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
@@ -624,6 +624,14 @@ void Pass_UI::ReleasePerFrameResources()
 		vertexMemory = Const::INVALID_BUFFER_HANDLER;
 	}
 	
+	for (PassObj& obj : drawObjects)
+	{
+		for (RootArg::Arg_t& arg : obj.rootArgs)
+		{
+			RootArg::Release(arg, *frame.streamingCbvSrvAllocator);
+		}
+	}
+
 	drawObjects.clear();
 }
 
@@ -636,6 +644,11 @@ void Pass_UI::ReleasePersistentResources()
 	{
 		uploadMemory.Delete(passConstBuffMemory);
 		passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
+	}
+
+	for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	{
+		Release(arg, *Renderer::Inst().cbvSrvHeapAllocator);
 	}
 
 	PassUtils::ReleaseColorDepthRenderTargetViews(passParameters);
@@ -675,7 +688,7 @@ void Pass_Static::Init()
 
 void Pass_Static::RegisterPassResources(GPUJobContext& context)
 {
-	_RegisterPassResources(*this, passParameters, context);
+	_RegisterPassResources(*this, passParameters, *Renderer::Inst().cbvSrvHeapAllocator, context);
 	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
 }
 
@@ -684,7 +697,7 @@ void Pass_Static::UpdatePassResources(GPUJobContext& context)
 	_UpdatePassResources(*this, passParameters, passConstBuffMemory, passMemorySize, context);
 }
 
-void Pass_Static::ReleasePerFrameResources()
+void Pass_Static::ReleasePerFrameResources(Frame& frame)
 {
 
 }
@@ -703,6 +716,11 @@ void Pass_Static::ReleasePersistentResources()
 	for (PassObj& obj : drawObjects)
 	{
 		obj.ReleaseResources();
+	}
+
+	for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	{
+		RootArg::Release(arg, *Renderer::Inst().cbvSrvHeapAllocator);
 	}
 
 	PassUtils::ReleaseColorDepthRenderTargetViews(passParameters);
@@ -728,7 +746,7 @@ void Pass_Static::RegisterObjects(const std::vector<StaticObject>& objects, GPUJ
 
 		RenderCallbacks::RegisterLocalObjectContext regContext = { context };
 
-		_RegisterObjectArgs(obj, passHashedName, regContext);
+		_RegisterObjectArgs(obj, passHashedName, regContext, *Renderer::Inst().cbvSrvHeapAllocator);
 		RootArg::AttachConstBufferToArgs(obj.rootArgs, 0, obj.constantBuffMemory);
 	}
 }
@@ -842,6 +860,11 @@ void Pass_Static::PassObj::ReleaseResources()
 		MemoryManager::Inst().GetBuff<UploadBuffer_t>().Delete(constantBuffMemory);
 		constantBuffMemory = Const::INVALID_BUFFER_HANDLER;
 	}
+
+	for (RootArg::Arg_t& arg : rootArgs)
+	{
+		RootArg::Release(arg, *Renderer::Inst().cbvSrvHeapAllocator);
+	}
 }
 
 void Pass_Dynamic::Execute(GPUJobContext& context)
@@ -879,7 +902,7 @@ void Pass_Dynamic::Init()
 
 void Pass_Dynamic::RegisterPassResources(GPUJobContext& context)
 {
-	_RegisterPassResources(*this, passParameters, context);
+	_RegisterPassResources(*this, passParameters, *Renderer::Inst().cbvSrvHeapAllocator, context);
 	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
 }
 
@@ -888,12 +911,20 @@ void Pass_Dynamic::UpdatePassResources(GPUJobContext& context)
 	_UpdatePassResources(*this, passParameters, passConstBuffMemory, passMemorySize, context);
 }
 
-void Pass_Dynamic::ReleasePerFrameResources()
+void Pass_Dynamic::ReleasePerFrameResources(Frame& frame)
 {
 	if (objectsConstBufferMemory != Const::INVALID_BUFFER_HANDLER)
 	{
 		MemoryManager::Inst().GetBuff<UploadBuffer_t>().Delete(objectsConstBufferMemory);
 		objectsConstBufferMemory = Const::INVALID_BUFFER_HANDLER;
+	}
+
+	for (PassObj& obj : drawObjects)
+	{
+		for (RootArg::Arg_t& arg : obj.rootArgs)
+		{
+			RootArg::Release(arg, *frame.streamingCbvSrvAllocator);
+		}
 	}
 
 	drawObjects.clear();
@@ -905,6 +936,11 @@ void Pass_Dynamic::ReleasePersistentResources()
 	{
 		MemoryManager::Inst().GetBuff<UploadBuffer_t>().Delete(passConstBuffMemory);
 		passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
+	}
+
+	for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	{
+		Release(arg, *Renderer::Inst().cbvSrvHeapAllocator);
 	}
 
 	PassUtils::ReleaseColorDepthRenderTargetViews(passParameters);
@@ -938,7 +974,7 @@ void Pass_Dynamic::RegisterEntities(GPUJobContext& context)
 
 		const int objectOffset = i * perObjectConstBuffMemorySize;
 
-		_RegisterObjectArgs(drawEntity, passHashedName, regContext);
+		_RegisterObjectArgs(drawEntity, passHashedName, regContext, *context.frame.streamingCbvSrvAllocator);
 		RootArg::AttachConstBufferToArgs(drawEntity.rootArgs, objectOffset, objectsConstBufferMemory);
 	}
 }
@@ -1097,11 +1133,11 @@ void Pass_Particles::Init()
 
 void Pass_Particles::RegisterPassResources(GPUJobContext& context)
 {
-	_RegisterPassResources(*this, passParameters, context);
+	_RegisterPassResources(*this, passParameters, *Renderer::Inst().cbvSrvHeapAllocator, context);
 	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
 }
 
-void Pass_Particles::ReleasePerFrameResources()
+void Pass_Particles::ReleasePerFrameResources(Frame& frame)
 {
 
 }
@@ -1112,6 +1148,11 @@ void Pass_Particles::ReleasePersistentResources()
 	{
 		MemoryManager::Inst().GetBuff<UploadBuffer_t>().Delete(passConstBuffMemory);
 		passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
+	}
+
+	for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	{
+		Release(arg, *Renderer::Inst().cbvSrvHeapAllocator);
 	}
 
 	PassUtils::ReleaseColorDepthRenderTargetViews(passParameters);
@@ -1180,11 +1221,11 @@ void Pass_PostProcess::Init()
 
 void Pass_PostProcess::RegisterPassResources(GPUJobContext& context)
 {
-	_RegisterPassResources(*this, passParameters, context);
+	_RegisterPassResources(*this, passParameters, *Renderer::Inst().cbvSrvHeapAllocator, context);
 	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
 }
 
-void Pass_PostProcess::ReleasePerFrameResources()
+void Pass_PostProcess::ReleasePerFrameResources(Frame& frame)
 {
 
 }
@@ -1195,6 +1236,11 @@ void Pass_PostProcess::ReleasePersistentResources()
 	{
 		MemoryManager::Inst().GetBuff<UploadBuffer_t>().Delete(passConstBuffMemory);
 		passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
+	}
+
+	for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	{
+		Release(arg, *Renderer::Inst().cbvSrvHeapAllocator);
 	}
 }
 
@@ -1207,7 +1253,7 @@ void Pass_PostProcess::Dispatch(GPUJobContext& context)
 {
 	CommandList& commandList = *context.commandList;
 	const FrameGraph& frameGraph = *context.frame.frameGraph;
-
+	
 	// Bind pass global argument
 	frameGraph.BindComputePassGlobalRes(passParameters.passGlobalRootArgsIndices, commandList);
 
@@ -1231,7 +1277,7 @@ void Pass_PostProcess::SetComputeState(GPUJobContext& context)
 
 	Renderer& renderer = Renderer::Inst();
 
-	ID3D12DescriptorHeap* descriptorHeaps[] = { renderer.cbvSrvHeap->GetHeapResource(),	renderer.samplerHeap->GetHeapResource() };
+	ID3D12DescriptorHeap* descriptorHeaps[] = { renderer.GetCbvSrvHeap(),	renderer.GetSamplerHeap() };
 	commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
 	commandList->SetComputeRootSignature(passParameters.rootSingature.Get());
@@ -1259,21 +1305,21 @@ void PassTask::Execute(GPUJobContext& context)
 void PassUtils::AllocateColorDepthRenderTargetViews(PassParameters& passParams)
 {
 	passParams.colorTargetViewIndex =
-		PassUtils::AllocateRenderTargetView(passParams.colorTargetName, *Renderer::Inst().rtvHeap);
+		PassUtils::AllocateRenderTargetView(passParams.colorTargetName, *Renderer::Inst().rtvHeapAllocator);
 
 	passParams.depthTargetViewIndex =
-		PassUtils::AllocateRenderTargetView(passParams.depthTargetName, *Renderer::Inst().dsvHeap);
+		PassUtils::AllocateRenderTargetView(passParams.depthTargetName, *Renderer::Inst().dsvHeapAllocator);
 }
 
 void PassUtils::ReleaseColorDepthRenderTargetViews(PassParameters& passParams)
 {
-	PassUtils::ReleaseRenderTargetView(passParams.colorTargetName, passParams.colorTargetViewIndex, *Renderer::Inst().rtvHeap);
-	PassUtils::ReleaseRenderTargetView(passParams.depthTargetName, passParams.depthTargetViewIndex, *Renderer::Inst().dsvHeap);
+	PassUtils::ReleaseRenderTargetView(passParams.colorTargetName, passParams.colorTargetViewIndex, *Renderer::Inst().rtvHeapAllocator);
+	PassUtils::ReleaseRenderTargetView(passParams.depthTargetName, passParams.depthTargetViewIndex, *Renderer::Inst().dsvHeapAllocator);
 }
 
 void PassUtils::ClearColorBackBufferCallback(XMFLOAT4 color, GPUJobContext& context, const Pass_t* pass)
 {
-	D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = Renderer::Inst().rtvHeap->GetHandleCPU(context.frame.colorBufferAndView->viewIndex);
+	D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = Renderer::Inst().GetRtvHandleCPU(context.frame.colorBufferAndView->viewIndex);
 	context.commandList->GetGPUList()->ClearRenderTargetView(colorRenderTargetView, &color.x, 0, nullptr);
 }
 
@@ -1285,13 +1331,13 @@ void PassUtils::ClearColorCallback(XMFLOAT4 color, GPUJobContext& context, const
 
 	assert(params.colorTargetViewIndex != Const::INVALID_INDEX && "ClearColorCallback invalid index");
 
-	D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = Renderer::Inst().rtvHeap->GetHandleCPU(params.colorTargetViewIndex);
+	D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = Renderer::Inst().GetRtvHandleCPU(params.colorTargetViewIndex);
 	context.commandList->GetGPUList()->ClearRenderTargetView(colorRenderTargetView, &color.x, 0, nullptr);
 }
 
 void PassUtils::ClearDepthBackBufferCallback(float value, GPUJobContext& context, const Pass_t* pass)
 {
-	D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = Renderer::Inst().dsvHeap->GetHandleCPU(context.frame.depthBufferViewIndex);
+	D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = Renderer::Inst().GetDsvHandleCPU(context.frame.depthBufferViewIndex);
 	context.commandList->GetGPUList()->ClearDepthStencilView(
 		depthRenderTargetView,
 		D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
@@ -1310,7 +1356,7 @@ void PassUtils::ClearDeptCallback(float value, GPUJobContext& context, const Pas
 
 	assert(params.depthTargetViewIndex != Const::INVALID_INDEX && "ClearDeptCallback invalid index");
 
-	D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = Renderer::Inst().dsvHeap->GetHandleCPU(params.depthTargetViewIndex);
+	D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = Renderer::Inst().GetDsvHandleCPU(params.depthTargetViewIndex);
 	context.commandList->GetGPUList()->ClearDepthStencilView(
 		depthRenderTargetView,
 		D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,

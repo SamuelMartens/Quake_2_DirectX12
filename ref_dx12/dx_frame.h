@@ -15,6 +15,8 @@
 #include "dx_texture.h"
 #include "dx_pass.h"
 #include "dx_framegraph.h"
+#include "dx_descriptorheapallocator.h"
+#include "dx_settings.h"
 
 class Semaphore;
 
@@ -87,6 +89,9 @@ public:
 	HANDLE executeCommandListEvenHandle = INVALID_HANDLE_VALUE;
 
 	std::unique_ptr<FrameGraph> frameGraph;
+	
+	std::unique_ptr<StreamingDescriptorHeapAllocator_t<Settings::FRAME_STREAMING_CBV_SRV_DESCRIPTOR_HEAP_SIZE, 
+		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV>> streamingCbvSrvAllocator = nullptr;
 
 private:
 

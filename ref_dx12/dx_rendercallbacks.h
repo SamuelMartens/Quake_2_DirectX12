@@ -4,7 +4,7 @@
 
 #include "Lib/crc32.h"
 #include "dx_pass.h"
-#include "dx_descriptorheap.h"
+#include "dx_descriptorheapallocator.h"
 #include "dx_texture.h"
 #include "dx_app.h"
 #include "dx_resourcemanager.h"
@@ -88,14 +88,14 @@ namespace RenderCallbacks
 						Texture* tex = ResourceManager::Inst().FindOrCreateTexture(texFullName.data(), ctx.jobContext);
 
 						ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
-						renderer.cbvSrvHeap->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc);
+						renderer.cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc);
 
 					}
 					else
 					{
 						ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVTexture2DNullDescription();
 
-						renderer.cbvSrvHeap->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription);
+						renderer.cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription);
 					}
 				}
 				break;
@@ -114,7 +114,7 @@ namespace RenderCallbacks
 				Texture* tex = ResourceManager::Inst().FindTexture(obj.textureKey.c_str());
 
 				ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
-				Renderer::Inst().cbvSrvHeap->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc);
+				Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc);
 			}
 			break;
 			default:
@@ -152,7 +152,7 @@ namespace RenderCallbacks
 				assert(tex != nullptr && "Not texture found for dynamic object rendering. Implement fall back");
 
 				ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
-				renderer.cbvSrvHeap->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc);
+				renderer.cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc);
 			}
 			break;
 			default:
@@ -290,7 +290,7 @@ namespace RenderCallbacks
 			assert(false && "Not implemented");
 		}
 
-		Renderer::Inst().cbvSrvHeap->AllocateDescriptor(reinterpret_cast<int&>(bindPoint), tex->buffer.Get(), &emtpySrvDesc);
+		Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(reinterpret_cast<int&>(bindPoint), tex->buffer.Get(), &emtpySrvDesc);
 	}
 
 	template<typename bT>
@@ -312,7 +312,7 @@ namespace RenderCallbacks
 			}
 
 			ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
-			Renderer::Inst().cbvSrvHeap->AllocateDescriptor(reinterpret_cast<int&>(bindPoint), tex->buffer.Get(), &emtpySrvDesc);
+			Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(reinterpret_cast<int&>(bindPoint), tex->buffer.Get(), &emtpySrvDesc);
 		}
 		break;
 		default:
@@ -361,12 +361,12 @@ namespace RenderCallbacks
 				}
 
 				ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
-				Renderer::Inst().cbvSrvHeap->AllocateDescriptor(reinterpret_cast<int&>(bindPoint), tex->buffer.Get(), &emtpySrvDesc);
+				Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(reinterpret_cast<int&>(bindPoint), tex->buffer.Get(), &emtpySrvDesc);
 			}
 			else
 			{
 				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVTexture2DNullDescription();
-				Renderer::Inst().cbvSrvHeap->AllocateDescriptor(reinterpret_cast<int&>(bindPoint), nullptr, &nullViewDescription);
+				Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(reinterpret_cast<int&>(bindPoint), nullptr, &nullViewDescription);
 			}
 		}
 		break;

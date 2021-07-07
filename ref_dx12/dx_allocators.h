@@ -3,6 +3,7 @@
 #include <vector>
 #include <mutex>
 #include <bitset>
+#include <atomic>
 
 #include "dx_utils.h"
 
@@ -11,6 +12,12 @@ class FlagAllocator
 {
 public:
 	FlagAllocator() = default;
+
+	FlagAllocator(FlagAllocator&&) = delete;
+	FlagAllocator(const FlagAllocator&) = delete;
+
+	FlagAllocator& operator=(FlagAllocator&&) = delete;
+	FlagAllocator& operator=(const FlagAllocator&) = delete;
 
 	[[nodiscard]]
 	int Allocate() 
@@ -96,6 +103,39 @@ private:
 	
 	std::mutex mutex;
 	std::bitset<SIZE> flags;
+};
+
+template<int SIZE>
+class StreamingFlagAllocator
+{
+public:
+
+	StreamingFlagAllocator() = default;
+
+	StreamingFlagAllocator(StreamingFlagAllocator&&) = delete;
+	StreamingFlagAllocator(const StreamingFlagAllocator&) = delete;
+
+	StreamingFlagAllocator& operator=(StreamingFlagAllocator&&) = delete;
+	StreamingFlagAllocator& operator=(const StreamingFlagAllocator&) = delete;
+
+
+	[[nodiscard]]
+	int Allocate(int size)
+	{
+		const int result = currentAllocationIndex.fetch_add(size);
+		assert(currentAllocationIndex < SIZE && "Streaming allocator exceeded it's maximum size");
+
+		return result;
+	}
+
+	void Reset()
+	{
+		currentAllocationIndex.store(0);
+	}
+
+private:
+
+	std::atomic<int> currentAllocationIndex = 0;
 };
 
 struct Allocation

@@ -24,7 +24,7 @@
 #include "dx_memorymanager.h"
 #include "dx_jobmultithreading.h"
 #include "dx_rendercallbacks.h"
-#include "dx_descriptorheap.h"
+#include "dx_descriptorheapallocator.h"
 
 #ifdef max
 #undef max
@@ -288,6 +288,10 @@ void Renderer::InitDx()
 
 	CreateDescriptorHeaps();
 	
+	CreateDescriptorHeapsAllocators();
+
+	InitDescriptorSizes();
+
 	CreateSwapChainBuffersAndViews();
 
 	CreateTextureSampler();
@@ -423,17 +427,63 @@ void Renderer::InitCommandListsBuffer()
 
 void Renderer::CreateDescriptorHeaps()
 {
-	rtvHeap = std::make_unique<std::remove_reference_t<decltype(*rtvHeap)>>
-		(GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV), D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
+	D3D12_DESCRIPTOR_HEAP_DESC heapDesc;
 
-	dsvHeap = std::make_unique<std::remove_reference_t<decltype(*dsvHeap)>>
-		(GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV), D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
+	heapDesc.NumDescriptors = Settings::RTV_DTV_DESCRIPTOR_HEAP_SIZE;
+	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	heapDesc.NodeMask = 0;
 
-	cbvSrvHeap = std::make_unique<std::remove_reference_t<decltype(*cbvSrvHeap)>>
-		(GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV), D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateDescriptorHeap(
+		&heapDesc,
+		IID_PPV_ARGS(rtvHeap.GetAddressOf())));
 
-	samplerHeap = std::make_unique<std::remove_reference_t<decltype(*samplerHeap)>>
-		(GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER), D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
+	heapDesc.NumDescriptors = Settings::RTV_DTV_DESCRIPTOR_HEAP_SIZE;
+	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateDescriptorHeap(
+		&heapDesc,
+		IID_PPV_ARGS(dsvHeap.GetAddressOf())));
+
+	heapDesc.NumDescriptors = Settings::CBV_SRV_DESCRIPTOR_HEAP_SIZE +
+		Settings::FRAMES_NUM * Settings::FRAME_STREAMING_CBV_SRV_DESCRIPTOR_HEAP_SIZE;
+	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateDescriptorHeap(
+		&heapDesc,
+		IID_PPV_ARGS(cbvSrvHeap.GetAddressOf())));
+
+	heapDesc.NumDescriptors = Settings::SAMPLER_DESCRIPTOR_HEAP_SIZE;
+	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
+	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateDescriptorHeap(
+		&heapDesc,
+		IID_PPV_ARGS(samplerHeap.GetAddressOf())));
+}
+
+void Renderer::InitDescriptorSizes()
+{
+	rtvDescriptorSize = GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+	dsvDescriptorSize = GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+	
+	cbvSrvDescriptorSize = GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	
+	samplerDescriptorSize = GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+}
+
+void Renderer::CreateDescriptorHeapsAllocators()
+{
+	rtvHeapAllocator = std::make_unique<std::remove_reference_t<decltype(*rtvHeapAllocator)>>(0);
+
+	dsvHeapAllocator = std::make_unique<std::remove_reference_t<decltype(*dsvHeapAllocator)>>(0);
+
+	cbvSrvHeapAllocator = std::make_unique<std::remove_reference_t<decltype(*cbvSrvHeapAllocator)>>(0);
+
+	samplerHeapAllocator = std::make_unique<std::remove_reference_t<decltype(*samplerHeapAllocator)>>(0);
 }
 
 void Renderer::CreateSwapChainBuffersAndViews()
@@ -445,7 +495,7 @@ void Renderer::CreateSwapChainBuffersAndViews()
 		// Get i-th buffer in a swap chain
 		ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&buffView.buffer)));
 
-		buffView.viewIndex = rtvHeap->Allocate(buffView.buffer.Get());
+		buffView.viewIndex = rtvHeapAllocator->Allocate(buffView.buffer.Get());
 	}
 }
 
@@ -584,6 +634,66 @@ void Renderer::RebuildFrameGraph()
 	}
 }
 
+ID3D12DescriptorHeap* Renderer::GetRtvHeap()
+{
+	return rtvHeap.Get();
+}
+
+ID3D12DescriptorHeap* Renderer::GetDsvHeap()
+{
+	return dsvHeap.Get();
+}
+
+ID3D12DescriptorHeap* Renderer::GetCbvSrvHeap()
+{
+	return cbvSrvHeap.Get();
+}
+
+ID3D12DescriptorHeap* Renderer::GetSamplerHeap()
+{
+	return samplerHeap.Get();
+}
+
+CD3DX12_CPU_DESCRIPTOR_HANDLE Renderer::GetRtvHandleCPU(int index) const
+{
+	return CD3DX12_CPU_DESCRIPTOR_HANDLE(rtvHeap->GetCPUDescriptorHandleForHeapStart(), index, rtvDescriptorSize);
+}
+
+CD3DX12_GPU_DESCRIPTOR_HANDLE Renderer::GetRtvHandleGPU(int index) const
+{
+	return CD3DX12_GPU_DESCRIPTOR_HANDLE(rtvHeap->GetGPUDescriptorHandleForHeapStart(), index, rtvDescriptorSize);
+}
+
+CD3DX12_CPU_DESCRIPTOR_HANDLE Renderer::GetDsvHandleCPU(int index) const
+{
+	return CD3DX12_CPU_DESCRIPTOR_HANDLE(dsvHeap->GetCPUDescriptorHandleForHeapStart(), index, dsvDescriptorSize);
+}
+
+CD3DX12_GPU_DESCRIPTOR_HANDLE Renderer::GetDsvHandleGPU(int index) const
+{
+	return CD3DX12_GPU_DESCRIPTOR_HANDLE(dsvHeap->GetGPUDescriptorHandleForHeapStart(), index, dsvDescriptorSize);
+}
+
+CD3DX12_CPU_DESCRIPTOR_HANDLE Renderer::GetCbvSrvHandleCPU(int index) const
+{
+	return CD3DX12_CPU_DESCRIPTOR_HANDLE(cbvSrvHeap->GetCPUDescriptorHandleForHeapStart(), index, cbvSrvDescriptorSize);
+}
+
+CD3DX12_GPU_DESCRIPTOR_HANDLE Renderer::GetCbvSrvHandleGPU(int index) const
+{
+	return CD3DX12_GPU_DESCRIPTOR_HANDLE(cbvSrvHeap->GetGPUDescriptorHandleForHeapStart(), index, cbvSrvDescriptorSize);
+}
+
+CD3DX12_CPU_DESCRIPTOR_HANDLE Renderer::GetSamplerHandleCPU(int index) const
+{
+	return CD3DX12_CPU_DESCRIPTOR_HANDLE(samplerHeap->GetCPUDescriptorHandleForHeapStart(), index, samplerDescriptorSize);
+}
+
+CD3DX12_GPU_DESCRIPTOR_HANDLE Renderer::GetSamplerHandleGPU(int index) const
+{
+	return CD3DX12_GPU_DESCRIPTOR_HANDLE(samplerHeap->GetGPUDescriptorHandleForHeapStart(), index, samplerDescriptorSize);
+}
+
 Frame& Renderer::GetMainThreadFrame()
 {
 	ASSERT_MAIN_THREAD;
@@ -655,10 +765,11 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 
 	// Remove used draw calls
 	frame.uiDrawCalls.clear();
+	frame.streamingCbvSrvAllocator->Reset();
 
 	if (frame.frameGraph != nullptr)
 	{
-		frame.frameGraph->ReleasePerFrameResources();
+		frame.frameGraph->ReleasePerFrameResources(frame);
 	}
 }
 
@@ -668,9 +779,9 @@ void Renderer::AcquireMainThreadFrame()
 
 	assert(currentFrameIndex == Const::INVALID_INDEX && "Trying to acquire frame, while there is already frame acquired.");
 
-	// m_currentFrameIndex - is basically means index of frame that is used by main thread.
+	// currentFrameIndex - index of frame that is used by main thread.
 	//						 and also indicates if new frame shall be used
-	// isInUse - is in general means, if any thread is using this frame.
+	// isInUse - if any thread is using this frame.
 
 	std::vector <std::shared_ptr<Semaphore>> framesFinishedSemaphores;
 
@@ -792,7 +903,7 @@ void Renderer::CreateTextureSampler()
 	samplerDescRef.MipLODBias = 1;
 	samplerDescRef.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
 
-	samplerHeap->Allocate(nullptr, &samplerDesc);
+	samplerHeapAllocator->Allocate(nullptr, &samplerDesc);
 }
 
 int Renderer::GetMSAASampleCount() const
