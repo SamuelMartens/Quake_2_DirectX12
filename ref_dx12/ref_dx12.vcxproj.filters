@@ -16,6 +16,12 @@
     <Filter Include="Header Files\Lib">
       <UniqueIdentifier>{48b60800-17fd-47b8-bc00-b2a3de1a9368}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\Lib\imgui">
+      <UniqueIdentifier>{07f0e866-11b5-4390-aa36-a02570fcce93}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Lib">
+      <UniqueIdentifier>{8f85d672-8806-4bc5-a597-df3965d0866b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\qcommon\qcommon.h">
@@ -123,6 +129,30 @@
     <ClInclude Include="dx_light.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Lib\imgui\imgui.h">
+      <Filter>Header Files\Lib\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Lib\imgui\imgui_internal.h">
+      <Filter>Header Files\Lib\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Lib\imgui\imstb_rectpack.h">
+      <Filter>Header Files\Lib\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Lib\imgui\imstb_textedit.h">
+      <Filter>Header Files\Lib\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Lib\imgui\imstb_truetype.h">
+      <Filter>Header Files\Lib\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Lib\imgui\backends\imgui_impl_dx12.h">
+      <Filter>Header Files\Lib\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Lib\imgui\backends\imgui_impl_win32.h">
+      <Filter>Header Files\Lib\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Lib\imgui\imconfig.h">
+      <Filter>Header Files\Lib\imgui</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ref_dx12.def">
@@ -214,6 +244,27 @@
     </ClCompile>
     <ClCompile Include="dx_light.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Lib\imgui\imgui.cpp">
+      <Filter>Source Files\Lib</Filter>
+    </ClCompile>
+    <ClCompile Include="Lib\imgui\imgui_demo.cpp">
+      <Filter>Source Files\Lib</Filter>
+    </ClCompile>
+    <ClCompile Include="Lib\imgui\backends\imgui_impl_dx12.cpp">
+      <Filter>Source Files\Lib</Filter>
+    </ClCompile>
+    <ClCompile Include="Lib\imgui\backends\imgui_impl_win32.cpp">
+      <Filter>Source Files\Lib</Filter>
+    </ClCompile>
+    <ClCompile Include="Lib\imgui\imgui_tables.cpp">
+      <Filter>Source Files\Lib</Filter>
+    </ClCompile>
+    <ClCompile Include="Lib\imgui\imgui_widgets.cpp">
+      <Filter>Source Files\Lib</Filter>
+    </ClCompile>
+    <ClCompile Include="Lib\imgui\imgui_draw.cpp">
+      <Filter>Source Files\Lib</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

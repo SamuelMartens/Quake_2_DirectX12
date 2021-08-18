@@ -163,6 +163,7 @@ public:
 
 	/* Job  */
 	void EndFrameJob(GPUJobContext& context);
+	void DrawDebugGuiJob(GPUJobContext& context);
 
 	std::vector<int> BuildVisibleDynamicObjectsList(const Camera& camera, const std::vector<entity_t>& entities) const;
 
@@ -200,13 +201,17 @@ private:
 
 	void CreateTextureSampler();
 
+	/* Initialize third party libraries */
+
+	void InitDebugGui();
+
 	AssertBufferAndView& GetNextSwapChainBufferAndView();
 	
 	void PresentAndSwapBuffers(Frame& frame);
 
-	/* Shutdown and clean up Win32 specific stuff */
+	/* Shutdown and clean up */
 	void ShutdownWin32();
-
+	
 	/* Geometry loading */
 	[[nodiscard]]
 	DynamicObjectModel CreateDynamicGraphicObjectFromGLModel(const model_t* model, GPUJobContext& context);
@@ -217,6 +222,7 @@ private:
 	void FindImageScaledSizes(int width, int height, int& scaledWidth, int& scaledHeight) const;
 	bool IsVisible(const entity_t& entity, const Camera& camera) const;
 	void RegisterObjectsAtFrameGraphs();
+	static LONG WINAPI MainWndProcWrapper(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 	/* Frames */
 	void SubmitFrame(Frame& frame);
@@ -295,4 +301,8 @@ private:
 	/* Level registration data */
 	std::unique_ptr<GPUJobContext> staticModelRegContext;
 	std::unique_ptr<GPUJobContext> dynamicModelRegContext;
+
+	/* ImGui data */
+	int imGuiFontTexDescHandle = Const::INVALID_BUFFER_HANDLER;
+	WNDPROC standardWndProc = nullptr;
 };

@@ -461,6 +461,11 @@ void FrameGraph::Execute(Frame& frame)
 	{
 		return &context;
 	});
+	// NOTE: should always be last job, before submitting frame, because of sloppy Render Target
+	// state transition
+	GPUJobContext drawDebugGuiJobContext = renderer.CreateContext(frame);
+
+	endFrameDependency.push_back(&drawDebugGuiJobContext);
 
 	endFrameJobContext.CreateDependencyFrom(endFrameDependency);
 
@@ -498,7 +503,12 @@ void FrameGraph::Execute(Frame& frame)
 		}));
 	}
 
-	jobQueue.Enqueue(Job([endFrameJobContext, &renderer, this]() mutable
+	jobQueue.Enqueue(Job([drawDebugGuiJobContext, &renderer]() mutable 
+	{
+		renderer.DrawDebugGuiJob(drawDebugGuiJobContext);
+	}));
+
+	jobQueue.Enqueue(Job([endFrameJobContext, &renderer]() mutable
 	{
 		renderer.EndFrameJob(endFrameJobContext);
 	}));

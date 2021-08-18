@@ -11,6 +11,9 @@
 #include <tuple>
 
 
+#include "Lib/imgui/imgui.h"
+#include "Lib/imgui/backends/imgui_impl_dx12.h"
+#include "Lib/imgui/backends/imgui_impl_win32.h"
 #include "../win32/winquake.h"
 #include "dx_utils.h"
 #include "dx_shaderdefinitions.h"
@@ -30,9 +33,10 @@
 #undef max
 #endif
 
-
 namespace
 {
+	std::mutex drawDebugGuiMutex;
+
 	inline void PushBackUvInd(const float* uvInd, std::vector<int>& indices, std::vector<XMFLOAT2>& texCoords)
 	{
 		texCoords.emplace_back(XMFLOAT2(uvInd[0], uvInd[1]));
@@ -211,9 +215,11 @@ void Renderer::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 
 	WNDCLASS windowClass;
 	RECT	 screenRect;
-
+	
+	standardWndInputFunc = WindowProc;
+	
 	windowClass.style			= 0;
-	windowClass.lpfnWndProc	= WindowProc;
+	windowClass.lpfnWndProc	= MainWndProcWrapper;
 	windowClass.cbClsExtra		= 0;
 	windowClass.cbWndExtra		= 0;
 	windowClass.hInstance		= hInstance;
@@ -301,6 +307,8 @@ void Renderer::InitDx()
 	InitCommandListsBuffer();
 
 	InitUtils();
+
+	InitDebugGui();
 
 	// ------- Frames init -----
 
@@ -713,7 +721,7 @@ void Renderer::SubmitFrame(Frame& frame)
 		const int commandListIndex = frame.acquiredCommandListsIndices[i];
 		commandLists[i] = commandListBuffer.commandLists[commandListIndex].GetGPUList();
 	}
-	
+
 	commandQueue->ExecuteCommandLists(commandLists.size(), commandLists.data());
 
 	assert(frame.executeCommandListFenceValue == -1 && frame.executeCommandListEvenHandle == INVALID_HANDLE_VALUE &&
@@ -906,6 +914,29 @@ void Renderer::CreateTextureSampler()
 	samplerHeapAllocator->Allocate(nullptr, &samplerDesc);
 }
 
+void Renderer::InitDebugGui()
+{
+	assert(hWindows != nullptr &&
+		cbvSrvHeap != nullptr &&
+		Infr::Inst().GetDevice() != nullptr &&
+	"ImGUI init error. Some required components are not initialized");
+
+	imGuiFontTexDescHandle = cbvSrvHeapAllocator->Allocate();
+
+	ImGui::CreateContext();
+
+	ImGui::StyleColorsClassic();
+
+	ImGui_ImplWin32_Init(hWindows);
+	ImGui_ImplDX12_Init(
+		Infr::Inst().GetDevice().Get(),
+		Settings::FRAMES_NUM,
+		Settings::BACK_BUFFER_FORMAT,
+		cbvSrvHeap.Get(),
+		GetCbvSrvHandleCPU(imGuiFontTexDescHandle),
+		GetCbvSrvHandleGPU(imGuiFontTexDescHandle));
+}
+
 int Renderer::GetMSAASampleCount() const
 {
 	return Settings::MSAA_ENABLED ? Settings::MSAA_SAMPLE_COUNT : 1;
@@ -972,6 +1003,25 @@ void Renderer::RegisterObjectsAtFrameGraphs()
 	}
 }
 
+
+// Forward declare message handler from imgui_impl_win32.cpp
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+LONG WINAPI Renderer::MainWndProcWrapper(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	if constexpr (Settings::DEBUG_GUI_ENABLED == true)
+	{
+		if (ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam) == 1)
+		{
+			return 1;
+		}
+	}
+
+	assert(Renderer::Inst().standardWndInputFunc != nullptr && "Standard input function is not found");
+
+	return Renderer::Inst().standardWndInputFunc(hWnd, uMsg, wParam, lParam);
+}
+
 std::vector<int> Renderer::BuildVisibleDynamicObjectsList(const Camera& camera, const std::vector<entity_t>& entities) const
 {
 	std::vector<int> visibleObjects;
@@ -1017,6 +1067,67 @@ void Renderer::EndFrameJob(GPUJobContext& context)
 	ResourceManager::Inst().DeleteRequestedResources();
 
 	Logs::Log(Logs::Category::Job, "EndFrame job ended");
+}
+
+void Renderer::DrawDebugGuiJob(GPUJobContext& context)
+{
+	JOB_GUARD(context);
+
+	context.WaitDependency();
+
+	if constexpr (Settings::DEBUG_GUI_ENABLED == false)
+	{
+		return;
+	}
+
+	ID3D12GraphicsCommandList* gpuCommanList = context.commandList->GetGPUList();
+
+	Diagnostics::BeginEvent(gpuCommanList, "Debug GUI");
+	Logs::Log(Logs::Category::Job, "DrawDebugGui job started");
+
+	// ImGui is not thread safe so I have to block here. Another choice would be to create a few contexts for every
+	std::scoped_lock<std::mutex> lock(drawDebugGuiMutex);
+	
+	ImGui_ImplDX12_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+
+	{
+		ImGui::Begin("Debug GUI");                        
+		ImGui::End();
+	}
+	
+	ImGui::Render();
+
+	// This job should be not intrusive, i.e. there should be no problems to remove it.
+	// That's why this weird resource transition is here. Alternatively I can make this job a pass
+	CD3DX12_RESOURCE_BARRIER toRenderTargetBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		context.frame.colorBufferAndView->buffer.Get(),
+		D3D12_RESOURCE_STATE_PRESENT,
+		D3D12_RESOURCE_STATE_RENDER_TARGET
+	);
+	gpuCommanList->ResourceBarrier(1, &toRenderTargetBarrier);
+
+	D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = GetRtvHandleCPU(context.frame.colorBufferAndView->viewIndex);
+	D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = GetDsvHandleCPU(context.frame.depthBufferViewIndex);
+
+	gpuCommanList->OMSetRenderTargets(1, &colorRenderTargetView, true, &depthRenderTargetView);
+
+
+	ID3D12DescriptorHeap* descriptorHeaps[] = { GetCbvSrvHeap(), GetSamplerHeap() };
+	gpuCommanList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), gpuCommanList);
+
+	CD3DX12_RESOURCE_BARRIER toDefaultStateBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		context.frame.colorBufferAndView->buffer.Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PRESENT
+	);
+	gpuCommanList->ResourceBarrier(1, &toDefaultStateBarrier);
+
+	Logs::Log(Logs::Category::Job, "DrawDebugGui job ended");
+	Diagnostics::EndEvent(gpuCommanList);
 }
 
 void Renderer::ShutdownWin32()

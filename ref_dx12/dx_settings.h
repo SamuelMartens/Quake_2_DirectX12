@@ -20,7 +20,7 @@ namespace Settings
 	constexpr int		 RTV_DTV_DESCRIPTOR_HEAP_SIZE = 16;
 	constexpr int		 SAMPLER_DESCRIPTOR_HEAP_SIZE = 16;
 
-	constexpr int		 COMMAND_LISTS_PER_FRAME = 8;
+	constexpr int		 COMMAND_LISTS_PER_FRAME = 9;
 	// Try to avoid to set up any particular number for this, instead change command lists per frame
 	constexpr int		 COMMAND_LISTS_NUM = COMMAND_LISTS_PER_FRAME * FRAMES_NUM;
 
@@ -56,4 +56,7 @@ namespace Settings
 #else
 	constexpr UINT		SHADER_COMPILATION_FLAGS = 0;
 #endif
+
+	/* Debug GUI stuff */
+	constexpr bool DEBUG_GUI_ENABLED = true;
 }
