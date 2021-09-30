@@ -12,7 +12,131 @@
 const XMFLOAT4 Utils::axisX = XMFLOAT4(1.0, 0.0, 0.0, 0.0);
 const XMFLOAT4 Utils::axisY = XMFLOAT4(0.0, 1.0, 0.0, 0.0);
 const XMFLOAT4 Utils::axisZ = XMFLOAT4(0.0, 0.0, 1.0, 0.0);
- 
+
+namespace
+{
+	XMFLOAT4 MidPoint(const XMFLOAT4& v0, const XMFLOAT4& v1)
+	{
+		XMFLOAT4 midPoint;
+		XMStoreFloat4(&midPoint,  0.5f * (XMLoadFloat4(&v0) + XMLoadFloat4(&v1)));
+
+		return midPoint;
+	}
+
+	void Subdivide(std::vector<XMFLOAT4>& vertices)
+	{
+		// Save a copy of the input geometry.
+		std::vector<XMFLOAT4> inputCopy = vertices;
+
+		vertices.resize(0);
+
+		//       v1
+		//       *
+		//      / \
+		//     /   \
+		//  m0*-----*m1
+		//   / \   / \
+		//  /   \ /   \
+		// *-----*-----*
+		// v0    m2     v2
+
+		const int numTris = static_cast<int>(inputCopy.size() / 3);
+		for (int i = 0; i < numTris; ++i)
+		{
+			XMFLOAT4 v0 = inputCopy[i * 3 + 0];
+			XMFLOAT4 v1 = inputCopy[i * 3 + 1];
+			XMFLOAT4 v2 = inputCopy[i * 3 + 2];
+
+			//
+			// Generate the midpoints.
+			//
+
+			XMFLOAT4 m0 = MidPoint(v0, v1);
+			XMFLOAT4 m1 = MidPoint(v1, v2);
+			XMFLOAT4 m2 = MidPoint(v0, v2);
+
+			//
+			// Add new geometry.
+			//
+
+			vertices.push_back(v0);
+			vertices.push_back(m0);
+			vertices.push_back(m2);
+
+			vertices.push_back(m0);
+			vertices.push_back(m1);
+			vertices.push_back(m2);
+
+			vertices.push_back(m2);
+			vertices.push_back(m1);
+			vertices.push_back(v2);
+
+			vertices.push_back(m0);
+			vertices.push_back(v1);
+			vertices.push_back(m1);
+		}
+	}
+}
+
+std::vector<XMFLOAT4> Utils::CreateSphere(float radius, int numSubdivisions /*= 1*/)
+{
+	std::vector<XMFLOAT4> vertices;
+
+	// Put a cap on the number of subdivisions.
+	numSubdivisions = std::min<int>(numSubdivisions, 6);
+
+	// Approximate a sphere by tessellating an icosahedron.
+
+	const float X = 0.525731f;
+	const float Z = 0.850651f;
+
+	const XMFLOAT4 pos[12] =
+	{
+		XMFLOAT4(-X, 0.0f, Z, 1.0f),  XMFLOAT4(X, 0.0f, Z, 1.0f),
+		XMFLOAT4(-X, 0.0f, -Z, 1.0f), XMFLOAT4(X, 0.0f, -Z, 1.0f),
+		XMFLOAT4(0.0f, Z, X, 1.0f),   XMFLOAT4(0.0f, Z, -X, 1.0f),
+		XMFLOAT4(0.0f, -Z, X, 1.0f),  XMFLOAT4(0.0f, -Z, -X, 1.0f),
+		XMFLOAT4(Z, X, 0.0f, 1.0f),   XMFLOAT4(-Z, X, 0.0f, 1.0f),
+		XMFLOAT4(Z, -X, 0.0f, 1.0f),  XMFLOAT4(-Z, -X, 0.0f, 1.0f)
+	};
+
+	constexpr int icosahedronVertsNum = 60;
+
+	const int indices[icosahedronVertsNum] =
+	{
+		1,4,0,  4,9,0,  4,5,9,  8,5,4,  1,8,4,
+		1,10,8, 10,3,8, 8,3,5,  3,2,5,  3,7,2,
+		3,10,7, 10,6,7, 6,11,7, 6,0,11, 6,1,0,
+		10,1,6, 11,0,9, 2,11,9, 5,2,9,  11,2,7
+	};
+
+	vertices.reserve(icosahedronVertsNum);
+
+	for (const int index : indices)
+	{
+		vertices.push_back(pos[index]);
+	}
+
+	for (int i = 0; i < numSubdivisions; ++i)
+	{
+		Subdivide(vertices);
+	}
+
+	// Project vertices onto sphere and scale.
+	for (int i = 0; i < vertices.size(); ++i)
+	{
+		// Project onto unit sphere.
+		XMVECTOR n = XMVector4Normalize(XMVectorSetW(XMLoadFloat4(&vertices[i]), 0.0f));
+
+		// Project onto sphere.
+		XMVECTOR p = radius * n;
+
+		XMStoreFloat4(&vertices[i], XMVectorSetW(p, 1.0f));
+	}
+
+	return vertices;
+}
+
 bool Utils::IsAABBBehindPlane(const Plane& plane, const AABB& aabb)
 {
 	XMVECTOR sseAABBMin = XMLoadFloat4(&aabb.bbMin);

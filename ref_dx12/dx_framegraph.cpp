@@ -5,6 +5,7 @@
 #include "dx_memorymanager.h"
 #include "dx_rendercallbacks.h"
 #include "dx_diagnostics.h"
+#include "dx_lightbaker.h"
 
 namespace
 {
@@ -461,6 +462,7 @@ void FrameGraph::Execute(Frame& frame)
 	{
 		return &context;
 	});
+
 	// NOTE: should always be last job, before submitting frame, because of sloppy Render Target
 	// state transition
 	GPUJobContext drawDebugGuiJobContext = renderer.CreateContext(frame);
@@ -672,6 +674,9 @@ void FrameGraph::UpdateGlobalResources(GPUJobContext& context)
 	RegisterGlobalObjectsResDynamicEntities(context);
 	UpdateGlobalObjectsResDynamic(context);
 
+	RegisterGlobalObjectsResDebug(context);
+	UpdateGlobalObjectsResDebug(context);
+
 	UpdateGlobalPasslRes(context);
 
 	Diagnostics::EndEvent(context.commandList->GetGPUList());
@@ -705,6 +710,14 @@ void FrameGraph::ReleasePerFrameResources(Frame& frame)
 	}
 	std::get<static_cast<int>(Parsing::PassInputType::Dynamic)>(objGlobalRes).clear();
 
+	for (std::vector<RootArg::Arg_t>& argList : std::get<static_cast<int>(Parsing::PassInputType::Debug)>(objGlobalRes))
+	{
+		for (RootArg::Arg_t& arg : argList)
+		{
+			RootArg::Release(arg, *frame.streamingCbvSrvAllocator);
+		}
+	}
+	std::get<static_cast<int>(Parsing::PassInputType::Debug)>(objGlobalRes).clear();
 
 	auto& updateBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
@@ -724,6 +737,15 @@ void FrameGraph::ReleasePerFrameResources(Frame& frame)
 	{
 		updateBuff.Delete(perObjectGlobalMemoryDynamic);
 		perObjectGlobalMemoryDynamic = Const::INVALID_BUFFER_HANDLER;
+	}
+
+	BufferHandler& perObjectGlobalMemoryDebug =
+		objGlobalResMemory[static_cast<int>(Parsing::PassInputType::Debug)];
+
+	if (perObjectGlobalMemoryDebug != Const::INVALID_BUFFER_HANDLER)
+	{
+		updateBuff.Delete(perObjectGlobalMemoryDebug);
+		perObjectGlobalMemoryDebug = Const::INVALID_BUFFER_HANDLER;
 	}
 
 	if (particlesVertexMemory != Const::INVALID_BUFFER_HANDLER)
@@ -945,6 +967,77 @@ void FrameGraph::RegisterParticles(GPUJobContext& context)
 	updateVertexBufferArgs.byteSize = vertexBufferSize;
 	updateVertexBufferArgs.alignment = 0;
 	ResourceManager::Inst().UpdateUploadHeapBuff(updateVertexBufferArgs);
+}
+
+void FrameGraph::RegisterGlobalObjectsResDebug(GPUJobContext& context)
+{
+	if (context.frame.drawDebugGeometry == false)
+	{
+		return;
+	}
+
+	// Figure out all clusters we want to generate for
+	const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(context.frame.camera.position);
+	assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
+
+	//#TODO so far generate bake points only for current cluster, if it's not alright,
+	// I can start generate points for PVS
+	const std::vector<XMFLOAT4> bakePoints = LightBaker::Inst().GenerateClusterBakePoints(cameraNode.cluster);
+	
+	assert(bakePoints.empty() == false && "RegisterGlobalObjectsResDebug failed, bakePoints are empty");
+
+	BufferHandler& debugObjMemory = objGlobalResMemory[static_cast<int>(Parsing::PassInputType::Debug)];
+
+	assert(debugObjMemory == Const::INVALID_BUFFER_HANDLER && "Debug objects memory should be cleaned up");
+
+	std::vector<std::vector<RootArg::Arg_t>>& debugObjRes = std::get<static_cast<int>(Parsing::PassInputType::Debug)>(objGlobalRes);
+	const std::vector<RootArg::Arg_t>& debugObjResTemplate = std::get<static_cast<int>(Parsing::PassInputType::Debug)>(objGlobalResTemplate);
+
+	assert(debugObjRes.empty() == true && "Debug Res should be cleaned up");
+
+	RenderCallbacks::RegisterGlobalObjectContext regContext = { context };
+
+	// Register 
+	for (const XMFLOAT4& bakePoint : bakePoints)
+	{
+		std::vector<RootArg::Arg_t>& objRes = debugObjRes.emplace_back(debugObjResTemplate);
+
+		_RegisterGlobalObjectRes(DebugObject(), objRes, regContext, *context.frame.streamingCbvSrvAllocator);
+	}
+
+	// Allocate and attach memory
+	_AllocateGlobalObjectConstMem<Parsing::PassInputType::Debug>(bakePoints.size(),
+		ResContext{ objGlobalResTemplate, objGlobalRes, objGlobalResMemory, perObjectGlobalMemorySize });
+
+	int objectOffset = 0;
+	BufferHandler objectGlobalMemory = objGlobalResMemory[static_cast<int>(Parsing::PassInputType::Debug)];
+	const int objSize = perObjectGlobalMemorySize[static_cast<int>(Parsing::PassInputType::Debug)];
+
+	for (std::vector<RootArg::Arg_t>& args : debugObjRes)
+	{
+		RootArg::AttachConstBufferToArgs(args, objectOffset, objectGlobalMemory);
+		objectOffset += objSize;
+	}
+
+}
+
+void FrameGraph::UpdateGlobalObjectsResDebug(GPUJobContext& context)
+{
+	if (context.frame.drawDebugGeometry == false)
+	{
+		return;
+	}
+
+	// Figure out all clusters we want to generate for
+	const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(context.frame.camera.position);
+	assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
+
+	//#TODO so far generate bake points only for current cluster, if it's not alright,
+	// I can start generate points for PVS
+	const std::vector<XMFLOAT4> bakePoints = LightBaker::Inst().GenerateClusterBakePoints(cameraNode.cluster);
+	// Passing dummy vector here since debug object doesn't contain anything
+	_UpdateGlobalObjectsRes<Parsing::PassInputType::Debug>(std::vector<DebugObject>(bakePoints.size()), context,
+		ResContext{ objGlobalResTemplate, objGlobalRes, objGlobalResMemory, perObjectGlobalMemorySize });
 }
 
 void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)

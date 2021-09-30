@@ -159,6 +159,9 @@ namespace RenderCallbacks
 				break;
 			}
 		}
+		else if constexpr (std::is_same_v<objT, DebugObject>)
+		{
+		}
 		else
 		{
 			assert(false && "RegisterGlobalObject unknown object type");
@@ -255,6 +258,9 @@ namespace RenderCallbacks
 			default:
 				break;
 			}
+		}
+		else if constexpr (std::is_same_v<objT, DebugObject>)
+		{
 		}
 		else
 		{
@@ -458,6 +464,19 @@ namespace RenderCallbacks
 				break;
 			}
 		}
+		else if constexpr (std::is_same_v<objT, DebugObject>)
+		{
+			switch (passName)
+			{
+			case HASH("Debug"):
+			{
+
+			}
+			break;
+			default:
+				break;
+			}
+		}
 		else
 		{
 			assert(false && "RegisterLocalObject unknown type");
@@ -490,6 +509,19 @@ namespace RenderCallbacks
 			switch (passName)
 			{
 			case HASH("Static"):
+			{
+
+			}
+			break;
+			default:
+				break;
+			}
+		}
+		else if constexpr (std::is_same_v<objT, DebugObject>)
+		{
+			switch (passName)
+			{
+			case HASH("Debug"):
 			{
 
 			}

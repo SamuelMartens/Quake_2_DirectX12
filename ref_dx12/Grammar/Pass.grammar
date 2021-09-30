@@ -7,7 +7,7 @@ ShaderList  <- T( < Shader* > )
 # --- Pass properties
 PassProps               <- T( 'PassProperties' _ '{' < ( PassInput / PassVertAttr / PassVertAttrSlots / PassThreadGroups )* > '}' )
 PassInput               <- T( 'PassInput' _ ':' PassInputIdent )
-PassInputIdent          <- _ 'Static' _ / _ 'Dynamic' _ / _ 'Particles' _ / _ 'UI' _ / _ 'PostProcess' _
+PassInputIdent          <- _ 'Static' _ / _ 'Dynamic' _ / _ 'Particles' _ / _ 'UI' _ / _ 'PostProcess' _ / _ 'Debug' _
 PassVertAttr            <- T( 'PassVertAttr' _ ':' Ident )
 PassVertAttrSlots       <- T( 'PassSlotLayout' _ ':' VertAttrSlots )
 PassThreadGroups        <- T( 'PassThreadGroups' _ ':' Int Comma Int Comma Int )

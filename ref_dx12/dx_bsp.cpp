@@ -35,7 +35,7 @@ std::vector<int> BSPTree::GetVisibleObjectsIndices(const Camera& camera) const
 		return visibleObjects;
 	}
 
-	const BSPNode& cameraNode = GetPointInNode(camera.position, nodes.front());
+	const BSPNode& cameraNode = GetNodeWithPoint(camera.position, nodes.front());
 
 	assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
 
@@ -106,7 +106,50 @@ int BSPTree::AddNode(const mnode_t& sourceNode, int& meshesNum)
 	return addedNodeIndex;
 }
 
-const BSPNode& BSPTree::GetPointInNode(const XMFLOAT4& point, const BSPNode& node) const
+Utils::AABB BSPTree::GetClusterAABB(const int clusterIndex) const
+{
+	Utils::AABB clusterAABB;
+
+	XMVECTOR sseAABBMax = XMLoadFloat4(&clusterAABB.bbMax);
+	XMVECTOR sseAABBMin = XMLoadFloat4(&clusterAABB.bbMin);
+
+	for (const BSPNode& node : nodes)
+	{
+		if (node.IsLeaf() == false || node.cluster != clusterIndex)
+		{
+			continue;
+		}
+
+		sseAABBMax = XMVectorMax(sseAABBMax, XMLoadFloat4(&node.aabb.bbMax));
+		sseAABBMin = XMVectorMin(sseAABBMin, XMLoadFloat4(&node.aabb.bbMin));
+	}
+
+	assert(static_cast<bool>(XMVectorGetX(XMVectorEqual(sseAABBMax, sseAABBMin))) == false && "Cluster AABB is invalid");
+
+	XMStoreFloat4(&clusterAABB.bbMax, sseAABBMax);
+	XMStoreFloat4(&clusterAABB.bbMin, sseAABBMin);
+	
+	return clusterAABB;
+}
+
+std::set<int> BSPTree::GetClustersSet() const
+{
+	std::set<int> clusters;
+
+	for (const BSPNode& node : nodes)
+	{
+		if (node.cluster == Const::INVALID_INDEX)
+		{
+			continue;
+		}
+
+		clusters.emplace(node.cluster);
+	}
+
+	return clusters;
+}
+
+const BSPNode& BSPTree::GetNodeWithPoint(const XMFLOAT4& point, const BSPNode& node) const
 {
 	// Only leaves have valid cluster values
 	if (node.IsLeaf())
@@ -121,7 +164,12 @@ const BSPNode& BSPTree::GetPointInNode(const XMFLOAT4& point, const BSPNode& nod
 
 	assert(childrenNodeInt != Const::INVALID_INDEX && "GetPointInNode failed. Invalid children node index");
 
-	return GetPointInNode(point, nodes[childrenNodeInt]);
+	return GetNodeWithPoint(point, nodes[childrenNodeInt]);
+}
+
+const BSPNode& BSPTree::GetNodeWithPoint(const XMFLOAT4& point) const
+{
+	return GetNodeWithPoint(point, nodes.front());
 }
 
 std::vector<bool> BSPTree::DecompressClusterVisibility(int cluster) const

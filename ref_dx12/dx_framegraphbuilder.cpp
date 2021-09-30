@@ -1176,6 +1176,10 @@ void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
 		_AddRootArg<Parsing::PassInputType::PostProcess>(pass, frameGraph.passesGlobalRes, frameGraph.objGlobalResTemplate,
 			updateFrequency, scope, std::move(arg));
 		break;
+	case Parsing::PassInputType::Debug:
+		_AddRootArg<Parsing::PassInputType::Debug>(pass, frameGraph.passesGlobalRes, frameGraph.objGlobalResTemplate,
+			updateFrequency, scope, std::move(arg));
+		break;
 	default:
 		assert(false && "Unknown pass input for adding root argument");
 		break;
@@ -1408,7 +1412,7 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 			nullptr,
 			nullptr,
 			"main",
-			(Utils::StrToLower(strShaderType) + "_5_1").c_str(),
+			(Utils::StrToLower(strShaderType) + Settings::SHADER_FEATURE_LEVEL).c_str(),
 			Settings::SHADER_COMPILATION_FLAGS,
 			0,
 			&shaderBlob,
@@ -1514,6 +1518,11 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 				case Parsing::PassInputType::PostProcess:
 				{
 					frameGraph.passTasks.emplace_back(PassTask{ Pass_PostProcess{} });
+				}
+				break;
+				case Parsing::PassInputType::Debug:
+				{
+					frameGraph.passTasks.emplace_back(PassTask{ Pass_Debug{} });
 				}
 				break;
 				default:
@@ -1920,6 +1929,7 @@ ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const
 	case Parsing::PassInputType::Dynamic:
 	case Parsing::PassInputType::Particles:
 	case Parsing::PassInputType::UI:
+	case Parsing::PassInputType::Debug:
 	{
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = passSource.rasterPsoDesc;
 

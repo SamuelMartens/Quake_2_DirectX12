@@ -59,8 +59,8 @@ namespace Utils
 	struct AABB
 	{
 		// Bounding box, in WORLD space
-		XMFLOAT4 bbMin = { 0.0f, 0.0f, 0.0f, 1.0f };
-		XMFLOAT4 bbMax = { 0.0f, 0.0f, 0.0f, 1.0f };
+		XMFLOAT4 bbMin = { FLT_MAX, FLT_MAX, FLT_MAX, 1.0f };
+		XMFLOAT4 bbMax = { -FLT_MAX, -FLT_MAX, -FLT_MAX, 1.0f };
 	};
 
 	struct Plane
@@ -176,6 +176,8 @@ namespace Utils
 
 	Plane ConstructPlane(const XMFLOAT4& p0, const XMFLOAT4& p1, const XMFLOAT4& p2);
 	bool IsAABBBehindPlane(const Plane& plane, const AABB& aabb);
+
+	std::vector<XMFLOAT4> CreateSphere(float radius, int numSubdivisions = 1);
 }
 
 #define PREVENT_SELF_MOVE_ASSIGN if (this == &other) { return *this; }

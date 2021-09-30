@@ -8,3 +8,5 @@ const std::string Settings::GRAMMAR_PREPROCESSOR_FILENAME = "Preprocessor.gramma
 const std::string Settings::FRAMEGRAPH_DIR = "FrameGraph";
 const std::string Settings::FRAMEGRAPH_PASS_FILE_EXT = ".pass";
 const std::string Settings::FRAMEGRAPH_FILE_EXT = ".framegraph";
+
+const std::string Settings::SHADER_FEATURE_LEVEL = "_5_1";

@@ -4,11 +4,7 @@
 #include "dx_frame.h"
 #include "dx_commandlist.h"
 
-#ifdef _DEBUG
-	#define SEMAPHORE_TIME_OUT 10000
-#else
-	#define SEMAPHORE_TIME_OUT INFINITE
-#endif
+#define SEMAPHORE_TIME_OUT INFINITE
 
 namespace
 {

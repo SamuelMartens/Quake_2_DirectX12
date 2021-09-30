@@ -71,6 +71,8 @@ public:
 		// UI
 		std::vector<RootArg::Arg_t>,
 		// Post process
+		std::vector<RootArg::Arg_t>,
+		// Debug
 		std::vector<RootArg::Arg_t>
 	>;
 
@@ -130,6 +132,9 @@ private:
 
 	void RegisterParticles(GPUJobContext& context);
 
+	void RegisterGlobalObjectsResDebug(GPUJobContext& context);
+	void UpdateGlobalObjectsResDebug(GPUJobContext& context);
+
 	void RegisterGlobaPasslRes(GPUJobContext& context);
 	void UpdateGlobalPasslRes(GPUJobContext& context);
 
@@ -152,7 +157,9 @@ private:
 	// UI
 	std::vector<std::vector<RootArg::Arg_t>>,
 	// Post process
-	std::vector<RootArg::Arg_t>
+	std::vector<RootArg::Arg_t>,
+	// Debug
+	std::vector<std::vector<RootArg::Arg_t>>
 	> objGlobalRes;
 
 

@@ -93,6 +93,9 @@ public:
 	std::unique_ptr<StreamingDescriptorHeapAllocator_t<Settings::FRAME_STREAMING_CBV_SRV_DESCRIPTOR_HEAP_SIZE, 
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV>> streamingCbvSrvAllocator = nullptr;
 
+	// Debug info
+	bool drawDebugGeometry = false;
+
 private:
 
 	std::shared_ptr<Semaphore> frameFinishedSemaphore;

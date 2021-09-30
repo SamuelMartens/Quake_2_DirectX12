@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include <array>
+#include <set>
 
 #include "dx_common.h"
 #include "dx_utils.h"
@@ -33,12 +34,16 @@ public:
 	void InitClusterVisibility(const dvis_t& vis, int visSize);
 
 	std::vector<int> GetVisibleObjectsIndices(const Camera& camera) const;
+	const BSPNode& GetNodeWithPoint(const XMFLOAT4& point) const;
+
+	Utils::AABB GetClusterAABB(const int clusterIndex) const;
+	std::set<int> GetClustersSet() const;
 
 private:
 
 	int AddNode(const mnode_t& sourceNode, int& meshesNum);
 
-	const BSPNode& GetPointInNode(const XMFLOAT4& point, const BSPNode& node) const;
+	const BSPNode& GetNodeWithPoint(const XMFLOAT4& point, const BSPNode& node) const;
 	std::vector<bool> DecompressClusterVisibility(int cluster) const;
 
 	std::vector<std::byte> clusterVisibility;

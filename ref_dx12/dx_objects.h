@@ -96,3 +96,7 @@ public:
 
 	~DynamicObjectModel();
 };
+
+class DebugObject
+{
+};

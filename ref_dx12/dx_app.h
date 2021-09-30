@@ -103,6 +103,7 @@ class Renderer
 	int GetMSAASampleCount() const;
 	int GetMSAAQuality() const;
 	void GetDrawAreaSize(int* Width, int* Height);
+	const BSPTree& GetBSPTree() const;
 	const std::array<unsigned int, 256>& GetRawPalette() const;
 	const std::array<unsigned int, 256>& GetTable8To24() const;
 	const std::vector<StaticObject>& GetStaticObjects() const;
@@ -305,4 +306,7 @@ private:
 	/* ImGui data */
 	int imGuiFontTexDescHandle = Const::INVALID_BUFFER_HANDLER;
 	WNDPROC standardWndProc = nullptr;
+
+	/* Debug */
+	bool drawBakePointsDebugGeometry = false;
 };

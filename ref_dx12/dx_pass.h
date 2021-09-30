@@ -14,6 +14,23 @@
 #include "dx_objects.h"
 #include "dx_glmodel.h"
 
+// NOTE: if you want do add a new type of pass, here is your checklist
+// Keep in mind that each pass type corresponds to certain input type
+// 
+// 1) Add new input type to pass grammar in Pass.grammar
+// 2) Add pass creation code for that new input type inside dx_framegraphbuilder.cpp
+// 3) Create new pass type in dx_pass.cpp
+// 4) Add global resources for the new pass type inside FrameGraph class
+// 5) Implement RegisterObject and UpdateObject functions for that pass resources
+//		inside FrameGraph
+// 7) Implement callbacks for resource updates (both local to pass and global) inside
+//		dx_rendercallbacks.h
+// 6) (OPTIONAL) Add object of appropriate type to dx_objects.h
+// 
+// Also be aware, that most of the passes don't handle resource management automatically,
+// so you need to make a great care ensuring that non of resource is leaking. Don't 
+// forget that beside pass local resources there is also global resources (inside FrameGraph)
+// which need to be released too at some point.
 
 // NOTE: passes are actually don't release their resources automatically,
 // it is done manually via ReleaseResources functions. It is fine as long as 
@@ -230,7 +247,58 @@ private:
 
 };
 
-using Pass_t = std::variant<Pass_UI, Pass_Static, Pass_Dynamic, Pass_Particles, Pass_PostProcess>;
+class Pass_Debug
+{
+	friend class PassUtils;
+	friend class FrameGraphBuilder;
+
+public:
+	struct PassObj
+	{
+		std::vector<RootArg::Arg_t> rootArgs;
+		const DebugObject* originalObj = nullptr;
+	};
+
+public:
+
+	void Execute(GPUJobContext& context);
+	void Init();
+
+	void RegisterPassResources(GPUJobContext& context);
+	void UpdatePassResources(GPUJobContext& context);
+
+	void ReleasePerFrameResources(Frame& frame);
+	void ReleasePersistentResources();
+
+private:
+
+	void RegisterObjects(GPUJobContext& context);
+	void UpdateDrawObjects(GPUJobContext& context);
+
+	void Draw(GPUJobContext& context);
+
+	void SetRenderState(GPUJobContext& context);
+
+	PassParameters passParameters;
+
+	int passMemorySize = Const::INVALID_SIZE;
+	BufferHandler passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
+
+	// Size of one vertex
+	int vertexSize = Const::INVALID_SIZE;
+
+	int perObjectConstBuffMemorySize = Const::INVALID_SIZE;
+	int sphereObjectVertexBufferSize = Const::INVALID_SIZE;
+	
+	std::vector<XMFLOAT4> sphereObjectVertices;
+
+	// Recreated every frame
+	std::vector<PassObj> drawObjects;
+	BufferHandler objectsConstBufferMemory = Const::INVALID_BUFFER_HANDLER;
+	BufferHandler objectsVertexBufferMemory = Const::INVALID_BUFFER_HANDLER;
+};
+
+using Pass_t = std::variant<Pass_UI, Pass_Static, Pass_Dynamic, Pass_Particles, Pass_PostProcess, Pass_Debug>;
 
 
 struct PassTask

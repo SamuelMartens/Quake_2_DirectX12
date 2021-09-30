@@ -11,6 +11,7 @@
 #include "dx_jobmultithreading.h"
 #include "dx_resourcemanager.h"
 #include "dx_memorymanager.h"
+#include "dx_lightbaker.h"
 
 
 namespace
@@ -890,11 +891,11 @@ void Pass_Dynamic::Init()
 
 	if (passMemorySize > 0)
 	{
-		assert(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Static not cleaned up memory");
+		assert(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Dynamic not cleaned up memory");
 		passConstBuffMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(passMemorySize);
 	}
 
-	assert(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Static perObject memory size should be unitialized");
+	assert(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Dynamic perObject memory size should be unitialized");
 	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
 
 	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
@@ -1283,6 +1284,261 @@ void Pass_PostProcess::SetComputeState(GPUJobContext& context)
 	commandList->SetComputeRootSignature(passParameters.rootSingature.Get());
 	commandList->SetPipelineState(passParameters.pipelineState.Get());
 }
+
+
+void Pass_Debug::Execute(GPUJobContext& context)
+{
+	if (context.frame.drawDebugGeometry == false)
+	{
+		return;
+	}
+
+	RegisterObjects(context);
+
+	UpdatePassResources(context);
+	UpdateDrawObjects(context);
+
+	SetRenderState(context);
+	Draw(context);
+}
+
+void Pass_Debug::Init()
+{
+	vertexSize = sizeof(XMFLOAT4);
+
+	// Debug sphere init
+	constexpr float SPHERE_RADIUS = 3.0f;
+	sphereObjectVertices = Utils::CreateSphere(SPHERE_RADIUS);
+
+	sphereObjectVertexBufferSize = static_cast<int>(vertexSize * sphereObjectVertices.size());
+
+	// Resources
+	assert(passMemorySize == Const::INVALID_SIZE && "Pass_Debug memory size should be unitialized");
+	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
+
+	if (passMemorySize > 0)
+	{
+		assert(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Debug not cleaned up memory");
+		passConstBuffMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(passMemorySize);
+	}
+
+	assert(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Debug perObject memory size should be unitialized");
+	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
+
+	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
+}
+
+void Pass_Debug::RegisterPassResources(GPUJobContext& context)
+{
+	_RegisterPassResources(*this, passParameters, *Renderer::Inst().cbvSrvHeapAllocator, context);
+	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
+}
+
+void Pass_Debug::UpdatePassResources(GPUJobContext& context)
+{
+	_UpdatePassResources(*this, passParameters, passConstBuffMemory, passMemorySize, context);
+}
+
+void Pass_Debug::ReleasePerFrameResources(Frame& frame)
+{
+	if (objectsConstBufferMemory != Const::INVALID_BUFFER_HANDLER)
+	{
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>().Delete(objectsConstBufferMemory);
+		objectsConstBufferMemory = Const::INVALID_BUFFER_HANDLER;
+	}
+
+	if (objectsVertexBufferMemory != Const::INVALID_BUFFER_HANDLER)
+	{
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>().Delete(objectsVertexBufferMemory);
+		objectsVertexBufferMemory = Const::INVALID_BUFFER_HANDLER;
+	}
+
+	for (PassObj& obj : drawObjects)
+	{
+		for (RootArg::Arg_t& arg : obj.rootArgs)
+		{
+			RootArg::Release(arg, *frame.streamingCbvSrvAllocator);
+		}
+	}
+
+	drawObjects.clear();
+}
+
+void Pass_Debug::ReleasePersistentResources()
+{
+	if (passConstBuffMemory != Const::INVALID_BUFFER_HANDLER)
+	{
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>().Delete(passConstBuffMemory);
+		passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
+	}
+
+	for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	{
+		Release(arg, *Renderer::Inst().cbvSrvHeapAllocator);
+	}
+
+	PassUtils::ReleaseColorDepthRenderTargetViews(passParameters);
+}
+
+void Pass_Debug::RegisterObjects(GPUJobContext& context)
+{
+
+	if (context.frame.drawDebugGeometry == false)
+	{
+		return;
+	}
+
+	// Figure out all clusters we want to generate for
+	const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(context.frame.camera.position);
+	assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
+
+	//#TODO so far generate bake points only for current cluster, if it's not alright,
+	// I can start generate points for PVS
+	const std::vector<XMFLOAT4> bakePoints = LightBaker::Inst().GenerateClusterBakePoints(cameraNode.cluster);
+
+	assert(bakePoints.empty() == false && "Bake points are empty. Is this alright?");
+
+	const int debugObjectsVertexBufferSizeInBytes = sphereObjectVertexBufferSize * bakePoints.size();
+
+	assert(objectsVertexBufferMemory == Const::INVALID_BUFFER_HANDLER && "DebugObjects vertex buffer memory should be released");
+
+	// Deal with vertex buffer
+	// Allocate memory
+	auto& uploadMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+	objectsVertexBufferMemory = uploadMemory.Allocate(debugObjectsVertexBufferSizeInBytes);
+
+	assert(drawObjects.empty() == true && "Debug pass objects registration failed. Pass objects list should be empty");
+	drawObjects.reserve(bakePoints.size());
+
+	std::vector<XMFLOAT4> debugObjectsVertices;
+	debugObjectsVertices.reserve(sphereObjectVertices.size() * bakePoints.size());
+
+	for (const XMFLOAT4& bakePoint : bakePoints)
+	{
+		XMVECTOR sseBakePoint = XMLoadFloat4(&bakePoint);
+
+		std::transform(sphereObjectVertices.cbegin(), sphereObjectVertices.cend(), std::back_inserter(debugObjectsVertices),
+			[&sseBakePoint](const XMFLOAT4& vertex)
+		{
+			XMFLOAT4 resultVertex;
+			XMStoreFloat4(&resultVertex, XMVectorSetW(XMLoadFloat4(&vertex) + sseBakePoint, 1.0f));
+
+			return resultVertex;
+		});
+	}
+
+	FArg::UpdateUploadHeapBuff args;
+	args.buffer = uploadMemory.GetGpuBuffer();
+	args.offset = uploadMemory.GetOffset(objectsVertexBufferMemory);
+	args.data = debugObjectsVertices.data();
+	args.byteSize = debugObjectsVertexBufferSizeInBytes;
+	args.alignment = 0;
+
+	ResourceManager::Inst().UpdateUploadHeapBuff(args);
+
+	// Deal with cons buffer memory
+	// Check if we need to free this memory, maybe same amount needs to allocated
+	if (perObjectConstBuffMemorySize != 0)
+	{
+		assert(objectsConstBufferMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Debug start not cleaned up memory");
+		objectsConstBufferMemory = uploadMemory.Allocate(perObjectConstBuffMemorySize * bakePoints.size());
+	}
+
+	RenderCallbacks::RegisterLocalObjectContext regContext = { context };
+	const unsigned passHashedName = HASH(passParameters.name.c_str());
+
+	for (int i = 0; i < bakePoints.size(); ++i)
+	{
+		PassObj& obj = drawObjects.emplace_back(PassObj{
+			passParameters.perObjectLocalRootArgsTemplate
+	});
+
+		// Init object root args
+
+		const int objectOffset = i * perObjectConstBuffMemorySize;
+
+		_RegisterObjectArgs(obj, passHashedName, regContext, *context.frame.streamingCbvSrvAllocator);
+		RootArg::AttachConstBufferToArgs(obj.rootArgs, objectOffset, objectsConstBufferMemory);
+	}
+}
+
+void Pass_Debug::UpdateDrawObjects(GPUJobContext& context)
+{
+	RenderCallbacks::UpdateLocalObjectContext updateContext = { context };
+
+	std::vector<std::byte> cpuMem(perObjectConstBuffMemorySize * drawObjects.size(), static_cast<std::byte>(0));
+
+	for (int i = 0; i < drawObjects.size(); ++i)
+	{
+		PassObj& obj = drawObjects[i];
+		_UpdateObjectArgs(obj, cpuMem.data(), HASH(passParameters.name.c_str()), updateContext);
+	}
+
+	if (perObjectConstBuffMemorySize != 0)
+	{
+		auto& uploadMemoryBuff = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+
+		FArg::UpdateUploadHeapBuff updateConstBufferArgs;
+		updateConstBufferArgs.buffer = uploadMemoryBuff.GetGpuBuffer();
+		updateConstBufferArgs.offset = uploadMemoryBuff.GetOffset(objectsConstBufferMemory);
+		updateConstBufferArgs.data = cpuMem.data();
+		updateConstBufferArgs.byteSize = cpuMem.size();
+		updateConstBufferArgs.alignment = Settings::CONST_BUFFER_ALIGNMENT;
+
+		ResourceManager::Inst().UpdateUploadHeapBuff(updateConstBufferArgs);
+	}
+}
+
+void Pass_Debug::Draw(GPUJobContext& context)
+{
+	CommandList& commandList = *context.commandList;
+	Renderer& renderer = Renderer::Inst();
+	const FrameGraph& frameGraph = *context.frame.frameGraph;
+
+	// Bind pass global argument
+	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsIndices, commandList);
+
+	// Bind pass local arguments
+	for (const RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	{
+		RootArg::Bind(arg, commandList);
+	}
+
+	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
+	vertexBufferView.StrideInBytes = vertexSize;
+	vertexBufferView.SizeInBytes = sphereObjectVertexBufferSize;
+
+	auto& uploadMemory =
+		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+
+	for (int i = 0; i < drawObjects.size(); ++i)
+	{
+		const PassObj& obj = drawObjects[i];
+		
+		vertexBufferView.BufferLocation = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
+			uploadMemory.GetOffset(objectsVertexBufferMemory) + i * sphereObjectVertexBufferSize;
+
+		commandList.GetGPUList()->IASetVertexBuffers(0, 1, &vertexBufferView);
+
+		// Bind global args
+		frameGraph.BindObjGlobalRes<Parsing::PassInputType::Debug>(passParameters.perObjGlobalRootArgsIndicesTemplate, i,
+			commandList);
+
+		// Bind local args
+		for (const RootArg::Arg_t& rootArg : obj.rootArgs)
+		{
+			RootArg::Bind(rootArg, *context.commandList);
+		}
+		
+		commandList.GetGPUList()->DrawInstanced(vertexBufferView.SizeInBytes / vertexBufferView.StrideInBytes, 1, 0, 0);
+	}
+}
+
+void Pass_Debug::SetRenderState(GPUJobContext& context)
+{
+	_SetRenderState(passParameters, context);
+}
+
 
 void PassTask::Execute(GPUJobContext& context)
 {

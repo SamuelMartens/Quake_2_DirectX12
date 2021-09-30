@@ -3,6 +3,7 @@
 #include <dxgi.h>
 #include <string>
 #include <d3dcompiler.h>
+#include <d3d12.h>
 
 namespace Settings
 {
@@ -20,7 +21,7 @@ namespace Settings
 	constexpr int		 RTV_DTV_DESCRIPTOR_HEAP_SIZE = 16;
 	constexpr int		 SAMPLER_DESCRIPTOR_HEAP_SIZE = 16;
 
-	constexpr int		 COMMAND_LISTS_PER_FRAME = 9;
+	constexpr int		 COMMAND_LISTS_PER_FRAME = 10;
 	// Try to avoid to set up any particular number for this, instead change command lists per frame
 	constexpr int		 COMMAND_LISTS_NUM = COMMAND_LISTS_PER_FRAME * FRAMES_NUM;
 
@@ -56,6 +57,8 @@ namespace Settings
 #else
 	constexpr UINT		SHADER_COMPILATION_FLAGS = 0;
 #endif
+
+	extern const std::string SHADER_FEATURE_LEVEL;
 
 	/* Debug GUI stuff */
 	constexpr bool DEBUG_GUI_ENABLED = true;

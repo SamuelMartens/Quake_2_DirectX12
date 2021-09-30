@@ -28,6 +28,7 @@
 #include "dx_jobmultithreading.h"
 #include "dx_rendercallbacks.h"
 #include "dx_descriptorheapallocator.h"
+#include "dx_lightbaker.h"
 
 #ifdef max
 #undef max
@@ -216,7 +217,7 @@ void Renderer::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 	WNDCLASS windowClass;
 	RECT	 screenRect;
 	
-	standardWndInputFunc = WindowProc;
+	standardWndProc = WindowProc;
 	
 	windowClass.style			= 0;
 	windowClass.lpfnWndProc	= MainWndProcWrapper;
@@ -775,6 +776,9 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	frame.uiDrawCalls.clear();
 	frame.streamingCbvSrvAllocator->Reset();
 
+	// Release debug info
+	frame.drawDebugGeometry = false;
+
 	if (frame.frameGraph != nullptr)
 	{
 		frame.frameGraph->ReleasePerFrameResources(frame);
@@ -1017,9 +1021,9 @@ LONG WINAPI Renderer::MainWndProcWrapper(HWND hWnd, UINT uMsg, WPARAM wParam, LP
 		}
 	}
 
-	assert(Renderer::Inst().standardWndInputFunc != nullptr && "Standard input function is not found");
+	assert(Renderer::Inst().standardWndProc != nullptr && "Standard input function is not found");
 
-	return Renderer::Inst().standardWndInputFunc(hWnd, uMsg, wParam, lParam);
+	return Renderer::Inst().standardWndProc(hWnd, uMsg, wParam, lParam);
 }
 
 std::vector<int> Renderer::BuildVisibleDynamicObjectsList(const Camera& camera, const std::vector<entity_t>& entities) const
@@ -1085,7 +1089,8 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 	Diagnostics::BeginEvent(gpuCommanList, "Debug GUI");
 	Logs::Log(Logs::Category::Job, "DrawDebugGui job started");
 
-	// ImGui is not thread safe so I have to block here. Another choice would be to create a few contexts for every
+	// ImGui is not thread safe so I have to block here. Another choice would be to create a separate context
+	// for every frame
 	std::scoped_lock<std::mutex> lock(drawDebugGuiMutex);
 	
 	ImGui_ImplDX12_NewFrame();
@@ -1093,7 +1098,10 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 	ImGui::NewFrame();
 
 	{
-		ImGui::Begin("Debug GUI");                        
+		ImGui::Begin("Debug GUI");
+
+		ImGui::Checkbox("Draw bake points", &drawBakePointsDebugGeometry);
+
 		ImGui::End();
 	}
 	
@@ -1391,6 +1399,11 @@ void Renderer::GetDrawAreaSize(int* Width, int* Height)
 
 	assert(mode);
 	GetRefImport().Vid_GetModeInfo(Width, Height, static_cast<int>(mode->value));
+}
+
+const BSPTree& Renderer::GetBSPTree() const
+{
+	return bspTree;
 }
 
 const std::array<unsigned int, 256>& Renderer::GetRawPalette() const
@@ -1757,6 +1770,9 @@ void Renderer::PreRenderSetUpFrame(Frame& frame)
 
 	// Dynamic objects
 	frame.visibleEntitiesIndices = BuildVisibleDynamicObjectsList(frame.camera, frame.entities);
+
+	// Debug objects
+	frame.drawDebugGeometry = drawBakePointsDebugGeometry;
 }
 
 void Renderer::FlushAllFrames() const

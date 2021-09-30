@@ -250,6 +250,7 @@ namespace Parsing
 		Particles,
 		UI,
 		PostProcess,
+		Debug,
 		SIZE
 	};
 

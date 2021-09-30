@@ -171,7 +171,7 @@ Utils::AABB Camera::GetAABB() const
 
 	assert(XMVectorGetX(sseCameraTransformDeterminant) != 0.0f && "Camera transform inv can't be found. Determinant is zero");
 
-	constexpr float MIN_FLOAT = std::numeric_limits<float>::min();
+	constexpr float MIN_FLOAT = -std::numeric_limits<float>::max();
 	constexpr float MAX_FLOAT = std::numeric_limits<float>::max();
 
 	XMVECTOR sseBBMin = XMVectorSet(MAX_FLOAT, MAX_FLOAT, MAX_FLOAT, 1.0f);
