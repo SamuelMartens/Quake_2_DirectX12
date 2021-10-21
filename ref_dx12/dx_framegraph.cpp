@@ -282,12 +282,12 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
 				{
-
+					assert(false && "Inline Cons Buffer View are not implemented");
 				}
 
 				if constexpr (std::is_same_v<T, RootArg::UAView>)
 				{
-
+					assert(false && "Inline UAV are not implemented");
 				}
 
 				if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
@@ -1199,6 +1199,8 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 
 						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_StructuredBufferView>)
 						{
+							assert(descTableEntitiy.internalBindName.has_value() == false && "Internal resource for Structured buffer is not implemented");
+
 							RenderCallbacks::RegisterGlobalPass(
 								descTableEntitiy.hashedName,
 								currentViewIndex,

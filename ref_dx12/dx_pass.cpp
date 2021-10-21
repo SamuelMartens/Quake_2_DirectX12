@@ -115,6 +115,8 @@ namespace
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_StructuredBufferView>)
 							{
+								assert(descTableEntitiy.internalBindName.has_value() == false && "Internal resource for Structured buffer is not implemented");
+
 								RenderCallbacks::RegisterLocalPass(
 									HASH(passParameters.name.c_str()),
 									descTableEntitiy.hashedName,

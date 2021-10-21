@@ -29,7 +29,7 @@
 * 
 * 5) Add new RootArg 
 * 
-* 6) Add creation code for new RootArg to CreateRootArgument()
+* 6) Add new RootArg creation code to CreateRootArgument()
 * 
 * 7) Add Registration/Update code for GLOBAL type of resource to dx_framegraph
 *	(make sure to handle Internal resources if needed)
@@ -89,6 +89,8 @@ namespace RootArg
 	{
 		int bindIndex = Const::INVALID_INDEX;
 		unsigned int hashedName = 0;
+
+		std::optional<std::string> internalBindName;
 
 		Resource* buffer = nullptr;
 	};
