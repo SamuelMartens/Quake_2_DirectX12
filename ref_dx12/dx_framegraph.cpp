@@ -98,6 +98,17 @@ namespace
 						}
 					}
 
+					if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
+					{
+						assert(arg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
+
+						RenderCallbacks::UpdateGlobalObject(
+							arg.hashedName,
+							object,
+							*arg.buffer,
+							updateContext);
+					}
+
 					if constexpr (std::is_same_v<T, RootArg::DescTable>)
 					{
 						for (RootArg::DescTableEntity_t& descTableEntity : arg.content)
@@ -193,6 +204,17 @@ namespace
 						}
 					}
 
+					if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
+					{
+						assert(arg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
+
+						RenderCallbacks::UpdateGlobalObject(
+							arg.hashedName,
+							object,
+							*arg.buffer,
+							updateContext);
+					}
+
 					if constexpr (std::is_same_v<T, RootArg::DescTable>)
 					{
 						for (RootArg::DescTableEntity_t& descTableEntity : arg.content)
@@ -268,6 +290,19 @@ namespace
 
 				}
 
+				if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
+				{
+					assert(arg.buffer == nullptr && "Structured buffer pointed for root arg resource should be empty");
+
+					Utils::PointerAsRef<decltype(arg.buffer)> refToPointer{&arg.buffer};
+
+					RenderCallbacks::RegisterGlobalObject(
+						arg.hashedName,
+						obj,
+						refToPointer,
+						regContext);
+				}
+
 				if constexpr (std::is_same_v<T, RootArg::DescTable>)
 				{
 					arg.viewIndex = RootArg::AllocateDescTableView(arg, alloc);
@@ -288,7 +323,8 @@ namespace
 							}
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||
-								std::is_same_v<T, RootArg::DescTableEntity_UAView>)
+								std::is_same_v<T, RootArg::DescTableEntity_UAView> ||
+								std::is_same_v<T, RootArg::DescTableEntity_StructuredBufferView>)
 							{
 								assert(descTableEntitiy.internalBindName.has_value() == false &&
 									"PerObject resources is not suited to use internal bind");
@@ -374,7 +410,7 @@ FrameGraph::~FrameGraph()
 
 		for (const std::string& name : *internalTextureNames)
 		{
-			resourceManager.DeleteTexture(name.c_str());
+			resourceManager.DeleteResource(name.c_str());
 		}
 	}
 
@@ -387,7 +423,6 @@ FrameGraph::~FrameGraph()
 	}
 
 	// Deal with global per object resources
-
 	for (std::vector<RootArg::Arg_t>& argList : std::get<static_cast<int>(Parsing::PassInputType::Static)>(objGlobalRes))
 	{
 		for (RootArg::Arg_t& arg : argList)
@@ -891,6 +926,17 @@ void FrameGraph::UpdateGlobalObjectsResDynamic(GPUJobContext& context)
 					}
 				}
 
+				if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
+				{
+					assert(arg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
+
+					RenderCallbacks::UpdateGlobalObject(
+						arg.hashedName,
+						entity,
+						*arg.buffer,
+						updateContext);
+				}
+
 				if constexpr (std::is_same_v<T, RootArg::DescTable>)
 				{
 					for (RootArg::DescTableEntity_t& descTableEntity : arg.content)
@@ -1074,6 +1120,19 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 				offset += RootArg::GetConstBufftSize(arg);
 			}
 
+			if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
+			{
+				assert(arg.buffer == nullptr && "Structured buffer pointed for root arg resource should be empty");
+
+				Utils::PointerAsRef<decltype(arg.buffer)> refToPointer{ &arg.buffer };
+
+				RenderCallbacks::RegisterGlobalPass(
+					arg.hashedName,
+					refToPointer,
+					globalPassContext
+				);
+			}
+
 			if constexpr (std::is_same_v<T, RootArg::DescTable>)
 			{
 				arg.viewIndex = RootArg::AllocateDescTableView(arg, *Renderer::Inst().cbvSrvHeapAllocator);
@@ -1103,7 +1162,7 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 							if (descTableEntitiy.internalBindName.has_value())
 							{
 								// This is internal resource
-								RenderCallbacks::RegisterInternal<D3D12_SHADER_RESOURCE_VIEW_DESC>(
+								RenderCallbacks::RegisterInternalResource<D3D12_SHADER_RESOURCE_VIEW_DESC>(
 									currentViewIndex,
 									*descTableEntitiy.internalBindName
 								);
@@ -1123,7 +1182,7 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 							if (descTableEntitiy.internalBindName.has_value())
 							{
 								// This is internal resource
-								RenderCallbacks::RegisterInternal<D3D12_UNORDERED_ACCESS_VIEW_DESC>(
+								RenderCallbacks::RegisterInternalResource<D3D12_UNORDERED_ACCESS_VIEW_DESC>(
 									currentViewIndex,
 									*descTableEntitiy.internalBindName
 									);
@@ -1136,6 +1195,15 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 									globalPassContext
 								);
 							}
+						}
+
+						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_StructuredBufferView>)
+						{
+							RenderCallbacks::RegisterGlobalPass(
+								descTableEntitiy.hashedName,
+								currentViewIndex,
+								globalPassContext
+							);
 						}
 
 					}, descTableEntitiy);
@@ -1179,6 +1247,16 @@ void FrameGraph::UpdateGlobalPasslRes(GPUJobContext& context)
 				}
 			}
 
+			if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
+			{
+				assert(arg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
+
+				RenderCallbacks::UpdateGlobalPass(
+					arg.hashedName,
+					*arg.buffer,
+					globalPassContext);
+			}
+
 			if constexpr (std::is_same_v<T, RootArg::DescTable>)
 			{
 				for (int i = 0 ; i < arg.content.size(); ++i)
@@ -1196,7 +1274,8 @@ void FrameGraph::UpdateGlobalPasslRes(GPUJobContext& context)
 						}
 
 						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||
-							std::is_same_v<T, RootArg::DescTableEntity_UAView>)
+							std::is_same_v<T, RootArg::DescTableEntity_UAView> ||
+							std::is_same_v<T, RootArg::DescTableEntity_StructuredBufferView>)
 						{
 							RenderCallbacks::UpdateGlobalPass(
 								descTableEntity.hashedName,

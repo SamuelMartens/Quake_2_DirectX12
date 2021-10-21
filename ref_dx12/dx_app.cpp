@@ -1568,7 +1568,7 @@ void Renderer::GetDrawTextureSize(int* x, int* y, const char* name)
 	std::array<char, MAX_QPATH> texFullName;
 	ResourceManager::Inst().GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
 
-	const Texture* tex = ResourceManager::Inst().FindTexture(texFullName.data());
+	const Resource* tex = ResourceManager::Inst().FindResource(texFullName.data());
 
 	if (tex != nullptr)
 	{
@@ -1654,18 +1654,22 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 	
 	// To enforce order of texture create/update, this check must be done in main thread,
 	// so worker threads can run independently
-	Texture* rawTex = ResourceManager::Inst().FindTexture(Texture::RAW_TEXTURE_NAME);
+	Resource* rawTex = ResourceManager::Inst().FindResource(Resource::RAW_TEXTURE_NAME);
 
 	if (rawTex == nullptr 
 		|| rawTex->desc.width != textureWidth
 		|| rawTex->desc.height != textureHeight)
 	{
-		TextureDesc desc = { textureWidth, textureHeight, DXGI_FORMAT_R8G8B8A8_UNORM };
+		ResourceDesc desc;
+		desc.width = textureWidth;
+		desc.height = textureHeight;
+		desc.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		desc.dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 
 		FArg::CreateTextureFromDataDeferred createTexArgs;
 		createTexArgs.data = data;
 		createTexArgs.desc = &desc;
-		createTexArgs.name = Texture::RAW_TEXTURE_NAME;
+		createTexArgs.name = Resource::RAW_TEXTURE_NAME;
 		createTexArgs.frame = &GetMainThreadFrame();
 
 		rawTex = ResourceManager::Inst().CreateTextureFromDataDeferred(createTexArgs);
@@ -1803,7 +1807,7 @@ void Renderer::FlushAllFrames() const
 extern model_t	mod_known[MAX_MOD_KNOWN];
 extern model_t* r_worldmodel;
 
-Texture* Renderer::RegisterDrawPic(const char* name)
+Resource* Renderer::RegisterDrawPic(const char* name)
 {
 	Logs::Logf(Logs::Category::Generic, "API: Register draw pic %s", name);
 
@@ -1815,7 +1819,7 @@ Texture* Renderer::RegisterDrawPic(const char* name)
 	std::array<char, MAX_QPATH> texFullName;
 	resMan.GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
 
-	Texture* newTex = resMan.CreateTextureFromFileDeferred(texFullName.data(), frame);
+	Resource* newTex = resMan.CreateTextureFromFileDeferred(texFullName.data(), frame);
 
 	return newTex;
 }
@@ -1922,15 +1926,6 @@ model_s* Renderer::RegisterModel(const char* name)
 		{
 		case mod_sprite:
 		{
-			//#TODO implement sprites 
-			//dsprite_t* sprites = reinterpret_cast<dsprite_t *>(mod->extradata);
-			//for (int i = 0; i < sprites->numframes; ++i)
-			//{
-			//	mod->skins[i] = FindOrCreateTexture(sprites->frames[i].name);
-			//}
-
-			//m_dynamicGraphicalObjects[mod] = CreateDynamicGraphicObjectFromGLModel(mod);
-
 			// Remove after sprites implemented
 			Mod_Free(mod);
 			mod = NULL;
@@ -1942,7 +1937,7 @@ model_s* Renderer::RegisterModel(const char* name)
 			for (int i = 0; i < pheader->num_skins; ++i)
 			{
 				char* imageName = reinterpret_cast<char*>(pheader) + pheader->ofs_skins + i * MAX_SKINNAME;
-				mod->skins[i] = ResourceManager::Inst().FindOrCreateTexture(imageName, *dynamicModelRegContext);
+				mod->skins[i] = ResourceManager::Inst().FindOrCreateResource(imageName, *dynamicModelRegContext);
 			}
 
 			dynamicObjectsModels[mod] = CreateDynamicGraphicObjectFromGLModel(mod, *dynamicModelRegContext);

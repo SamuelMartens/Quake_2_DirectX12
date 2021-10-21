@@ -12,7 +12,7 @@
 #include "dx_drawcalls.h"
 #include "dx_camera.h"
 #include "dx_threadingutils.h"
-#include "dx_texture.h"
+#include "dx_resource.h"
 #include "dx_pass.h"
 #include "dx_framegraph.h"
 #include "dx_descriptorheapallocator.h"

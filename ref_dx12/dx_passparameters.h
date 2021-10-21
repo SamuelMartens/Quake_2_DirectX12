@@ -16,6 +16,32 @@
 #include "dx_settings.h"
 #include "dx_memorymanager.h"
 
+/* --- HOW TO ADD NEW TYPE OF ROOT ARGUMENT
+* 
+* 1) Modify grammar to parse new type
+* 
+* 2) Modify parser code inside dx_framegraphbuilder.cpp to have callbacks for the 
+*	new grammar
+* 
+* 3) Add new type to Parsing::RootParam if root signature changes are required
+* 
+* 4) Add new type to Parsing::Resource_t 
+* 
+* 5) Add new RootArg 
+* 
+* 6) Add creation code for new RootArg to CreateRootArgument()
+* 
+* 7) Add Registration/Update code for GLOBAL type of resource to dx_framegraph
+*	(make sure to handle Internal resources if needed)
+* 
+* 8) Add Registration/Update code for LOCAL type of resources to dx_pass
+*	(make sure to handle Internal resources if needed)
+* 
+* 9) If new root argument type requires new DX resource, add modify
+		ResourceManager to create new resource
+* 
+*/
+
 namespace Parsing
 {
 	enum class PassInputType;
@@ -59,6 +85,14 @@ namespace RootArg
 		BufferPiece gpuMem;
 	};
 
+	struct StructuredBufferView
+	{
+		int bindIndex = Const::INVALID_INDEX;
+		unsigned int hashedName = 0;
+
+		Resource* buffer = nullptr;
+	};
+
 	struct DescTableEntity_ConstBufferView
 	{
 		unsigned int hashedName = 0;
@@ -85,11 +119,19 @@ namespace RootArg
 		std::optional<std::string> internalBindName;
 	};
 
+	struct DescTableEntity_StructuredBufferView
+	{
+		unsigned int hashedName = 0;
+
+		std::optional<std::string> internalBindName;
+	};
+
 	using DescTableEntity_t = std::variant<
 		DescTableEntity_ConstBufferView,
 		DescTableEntity_Texture,
 		DescTableEntity_Sampler,
-		DescTableEntity_UAView>;
+		DescTableEntity_UAView,
+		DescTableEntity_StructuredBufferView>;
 
 	struct DescTable
 	{
@@ -108,7 +150,7 @@ namespace RootArg
 		int viewIndex = Const::INVALID_INDEX;
 	};
 
-	using Arg_t = std::variant<RootConstant, ConstBuffView, UAView, DescTable>;
+	using Arg_t = std::variant<RootConstant, ConstBuffView, UAView, StructuredBufferView, DescTable>;
 
 	int FindArg(const std::vector<Arg_t>& args, const Arg_t& arg);
 
@@ -129,7 +171,8 @@ namespace RootArg
 			if constexpr (
 				std::is_same_v<T, DescTableEntity_ConstBufferView> ||
 				std::is_same_v<T, DescTableEntity_Texture> ||
-				std::is_same_v<T, DescTableEntity_UAView>)
+				std::is_same_v<T, DescTableEntity_UAView> ||
+				std::is_same_v<T, DescTableEntity_StructuredBufferView>)
 			{
 				return allocator.AllocateRange(size);
 			}
@@ -281,6 +324,25 @@ namespace Parsing
 		std::string rawView;
 	};
 
+	struct StructField
+	{
+		DataType type = DataType::Float4;
+		unsigned int hashedName = 0;
+		// Need this for debug
+		std::string name;
+	};
+
+	struct MiscDef_Struct
+	{
+		std::string name;
+		std::vector<StructField> content;
+		std::string rawView;
+	};
+
+	using MiscDef_t = std::variant<
+		MiscDef_Struct
+	>;
+
 	struct Resource_Base
 	{
 		std::string name;
@@ -311,11 +373,19 @@ namespace Parsing
 	struct Resource_Sampler : public Resource_Base
 	{};
 
+	struct Resource_StructuredBuffer : public Resource_Base
+	{
+		std::string dataStructName;
+
+		bool IsEqual(const Resource_StructuredBuffer& other) const;
+	};
+
 	using  Resource_t = std::variant<
 		Resource_ConstBuff, 
 		Resource_Texture,
 		Resource_Sampler,
-		Resource_RWTexture
+		Resource_RWTexture,
+		Resource_StructuredBuffer
 	>;
 
 	bool IsEqual(const Resource_t& res1, const Resource_t& res2);
@@ -324,6 +394,9 @@ namespace Parsing
 	std::string_view GetResourceRawView(const Parsing::Resource_t& res);
 	Parsing::ResourceBindFrequency GetResourceBindFrequency(const Parsing::Resource_t& res);
 	Parsing::ResourceScope GetResourceScope(const Resource_t& res);
+
+	std::string_view GetMiscDefName(const Parsing::MiscDef_t& def);
+	std::string_view GetMiscDefRawView(const Parsing::MiscDef_t& def);
 };
 
 
@@ -393,6 +466,7 @@ public:
 	std::vector<Parsing::Function> functions;
 	std::vector<Parsing::VertAttr> vertAttr;
 	std::vector<Parsing::Resource_t> resources;
+	std::vector<Parsing::MiscDef_t> miscDefs;
 	std::string inputVertAttr;
 	std::vector<std::tuple<unsigned int, int>> vertAttrSlots;
 	std::unique_ptr<Parsing::RootSignature> rootSignature;

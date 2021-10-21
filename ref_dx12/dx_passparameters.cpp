@@ -103,6 +103,11 @@ namespace RootArg
 			{
 				return GetDescTableSize(arg);
 			}
+			else if constexpr (std::is_same_v<T, StructuredBufferView>)
+			{
+				assert(false && "Size for Structured buffers are not implemented");
+				return 0;
+			}
 			else
 			{
 				assert(false && "RootArgGetSize, not implemented type");
@@ -199,13 +204,20 @@ namespace RootArg
 			{
 				assert(false && "Root constants are not implemented");
 			}
-			if constexpr (std::is_same_v<T, ConstBuffView>)
+			else if constexpr (std::is_same_v<T, ConstBuffView>)
 			{
 				D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
 
 				cbAddress += uploadMemory.GetOffset(rootArg.gpuMem.handler) + static_cast<D3D12_GPU_VIRTUAL_ADDRESS>(rootArg.gpuMem.offset);
 
 				commandList.GetGPUList()->SetGraphicsRootConstantBufferView(rootArg.bindIndex, cbAddress);
+			}
+			else if constexpr (std::is_same_v<T, StructuredBufferView>)
+			{
+				assert(rootArg.buffer != nullptr && "Invalid buffer. Can't bind root arg");
+
+				commandList.GetGPUList()->SetGraphicsRootShaderResourceView(rootArg.bindIndex,
+					rootArg.buffer->buffer->GetGPUVirtualAddress());
 			}
 			else if constexpr (std::is_same_v<T, DescTable>)
 			{
@@ -250,19 +262,26 @@ namespace RootArg
 			{
 				assert(false && "Root constants are not implemented");
 			}
-			if constexpr (std::is_same_v<T, ConstBuffView>)
+			else if constexpr (std::is_same_v<T, ConstBuffView>)
 			{
 				D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
 
 				cbAddress += uploadMemory.GetOffset(rootArg.gpuMem.handler) + rootArg.gpuMem.offset;
 				commandList.GetGPUList()->SetComputeRootConstantBufferView(rootArg.bindIndex, cbAddress);
 			}
-			if constexpr (std::is_same_v<T, UAView>)
+			else if constexpr (std::is_same_v<T, UAView>)
 			{
 				D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
 
 				cbAddress += uploadMemory.GetOffset(rootArg.gpuMem.handler) + rootArg.gpuMem.offset;
 				commandList.GetGPUList()->SetComputeRootUnorderedAccessView(rootArg.bindIndex, cbAddress);
+			}
+			else if constexpr (std::is_same_v<T, StructuredBufferView>)
+			{
+				assert(rootArg.buffer != nullptr && "Invalid buffer. Can't bind root arg");
+
+				commandList.GetGPUList()->SetComputeRootShaderResourceView(rootArg.bindIndex, 
+					rootArg.buffer->buffer->GetGPUVirtualAddress());
 			}
 			else if constexpr (std::is_same_v<T, DescTable>)
 			{
@@ -416,6 +435,12 @@ namespace Parsing
 		
 	}
 
+	bool Resource_StructuredBuffer::IsEqual(const Resource_StructuredBuffer& other) const
+	{
+		return Resource_Base::IsEqual(other) &&
+			dataStructName == other.dataStructName;
+	}
+
 	std::string_view GetResourceName(const Parsing::Resource_t& res)
 	{
 		return std::visit([](auto&& resource)
@@ -451,6 +476,25 @@ namespace Parsing
 		},
 			res);
 	}
+
+	std::string_view GetMiscDefName(const MiscDef_t& def)
+	{
+		return std::visit([](auto&& definition)
+		{
+			return std::string_view(definition.name);
+		},
+			def);
+	}
+
+	std::string_view GetMiscDefRawView(const MiscDef_t& def)
+	{
+		return std::visit([](auto&& definition)
+		{
+			return std::string_view(definition.rawView);
+		},
+			def);
+	}
+
 }
 
 PassParametersSource::PassParametersSource()

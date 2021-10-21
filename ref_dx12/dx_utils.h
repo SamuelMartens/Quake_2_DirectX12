@@ -69,6 +69,13 @@ namespace Utils
 		float distance = 0.0f;
 	};
 
+	template<typename T>
+	struct PointerAsRef
+	{
+		// T is usually a pointer. So 'pointer' is actually pointer to a pointer
+		T* pointer = nullptr;
+	};
+
 	class Exception : public std::exception
 	{
 	public:

@@ -61,5 +61,5 @@ namespace Settings
 	extern const std::string SHADER_FEATURE_LEVEL;
 
 	/* Debug GUI stuff */
-	constexpr bool DEBUG_GUI_ENABLED = true;
+	constexpr bool DEBUG_GUI_ENABLED = false;
 }

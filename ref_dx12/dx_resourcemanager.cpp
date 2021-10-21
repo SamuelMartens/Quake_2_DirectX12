@@ -205,6 +205,20 @@ void ResourceManager::VerifyZeroUploadHeapBuff(FArg::VerifyZeroUploadHeapBuff& a
 	args.buffer->Unmap(0, &mappedRange);
 }
 
+Resource* ResourceManager::CreateStructuredBuffer(FArg::CreateStructuredBuffer& args)
+{
+	std::scoped_lock<std::mutex> lock(resources.mutex);
+
+	assert(args.desc->dimension == D3D12_RESOURCE_DIMENSION_BUFFER && "Invalid buffer dimension during resource creation");
+
+	FArg::CreateResource resCreationArgs;
+	resCreationArgs.desc = args.desc;
+	resCreationArgs.name = args.name;
+	resCreationArgs.context = args.context;
+
+	return _CreateResource(resCreationArgs);
+}
+
 void ResourceManager::RequestResourceDeletion(ComPtr<ID3D12Resource> resourceToDelete)
 {
 	std::scoped_lock<std::mutex> lock(resourcesToDelete.mutex);
@@ -219,42 +233,42 @@ void ResourceManager::DeleteRequestedResources()
 	resourcesToDelete.obj.clear();
 }
 
-Texture* ResourceManager::FindOrCreateTexture(std::string_view textureName, GPUJobContext& context)
+Resource* ResourceManager::FindOrCreateResource(std::string_view resourceName, GPUJobContext& context)
 {
-	std::scoped_lock<std::mutex> lock(textures.mutex);
+	std::scoped_lock<std::mutex> lock(resources.mutex);
 
-	Texture* texture = nullptr;
-	auto texIt = textures.obj.find(textureName.data());
+	Resource* texture = nullptr;
+	auto texIt = resources.obj.find(resourceName.data());
 
-	if (texIt != textures.obj.end())
+	if (texIt != resources.obj.end())
 	{
 		texture = &texIt->second;
 	}
 	else
 	{
-		texture = _CreateTextureFromFile(textureName.data(), context);
+		texture = _CreateTextureFromFile(resourceName.data(), context);
 	}
 
 	return texture;
 }
 
-Texture* ResourceManager::FindTexture(std::string_view textureName)
+Resource* ResourceManager::FindResource(std::string_view resourceName)
 {
-	std::scoped_lock<std::mutex> lock(textures.mutex);
+	std::scoped_lock<std::mutex> lock(resources.mutex);
 
-	auto texIt = textures.obj.find(textureName.data());
+	auto texIt = resources.obj.find(resourceName.data());
 
-	return texIt == textures.obj.end() ? nullptr : &texIt->second;
+	return texIt == resources.obj.end() ? nullptr : &texIt->second;
 }
 
-Texture* ResourceManager::CreateTextureFromFileDeferred(const char* name, Frame& frame)
+Resource* ResourceManager::CreateTextureFromFileDeferred(const char* name, Frame& frame)
 {
-	std::scoped_lock<std::mutex> lock(textures.mutex);
+	std::scoped_lock<std::mutex> lock(resources.mutex);
 
-	Texture tex;
+	Resource tex;
 	tex.name = name;
 
-	Texture* result = &textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
+	Resource* result = &resources.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
 
 	TexCreationRequest_FromFile texRequest(*result);
 	frame.texCreationRequests.push_back(std::move(texRequest));
@@ -262,22 +276,22 @@ Texture* ResourceManager::CreateTextureFromFileDeferred(const char* name, Frame&
 	return result;
 }
 
-Texture* ResourceManager::CreateTextureFromFile(const char* name, GPUJobContext& context)
+Resource* ResourceManager::CreateTextureFromFile(const char* name, GPUJobContext& context)
 {
-	std::scoped_lock<std::mutex> lock(textures.mutex);
+	std::scoped_lock<std::mutex> lock(resources.mutex);
 
 	return _CreateTextureFromFile(name, context);
 }
 
-Texture* ResourceManager::CreateTextureFromDataDeferred(FArg::CreateTextureFromDataDeferred& args)
+Resource* ResourceManager::CreateTextureFromDataDeferred(FArg::CreateTextureFromDataDeferred& args)
 {
-	std::scoped_lock<std::mutex> lock(textures.mutex);
+	std::scoped_lock<std::mutex> lock(resources.mutex);
 
-	Texture tex;
+	Resource tex;
 	tex.name = args.name;
 	tex.desc = *args.desc;
 
-	Texture* result = &textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
+	Resource* result = &resources.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
 
 	TexCreationRequest_FromData texRequest(*result);
 	const int texSize = tex.desc.width * tex.desc.height;
@@ -290,18 +304,20 @@ Texture* ResourceManager::CreateTextureFromDataDeferred(FArg::CreateTextureFromD
 	return result;
 }
 
-Texture* ResourceManager::CreateTextureFromData(FArg::CreateTextureFromData& args)
+Resource* ResourceManager::CreateTextureFromData(FArg::CreateResource& args)
 {
-	std::scoped_lock<std::mutex> lock(textures.mutex);
+	std::scoped_lock<std::mutex> lock(resources.mutex);
 
-	return _CreateTextureFromData(args);
+	assert(args.desc->dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && "Invalid texture dimension during resource creation");
+
+	return _CreateResource(args);
 }
 
 void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
 {
 	CommandListRAIIGuard_t commandListGuard(*context.commandList);
 
-	std::scoped_lock<std::mutex> lock(textures.mutex);
+	std::scoped_lock<std::mutex> lock(resources.mutex);
 
 	for (const TextureCreationRequest_t& tr : context.frame.texCreationRequests)
 	{
@@ -329,13 +345,15 @@ void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
 
 				std::string name = texRequest.texture.name;
 
-				FArg::CreateTextureFromData createTexArgs;
+				FArg::CreateResource createTexArgs;
 				createTexArgs.data = reinterpret_cast<std::byte*>(texture.data());
 				createTexArgs.desc = &texRequest.texture.desc;
 				createTexArgs.name = name.c_str();
 				createTexArgs.context = &context;
 
-				_CreateTextureFromData(createTexArgs);
+				assert(createTexArgs.desc->dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && "Invalid texture dimension during resource creation");
+
+				_CreateResource(createTexArgs);
 			}
 			else
 			{
@@ -359,9 +377,11 @@ void ResourceManager::GetDrawTextureFullname(const char* name, char* dest, int d
 	}
 }
 
-void ResourceManager::UpdateTexture(Texture& tex, const std::byte* data, GPUJobContext& context)
+void ResourceManager::UpdateTexture(Resource& tex, const std::byte* data, GPUJobContext& context)
 {
-	Logs::Logf(Logs::Category::Textures, "Update Texture with name %s", tex.name.c_str());
+	Logs::Logf(Logs::Category::Resource, "Update Texture with name %s", tex.name.c_str());
+
+	assert(tex.desc.dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && "UpdateTexture can only work with textures");
 
 	CommandList& commandList = *context.commandList;
 
@@ -376,13 +396,13 @@ void ResourceManager::UpdateTexture(Texture& tex, const std::byte* data, GPUJobC
 	D3D12_SUBRESOURCE_DATA textureData = {};
 	textureData.pData = data;
 	// Divide by 8 cause bpp is bits per pixel, not bytes
-	textureData.RowPitch = tex.desc.width * Texture::BPPFromFormat(tex.desc.format) / 8;
+	textureData.RowPitch = tex.desc.width * Resource::BPPFromFormat(tex.desc.format) / 8;
 	// Not SlicePitch but texture size in our case
 	textureData.SlicePitch = textureData.RowPitch * tex.desc.height;
 
 	CD3DX12_RESOURCE_BARRIER copyDestTransition = CD3DX12_RESOURCE_BARRIER::Transition(
 		tex.buffer.Get(),
-		Texture::DEFAULT_STATE,
+		Resource::DEFAULT_STATE,
 		D3D12_RESOURCE_STATE_COPY_DEST
 	);
 
@@ -393,7 +413,7 @@ void ResourceManager::UpdateTexture(Texture& tex, const std::byte* data, GPUJobC
 	CD3DX12_RESOURCE_BARRIER pixelResourceTransition = CD3DX12_RESOURCE_BARRIER::Transition(
 		tex.buffer.Get(),
 		D3D12_RESOURCE_STATE_COPY_DEST,
-		Texture::DEFAULT_STATE);
+		Resource::DEFAULT_STATE);
 
 	commandList.GetGPUList()->ResourceBarrier(1, &pixelResourceTransition);
 }
@@ -443,43 +463,44 @@ void ResourceManager::ResampleTexture(const unsigned *in, int inwidth, int inhei
 	}
 }
 
-void ResourceManager::DeleteTexture(const char* name)
+void ResourceManager::DeleteResource(const char* name)
 {
-	std::scoped_lock<std::mutex> lock(textures.mutex);
+	std::scoped_lock<std::mutex> lock(resources.mutex);
 
-	Logs::Logf(Logs::Category::Textures, "Delete texture %s", name);
+	Logs::Logf(Logs::Category::Resource, "Delete texture %s", name);
 
-	auto texIt = textures.obj.find(name);
+	auto texIt = resources.obj.find(name);
 
-	assert(texIt != textures.obj.end() && "Trying to delete texture that doesn't exist");
+	assert(texIt != resources.obj.end() && "Trying to delete texture that doesn't exist");
 	
-	textures.obj.erase(texIt);
+	resources.obj.erase(texIt);
 }
 
-Texture* ResourceManager::_CreateTextureFromData(FArg::CreateTextureFromData& args)
+Resource* ResourceManager::_CreateResource(FArg::CreateResource& args)
 {
-	Logs::Logf(Logs::Category::Textures, "Create texture %s", args.name);
+	Logs::Logf(Logs::Category::Resource, "Create resource %s", args.name);
 
-	Texture tex;
+	assert(args.desc->dimension != D3D12_RESOURCE_DIMENSION_UNKNOWN && "Invalid texture dimension during resource creation");
 
-	FArg::_CreateGpuTexture createTexArgs;
+	Resource res;
+
+	FArg::_CreateGpuResource createTexArgs;
 	createTexArgs.raw = reinterpret_cast<const unsigned int*>(args.data);
 	createTexArgs.desc = args.desc;
 	createTexArgs.context = args.context;
-	createTexArgs.outTex = &tex;
 	createTexArgs.clearValue = args.clearValue;
 
-	_CreateGpuTexture(createTexArgs);
+	res.buffer = _CreateGpuResource(createTexArgs);
 
-	tex.desc = *args.desc;
-	tex.name = args.name;
+	res.desc = *args.desc;
+	res.name = args.name;
 
-	Diagnostics::SetResourceName(tex.buffer.Get(), tex.name);
+	Diagnostics::SetResourceName(res.buffer.Get(), res.name);
 
-	return &textures.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
+	return &resources.obj.insert_or_assign(res.name, std::move(res)).first->second;
 }
 
-Texture* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContext& context)
+Resource* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContext& context)
 {
 	if (name == nullptr)
 		return nullptr;
@@ -563,15 +584,19 @@ Texture* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContext
 	//	ResampleTexture(image32, width, height, resampledImage.data(), scaledHeight, scaledWidth);
 	//	image32 = resampledImage.data();
 	//}
-	const TextureDesc desc = { width, height, format };
+	ResourceDesc desc;
+	desc.width = width;
+	desc.height = height;
+	desc.format = format;
+	desc.dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 
-	FArg::CreateTextureFromData createTexArgs;
+	FArg::CreateResource createTexArgs;
 	createTexArgs.data = reinterpret_cast<std::byte*>(image32);
 	createTexArgs.desc = &desc;
 	createTexArgs.name = name;
 	createTexArgs.context = &context;
 
-	Texture* createdTex = _CreateTextureFromData(createTexArgs);
+	Resource* createdTex = _CreateResource(createTexArgs);
 
 	if (image != nullptr)
 	{
@@ -586,31 +611,33 @@ Texture* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContext
 	return createdTex;
 }
 
-void ResourceManager::_CreateGpuTexture(FArg::_CreateGpuTexture& args)
+ComPtr<ID3D12Resource> ResourceManager::_CreateGpuResource(FArg::_CreateGpuResource& args)
 {
-	D3D12_RESOURCE_DESC textureDesc = {};
-	textureDesc.MipLevels = 1;
-	textureDesc.Format = args.desc->format;
-	textureDesc.Width = args.desc->width;
-	textureDesc.Height = args.desc->height;
-	textureDesc.Flags = args.desc->flags;
-	textureDesc.DepthOrArraySize = 1;
-	textureDesc.SampleDesc.Count = 1;
-	textureDesc.SampleDesc.Quality = 0;
-	textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	D3D12_RESOURCE_DESC resourceDesc = {};
+	resourceDesc.MipLevels = 1;
+	resourceDesc.Format = args.desc->format;
+	resourceDesc.Width = args.desc->width;
+	resourceDesc.Height = args.desc->height;
+	resourceDesc.Flags = args.desc->flags;
+	resourceDesc.DepthOrArraySize = 1;
+	resourceDesc.SampleDesc.Count = 1;
+	resourceDesc.SampleDesc.Quality = 0;
+	resourceDesc.Dimension = args.desc->dimension;
+	resourceDesc.Layout = resourceDesc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER ? 
+		D3D12_TEXTURE_LAYOUT_ROW_MAJOR : D3D12_TEXTURE_LAYOUT_UNKNOWN;
 
 	CD3DX12_HEAP_PROPERTIES heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 
 	const D3D12_RESOURCE_STATES initState = args.raw != nullptr ?
 		D3D12_RESOURCE_STATE_COPY_DEST : 
-		Texture::DEFAULT_STATE;
+		Resource::DEFAULT_STATE;
 
 	D3D12_CLEAR_VALUE clearValue;
 	ZeroMemory(&clearValue, sizeof(clearValue));
 	
 	if (args.clearValue != nullptr)
 	{
-		clearValue.Format = textureDesc.Format;
+		clearValue.Format = resourceDesc.Format;
 		
 		clearValue.Color[0] = args.clearValue->x;
 		clearValue.Color[1] = args.clearValue->y;
@@ -618,23 +645,26 @@ void ResourceManager::_CreateGpuTexture(FArg::_CreateGpuTexture& args)
 		clearValue.Color[3] = args.clearValue->w;
 	}
 
+	ComPtr<ID3D12Resource> resource;
+
 	// Create destination texture
 	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommittedResource(
 		&heapProperties,
 		D3D12_HEAP_FLAG_NONE,
-		&textureDesc,
+		&resourceDesc,
 		initState,
 		args.clearValue == nullptr ? nullptr : &clearValue,
-		IID_PPV_ARGS(&args.outTex->buffer)));
+		IID_PPV_ARGS(resource.GetAddressOf())));
 
 	if (args.raw != nullptr)
 	{
 		assert(args.context != nullptr && "If texture is initialized on creation GPU Context is required");
+		assert(args.desc->dimension != D3D12_RESOURCE_DIMENSION_BUFFER && "Immediate resource update is no implemented for buffers");
 
 		CommandList& commandList = *args.context->commandList;
 
 		// Count alignment and go for what we need
-		const UINT64 uploadBufferSize = GetRequiredIntermediateSize(args.outTex->buffer.Get(), 0, 1);
+		const UINT64 uploadBufferSize = GetRequiredIntermediateSize(resource.Get(), 0, 1);
 
 		ComPtr<ID3D12Resource> textureUploadBuffer = CreateUploadHeapBuffer(uploadBufferSize);
 		Diagnostics::SetResourceNameWithAutoId(textureUploadBuffer.Get(), "TextureUploadBuffer_CreateTexture");
@@ -644,17 +674,19 @@ void ResourceManager::_CreateGpuTexture(FArg::_CreateGpuTexture& args)
 		D3D12_SUBRESOURCE_DATA textureData = {};
 		textureData.pData = args.raw;
 		// Divide by 8 cause bpp is bits per pixel, not bytes
-		textureData.RowPitch = args.desc->width * Texture::BPPFromFormat(args.desc->format) / 8;
+		textureData.RowPitch = args.desc->width * Resource::BPPFromFormat(args.desc->format) / 8;
 		// Not SlicePitch but texture size in our case
 		textureData.SlicePitch = textureData.RowPitch * args.desc->height;
 
-		UpdateSubresources(commandList.GetGPUList(), args.outTex->buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
+		UpdateSubresources(commandList.GetGPUList(), resource.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
 		
 		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(
-			args.outTex->buffer.Get(),
+			resource.Get(),
 			D3D12_RESOURCE_STATE_COPY_DEST,
-			Texture::DEFAULT_STATE);
+			Resource::DEFAULT_STATE);
 		commandList.GetGPUList()->ResourceBarrier(1, &transition);
 	}
+
+	return resource;
 
 }

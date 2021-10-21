@@ -25,7 +25,7 @@ int		registration_sequence;
 
 //#TODO make sure this globals are filled in needed time, or even better - remove them
 model_t* currentmodel;
-Texture* r_notexture;
+Resource* r_notexture;
 model_t* r_worldmodel;
 
 PointLight* staticpointlights = NULL;
@@ -954,7 +954,7 @@ void Mod_LoadTexinfo(lump_t *l, GPUJobContext& context)
 		char texNameFormat[] = "textures/%s.wal";
 		Com_sprintf(name, sizeof(name), texNameFormat, in->texture);
 
-		out->image = ResourceManager::Inst().FindOrCreateTexture(name, context);
+		out->image = ResourceManager::Inst().FindOrCreateResource(name, context);
 
 		out->image->desc.radiance = in->value;
 
@@ -1618,7 +1618,7 @@ void Mod_LoadAliasModel(model_t *mod, void *buffer, GPUJobContext& context)
 		pheader->num_skins*MAX_SKINNAME);
 	for (i = 0; i < pheader->num_skins; i++)
 	{
-		mod->skins[i] = ResourceManager::Inst().FindOrCreateTexture(
+		mod->skins[i] = ResourceManager::Inst().FindOrCreateResource(
 			(char *)pheader + pheader->ofs_skins + i * MAX_SKINNAME, context);
 	}
 
@@ -1681,7 +1681,7 @@ void Mod_LoadSpriteModel(model_t *mod, void *buffer, GPUJobContext& context)
 		sprout->frames[i].origin_y = LittleLong(sprin->frames[i].origin_y);
 		memcpy(sprout->frames[i].name, sprin->frames[i].name, MAX_SKINNAME);
 
-		mod->skins[i] = ResourceManager::Inst().FindOrCreateTexture(sprout->frames[i].name, context);
+		mod->skins[i] = ResourceManager::Inst().FindOrCreateResource(sprout->frames[i].name, context);
 	}
 
 	mod->type = mod_sprite;

@@ -1,6 +1,6 @@
 Pass <- PassProps State RSig PrePostPass ShaderDefs ShaderList
 
-ShaderDefs	<- T( < ( Resource / VertAttr / Function )* > )
+ShaderDefs	<- T( < ( Resource / VertAttr / Function / MiscDef )* > )
 State       <- T( 'State' _ '{' _ < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendSt / DestBlendSt )* > '}' )
 ShaderList  <- T( < Shader* > )
 
@@ -66,8 +66,9 @@ FixedFunctionClearDepth <-  T( 'ClearDepth' _ '(' Float ')' )
 
 # --- ShaderDefs ---
 Function 			<- T( < Ident Ident '(' ( !')' . )* ')' _ '{' ( !'}' . )* '}' > )
-VertAttr            <- T(  'struct' < Ident '{' VertAttrContent '}' > )
-Resource            <- T(  ResourceAttr ( ConstBuff / Texture / Sampler / RWTexture ) )
+VertAttr            <- T( 'struct' < Ident '{' VertAttrContent '}' > )
+Resource            <- T(  ResourceAttr ( ConstBuff / Texture / Sampler / RWTexture / StructuredBuff ) )
+StructuredBuff      <- T( 'StructuredBuffer' < _ '<' Ident '>' Ident ':' RegisterDecl > )
 ConstBuff           <- T( 'cbuffer' < Ident ':' RegisterDecl  '{' ConstBuffContent '}' > )
 Texture             <- T( 'Texture2D' < Ident ':' RegisterDecl > )
 RWTexture           <- T( 'RWTexture2D' _ '<' DataType '>' Ident ':' RegisterDecl ) 
@@ -85,6 +86,12 @@ VertAttrField       <- T( ~VertAttrFieldAttr? DataType Ident ':' ResourceFieldSe
 VertAttrSlots       <- T( '[' VertAttrFieldSlot? ( Comma VertAttrFieldSlot )* ']' )
 VertAttrFieldSlot   <- T( Ident ':' Int )
 VertAttrFieldAttr   <- _ 'nointerpolation' _ / _ 'centroid' _
+
+# --- Misc Defs ---
+MiscDef             <- T( Struct ) 
+Struct              <- T( 'struct' < Ident '{' StructContent '}' > )
+StructContent       <- T( StructField* )
+StructField         <- T( DataType Ident ';' )
 
 DataType       <- _ 'float4x4' _ / _ 'float4' _ / _ 'float2' _ / _ 'int' _
 ResourceFieldSemantic   <- T( Word Int? )

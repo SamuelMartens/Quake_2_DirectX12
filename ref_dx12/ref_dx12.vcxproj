@@ -50,7 +50,7 @@
     <ClInclude Include="dx_resourcemanager.h" />
     <ClInclude Include="dx_settings.h" />
     <ClInclude Include="dx_shaderdefinitions.h" />
-    <ClInclude Include="dx_texture.h" />
+    <ClInclude Include="dx_resource.h" />
     <ClInclude Include="dx_threadingutils.h" />
     <ClInclude Include="dx_utils.h" />
     <ClInclude Include="Lib\crc32.h" />
@@ -99,7 +99,7 @@
       </PrecompiledHeaderFile>
     </ClCompile>
     <ClCompile Include="dx_settings.cpp" />
-    <ClCompile Include="dx_texture.cpp" />
+    <ClCompile Include="dx_resource.cpp" />
     <ClCompile Include="dx_threadingutils.cpp" />
     <ClCompile Include="dx_utils.cpp" />
     <ClCompile Include="Lib\imgui\backends\imgui_impl_dx12.cpp" />

@@ -327,7 +327,7 @@ public:
 			return Const::INVALID_INDEX;
 		}
 		
-		Texture* tex = ResourceManager::Inst().FindTexture(renderTargetName);
+		Resource* tex = ResourceManager::Inst().FindResource(renderTargetName);
 
 		assert(tex != nullptr && "AllocateRenderTargetView failed. No such texture");
 

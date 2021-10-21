@@ -17,7 +17,7 @@
 #include <atomic>
 
 #include "d3dx12.h"
-#include "dx_texture.h"
+#include "dx_resource.h"
 #include "dx_common.h"
 #include "dx_objects.h"
 #include "dx_buffer.h"
@@ -89,7 +89,7 @@ class Renderer
 	void GetDrawTextureSize(int* x, int* y, const char* name);
 	void SetPalette(const unsigned char* palette);
 
-	Texture* RegisterDrawPic(const char* name);
+	Resource* RegisterDrawPic(const char* name);
 	void RegisterWorldModel(const char* model);
 	void BeginLevelLoading(const char* map);
 	void EndLevelLoading();

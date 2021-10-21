@@ -412,6 +412,17 @@ namespace
 					Parsing::RootParam_DescTable descTable = peg::any_cast<Parsing::RootParam_DescTable>(token);
 					rootSig.params.push_back(std::move(descTable));
 				}
+				else if (token.type() == typeid(Parsing::RootParam_ShaderResourceView))
+				{
+					Parsing::RootParam_ShaderResourceView srv = peg::any_cast<Parsing::RootParam_ShaderResourceView>(token);
+					assert(srv.num == 1 && "SRV Inline descriptor can't have more that 1 num");
+
+					rootSig.params.push_back(std::move(srv));
+				}
+				else if (token.type() == typeid(Parsing::RootParam_UAView))
+				{
+					assert(false && "UAV inline descriptor is not supported currently");
+				}
 				else 
 				{
 					assert(false && "Invalid root parameter");
@@ -437,9 +448,9 @@ namespace
 			std::for_each(sv.begin(), sv.end(),
 				[&descTable](const peg::any& token)
 			{
-				if (token.type() == typeid(Parsing::RootParam_TextView))
+				if (token.type() == typeid(Parsing::RootParam_ShaderResourceView))
 				{
-					descTable.entities.push_back(peg::any_cast<Parsing::RootParam_TextView>(token));
+					descTable.entities.push_back(peg::any_cast<Parsing::RootParam_ShaderResourceView>(token));
 				}
 				else if (token.type() == typeid(Parsing::RootParam_ConstBuffView))
 				{
@@ -514,7 +525,7 @@ namespace
 				}
 			}
 
-			return Parsing::RootParam_TextView{
+			return Parsing::RootParam_ShaderResourceView{
 				peg::any_cast<int>(sv[0]),
 				num
 			};
@@ -670,6 +681,10 @@ namespace
 			{
 				currentPass.resources.emplace_back(std::any_cast<Parsing::Resource_RWTexture>(sv[1]));
 			}
+			else if (sv[1].type() == typeid(Parsing::Resource_StructuredBuffer))
+			{
+				currentPass.resources.emplace_back(std::any_cast<Parsing::Resource_StructuredBuffer>(sv[1]));
+			}
 			else
 			{
 				assert(false && "Resource callback invalid type. Local scope");
@@ -687,6 +702,19 @@ namespace
 				SetResourceBind(currentRes, resBind.value());
 			}
 
+		};
+
+		parser["StructuredBuff"] = [](const peg::SemanticValues& sv) 
+		{
+			return Parsing::Resource_StructuredBuffer{
+				peg::any_cast<std::string>(sv[1]),
+				std::nullopt,
+				std::nullopt,
+				std::nullopt,
+				peg::any_cast<int>(sv[2]),
+				sv.str(),
+				peg::any_cast<std::string>(sv[0])
+			};
 		};
 
 		parser["ConstBuff"] = [](const peg::SemanticValues& sv)
@@ -827,6 +855,53 @@ namespace
 		parser["VertAttrFieldSlot"] = [](const peg::SemanticValues& sv) 
 		{
 			return std::make_tuple(HASH(peg::any_cast<std::string>(sv[0]).c_str()), peg::any_cast<int>(sv[1]));
+		};
+
+		// --- Misc Defs
+
+		parser["MiscDef"] = [](const peg::SemanticValues& sv, peg::any& ctx) 
+		{
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			PassParametersSource& currentPass = parseCtx.passSources.back();
+
+			if (sv[0].type() == typeid(Parsing::MiscDef_Struct))
+			{
+				currentPass.miscDefs.emplace_back(std::any_cast<Parsing::MiscDef_Struct>(sv[0]));
+			}
+			else
+			{
+				assert(false && "MiscDef invalid type");
+			}
+		};
+
+		parser["Struct"] = [](const peg::SemanticValues& sv)
+		{
+			return Parsing::MiscDef_Struct{
+				peg::any_cast<std::string>(sv[0]),
+				peg::any_cast<std::vector<Parsing::StructField>>(sv[1]),
+				sv.str()
+			};
+		};
+
+		parser["StructContent"] = [](const peg::SemanticValues& sv)
+		{
+			std::vector<Parsing::StructField> content;
+
+			std::transform(sv.begin(), sv.end(), std::back_inserter(content),
+				[](const peg::any& field) { return std::any_cast<Parsing::StructField>(field); });
+
+			return content;
+		};
+
+		parser["StructField"] = [](const peg::SemanticValues& sv) 
+		{
+			std::string name = peg::any_cast<std::string>(sv[1]);
+
+			return Parsing::StructField{
+				peg::any_cast<Parsing::DataType>(sv[0]),
+				HASH(name.c_str()),
+				std::move(name)
+			};
 		};
 
 		parser["DataType"] = [](const peg::SemanticValues& sv)
@@ -1355,12 +1430,12 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 			// Find resource and stub it into shader source
 
 			// Holy C++ magic
-			bool result = std::invoke([&shaderDefsToInclude, &externalDefName](auto... shaderDefs) 
+			bool result = std::invoke([&shaderDefsToInclude, &externalDefName, &pass](auto... shaderDefs) 
 			{
 				int shaderDefsToIncludeOldSize = shaderDefsToInclude.size();
 
 				((
-					std::for_each(shaderDefs->cbegin(), shaderDefs->cend(), [&shaderDefsToInclude, &externalDefName](const auto& def) 
+					std::for_each(shaderDefs->cbegin(), shaderDefs->cend(), [&shaderDefsToInclude, &externalDefName, &pass](const auto& def) 
 				{
 					using T = std::decay_t<decltype(def)>;
 
@@ -1368,6 +1443,23 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 					{
 						if (externalDefName == Parsing::GetResourceName(def))
 						{
+							// For structured buffers shader will also need definition of data type that is used
+							if (const Parsing::Resource_StructuredBuffer* structBuff = 
+								std::get_if<Parsing::Resource_StructuredBuffer>(&def))
+							{
+								const std::string& miscDefName = structBuff->dataStructName;
+
+								auto dataTypeStructIt = std::find_if(pass.miscDefs.cbegin(), pass.miscDefs.cend(),
+									[&miscDefName](const Parsing::MiscDef_t& miscDef)
+								{
+									return miscDefName == Parsing::GetMiscDefName(miscDef);
+								});
+
+								assert(dataTypeStructIt != pass.miscDefs.cend() && "Structured buffer data type is not found");
+
+								shaderDefsToInclude += Parsing::GetMiscDefRawView(*dataTypeStructIt);
+							}
+
 							shaderDefsToInclude += Parsing::GetResourceRawView(def);
 						}
 					}
@@ -1600,18 +1692,19 @@ std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std:
 	{
 		const std::string& resourceName = internalResourcesName.emplace_back(resourceDecl.name);
 
-		assert(resourceManager.FindTexture(resourceName) == nullptr && "Trying create internal texture that already exists");
+		assert(resourceManager.FindResource(resourceName) == nullptr && "Trying create internal texture that already exists");
 		
 		assert(resourceDecl.desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && 
 			"Only 2D textures are implemented as frame graph internal res");
 
-		TextureDesc desc;
+		ResourceDesc desc;
 		desc.width = resourceDecl.desc.Width;
 		desc.height = resourceDecl.desc.Height;
 		desc.format = resourceDecl.desc.Format;
 		desc.flags = resourceDecl.desc.Flags;
+		desc.dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 
-		FArg::CreateTextureFromData createTexArgs;
+		FArg::CreateResource createTexArgs;
 		createTexArgs.data = nullptr;
 		createTexArgs.desc = &desc;
 		createTexArgs.name = resourceName.c_str();
@@ -1632,7 +1725,7 @@ std::vector<ResourceProxy> FrameGraphBuilder::CreateFrameGraphTextureProxies(con
 
 	for(const std::string& textureName : internalTextureList)
 	{
-		Texture* texture = resMan.FindTexture(textureName);
+		Resource* texture = resMan.FindResource(textureName);
 
 		assert(texture != nullptr && "Failed to create texture proxy. No such texture is found");
 
@@ -2095,19 +2188,35 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 									});
 							}
 						}
-						else if constexpr (std::is_same_v<T, Parsing::RootParam_TextView>)
+						else if constexpr (std::is_same_v<T, Parsing::RootParam_ShaderResourceView>)
 						{
 							for (int i = 0; i < descTableParam.num; ++i)
 							{
-								const Parsing::Resource_Texture* res =
+								const Parsing::Resource_Texture* resTexture =
 									FindResourceOfTypeAndRegId<Parsing::Resource_Texture>(passResources, descTableParam.registerId + i);
 
-								SetScopeAndBindFrequency(bindFrequency, scope, res);
+								// Is it structured buffer or texture?
+								if (resTexture != nullptr)
+								{
 
-								descTableArgument.content.emplace_back(RootArg::DescTableEntity_Texture{
-									HASH(res->name.c_str()),
-									res->bind
-								});
+									SetScopeAndBindFrequency(bindFrequency, scope, resTexture);
+
+									descTableArgument.content.emplace_back(RootArg::DescTableEntity_Texture{
+										HASH(resTexture->name.c_str()),
+										resTexture->bind
+										});
+								}
+								else
+								{
+									const Parsing::Resource_StructuredBuffer* resStructuredBuffer =
+										FindResourceOfTypeAndRegId<Parsing::Resource_StructuredBuffer>(passResources, descTableParam.registerId + i);
+
+									SetScopeAndBindFrequency(bindFrequency, scope, resStructuredBuffer);
+
+									descTableArgument.content.emplace_back(RootArg::DescTableEntity_StructuredBufferView{
+										HASH(resStructuredBuffer->name.c_str())
+										});
+								}
 							}
 
 						}
@@ -2151,6 +2260,27 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 				}
 
 				AddRootArg(pass, frameGraph, *bindFrequency, *scope, descTableArgument);
+			}
+			else if constexpr (std::is_same_v<T, Parsing::RootParam_ShaderResourceView>)
+			{
+				const Parsing::Resource_StructuredBuffer* res =
+					FindResourceOfTypeAndRegId<Parsing::Resource_StructuredBuffer>(passResources, rootParam.registerId);
+
+				assert(FindResourceOfTypeAndRegId<Parsing::Resource_Texture>(passResources, rootParam.registerId) == nullptr &&
+					"Inline SRV descriptor cannot correspond to Texture");
+
+				assert(rootParam.num == 1 && "Inline SRV should always have numDescriptors 1");
+				assert(res->bind.has_value() == false && "Internal bind for inline SRV is not implemented");
+
+				AddRootArg(pass,
+					frameGraph,
+					*res->bindFrequency,
+					*res->scope,
+					RootArg::StructuredBufferView{
+						paramIndex,
+						HASH(res->name.c_str())
+					});
+
 			}
 			else
 			{

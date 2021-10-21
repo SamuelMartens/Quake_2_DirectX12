@@ -9,7 +9,7 @@
 
 #include "dx_common.h"
 #include "dx_utils.h"
-#include "dx_texture.h"
+#include "dx_resource.h"
 
 class Frame;
 class CommandList;

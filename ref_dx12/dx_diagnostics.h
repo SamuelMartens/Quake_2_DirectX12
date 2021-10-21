@@ -40,7 +40,7 @@ namespace Logs
 		Generic,
 		Synchronization,
 		FrameSubmission,
-		Textures,
+		Resource,
 		Job,
 		Parser,
 

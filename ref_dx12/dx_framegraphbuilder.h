@@ -9,7 +9,7 @@
 
 #include "dx_passparameters.h"
 #include "dx_framegraph.h"
-#include "dx_texture.h"
+#include "dx_resource.h"
 
 namespace Parsing
 {
@@ -43,7 +43,7 @@ namespace Parsing
 	struct RootParam_ConstBuffView : public RootParam_BaseView
 	{};
 
-	struct RootParam_TextView : public RootParam_BaseView
+	struct RootParam_ShaderResourceView : public RootParam_BaseView
 	{};
 
 	struct RootParam_SamplerView : public RootParam_BaseView
@@ -54,7 +54,7 @@ namespace Parsing
 
 	using DescTableEntity_t = std::variant<
 		RootParam_ConstBuffView,
-		RootParam_TextView,
+		RootParam_ShaderResourceView,
 		RootParam_SamplerView,
 		RootParam_UAView>;
 
@@ -65,6 +65,7 @@ namespace Parsing
 
 	using RootParma_t = std::variant<
 		RootParam_ConstBuffView,
+		RootParam_ShaderResourceView,
 		RootParam_DescTable,
 		RootParam_UAView>;
 	

@@ -5,10 +5,14 @@
 #include "Lib/crc32.h"
 #include "dx_pass.h"
 #include "dx_descriptorheapallocator.h"
-#include "dx_texture.h"
+#include "dx_resource.h"
 #include "dx_app.h"
 #include "dx_resourcemanager.h"
 #include "dx_framegraph.h"
+
+// This is required because in some places template code will be generated for types where it's not intended.
+#define DO_IF_SAME_DECAYED_TYPE(T1, T2, code) if constexpr (std::is_same_v<std::decay_t<T1>, std::decay_t<T2>>) { code; } \
+	else { assert(false && "DO_IF_SAME_DECAYED_TYPE type failed in runtime" ); }
 
 extern "C"
 {
@@ -85,17 +89,19 @@ namespace RenderCallbacks
 						std::array<char, MAX_QPATH> texFullName;
 						ResourceManager::Inst().GetDrawTextureFullname(obj.name.c_str(), texFullName.data(), texFullName.size());
 
-						Texture* tex = ResourceManager::Inst().FindOrCreateTexture(texFullName.data(), ctx.jobContext);
+						Resource* tex = ResourceManager::Inst().FindOrCreateResource(texFullName.data(), ctx.jobContext);
 
 						ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
-						renderer.cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc);
+						DO_IF_SAME_DECAYED_TYPE(bT, int, 
+							renderer.cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
 
 					}
 					else
 					{
 						ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVTexture2DNullDescription();
 
-						renderer.cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription);
+						DO_IF_SAME_DECAYED_TYPE(bT, int, 
+							renderer.cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
 					}
 				}
 				break;
@@ -111,10 +117,11 @@ namespace RenderCallbacks
 			{
 			case HASH("gDiffuseMap"):
 			{
-				Texture* tex = ResourceManager::Inst().FindTexture(obj.textureKey.c_str());
+				Resource* tex = ResourceManager::Inst().FindResource(obj.textureKey.c_str());
 
 				ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
-				Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc);
+				DO_IF_SAME_DECAYED_TYPE( bT, int, 
+					Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
 			}
 			break;
 			default:
@@ -133,26 +140,27 @@ namespace RenderCallbacks
 
 				const DynamicObjectModel& model = renderer.GetDynamicModels().at(obj.model);
 
-				Texture* tex = nullptr;
+				Resource* tex = nullptr;
 
 				if (obj.skinnum >= MAX_MD2SKINS)
 				{
-					tex = ResourceManager::Inst().FindTexture(model.textures[0]);
+					tex = ResourceManager::Inst().FindResource(model.textures[0]);
 				}
 				else
 				{
-					tex = ResourceManager::Inst().FindTexture(model.textures[obj.skinnum]);
+					tex = ResourceManager::Inst().FindResource(model.textures[obj.skinnum]);
 
 					if (tex == nullptr)
 					{
-						tex = ResourceManager::Inst().FindTexture(model.textures[0]);
+						tex = ResourceManager::Inst().FindResource(model.textures[0]);
 					}
 				}
 
 				assert(tex != nullptr && "Not texture found for dynamic object rendering. Implement fall back");
 
 				ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
-				renderer.cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc);
+				DO_IF_SAME_DECAYED_TYPE(bT, int, 
+					renderer.cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
 			}
 			break;
 			default:
@@ -271,12 +279,12 @@ namespace RenderCallbacks
 
 
 	template<typename DescT, typename bT>
-	void RegisterInternal(bT& bindPoint, std::string_view internalResourceName)
+	void RegisterInternalResource(bT& bindPoint, std::string_view internalResourceName)
 	{
 		// For internal resource there is no difference if it is global or local,
 		// object or pass. No context passed as well because essentially those kind of
 		// resources are handled on GPU side.
-		Texture* tex = ResourceManager::Inst().FindTexture(internalResourceName);
+		Resource* tex = ResourceManager::Inst().FindResource(internalResourceName);
 
 		assert(tex != nullptr && "Can register internal resource. Target texture doesn't exist");
 
@@ -296,7 +304,7 @@ namespace RenderCallbacks
 			assert(false && "Not implemented");
 		}
 
-		Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(reinterpret_cast<int&>(bindPoint), tex->buffer.Get(), &emtpySrvDesc);
+		DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
 	}
 
 	template<typename bT>
@@ -309,16 +317,16 @@ namespace RenderCallbacks
 			std::array<char, MAX_QPATH> texFullName;
 			ResourceManager& resMan = ResourceManager::Inst();
 
-			resMan.GetDrawTextureFullname(Texture::FONT_TEXTURE_NAME, texFullName.data(), texFullName.size());
+			resMan.GetDrawTextureFullname(Resource::FONT_TEXTURE_NAME, texFullName.data(), texFullName.size());
 
-			Texture* tex = resMan.FindTexture(texFullName.data());
+			Resource* tex = resMan.FindResource(texFullName.data());
 			if (tex == nullptr)
 			{
 				tex = resMan.CreateTextureFromFile(texFullName.data(), ctx.jobContext);
 			}
 
 			ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
-			Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(reinterpret_cast<int&>(bindPoint), tex->buffer.Get(), &emtpySrvDesc);
+			DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
 		}
 		break;
 		default:
@@ -333,7 +341,7 @@ namespace RenderCallbacks
 		{
 		case HASH("gMovieTex"):
 		{
-			Texture* tex = ResourceManager::Inst().FindTexture(Texture::RAW_TEXTURE_NAME);
+			Resource* tex = ResourceManager::Inst().FindResource(Resource::RAW_TEXTURE_NAME);
 			assert(tex != nullptr && "Draw_RawPic texture doesn't exist");
 
 			std::vector<DrawCall_UI_t>& uiDrawCalls = ctx.jobContext.frame.uiDrawCalls;
@@ -367,12 +375,12 @@ namespace RenderCallbacks
 				}
 
 				ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
-				Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(reinterpret_cast<int&>(bindPoint), tex->buffer.Get(), &emtpySrvDesc);
+				DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
 			}
 			else
 			{
 				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVTexture2DNullDescription();
-				Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(reinterpret_cast<int&>(bindPoint), nullptr, &nullViewDescription);
+				DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
 			}
 		}
 		break;

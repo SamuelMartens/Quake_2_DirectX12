@@ -39,7 +39,7 @@
     <ClInclude Include="dx_local.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="dx_texture.h">
+    <ClInclude Include="dx_resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="dx_common.h">
@@ -153,6 +153,9 @@
     <ClInclude Include="Lib\imgui\imconfig.h">
       <Filter>Header Files\Lib\imgui</Filter>
     </ClInclude>
+    <ClInclude Include="dx_lightbaker.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ref_dx12.def">
@@ -170,7 +173,7 @@
     <ClCompile Include="dx_rmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="dx_texture.cpp">
+    <ClCompile Include="dx_resource.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\game\q_shared.c">
@@ -265,6 +268,9 @@
     </ClCompile>
     <ClCompile Include="Lib\imgui\imgui_draw.cpp">
       <Filter>Source Files\Lib</Filter>
+    </ClCompile>
+    <ClCompile Include="dx_lightbaker.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

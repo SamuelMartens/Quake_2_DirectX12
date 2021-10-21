@@ -13,7 +13,7 @@ extern "C"
 }
 
 
-#include "dx_texture.h"
+#include "dx_resource.h"
 #include "dx_threadingutils.h"
 #include "dx_light.h"
 
@@ -70,7 +70,7 @@ typedef struct mtexinfo_s
 	int			flags;
 	int			numframes;
 	struct mtexinfo_s	*next;		// animation chain
-	Texture		*image;
+	Resource		*image;
 
 } mtexinfo_t;
 
@@ -230,7 +230,7 @@ typedef struct model_s
 	byte		*lightdata;
 
 	// for alias models and skins
-	Texture		*skins[MAX_MD2SKINS];
+	Resource		*skins[MAX_MD2SKINS];
 
 	int			extradatasize;
 	void		*extradata;
