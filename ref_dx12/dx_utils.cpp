@@ -647,3 +647,37 @@ std::vector<uint32_t> Utils::GetIndicesListForTrianglelistFromPolygonPrimitive(i
 
 	return indices;
 }
+
+std::vector<XMFLOAT4> Utils::GenerateNormals(const std::vector<XMFLOAT4>& vertices, const std::vector<uint32_t>& indices)
+{
+	std::vector<XMFLOAT4> normals(vertices.size(), XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f));
+
+	assert(indices.size() % 3 == 0 && "Invalid amount of indices");
+
+	for (int triangleInd = 0; triangleInd < indices.size() / 3; ++triangleInd)
+	{
+		const int v0Ind = indices[triangleInd * 3 + 0];
+		const int v1Ind = indices[triangleInd * 3 + 1];
+		const int v2Ind = indices[triangleInd * 3 + 2];
+
+		XMVECTOR sseV0 = XMLoadFloat4(&vertices[v0Ind]);
+		XMVECTOR sseV1 = XMLoadFloat4(&vertices[v1Ind]);
+		XMVECTOR ssev2 = XMLoadFloat4(&vertices[v2Ind]);
+
+		// Make sure direction is right, I might end up with normals facing inside,
+		// in this case tweak order in which vertices are subtracted
+		XMVECTOR sseFaceCrossProd = XMVector3Cross(sseV1 - sseV0, ssev2 - sseV0);
+
+		XMStoreFloat4(&normals[v0Ind], XMLoadFloat4(&normals[v0Ind]) + sseFaceCrossProd);
+		XMStoreFloat4(&normals[v1Ind], XMLoadFloat4(&normals[v1Ind]) + sseFaceCrossProd);
+		XMStoreFloat4(&normals[v2Ind], XMLoadFloat4(&normals[v2Ind]) + sseFaceCrossProd);
+	}
+
+	for (XMFLOAT4& normal : normals)
+	{
+		normal.w = 1.0f;
+		XMStoreFloat4(&normal, XMVector3Normalize(XMLoadFloat4(&normal)));
+	}
+
+	return normals;
+}

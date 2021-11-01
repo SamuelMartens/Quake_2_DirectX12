@@ -1,0 +1,91 @@
+PassProperties
+{
+PassInput : PostProcess
+// Edit this to appropriate number
+PassThreadGroups : 32, 1, 1
+}
+
+State
+{
+ 
+}
+
+RootSignature
+{
+RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
+SRV(t0),
+SRV(t1),
+SRV(t2),
+SRV(t3),
+SRV(t4),
+CBV(b0)
+}
+
+struct BSPNode
+{
+	float4 bbMin;
+	float4 bbMax;
+	
+	int leftChild;
+	int rightChild;
+	
+	int objectsOffset;
+	int objectsSize;
+}
+
+
+struct Object
+{
+	int vertexOffset;
+	int vertexSize;
+	
+	int indexOffset;
+	int indexSize;
+}
+
+struct Vertex
+{
+	float4 position;
+	float4 normal;
+}
+
+[Global, PerPass]
+StructuredBuffer<BSPNode> gBsp : register(t0)
+
+[Global, PerPass]
+StructuredBuffer<Object> gObjects : register(t1)
+
+[Global, PerPass]
+StructuredBuffer<int> gIndices : register(t2)
+
+[Global, PerPass]
+StructuredBuffer<Vertex> gVertices : register(t3)
+
+[Global, PerPass]
+StructuredBuffer<float4> gSamples : register(t4)
+
+[Global, PerPass]
+cbuffer gProbeData : register(b0)
+{
+	int samplerSetSize;
+	int samplerSetIndex;
+	float4 probePosition;
+}
+
+Type : CS
+External: gBsp, gObjects, gIndices, gVertices
+<[
+
+// Shoot ray in certain direction in and get back radiance
+float PathTrace(float4 position, float4 ray)
+{
+
+}
+
+[numthreads(32, 1, 1)]
+void main(int3 dispatchThreadID : SV_DispatchThreadID)
+{
+
+}
+
+]>

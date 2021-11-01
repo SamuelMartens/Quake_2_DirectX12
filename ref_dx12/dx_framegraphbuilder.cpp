@@ -713,7 +713,7 @@ namespace
 				std::nullopt,
 				peg::any_cast<int>(sv[2]),
 				sv.str(),
-				peg::any_cast<std::string>(sv[0])
+				peg::any_cast<Parsing::StructBufferDataType_t>(sv[0])
 			};
 		};
 
@@ -785,6 +785,23 @@ namespace
 		parser["ResourceUpdate"] = [](const peg::SemanticValues& sv)
 		{
 			return static_cast<Parsing::ResourceBindFrequency>(sv.choice());
+		};
+
+		parser["StructBufferType"] = [](const peg::SemanticValues& sv)
+		{
+			if (sv[0].type() == typeid(Parsing::DataType))
+			{
+				return Parsing::StructBufferDataType_t(std::any_cast<Parsing::DataType>(sv[0]));
+			}
+			else if (sv[0].type() == typeid(std::string))
+			{
+				return Parsing::StructBufferDataType_t(std::any_cast<std::string>(sv[0]));
+			}
+			else
+			{
+				assert(false && "Invalid StructBufferType");
+				return Parsing::StructBufferDataType_t("");
+			}
 		};
 
 		parser["ConstBuffContent"] = [](const peg::SemanticValues& sv)
@@ -1447,17 +1464,18 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 							if (const Parsing::Resource_StructuredBuffer* structBuff = 
 								std::get_if<Parsing::Resource_StructuredBuffer>(&def))
 							{
-								const std::string& miscDefName = structBuff->dataStructName;
-
-								auto dataTypeStructIt = std::find_if(pass.miscDefs.cbegin(), pass.miscDefs.cend(),
-									[&miscDefName](const Parsing::MiscDef_t& miscDef)
+								if (const std::string* miscDefName = std::get_if<std::string>(&structBuff->dataType))
 								{
-									return miscDefName == Parsing::GetMiscDefName(miscDef);
-								});
+									auto dataTypeStructIt = std::find_if(pass.miscDefs.cbegin(), pass.miscDefs.cend(),
+										[&miscDefName](const Parsing::MiscDef_t& miscDef)
+									{
+										return *miscDefName == Parsing::GetMiscDefName(miscDef);
+									});
 
-								assert(dataTypeStructIt != pass.miscDefs.cend() && "Structured buffer data type is not found");
+									assert(dataTypeStructIt != pass.miscDefs.cend() && "Structured buffer data type is not found");
 
-								shaderDefsToInclude += Parsing::GetMiscDefRawView(*dataTypeStructIt);
+									shaderDefsToInclude += Parsing::GetMiscDefRawView(*dataTypeStructIt);
+								}
 							}
 
 							shaderDefsToInclude += Parsing::GetResourceRawView(def);

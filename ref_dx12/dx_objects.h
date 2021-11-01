@@ -37,9 +37,11 @@ public:
 	std::string textureKey;
 	
 	BufferHandler vertices = Const::INVALID_BUFFER_HANDLER;
+	BufferHandler normals = Const::INVALID_BUFFER_HANDLER;
 	BufferHandler indices = Const::INVALID_BUFFER_HANDLER;
 
 	int verticesSizeInBytes = Const::INVALID_SIZE;
+	int normalsSizeInBytes = Const::INVALID_SIZE;
 	int indicesSizeInBytes = Const::INVALID_SIZE;
 };
 
@@ -88,6 +90,8 @@ public:
 
 	// - Vertices, sequence of keyframe vertices
 	BufferHandler vertices = Const::INVALID_BUFFER_HANDLER;
+
+	BufferHandler normals = Const::INVALID_BUFFER_HANDLER;
 
 	BufferHandler indices = Const::INVALID_BUFFER_HANDLER;
 

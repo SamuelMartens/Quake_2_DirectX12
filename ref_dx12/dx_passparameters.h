@@ -375,9 +375,12 @@ namespace Parsing
 	struct Resource_Sampler : public Resource_Base
 	{};
 
+	// Either some struct or basic type
+	using StructBufferDataType_t = std::variant<std::string, DataType>;
+
 	struct Resource_StructuredBuffer : public Resource_Base
 	{
-		std::string dataStructName;
+		StructBufferDataType_t dataType;
 
 		bool IsEqual(const Resource_StructuredBuffer& other) const;
 	};

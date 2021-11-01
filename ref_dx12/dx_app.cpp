@@ -1336,13 +1336,30 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 
 	ResourceManager::Inst().UpdateDefaultHeapBuff(updateBuffArg);
 
-	std::vector<XMFLOAT4> verticesPos;
-	verticesPos.reserve(vertices.size());
+	// Generate normals
+	std::vector<XMFLOAT4> vertPos;
+	vertPos.reserve(vertices.size());
 
-	for (const ShDef::Vert::PosTexCoord& vertex : vertices)
+	std::transform(vertices.cbegin(), vertices.cend(), std::back_inserter(vertPos), 
+		[](const ShDef::Vert::PosTexCoord& vert)
 	{
-		verticesPos.push_back(vertex.position);
-	}
+		return vert.position;
+	});
+
+
+	std::vector<XMFLOAT4> normals = Utils::GenerateNormals(vertPos, indices);
+
+	obj.normalsSizeInBytes = sizeof(XMFLOAT4) * normals.size();
+	obj.normals = defaultMemory.Allocate(obj.normalsSizeInBytes);
+
+	updateBuffArg.buffer = defaultMemory.GetGpuBuffer();
+	updateBuffArg.offset = defaultMemory.GetOffset(obj.normals);
+	updateBuffArg.byteSize = obj.normalsSizeInBytes;
+	updateBuffArg.data = normals.data();
+	updateBuffArg.alignment = 0;
+	updateBuffArg.context = &context;
+
+	ResourceManager::Inst().UpdateDefaultHeapBuff(updateBuffArg);
 }
 
 void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, GPUJobContext& context)

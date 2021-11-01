@@ -78,6 +78,8 @@ ResourceScope       <- _ 'Local' _ / _ 'Global' _
 ResourceUpdate      <- _ 'PerObject' _ / _ 'PerPass' _
 ResourceBind        <- T( 'Bind' _ ':' Ident )
 
+StructBufferType    <- DataType / Ident
+
 ConstBuffContent	<- T( ConstBuffField* )
 ConstBuffField		<- T( DataType Ident ';' )
 

@@ -174,6 +174,9 @@ namespace Utils
 
 	std::vector<uint32_t> GetIndicesListForTrianglelistFromPolygonPrimitive(int numVertices);
 
+	[[nodiscard]]
+	std::vector<XMFLOAT4> GenerateNormals(const std::vector<XMFLOAT4>& vertices, const std::vector<uint32_t>& indices);
+
 	inline bool VecEqual(const XMFLOAT2& v1, const XMFLOAT2& v2)
 	{
 		constexpr float epsilon = 0.00001f;

@@ -438,7 +438,7 @@ namespace Parsing
 	bool Resource_StructuredBuffer::IsEqual(const Resource_StructuredBuffer& other) const
 	{
 		return Resource_Base::IsEqual(other) &&
-			dataStructName == other.dataStructName;
+			dataType == other.dataType;
 	}
 
 	std::string_view GetResourceName(const Parsing::Resource_t& res)
