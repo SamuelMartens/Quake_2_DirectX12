@@ -64,6 +64,11 @@ namespace FArg
 // 5) Implement occlusion query. If this is not enough, resurrect BSP tree.
 class Renderer
 {
+	//#DEBUG
+	friend class LightBaker;
+	friend class BSPTree;
+	//END
+
 	DEFINE_SINGLETON(Renderer);
 
 	const refimport_t& GetRefImport() const { return refImport; };
@@ -273,6 +278,7 @@ private:
 	std::array<unsigned int, 256> Table8To24;
 	std::array<unsigned int, 256> rawPalette;
 
+	std::vector<SourceStaticObject> sourceStaticObjects;
 	std::vector<StaticObject> staticObjects;
 	std::unordered_map<model_t*, DynamicObjectModel> dynamicObjectsModels;
 

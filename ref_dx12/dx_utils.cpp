@@ -8,6 +8,13 @@
 
 #include "dx_app.h"
 
+#ifdef max
+#undef max
+#endif
+
+#ifdef min
+#undef min
+#endif
 
 const XMFLOAT4 Utils::axisX = XMFLOAT4(1.0, 0.0, 0.0, 0.0);
 const XMFLOAT4 Utils::axisY = XMFLOAT4(0.0, 1.0, 0.0, 0.0);
@@ -139,8 +146,8 @@ std::vector<XMFLOAT4> Utils::CreateSphere(float radius, int numSubdivisions /*= 
 
 bool Utils::IsAABBBehindPlane(const Plane& plane, const AABB& aabb)
 {
-	XMVECTOR sseAABBMin = XMLoadFloat4(&aabb.bbMin);
-	XMVECTOR sseAABBMax = XMLoadFloat4(&aabb.bbMax);
+	XMVECTOR sseAABBMin = XMLoadFloat4(&aabb.minVert);
+	XMVECTOR sseAABBMax = XMLoadFloat4(&aabb.maxVert);
 
 	XMVECTOR sseAABBCenter = XMVectorDivide(XMVectorAdd(sseAABBMax, sseAABBMin), XMVectorSet(2.0f, 2.0f, 2.0f, 2.0f));
 	XMVECTOR sseAABBPositiveHalfDiagonal = XMVectorDivide(XMVectorSubtract(sseAABBMax, sseAABBMin), XMVectorSet(2.0f, 2.0f, 2.0f, 2.0f));
@@ -680,4 +687,136 @@ std::vector<XMFLOAT4> Utils::GenerateNormals(const std::vector<XMFLOAT4>& vertic
 	}
 
 	return normals;
+}
+
+Utils::AABB Utils::ConstructAABB(const std::vector<XMFLOAT4>& vertices)
+{
+	Utils::AABB aabb;
+
+	XMVECTOR sseMin = XMLoadFloat4(&aabb.minVert);
+	XMVECTOR sseMax = XMLoadFloat4(&aabb.maxVert);
+
+	for (const XMFLOAT4& vertex : vertices)
+	{
+		XMVECTOR sseVertex = XMLoadFloat4(&vertex);
+
+		sseMin = XMVectorMin(sseMin, sseVertex);
+		sseMax = XMVectorMax(sseMax, sseVertex);
+	}
+
+	XMStoreFloat4(&aabb.minVert, sseMin);
+	XMStoreFloat4(&aabb.maxVert, sseMax);
+
+	return aabb;
+}
+
+bool Utils::IsVectorNotZero(const XMFLOAT4& vector)
+{
+	return vector.x != 0.0f || vector.y != 0.0f || vector.z != 0.0f;
+}
+
+bool Utils::IsRayIntersectsAABB(const Ray& ray, const AABB& aabb, float* t)
+{
+	float tMin = FLT_MAX;
+	float tMax = -FLT_MAX;
+
+	const float* rayDir = &ray.direction.x;
+	const float* rayOrigin = &ray.origin.x;
+
+	const float* aabbMin = &aabb.minVert.x;
+	const float* aabbMax = &aabb.maxVert.x;
+
+	for (int i = 0; i < 3; ++i)
+	{
+		if (rayDir[i] == 0.0f)
+		{
+			continue;
+		}
+
+		float currentTMin = (aabbMin[i] - rayOrigin[i]) / rayDir[i];
+		float currentTMax = (aabbMax[i] - rayOrigin[i]) / rayDir[i];
+
+		if (currentTMin > currentTMax)
+		{
+			std::swap(currentTMax, currentTMin);
+		}
+
+		tMin = std::max(tMin, currentTMin);
+		tMax = std::min(tMax, currentTMax);
+
+		// No intersection
+		if (tMin > tMax)
+		{
+			return false;
+		}
+
+		// AABB is behind the ray
+		if (tMax < 0)
+		{
+			return false;
+		}
+	}
+
+	// In case we were not able to find ANY intersection
+	if (tMin ==  FLT_MAX )
+	{
+		return false;
+	}
+
+	if (t != nullptr)
+	{
+		*t = tMin < 0.0f ? tMax : tMin;
+	}
+	
+	return true;
+}
+
+
+bool Utils::IsRayIntersectsTriangle(const Ray& ray, const XMFLOAT4& v0, const XMFLOAT4& v1, const XMFLOAT4& v2, RayTriangleIntersectionResult& result)
+{
+	// Taken from Real-Time Rendering Second Edition, p581
+	XMVECTOR sseV0 = XMLoadFloat4(&v0);
+	XMVECTOR sseV1 = XMLoadFloat4(&v1);
+	XMVECTOR sseV2 = XMLoadFloat4(&v2);
+
+	XMVECTOR sseRayDir = XMLoadFloat4(&ray.direction);
+	XMVECTOR sseRayOrigin = XMLoadFloat4(&ray.origin);
+
+	XMVECTOR sseEdge1 = sseV1 - sseV0;
+	XMVECTOR sseEdge2 = sseV2 - sseV0;
+
+	XMVECTOR sseP = XMVector3Cross(sseRayDir, sseEdge2);
+	const float a = XMVectorGetX(XMVector3Dot(sseEdge1, sseP));
+
+	if (std::abs(a) < std::numeric_limits<float>::epsilon())
+	{
+		return false;
+	}
+
+	const float f = 1 / a;
+
+	XMVECTOR sseS = sseRayOrigin - sseV0;
+
+	const float u = f * XMVectorGetX(XMVector3Dot(sseS, sseP));
+
+	if (u < 0.0f || u > 1.0f)
+	{
+		return false;
+	}
+
+	XMVECTOR sseQ = XMVector3Cross(sseS, sseEdge1);
+
+	const float v = f * XMVectorGetX(XMVector3Dot(sseRayDir, sseQ));
+
+	if (v < 0.0f || u + v > 1.0f)
+	{
+		return false;
+	}
+
+	result.t = f * XMVectorGetX(XMVector3Dot(sseEdge2, sseQ));
+	result.u = u;
+	result.v = v;
+	result.w = 1.0f - u - v;
+
+	return true;
 }

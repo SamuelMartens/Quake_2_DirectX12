@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "dx_app.h"
+
 namespace
 {
 	inline bool AABBIntersectsCameraFrustum(const Utils::AABB& aabb, const std::array<Utils::Plane, 6>& cameraFrustum)
@@ -110,8 +112,8 @@ Utils::AABB BSPTree::GetClusterAABB(const int clusterIndex) const
 {
 	Utils::AABB clusterAABB;
 
-	XMVECTOR sseAABBMax = XMLoadFloat4(&clusterAABB.bbMax);
-	XMVECTOR sseAABBMin = XMLoadFloat4(&clusterAABB.bbMin);
+	XMVECTOR sseAABBMax = XMLoadFloat4(&clusterAABB.maxVert);
+	XMVECTOR sseAABBMin = XMLoadFloat4(&clusterAABB.minVert);
 
 	for (const BSPNode& node : nodes)
 	{
@@ -120,14 +122,14 @@ Utils::AABB BSPTree::GetClusterAABB(const int clusterIndex) const
 			continue;
 		}
 
-		sseAABBMax = XMVectorMax(sseAABBMax, XMLoadFloat4(&node.aabb.bbMax));
-		sseAABBMin = XMVectorMin(sseAABBMin, XMLoadFloat4(&node.aabb.bbMin));
+		sseAABBMax = XMVectorMax(sseAABBMax, XMLoadFloat4(&node.aabb.maxVert));
+		sseAABBMin = XMVectorMin(sseAABBMin, XMLoadFloat4(&node.aabb.minVert));
 	}
 
 	assert(static_cast<bool>(XMVectorGetX(XMVectorEqual(sseAABBMax, sseAABBMin))) == false && "Cluster AABB is invalid");
 
-	XMStoreFloat4(&clusterAABB.bbMax, sseAABBMax);
-	XMStoreFloat4(&clusterAABB.bbMin, sseAABBMin);
+	XMStoreFloat4(&clusterAABB.maxVert, sseAABBMax);
+	XMStoreFloat4(&clusterAABB.minVert, sseAABBMin);
 	
 	return clusterAABB;
 }
@@ -147,6 +149,96 @@ std::set<int> BSPTree::GetClustersSet() const
 	}
 
 	return clusters;
+}
+
+bool BSPTree::IsPointVisibleFromOtherPoint(const XMFLOAT4& p0, const XMFLOAT4& p1) const
+{
+	const BSPNode& p0Node = GetNodeWithPoint(p0, nodes.front());
+	const BSPNode& p1Node = GetNodeWithPoint(p1, nodes.front());
+
+	assert((p0Node.cluster != Const::INVALID_INDEX && p1Node.cluster != Const::INVALID_INDEX) &&
+		"Checking visibility for points, that have invalid cluster, is this intentional?");
+
+	std::vector<bool> p0PVS = DecompressClusterVisibility(p0Node.cluster);
+
+	// p1 is out of p0 PVS
+	if (p0PVS[p1Node.cluster] == false)
+	{
+		return false;
+	}
+
+	XMVECTOR sseP0 = XMLoadFloat4(&p0);
+	XMVECTOR sseP1 = XMLoadFloat4(&p1);
+
+	// Get T that is from p0 to p1 only intersections with t in between matters
+	const float maxT = XMVectorGetX(XMVector3Length(sseP1 - sseP0));
+
+	Utils::Ray ray;
+	
+	ray.origin = p0;
+	XMStoreFloat4(&ray.direction, XMVector3Normalize(sseP1 - sseP0));
+
+	const std::vector<SourceStaticObject>& objects = Renderer::Inst().sourceStaticObjects;
+
+	for (const int leafIndex : leavesIndices)
+	{
+		const BSPNode& leaf = nodes[leafIndex];
+
+		float tAABB = FLT_MAX;
+
+		if (Utils::IsRayIntersectsAABB(ray, leaf.aabb, &tAABB) == false)
+		{
+			continue;
+		}
+
+		// Intersection point is too far
+		if (tAABB > maxT)
+		{
+			continue;
+		}
+
+		for (const int objectIndex : leaf.objectsIndices)
+		{
+			const SourceStaticObject& object = objects[objectIndex];
+
+			if (Utils::IsRayIntersectsAABB(ray, object.aabb, &tAABB) == false)
+			{
+				continue;
+			}
+
+			if (tAABB > maxT)
+			{
+				continue;
+			}
+
+			assert(object.indices.size() % 3 == 0 && "Invalid triangle indices");
+
+			for (int triangleIndex = 0; triangleIndex < object.indices.size() / 3; ++triangleIndex)
+			{
+				const XMFLOAT4& v0 = object.vertices[object.indices[triangleIndex * 3 + 0]];
+				const XMFLOAT4& v1 = object.vertices[object.indices[triangleIndex * 3 + 1]];
+				const XMFLOAT4& v2 = object.vertices[object.indices[triangleIndex * 3 + 2]];
+
+				Utils::RayTriangleIntersectionResult rayTriangleResult;
+
+				if (Utils::IsRayIntersectsTriangle(ray, v0, v1, v2, rayTriangleResult) == false)
+				{
+					continue;
+				}
+
+				if (rayTriangleResult.t > maxT)
+				{
+					continue;
+				}
+
+				// Any triangle in between means points are not visible
+				return false;
+
+			}
+		}
+	}
+
+	return true;
 }
 
 const BSPNode& BSPTree::GetNodeWithPoint(const XMFLOAT4& point, const BSPNode& node) const

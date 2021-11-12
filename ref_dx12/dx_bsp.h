@@ -28,6 +28,10 @@ struct BSPNode
 
 class BSPTree
 {
+	//#DEBUG
+	friend class LightBaker;
+	//END
+
 public:
 
 	void Create(const mnode_t& root);
@@ -38,6 +42,9 @@ public:
 
 	Utils::AABB GetClusterAABB(const int clusterIndex) const;
 	std::set<int> GetClustersSet() const;
+
+	[[nodiscard]]
+	bool IsPointVisibleFromOtherPoint(const XMFLOAT4& p0, const XMFLOAT4& p1) const;
 
 private:
 

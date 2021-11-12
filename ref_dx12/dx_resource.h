@@ -17,6 +17,9 @@ struct ResourceDesc
 	int height = 0;
 	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
 	D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
+	//#DEBUG this probably shouldn't be here. Looks how this is sampled
+	// if this is just uniform radiance I can freely move this to Area Light
+	//#DEBUG this is int type, really?
 	int radiance = 0;
 
 	D3D12_RESOURCE_DIMENSION dimension = D3D12_RESOURCE_DIMENSION_UNKNOWN;

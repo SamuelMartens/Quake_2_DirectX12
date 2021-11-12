@@ -18,11 +18,16 @@ SRV(t1),
 SRV(t2),
 SRV(t3),
 SRV(t4),
+SRV(t5),
+SRV(t6),
+SRV(t7),
 CBV(b0)
 }
 
 struct BSPNode
 {
+	
+	
 	float4 bbMin;
 	float4 bbMax;
 	
@@ -31,6 +36,8 @@ struct BSPNode
 	
 	int objectsOffset;
 	int objectsSize;
+	
+	int cluster;
 }
 
 
@@ -49,6 +56,22 @@ struct Vertex
 	float4 normal;
 }
 
+// I do huve clusters info for point lights, but skipping it for now
+struct PointLight
+{
+	float4 position;
+	float4 color;
+	
+	float intensity; 
+}
+
+// Think how to properly represent this
+struct AreaLight
+{
+	int staticObjectIndex;
+	int radiance;
+}
+
 [Global, PerPass]
 StructuredBuffer<BSPNode> gBsp : register(t0)
 
@@ -63,6 +86,16 @@ StructuredBuffer<Vertex> gVertices : register(t3)
 
 [Global, PerPass]
 StructuredBuffer<float4> gSamples : register(t4)
+
+[Global, PerPass]
+StructuredBuffer<PointLight> gPointLights : register(t5)
+
+[Global, PerPass]
+StructuredBuffer<AreaLight> gAreaLights : register(t6)
+
+[Global, PerPass]
+StructuredBuffer<int> gClusterVisibility : register(t6)
+
 
 [Global, PerPass]
 cbuffer gProbeData : register(b0)

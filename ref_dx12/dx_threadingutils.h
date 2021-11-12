@@ -99,8 +99,6 @@ public:
 	void SignalDependencies();
 	void WaitDependency() const;
 
-
-
 	Frame& frame;
 	CommandList* commandList = nullptr;
 

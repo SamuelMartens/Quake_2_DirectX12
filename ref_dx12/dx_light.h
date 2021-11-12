@@ -15,7 +15,14 @@ struct PointLight
 	std::vector<int> clusters;
 };
 
+//#TODO remove ambiguity created by this by naming here.
+// This one is called surface, like in original Q2 rendering
+// but in engine I call this things StaticObject
 struct SurfaceLight
 {
+	// Surface index in array of static objects (currently belongs to Renderer)
+	// surface == staticObject
+	// Be aware, that lighting characteristics are stored in texInfo
+	// that is referenced by this StaticObject
 	int surfaceIndex = Const::INVALID_INDEX;
 };

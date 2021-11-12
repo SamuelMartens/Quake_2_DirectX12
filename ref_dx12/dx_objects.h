@@ -17,6 +17,23 @@ extern "C"
 	#include "../client/ref.h"
 };
 
+// Contains source data in CPU accessible format
+// For now used only in light baking
+class SourceStaticObject
+{
+public:
+
+	std::string textureKey;
+
+	Utils::AABB aabb;
+
+	std::vector<XMFLOAT4> vertices;
+	std::vector<XMFLOAT4> normals;
+
+	std::vector<int> indices;
+};
+
+// Contains only data required for rendering
 class StaticObject
 {
 public:

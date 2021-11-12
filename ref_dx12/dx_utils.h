@@ -56,11 +56,26 @@ namespace Utils
 
 	/* TYPES */
 
+	struct RayTriangleIntersectionResult
+	{
+		float t = FLT_MAX;
+		// Barycentric coordinates of intersection
+		float u = 0;
+		float v = 0;
+		float w = 0;
+	};
+
 	struct AABB
 	{
 		// Bounding box, in WORLD space
-		XMFLOAT4 bbMin = { FLT_MAX, FLT_MAX, FLT_MAX, 1.0f };
-		XMFLOAT4 bbMax = { -FLT_MAX, -FLT_MAX, -FLT_MAX, 1.0f };
+		XMFLOAT4 minVert = { FLT_MAX, FLT_MAX, FLT_MAX, 1.0f };
+		XMFLOAT4 maxVert = { -FLT_MAX, -FLT_MAX, -FLT_MAX, 1.0f };
+	};
+
+	struct Ray
+	{
+		XMFLOAT4 origin = { 0.0f, 0.0f, 0.0f, 1.0f };
+		XMFLOAT4 direction = { 0.0f, 0.0f, 0.0f, 0.0f };
 	};
 
 	struct Plane
@@ -186,6 +201,16 @@ namespace Utils
 
 	Plane ConstructPlane(const XMFLOAT4& p0, const XMFLOAT4& p1, const XMFLOAT4& p2);
 	bool IsAABBBehindPlane(const Plane& plane, const AABB& aabb);
+
+	[[nodiscard]]
+	Utils::AABB ConstructAABB(const std::vector<XMFLOAT4>& vertices);
+
+	[[nodiscard]]
+	bool IsRayIntersectsAABB(const Utils::Ray& ray, const Utils::AABB& aabb, float* t = nullptr);
+	[[nodiscard]]
+	bool IsRayIntersectsTriangle(const Utils::Ray& ray, const XMFLOAT4& v0, const XMFLOAT4& v1, const XMFLOAT4& v2, RayTriangleIntersectionResult& result);
+
+	bool IsVectorNotZero(const XMFLOAT4& vector);
 
 	std::vector<XMFLOAT4> CreateSphere(float radius, int numSubdivisions = 1);
 }

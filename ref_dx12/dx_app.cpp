@@ -1360,6 +1360,23 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	updateBuffArg.context = &context;
 
 	ResourceManager::Inst().UpdateDefaultHeapBuff(updateBuffArg);
+
+	// Handle source static objects
+	SourceStaticObject sourceObject;
+
+	sourceObject.textureKey = obj.textureKey;
+	sourceObject.vertices = std::move(vertPos);
+	sourceObject.normals = std::move(normals);
+	
+	std::transform(indices.cbegin(), indices.cend(), std::back_inserter(sourceObject.indices),
+		[](const uint32_t index) 
+	{
+		return index;
+	});
+
+	sourceObject.aabb = Utils::ConstructAABB(sourceObject.vertices);
+
+	sourceStaticObjects.push_back(std::move(sourceObject));
 }
 
 void Renderer::DecomposeGLModelNode(const model_t& model, const mnode_t& node, GPUJobContext& context)
