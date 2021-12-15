@@ -1596,6 +1596,8 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 					return paramSource.name == passName;
 				});
 
+				assert(passParamIt != source.passesParametersSources.end() && "Pass source described in framegraph is not found");
+
 				// Ugly hack to save data before they will be moved
 				std::vector<PassParametersSource::FixedFunction_t> prePassFuncs = passParamIt->prePassFuncs;
 				std::vector<PassParametersSource::FixedFunction_t> postPassFuncs = passParamIt->postPassFuncs;

@@ -669,11 +669,11 @@ std::vector<XMFLOAT4> Utils::GenerateNormals(const std::vector<XMFLOAT4>& vertic
 
 		XMVECTOR sseV0 = XMLoadFloat4(&vertices[v0Ind]);
 		XMVECTOR sseV1 = XMLoadFloat4(&vertices[v1Ind]);
-		XMVECTOR ssev2 = XMLoadFloat4(&vertices[v2Ind]);
+		XMVECTOR sseV2 = XMLoadFloat4(&vertices[v2Ind]);
 
 		// Make sure direction is right, I might end up with normals facing inside,
 		// in this case tweak order in which vertices are subtracted
-		XMVECTOR sseFaceCrossProd = XMVector3Cross(sseV1 - sseV0, ssev2 - sseV0);
+		XMVECTOR sseFaceCrossProd = XMVector3Cross(sseV1 - sseV0, sseV2 - sseV0);
 
 		XMStoreFloat4(&normals[v0Ind], XMLoadFloat4(&normals[v0Ind]) + sseFaceCrossProd);
 		XMStoreFloat4(&normals[v1Ind], XMLoadFloat4(&normals[v1Ind]) + sseFaceCrossProd);

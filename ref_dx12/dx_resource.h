@@ -21,6 +21,7 @@ struct ResourceDesc
 	// if this is just uniform radiance I can freely move this to Area Light
 	//#DEBUG this is int type, really?
 	int radiance = 0;
+	XMFLOAT4 reflectivity = { 0.0f, 0.0f, 0.0f, 0.0f };
 
 	D3D12_RESOURCE_DIMENSION dimension = D3D12_RESOURCE_DIMENSION_UNKNOWN;
 };

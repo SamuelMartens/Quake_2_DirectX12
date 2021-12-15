@@ -67,6 +67,7 @@ class Renderer
 	//#DEBUG
 	friend class LightBaker;
 	friend class BSPTree;
+	friend struct SurfaceLight;
 	//END
 
 	DEFINE_SINGLETON(Renderer);
@@ -229,6 +230,9 @@ private:
 	bool IsVisible(const entity_t& entity, const Camera& camera) const;
 	void RegisterObjectsAtFrameGraphs();
 	static LONG WINAPI MainWndProcWrapper(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+
+	//#DEBUG this and static lights vector should belong to light baker
+	void InitStaticLighting();
 
 	/* Frames */
 	void SubmitFrame(Frame& frame);

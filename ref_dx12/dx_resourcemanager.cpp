@@ -4,6 +4,7 @@
 #include "dx_diagnostics.h"
 #include "dx_app.h"
 #include "dx_threadingutils.h"
+#include "dx_light.h"
 
 
 ComPtr<ID3D12Resource> ResourceManager::CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, GPUJobContext& context)
@@ -598,6 +599,9 @@ Resource* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContex
 
 	Resource* createdTex = _CreateResource(createTexArgs);
 
+	createdTex->desc.reflectivity = SurfaceLight::CalculateReflectivity(*createdTex,
+		reinterpret_cast<std::byte*>(image32));
+	
 	if (image != nullptr)
 	{
 		free(image);

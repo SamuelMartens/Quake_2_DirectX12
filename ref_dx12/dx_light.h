@@ -5,6 +5,8 @@
 #include "dx_common.h"
 #include "dx_objects.h"
 
+class Resource;
+
 struct PointLight
 {
 	XMFLOAT4 origin = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -25,4 +27,18 @@ struct SurfaceLight
 	// Be aware, that lighting characteristics are stored in texInfo
 	// that is referenced by this StaticObject
 	int surfaceIndex = Const::INVALID_INDEX;
+
+	float area = 0.0f;
+	// Each value is upper bound of PDF for that triangle,
+	// look previous triangle for lower bound value
+	std::vector<float> trianglesPDF;
+
+	XMFLOAT4 irradiance = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+	static void Init(SurfaceLight& light);
+
+	static XMFLOAT4 CalculateReflectivity(const Resource& texture, const std::byte* textureData);
+	static XMFLOAT4 CalculateIrradiance(const SurfaceLight& light);
+
+	static float GetUniformSamplePDF(const SurfaceLight& light);
 };
