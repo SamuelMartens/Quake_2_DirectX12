@@ -37,38 +37,102 @@ namespace
 		return windowedFunctionValue * distanceFalloff;
 	}
 
-	int GetAreaLightSampleSetIndex()
+	float GenerateNormalizedUniformDistributioSample()
 	{
 		static std::mutex mutex;
 		std::scoped_lock<std::mutex> lock(mutex);
-
+	
 		static std::random_device randomDevice;
 		static std::mt19937 randomGenerationEngine(randomDevice());
 
-		std::uniform_int_distribution<> distribution(0, LightBaker::AREA_LIGHTS_RANDOM_SAMPLES_SETS_NUM);
+		std::uniform_real_distribution<> distribution(0.0f, 1.0f);
 
 		return distribution(randomGenerationEngine);
 	}
 
-	int GetUniformSphereSampleSetIndex()
+	XMFLOAT4 GenerateUniformSphereSample()
 	{
-		static std::mutex mutex;
-		std::scoped_lock<std::mutex> lock(mutex);
+		const float randNum1 = GenerateNormalizedUniformDistributioSample();
+		const float randNum2 = GenerateNormalizedUniformDistributioSample();
 
-		static std::random_device randomDevice;
-		static std::mt19937 randomGenerationEngine(randomDevice());
+		XMFLOAT4 sample;
 
-		std::uniform_int_distribution<> distribution(0, LightBaker::RANDOM_UNIFORM_SPHERE_SAMPLES_SETS_NUM);
+		sample.w = 0.0f;
+		sample.z = 1.0f - 2.0f * randNum1;
+		sample.y = std::sin(2.0f * M_PI * randNum2) * std::sqrt(1.0f - sample.z * sample.z);
+		sample.x = std::cos(2.0f * M_PI * randNum2) * std::sqrt(1.0f - sample.z * sample.z);
 
-		return distribution(randomGenerationEngine);
+		return sample;
+	}
+
+	constexpr float GetUniformSphereSamplePDF()
+	{
+		return 1.0f / (4 * M_PI);
+	}
+
+	// Returns vector of sets of area lights. Per each sample:\
+	// x, y - 2d value of sample applied to a certain triangle in mesh
+	// z - value to figure out which triangle to sample in mesh, based on area of each triangle in mesh
+	XMFLOAT4 GenerateAreaLightsSample()
+	{
+		XMFLOAT4 sample;
+
+		sample.x = GenerateNormalizedUniformDistributioSample();
+		sample.y = GenerateNormalizedUniformDistributioSample();
+		sample.z = GenerateNormalizedUniformDistributioSample();
+
+		return sample;
+	}
+
+	XMFLOAT4 GenerateConcentricDiskSample()
+	{
+		const float randNum1 = 2.0f * GenerateNormalizedUniformDistributioSample() - 1.0f;
+		const float randNum2 = 2.0f * GenerateNormalizedUniformDistributioSample() - 1.0f;
+
+		if (randNum1 == 0 && randNum2 == 0)
+		{
+			return XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+		}
+		
+		float theta = 0.0f;
+		float r = 0.0f;
+
+		if (std::abs(randNum1) > std::abs(randNum2))
+		{
+			r = randNum1;
+			theta = M_PI * randNum2 / (randNum1 * 4.0f);
+		}
+		else
+		{
+			r = randNum2;
+			theta = M_PI / 2.0f - M_PI * randNum1 / (randNum2 * 4.0f);
+		}
+
+		XMFLOAT4 sample;
+		sample.x = r * std::cos(theta);
+		sample.y = r * std::sin(theta);
+		sample.z = 0.0f;
+		sample.w = 0.0f;
+
+		return sample;
+	}
+
+	XMFLOAT4 GenerateCosineWeightedSample()
+	{
+		XMFLOAT4 sample = GenerateConcentricDiskSample();
+		sample.z = std::sqrt(std::max(0.0f, 1.0f - sample.x * sample.x - sample.y * sample.y));
+
+		return sample;
+	}
+
+	float GetCosineWeightedSamplePDF(float cosTheta)
+	{
+		return cosTheta / M_PI;
 	}
 }
 
 void LightBaker::GenerateSourceData()
 {
-	uniformSphereSamplesSets = GenerateRandomUniformSphereSamples();
-	areaLightsSamplesSets = GenerateRandomAreaLightsSamples();
-
 	clusterBakePoints = GenerateClustersBakePoints();
 
 	currentBakeCluster = 0;
@@ -128,62 +192,6 @@ std::vector<XMFLOAT4> LightBaker::GenerateClusterBakePoints(int clusterIndex) co
 	return bakePoints;
 }
 
-std::vector<std::array<XMFLOAT4, LightBaker::RANDOM_UNIFORM_SPHERE_SAMPLES_SET_SIZE>> LightBaker::GenerateRandomUniformSphereSamples() const
-{
-	std::random_device randomDevice;
-	std::mt19937 randomGenerationEngine(randomDevice());
-
-	std::uniform_real_distribution<> distribution(0.0f, 1.0f);
-
-	std::vector<std::array<XMFLOAT4, LightBaker::RANDOM_UNIFORM_SPHERE_SAMPLES_SET_SIZE>> samplesSetArray(LightBaker::RANDOM_UNIFORM_SPHERE_SAMPLES_SETS_NUM);
-
-	for (int i = 0; i < RANDOM_UNIFORM_SPHERE_SAMPLES_SETS_NUM; ++i)
-	{
-		std::array<XMFLOAT4, LightBaker::RANDOM_UNIFORM_SPHERE_SAMPLES_SET_SIZE>& currentSamplesSet = samplesSetArray[i];
-
-		for (XMFLOAT4& sample : currentSamplesSet)
-		{
-			const float randNum1 = distribution(randomGenerationEngine);
-			const float randNum2 = distribution(randomGenerationEngine);
-
-			// Uniform sphere distribution
-			sample.w = 0.0f;
-			sample.z = 1.0f - 2.0f * randNum1;
-			sample.y = std::sin(2.0f * M_PI * randNum2) * std::sqrt(1.0f - sample.z * sample.z);
-			sample.x = std::cos(2.0f * M_PI * randNum2) * std::sqrt(1.0f - sample.z * sample.z);
-		}
-	}
-
-	return samplesSetArray;
-}
-
-// Returns vector of sets of area lights. Per each sample:\
-// x, y - 2d value of sample applied to a certain triangle in mesh
-// z - value to figure out which triangle to sample in mesh, based on area of each triangle in mesh
-std::vector<std::array<XMFLOAT4, LightBaker::AREA_LIGHTS_RANDOM_SAMPLES_SET_SIZE>> LightBaker::GenerateRandomAreaLightsSamples() const
-{
-	std::random_device randomDevice;
-	std::mt19937 randomGenerationEngine(randomDevice());
-
-	std::uniform_real_distribution<> distribution(0.0f, 1.0f);
-
-	std::vector<std::array<XMFLOAT4, LightBaker::AREA_LIGHTS_RANDOM_SAMPLES_SET_SIZE>> samplesSetArray(LightBaker::AREA_LIGHTS_RANDOM_SAMPLES_SETS_NUM);
-
-	for (int i = 0; i < AREA_LIGHTS_RANDOM_SAMPLES_SETS_NUM; ++i)
-	{
-		std::array<XMFLOAT4, LightBaker::AREA_LIGHTS_RANDOM_SAMPLES_SET_SIZE>& currentSamplesSet = samplesSetArray[i];
-
-		for (XMFLOAT4& sample : currentSamplesSet)
-		{
-			sample.x = distribution(randomGenerationEngine);
-			sample.y = distribution(randomGenerationEngine);
-			sample.z = distribution(randomGenerationEngine);
-		}
-	}
-
-	return samplesSetArray;
-}
-
 void LightBaker::BakeJob(GPUJobContext& context)
 {
 	//#TODO can I move WaitDependecy() to Dependency Guard?
@@ -205,15 +213,25 @@ void LightBaker::BakeJob(GPUJobContext& context)
 		
 		for (int bakePointIndex = 0; bakePointIndex < bakePoints.size(); ++bakePointIndex)
 		{
+			
 			const XMFLOAT4& bakePoint = bakePoints[bakePointIndex];
-			const std::array<XMFLOAT4, LightBaker::RANDOM_UNIFORM_SPHERE_SAMPLES_SET_SIZE>& samplesSet = uniformSphereSamplesSets[GetUniformSphereSampleSetIndex()];
+			
+			// One bake point is one probe  irradiance
+			XMVECTOR sseProbeIrradiance = XMVectorZero();
 
-			//#DEBUG finish here!
+			for (int i = 0; i < Settings::PROBE_SAMPLES_NUM; ++i)
+			{
+				sseProbeIrradiance = sseProbeIrradiance + XMLoadFloat4(&PathTraceFromProbe(bakePoint));
+			}
+
+			// Do Monte Carlo integration
+			sseProbeIrradiance = sseProbeIrradiance / Settings::PROBE_SAMPLES_NUM;
+
 		}
 	}
 }
-
-XMFLOAT4 LightBaker::GatherIrradianceAtInersectionPoint(const Utils::Ray& ray, const BSPNodeRayIntersectionResult& nodeIntersectionResult) const
+//#DEBUG continue by placing this function in a proper space
+XMFLOAT4 LightBaker::GatherDirectIrradianceAtInersectionPoint(const Utils::Ray& ray, const BSPNodeRayIntersectionResult& nodeIntersectionResult) const
 {
 	XMVECTOR sseIntersectionPoint = XMLoadFloat4(&ray.origin) + XMLoadFloat4(&ray.direction) *
 		nodeIntersectionResult.rayTriangleIntersection.t;
@@ -231,7 +249,7 @@ XMFLOAT4 LightBaker::GatherIrradianceAtInersectionPoint(const Utils::Ray& ray, c
 	XMVECTOR sseV1Normal = XMLoadFloat4(&object.normals[v1Index]);
 	XMVECTOR sseV2Normal = XMLoadFloat4(&object.normals[v2Index]);
 
-	XMVECTOR normal = XMVector3Normalize(sseV0Normal * nodeIntersectionResult.rayTriangleIntersection.u +
+	XMVECTOR sseNormal = XMVector3Normalize(sseV0Normal * nodeIntersectionResult.rayTriangleIntersection.u +
 		sseV1Normal * nodeIntersectionResult.rayTriangleIntersection.v +
 		sseV2Normal * nodeIntersectionResult.rayTriangleIntersection.w);
 
@@ -257,7 +275,7 @@ XMFLOAT4 LightBaker::GatherIrradianceAtInersectionPoint(const Utils::Ray& ray, c
 			continue;
 		}
 
-		const float normalAndIntersectionDotProduct = XMVectorGetX(XMVector3Dot(sseIntersectionPointToLight, normal));
+		const float normalAndIntersectionDotProduct = XMVectorGetX(XMVector3Dot(sseIntersectionPointToLight, sseNormal));
 
 		if (normalAndIntersectionDotProduct <= 0.0f)
 		{
@@ -276,10 +294,10 @@ XMFLOAT4 LightBaker::GatherIrradianceAtInersectionPoint(const Utils::Ray& ray, c
 			 distanceFalloff * XMLoadFloat4(&light.color) * light.intensity * normalAndIntersectionDotProduct;
 	}
 
-	//#DEBUG don't forget to add radiance from area lights
+	const XMFLOAT4 areaLightIrradiance = GatherIrradianceFromAreaLights(ray, nodeIntersectionResult);
 
 	XMFLOAT4 resultIrradiance;
-	XMStoreFloat4(&resultIrradiance, sseResultIrradiance);
+	XMStoreFloat4(&resultIrradiance, sseResultIrradiance + XMLoadFloat4(&areaLightIrradiance));
 
 	return resultIrradiance;
 }
@@ -293,7 +311,7 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLights(const Utils::Ray& ray, const
 	XMStoreFloat4(&intersectionPoint, sseIntersectionPoint);
 
 	const BSPTree& bsp = Renderer::Inst().bspTree;
-	//#DEBUG continue here.
+	
 	const BSPNode& intersectionNode = bsp.GetNodeWithPoint(intersectionPoint, bsp.nodes.front());
 	if (intersectionNode.cluster == Const::INVALID_INDEX)
 	{
@@ -340,8 +358,7 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLights(const Utils::Ray& ray, const
 	{
 		XMFLOAT4 lightIrradiance = GatherIrradianceFromAreaLight(
 			intersectionPoint,
-			staticSurfaceLights[lightIndex],
-			areaLightsSamplesSets[GetAreaLightSampleSetIndex()]);
+			staticSurfaceLights[lightIndex]);
 
 		sseResultIrradiance = sseResultIrradiance + XMLoadFloat4(&lightIrradiance);
 	}
@@ -350,9 +367,9 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLights(const Utils::Ray& ray, const
 	XMStoreFloat4(&resultIrradiance, sseResultIrradiance);
 
 	return resultIrradiance;
-}
+} 
 
-XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionPoint, const SurfaceLight& light, const std::array<XMFLOAT4, AREA_LIGHTS_RANDOM_SAMPLES_SET_SIZE>& samplesSet) const
+XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionPoint, const SurfaceLight& light) const
 {
 	const SourceStaticObject& lightMesh = Renderer::Inst().sourceStaticObjects[light.surfaceIndex];
 
@@ -360,11 +377,14 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionP
 
 	const BSPTree& bsp = Renderer::Inst().bspTree;
 
+	XMVECTOR sseSampleIrradiance = XMLoadFloat4(&light.irradiance);
+	XMVECTOR sseIntersectionPoint = XMLoadFloat4(&intersectionPoint);
+
 	XMVECTOR sseIrradiance = XMVectorZero();
 
-	for (int i = 0; i < samplesSet.size(); ++i)
+	for (int i = 0; i < Settings::AREA_LIGHTS_SAMPLES_NUM; ++i)
 	{
-		const XMFLOAT4& sample = samplesSet[i];
+		const XMFLOAT4 sample = GenerateAreaLightsSample();
 
 		const auto trinangleIndexIt = std::find_if(lightTrianglesPDF.cbegin(), lightTrianglesPDF.cend(), 
 			[&sample](const float& trianglePDF)
@@ -395,7 +415,7 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionP
 		XMVECTOR sseLightSamplePoint = sseV0 * u + sseV1 * v + sseV2 * w;
 		
 		const float lightToRayAndLightNormalDot = XMVectorGetX(XMVector3Dot(
-		 	sseLightSamplePoint - XMLoadFloat4(&intersectionPoint), 
+		 	sseLightSamplePoint - sseIntersectionPoint, 
 			XMLoadFloat4(&lightMesh.normals[V0Ind])));
 
 		if (lightToRayAndLightNormalDot <= 0.0f)
@@ -412,24 +432,115 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionP
 		{
 			continue;
 		}
-		//#DEBUG continue AREA lights here	
-		//sseIrradiance = sseIrradiance + 
+		
+		const float distanceToSample = XMVectorGetX(XMVector3Length(sseLightSamplePoint - sseIntersectionPoint));
+
+		sseIrradiance = sseIrradiance + 
+			sseSampleIrradiance * CalculateDistanceFalloff(distanceToSample, Settings::AREA_LIGHTS_MAX_DISTANCE) *
+			lightToRayAndLightNormalDot;
 	}
 
-	return XMFLOAT4();
+	// Now do Monte Carlo integration
+	sseIrradiance = sseIrradiance / SurfaceLight::GetUniformSamplePDF(light) / Settings::AREA_LIGHTS_SAMPLES_NUM;
+
+	XMFLOAT4 irradiance;
+	XMStoreFloat4(&irradiance, sseIrradiance);
+
+	return irradiance;
 }
 
-XMFLOAT4 LightBaker::PathTrace(const Utils::Ray& ray) const
+// Will return indirect light that comes to probe via one sample
+XMFLOAT4 LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord)
 {
-	// How should I approach finding closest intersection:
-	// 1) Find in which node/cluster position lies
-	// 2) Check geometry in this cluster/node
-	// 3) If nothing found, look for closest geometry in PVC
-	// 4) For every static object check AABB first
-	// 5) If AABB fits, look for every triangle
+	XMVECTOR sseIrradiance = XMVectorZero();
 
-	// !!! NODES AND CLUSTERS ALSO HAVE AABB, don't forget that!
+	XMFLOAT4 intersectionPoint = probeCoord;
+	XMFLOAT4 rayDir = GenerateUniformSphereSample();
 
+	float samplesPDF = GetUniformSphereSamplePDF();
+
+	float nDotL = 1.0f;
+
+	XMVECTOR sseThoroughput = { 1.0f, 1.0f, 1.0f, 0.0f };
+
+	const XMVECTOR sseZ_AXIS = XMLoadFloat4(&Utils::AXIS_Z);
+
+	int rayBounce = 0;
+
+	while(true)
+	{
+		const bool isGuaranteedBounce = rayBounce < Settings::GUARANTEED_BOUNCES_NUM;
+
+		if (isGuaranteedBounce == false)
+		{
+			// Apply Russian Roulette to terminate.
+			const float sample = GenerateNormalizedUniformDistributioSample();
+			//#TODO MJP uses throughtput as well. But I don't quite understand his logic
+			if (sample < Settings::RUSSIAN_ROULETTE_TERMINATION_PROBABILITY)
+			{
+				break;
+			}
+
+			sseThoroughput = sseThoroughput / (1.0f - Settings::RUSSIAN_ROULETTE_TERMINATION_PROBABILITY);
+		}
+
+		// Find intersection
+		Utils::Ray ray = { intersectionPoint, rayDir };
+
+		auto [isIntersected, intersectionResult] = FindClosestRayIntersection(ray);
+
+		if (isIntersected == false)
+		{
+			break;
+		}
+
+		XMVECTOR sseIntersectionPoint = XMLoadFloat4(&ray.direction) * intersectionResult.rayTriangleIntersection.t +
+			XMLoadFloat4(&ray.origin);
+
+		// Update intersection point
+		XMStoreFloat4(&intersectionPoint, sseIntersectionPoint);
+
+		XMFLOAT4 directIrradiance = GatherDirectIrradianceAtInersectionPoint(ray, intersectionResult);
+
+		sseIrradiance = sseIrradiance + XMLoadFloat4(&directIrradiance) * sseThoroughput;
+
+		// Generate new ray dir
+		XMFLOAT4 normal = BSPNodeRayIntersectionResult::GetNormal(intersectionResult);
+		XMVECTOR sseNormal = XMLoadFloat4(&normal);
+
+		XMVECTOR sseRayDir =
+			XMVector4Transform(XMLoadFloat4(&GenerateCosineWeightedSample()), 
+				XMLoadFloat4x4(&Utils::ConstructV1ToV2RotationMatrix(Utils::AXIS_Z, normal)));
+
+		// Update ray dir
+		XMStoreFloat4(&rayDir, sseRayDir);
+
+		assert(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseNormal)), 1.0f) && "Normal is not normalized");
+		assert(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseRayDir)), 1.0f) && "Normal is not normalized");
+
+		// Update nDotL
+		nDotL = XMVectorGetX(XMVector3Dot(sseNormal, sseRayDir));
+
+		assert(nDotL > 0.0f && "nDotL is negative, is it ok?");
+
+		// Update PDF 
+		samplesPDF = GetCosineWeightedSamplePDF(nDotL);
+
+		// Update Throughput
+		sseThoroughput = sseThoroughput * nDotL / samplesPDF;
+
+
+		++rayBounce;
+	}
+
+	XMFLOAT4 irradiance;
+	XMStoreFloat4(&irradiance, sseIrradiance);
+
+	return irradiance;
+}
+
+std::tuple<bool, LightBaker::BSPNodeRayIntersectionResult> LightBaker::FindClosestRayIntersection(const Utils::Ray& ray) const
+{
 	const BSPTree& bsp = Renderer::Inst().GetBSPTree();
 
 	// 1)
@@ -458,17 +569,9 @@ XMFLOAT4 LightBaker::PathTrace(const Utils::Ray& ray) const
 
 	}
 
-	if (minT != FLT_MAX)
-	{
-		// We found intersection 
+	const bool isIntersected = minT != FLT_MAX;
 
-		// Intersection point normal
-		//XMVECTOR normal;
-
-		
-	}
-
-	return XMFLOAT4();
+	return {isIntersected, nodeIntersectionResult};
 }
 
 bool LightBaker::FindClosestIntersectionInNode(const Utils::Ray& ray, const BSPNode& node, LightBaker::BSPNodeRayIntersectionResult& result, float& minT) const
@@ -547,4 +650,26 @@ bool LightBaker::FindClosestIntersectionInNode(const Utils::Ray& ray, const BSPN
 	}
 
 	return false;
+}
+
+XMFLOAT4 LightBaker::BSPNodeRayIntersectionResult::GetNormal(const BSPNodeRayIntersectionResult& result)
+{
+	const SourceStaticObject& object = Renderer::Inst().sourceStaticObjects[result.staticObjIndex];
+
+	const int v0Index = object.indices[result.triangleIndex * 3 + 0];
+	const int v1Index = object.indices[result.triangleIndex * 3 + 1];
+	const int v2Index = object.indices[result.triangleIndex * 3 + 2];
+
+	XMVECTOR sseV0Normal = XMLoadFloat4(&object.normals[v0Index]);
+	XMVECTOR sseV1Normal = XMLoadFloat4(&object.normals[v1Index]);
+	XMVECTOR sseV2Normal = XMLoadFloat4(&object.normals[v2Index]);
+
+	XMVECTOR sseNormal = XMVector3Normalize(sseV0Normal * result.rayTriangleIntersection.u +
+		sseV1Normal * result.rayTriangleIntersection.v +
+		sseV2Normal * result.rayTriangleIntersection.w);
+
+	XMFLOAT4 normal;
+	XMStoreFloat4(&normal, sseNormal);
+
+	return normal;
 }

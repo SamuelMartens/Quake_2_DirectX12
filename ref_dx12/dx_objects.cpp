@@ -105,9 +105,9 @@ XMMATRIX DynamicObjectModel::GenerateModelMat(const entity_t& entity)
 
 	// Quake 2 implementation of R_RotateForEntity 
 	XMMATRIX sseModelMat =
-		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisX), XMConvertToRadians(-angles.z)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisY), XMConvertToRadians(-angles.x)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisZ), XMConvertToRadians(angles.y)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::AXIS_X), XMConvertToRadians(-angles.z)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::AXIS_Y), XMConvertToRadians(-angles.x)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::AXIS_Z), XMConvertToRadians(angles.y)) *
 
 		XMMatrixTranslation(entity.origin[0], entity.origin[1], entity.origin[2]);
 
@@ -132,9 +132,9 @@ std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> DynamicObjectModel::GenerateAnimInterpo
 
 	// Generate anim transformation mat
 	XMMATRIX sseRotationMat =
-		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisZ), XMConvertToRadians(-angles.y)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisY), XMConvertToRadians(-angles.x)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisX), XMConvertToRadians(-angles.z));
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::AXIS_Z), XMConvertToRadians(-angles.y)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::AXIS_Y), XMConvertToRadians(-angles.x)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::AXIS_X), XMConvertToRadians(-angles.z));
 
 	// All we do here is transforming delta from world coordinates to model local coordinates
 	XMVECTOR sseMove = XMVectorAdd(

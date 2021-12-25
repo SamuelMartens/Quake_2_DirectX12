@@ -16,9 +16,9 @@
 #undef min
 #endif
 
-const XMFLOAT4 Utils::axisX = XMFLOAT4(1.0, 0.0, 0.0, 0.0);
-const XMFLOAT4 Utils::axisY = XMFLOAT4(0.0, 1.0, 0.0, 0.0);
-const XMFLOAT4 Utils::axisZ = XMFLOAT4(0.0, 0.0, 1.0, 0.0);
+const XMFLOAT4 Utils::AXIS_X = XMFLOAT4(1.0, 0.0, 0.0, 0.0);
+const XMFLOAT4 Utils::AXIS_Y = XMFLOAT4(0.0, 1.0, 0.0, 0.0);
+const XMFLOAT4 Utils::AXIS_Z = XMFLOAT4(0.0, 0.0, 1.0, 0.0);
 
 namespace
 {
@@ -159,6 +159,43 @@ bool Utils::IsAABBBehindPlane(const Plane& plane, const AABB& aabb)
 
 	return AABBCenterToPlaneDist - AABBExtent > 0;
 }
+
+XMFLOAT4X4 Utils::ConstructV1ToV2RotationMatrix(const XMFLOAT4& v1, const XMFLOAT4& v2)
+{
+	// Rodrigues' rotation formula
+
+	XMVECTOR sseV1 = XMLoadFloat4(&v1);
+	XMVECTOR sseV2 = XMLoadFloat4(&v2);
+
+	assert(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseV1)), 1.0f) && "V1 is not normalized");
+	assert(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseV2)), 1.0f) && "V2 is not normalized");
+
+	XMVECTOR sseRotationAxis = XMVector3Cross(sseV1, sseV2);
+
+	const float sin = XMVectorGetX(XMVector3Length(sseRotationAxis));
+	const float cos = XMVectorGetX(XMVector3Dot(sseV1, sseV2));
+
+	XMMATRIX sseRotationAxisMatrix = XMMatrixSet(
+		0.0f, -XMVectorGetZ(sseRotationAxis), XMVectorGetY(sseRotationAxis), 0.0f,
+		XMVectorGetZ(sseRotationAxis), 0.0f, -XMVectorGetX(sseRotationAxis), 0.0f,
+		-XMVectorGetY(sseRotationAxis), XMVectorGetX(sseRotationAxis), 0.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f
+	);
+
+
+	XMMATRIX sseRotationMatrix = XMMatrixIdentity() + sin * sseRotationAxisMatrix + 
+		(1.0f - cos) * sseRotationAxisMatrix * sseRotationAxisMatrix;
+
+	XMFLOAT4X4 rotationMatrix;
+	XMStoreFloat4x4(&rotationMatrix, sseRotationMatrix);
+
+	//#DEBUG remove this later I am just getting nervous if 
+	// maybe I need to set this manually 
+	assert(rotationMatrix._44 == 1.0f && "Nooooooooooo");
+
+	return rotationMatrix;
+}
+
 
 Utils::Plane Utils::ConstructPlane(const XMFLOAT4& p0, const XMFLOAT4& p1, const XMFLOAT4& p2)
 {
@@ -713,6 +750,11 @@ Utils::AABB Utils::ConstructAABB(const std::vector<XMFLOAT4>& vertices)
 bool Utils::IsVectorNotZero(const XMFLOAT4& vector)
 {
 	return vector.x != 0.0f || vector.y != 0.0f || vector.z != 0.0f;
+}
+
+bool Utils::IsAlmostEqual(float a, float b)
+{
+	return std::abs(a - b) < Utils::EPSILON;
 }
 
 bool Utils::IsRayIntersectsAABB(const Ray& ray, const AABB& aabb, float* t)

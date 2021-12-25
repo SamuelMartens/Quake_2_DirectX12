@@ -66,12 +66,12 @@ XMMATRIX Camera::GenerateViewMatrix() const
 	XMMATRIX sseViewMat =
 		XMMatrixTranslation(-position.x, -position.y, -position.z) *
 
-		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisZ), XMConvertToRadians(-viewangles.y)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisY), XMConvertToRadians(-viewangles.x)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisX), XMConvertToRadians(-viewangles.z)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::AXIS_Z), XMConvertToRadians(-viewangles.y)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::AXIS_Y), XMConvertToRadians(-viewangles.x)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::AXIS_X), XMConvertToRadians(-viewangles.z)) *
 
-		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisZ), XMConvertToRadians(90.0f)) *
-		XMMatrixRotationAxis(XMLoadFloat4(&Utils::axisX), XMConvertToRadians(-90.0f));
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::AXIS_Z), XMConvertToRadians(90.0f)) *
+		XMMatrixRotationAxis(XMLoadFloat4(&Utils::AXIS_X), XMConvertToRadians(-90.0f));
 
 	return sseViewMat;
 

@@ -50,9 +50,11 @@ namespace Utils
 	// I don't think this 3 constants deserve their own Math namespace for now.
 	// However if I will have more math related stuff I should definitely make separate
 	// namespace
-	extern const XMFLOAT4 axisX;
-	extern const XMFLOAT4 axisY;
-	extern const XMFLOAT4 axisZ;
+	extern const XMFLOAT4 AXIS_X;
+	extern const XMFLOAT4 AXIS_Y;
+	extern const XMFLOAT4 AXIS_Z;
+
+	constexpr float EPSILON = 0.00001f;
 
 	/* TYPES */
 
@@ -194,13 +196,13 @@ namespace Utils
 
 	inline bool VecEqual(const XMFLOAT2& v1, const XMFLOAT2& v2)
 	{
-		constexpr float epsilon = 0.00001f;
-
-		return std::abs(v1.x - v2.x) < epsilon && std::abs(v1.y - v2.y) < epsilon;
+		return std::abs(v1.x - v2.x) < EPSILON && std::abs(v1.y - v2.y) < EPSILON;
 	}
 
 	Plane ConstructPlane(const XMFLOAT4& p0, const XMFLOAT4& p1, const XMFLOAT4& p2);
 	bool IsAABBBehindPlane(const Plane& plane, const AABB& aabb);
+
+	XMFLOAT4X4 ConstructV1ToV2RotationMatrix(const XMFLOAT4& v1, const XMFLOAT4& v2);
 
 	[[nodiscard]]
 	Utils::AABB ConstructAABB(const std::vector<XMFLOAT4>& vertices);
@@ -211,6 +213,8 @@ namespace Utils
 	bool IsRayIntersectsTriangle(const Utils::Ray& ray, const XMFLOAT4& v0, const XMFLOAT4& v1, const XMFLOAT4& v2, RayTriangleIntersectionResult& result);
 
 	bool IsVectorNotZero(const XMFLOAT4& vector);
+
+	bool IsAlmostEqual(float a, float b);
 
 	std::vector<XMFLOAT4> CreateSphere(float radius, int numSubdivisions = 1);
 }
