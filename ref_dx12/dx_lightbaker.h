@@ -11,6 +11,9 @@
 #include "dx_objects.h"
 #include "dx_settings.h"
 
+template<typename T>
+using SphericalHarmonic9_t = std::array<T, 9>;
+
 class LightBaker
 {
 	
@@ -30,6 +33,9 @@ public:
 //#DEBUG uncomment
 //private:
 
+	SphericalHarmonic9_t<float> GetSphericalHarmonic9Basis(const XMFLOAT4& direction) const;
+	SphericalHarmonic9_t<XMFLOAT4> ProjectOntoSphericalHarmonic(const XMFLOAT4& direction, const XMFLOAT4& color) const;
+
 	struct BSPNodeRayIntersectionResult
 	{
 		int staticObjIndex = Const::INVALID_INDEX;
@@ -48,8 +54,8 @@ public:
 	XMFLOAT4 GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionPoint,
 		const SurfaceLight& light) const;
 
-
-	XMFLOAT4 PathTraceFromProbe(const XMFLOAT4& probeCoord);
+	//#TODO passing direction by ref seems silly. Need to pass multiple value
+	XMFLOAT4 PathTraceFromProbe(const XMFLOAT4& probeCoord, XMFLOAT4& direction);
 
 	// Is Intersected something, Intersection result
 	[[nodiscard]]

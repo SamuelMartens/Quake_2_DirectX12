@@ -213,23 +213,76 @@ void LightBaker::BakeJob(GPUJobContext& context)
 		
 		for (int bakePointIndex = 0; bakePointIndex < bakePoints.size(); ++bakePointIndex)
 		{
-			
 			const XMFLOAT4& bakePoint = bakePoints[bakePointIndex];
 			
-			// One bake point is one probe  irradiance
-			XMVECTOR sseProbeIrradiance = XMVectorZero();
+			SphericalHarmonic9_t<XMFLOAT4> totalShProjection;
+			ZeroMemory(totalShProjection.data(), sizeof(XMFLOAT4) * totalShProjection.size());	
 
 			for (int i = 0; i < Settings::PROBE_SAMPLES_NUM; ++i)
 			{
-				sseProbeIrradiance = sseProbeIrradiance + XMLoadFloat4(&PathTraceFromProbe(bakePoint));
+				XMFLOAT4 direction = { 0.0f, 0.0f, 0.0f, 1.0f };
+				const XMFLOAT4 sampleRadiance = PathTraceFromProbe(bakePoint, direction);
+
+				SphericalHarmonic9_t<XMFLOAT4> sampleShProjection = ProjectOntoSphericalHarmonic(direction, sampleRadiance);
+
+				for (int coeffIndex = 0; coeffIndex < totalShProjection.size(); ++coeffIndex)
+				{
+					XMStoreFloat4(&totalShProjection[coeffIndex], 
+						XMLoadFloat4(&totalShProjection[coeffIndex]) + XMLoadFloat4(&sampleShProjection[coeffIndex]));
+				}
 			}
 
-			// Do Monte Carlo integration
-			sseProbeIrradiance = sseProbeIrradiance / Settings::PROBE_SAMPLES_NUM;
+			constexpr float monteCarloFactor = (1.0f / GetUniformSphereSamplePDF()) / Settings::PROBE_SAMPLES_NUM;
+
+			for (XMFLOAT4& coeff : totalShProjection)
+			{
+				XMStoreFloat4(&coeff, XMLoadFloat4(&coeff) * monteCarloFactor);
+			}
+
+			// Now I have final probe value in monteCarloFactor!!!
 
 		}
 	}
 }
+
+SphericalHarmonic9_t<float> LightBaker::GetSphericalHarmonic9Basis(const XMFLOAT4& direction) const
+{
+	// Source https://github.com/TheRealMJP/BakingLab.git
+	SphericalHarmonic9_t<float> sphericalHarmonic;
+
+	// Band 0
+	sphericalHarmonic[0] = 0.282095f;
+
+	// Band 1
+	sphericalHarmonic[1] = -0.488603f * direction.y;
+	sphericalHarmonic[2] = 0.488603f * direction.z;
+	sphericalHarmonic[3] = -0.488603f * direction.x;
+
+	// Band 2
+	sphericalHarmonic[4] = 1.092548f * direction.x * direction.y;
+	sphericalHarmonic[5] = -1.092548f * direction.y * direction.z;
+	sphericalHarmonic[6] = 0.315392f * (3.0f * direction.z * direction.z - 1.0f);
+	sphericalHarmonic[7] = -1.092548f * direction.x * direction.z;
+	sphericalHarmonic[8] = 0.546274f * (direction.x * direction.x - direction.y * direction.y);
+
+	return sphericalHarmonic;
+}
+
+SphericalHarmonic9_t<XMFLOAT4> LightBaker::ProjectOntoSphericalHarmonic(const XMFLOAT4& direction, const XMFLOAT4& color) const
+{
+	SphericalHarmonic9_t<XMFLOAT4> sphericalHarmonic;
+	SphericalHarmonic9_t<float> basis = GetSphericalHarmonic9Basis(direction);
+
+	XMVECTOR sseColor = XMLoadFloat4(&color);
+
+	for (int i = 0; i < sphericalHarmonic.size(); ++i)
+	{
+		XMStoreFloat4(&sphericalHarmonic[i], sseColor * basis[i]);
+	}
+
+	return sphericalHarmonic;
+}
+
 //#DEBUG continue by placing this function in a proper space
 XMFLOAT4 LightBaker::GatherDirectIrradianceAtInersectionPoint(const Utils::Ray& ray, const BSPNodeRayIntersectionResult& nodeIntersectionResult) const
 {
@@ -450,14 +503,16 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionP
 }
 
 // Will return indirect light that comes to probe via one sample
-XMFLOAT4 LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord)
+XMFLOAT4 LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, XMFLOAT4& direction)
 {
 	XMVECTOR sseIrradiance = XMVectorZero();
 
 	XMFLOAT4 intersectionPoint = probeCoord;
 	XMFLOAT4 rayDir = GenerateUniformSphereSample();
 
-	float samplesPDF = GetUniformSphereSamplePDF();
+	direction = rayDir;
+
+	float samplesPDF = 1.0f;
 
 	float nDotL = 1.0f;
 
@@ -508,9 +563,16 @@ XMFLOAT4 LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord)
 		XMFLOAT4 normal = BSPNodeRayIntersectionResult::GetNormal(intersectionResult);
 		XMVECTOR sseNormal = XMLoadFloat4(&normal);
 
+		const XMFLOAT4X4 rotationMat = Utils::ConstructV1ToV2RotationMatrix(Utils::AXIS_Z, normal);
+		const XMFLOAT4 cosineWieghtedSample = GenerateCosineWeightedSample();
+
 		XMVECTOR sseRayDir =
-			XMVector4Transform(XMLoadFloat4(&GenerateCosineWeightedSample()), 
-				XMLoadFloat4x4(&Utils::ConstructV1ToV2RotationMatrix(Utils::AXIS_Z, normal)));
+			XMVector4Transform(XMLoadFloat4(&cosineWieghtedSample), 
+				XMLoadFloat4x4(&rotationMat));
+
+		//#TODO the update order is messy, and very likely to be wrong.
+		// we might update with next values for something, not current one
+		// just be carefull
 
 		// Update ray dir
 		XMStoreFloat4(&rayDir, sseRayDir);
