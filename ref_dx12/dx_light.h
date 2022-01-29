@@ -35,7 +35,7 @@ struct SurfaceLight
 
 	XMFLOAT4 irradiance = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-	static void Init(SurfaceLight& light);
+	static void InitIfValid(SurfaceLight& light);
 
 	static XMFLOAT4 CalculateReflectivity(const Resource& texture, const std::byte* textureData);
 	static XMFLOAT4 CalculateIrradiance(const SurfaceLight& light);

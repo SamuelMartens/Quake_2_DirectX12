@@ -37,7 +37,7 @@ std::vector<int> BSPTree::GetVisibleObjectsIndices(const Camera& camera) const
 		return visibleObjects;
 	}
 
-	const BSPNode& cameraNode = GetNodeWithPoint(camera.position, nodes.front());
+	const BSPNode& cameraNode = GetNodeWithPoint(camera.position);
 
 	assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
 

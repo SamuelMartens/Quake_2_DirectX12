@@ -309,7 +309,7 @@ void Utils::Sprintf(char* dest, int size, const char* fmt, ...)
 	int		len;
 	va_list		argptr;
 	char	bigbuffer[0x1000];
-
+	 
 	va_start(argptr, fmt);
 	len = vsprintf(bigbuffer, fmt, argptr);
 	va_end(argptr);

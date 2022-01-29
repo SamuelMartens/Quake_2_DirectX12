@@ -14,13 +14,25 @@
 template<typename T>
 using SphericalHarmonic9_t = std::array<T, 9>;
 
+struct DiffuseProbe
+{
+	//#TODO this is incoming radiance right?
+	SphericalHarmonic9_t<XMFLOAT4> radianceSh;
+};
+
+struct ClusterProbeData
+{
+	int startIndex = Const::INVALID_INDEX;
+};
+
 class LightBaker
 {
 	
 public:
 	DEFINE_SINGLETON(LightBaker);
 
-	void GenerateSourceData();
+	void PreBake();
+	void PostBake();
 
 	[[nodiscard]]
 	std::vector<std::vector<XMFLOAT4>> GenerateClustersBakePoints() const;
@@ -28,7 +40,9 @@ public:
 	[[nodiscard]]
 	std::vector<XMFLOAT4> GenerateClusterBakePoints(int clusterIndex) const;
 
-	void BakeJob(GPUJobContext& context);
+	void BakeJob();
+	int GetTotalProbes() const;
+	int GetBakedProbes() const;
 
 //#DEBUG uncomment
 //private:
@@ -68,4 +82,7 @@ public:
 	
 	std::atomic<int> currentBakeCluster;
 
+	std::atomic<int> probesBaked;
+	std::vector<DiffuseProbe> probes;
+	std::vector<ClusterProbeData> clusterProbeData;
 }; 

@@ -131,14 +131,45 @@ namespace
 	}
 }
 
-void LightBaker::GenerateSourceData()
+void LightBaker::PreBake()
 {
-	clusterBakePoints = GenerateClustersBakePoints();
+	ASSERT_MAIN_THREAD;
+
+	assert(probes.empty() == true && "Probes should be empty before bake");
+	assert(clusterProbeData.empty() == true && "Cluster probe data should be empty before bake");
+	assert(clusterBakePoints.empty() == true && "Cluster bake points should be empty before bake");
+	assert(probesBaked == 0 && "Amount of baked probes was not reset");
 
 	currentBakeCluster = 0;
+
+	clusterBakePoints = GenerateClustersBakePoints();
+
+	clusterProbeData.resize(clusterBakePoints.size());
+
+	int totalProbes = 0;
+
+	for (int i = 0; i < clusterBakePoints.size(); ++i)
+	{
+		clusterProbeData[i].startIndex = totalProbes;
+
+		totalProbes += clusterBakePoints[i].size();
+	}
+
+	probes.resize(totalProbes);
 }
 
-std::vector<std::vector<DirectX::XMFLOAT4>> LightBaker::GenerateClustersBakePoints() const
+void LightBaker::PostBake()
+{
+	ASSERT_MAIN_THREAD;
+	
+	probesBaked = 0;
+
+	probes.clear();
+	clusterProbeData.clear();
+	clusterBakePoints.clear();
+}
+
+std::vector<std::vector<XMFLOAT4>> LightBaker::GenerateClustersBakePoints() const
 {
 	std::set<int> clustersSet = Renderer::Inst().GetBSPTree().GetClustersSet();
 	
@@ -147,7 +178,7 @@ std::vector<std::vector<DirectX::XMFLOAT4>> LightBaker::GenerateClustersBakePoin
 		return {};
 	}
 
-	std::vector<std::vector<DirectX::XMFLOAT4>> bakePoints(*clustersSet.rbegin());
+	std::vector<std::vector<XMFLOAT4>> bakePoints(*clustersSet.rbegin());
 
 	for (const int cluster : clustersSet)
 	{
@@ -192,13 +223,8 @@ std::vector<XMFLOAT4> LightBaker::GenerateClusterBakePoints(int clusterIndex) co
 	return bakePoints;
 }
 
-void LightBaker::BakeJob(GPUJobContext& context)
+void LightBaker::BakeJob()
 {
-	//#TODO can I move WaitDependecy() to Dependency Guard?
-	DependenciesRAIIGuard_t dependencyGuard(context);
-
-	context.WaitDependency();
-
 	while (true)
 	{
 		// Get next set of clusters to work on
@@ -210,12 +236,15 @@ void LightBaker::BakeJob(GPUJobContext& context)
 		}
 
 		const std::vector<XMFLOAT4>& bakePoints = clusterBakePoints[currentCluster];
-		
+		const int clusterProbeStartIndex = clusterProbeData[currentCluster].startIndex;
+
+		assert(clusterProbeStartIndex != Const::INVALID_INDEX && "Invalid cluster probe start index");
+
 		for (int bakePointIndex = 0; bakePointIndex < bakePoints.size(); ++bakePointIndex)
 		{
 			const XMFLOAT4& bakePoint = bakePoints[bakePointIndex];
 			
-			SphericalHarmonic9_t<XMFLOAT4> totalShProjection;
+			SphericalHarmonic9_t<XMFLOAT4>& totalShProjection = probes[clusterProbeStartIndex + bakePointIndex].radianceSh;
 			ZeroMemory(totalShProjection.data(), sizeof(XMFLOAT4) * totalShProjection.size());	
 
 			for (int i = 0; i < Settings::PROBE_SAMPLES_NUM; ++i)
@@ -239,10 +268,20 @@ void LightBaker::BakeJob(GPUJobContext& context)
 				XMStoreFloat4(&coeff, XMLoadFloat4(&coeff) * monteCarloFactor);
 			}
 
-			// Now I have final probe value in monteCarloFactor!!!
-
+			probesBaked.fetch_add(1);
 		}
 	}
+}
+
+int LightBaker::GetTotalProbes() const
+{
+	return probes.size();
+}
+
+int LightBaker::GetBakedProbes() const
+{
+	assert(probesBaked <= GetTotalProbes() && "Baked probes exceeded total probes");
+	return probesBaked;
 }
 
 SphericalHarmonic9_t<float> LightBaker::GetSphericalHarmonic9Basis(const XMFLOAT4& direction) const

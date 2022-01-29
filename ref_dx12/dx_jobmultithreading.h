@@ -89,6 +89,7 @@ public:
 	void Init();
 
 	JobQueue& GetJobQueue();
+	int GetWorkerThreadsNum() const;
 
 private:
 

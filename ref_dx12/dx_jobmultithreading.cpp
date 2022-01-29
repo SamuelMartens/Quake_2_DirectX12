@@ -55,7 +55,7 @@ void JobSystem::Init()
 	std::function<void()> workerThreadCallback = [this]()
 	{
 		// Not gonna set thread affinity for now. Win API documentation recommends to
-		// leave it as it is, so without precise advice I am gonna follow that advice
+		// leave it as it is, so without precise advice I am gonna follow that suggestion
 
 		while (true)
 		{
@@ -73,5 +73,10 @@ void JobSystem::Init()
 JobQueue& JobSystem::GetJobQueue()
 {
 	return jobQueue;
+}
+
+int JobSystem::GetWorkerThreadsNum() const
+{
+	return workerThreads.size();
 }
 

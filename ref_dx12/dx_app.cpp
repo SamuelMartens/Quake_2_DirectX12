@@ -902,6 +902,66 @@ int Renderer::GetFenceValue() const
 	return fenceValue;
 }
 
+void Renderer::SwitchToRequestedState()
+{
+	assert(requestedState.has_value() == true && "Can't switch to requested state it's empty");
+
+	OnStateStart(currentState);
+	OnStateEnd(*requestedState);
+
+	currentState = *requestedState;
+
+	requestedState.reset();
+}
+
+void Renderer::OnStateEnd(State state)
+{
+	switch (state)
+	{
+	case Renderer::State::Rendering:
+		FlushAllFrames();
+		break;
+	case Renderer::State::LightBaking:
+		LightBaker::Inst().PostBake();
+		break;
+	default:
+		break;
+	}
+}
+
+void Renderer::OnStateStart(State state)
+{
+	switch(state)
+	{
+	case Renderer::State::Rendering:
+		break;
+	case Renderer::State::LightBaking:
+	{
+		// Prepare for baking
+		LightBaker::Inst().PreBake();
+
+		// Now I need to populate system with baking jobs, but make sure one thread remains free,
+		// cause I still have some stuff to render
+		const int workerThreasNum = JobSystem::Inst().GetWorkerThreadsNum();
+		constexpr int reservedThreadsNum = 1;
+
+		JobQueue& jobQueue = JobSystem::Inst().GetJobQueue();
+
+		for (int i = 0; i < workerThreasNum - reservedThreadsNum; ++i)
+		{
+			jobQueue.Enqueue(Job([]() 
+			{
+				LightBaker::Inst().BakeJob();
+			}));
+		}
+
+		break;
+	}
+	default:
+		break;
+	}
+}
+
 void Renderer::CreateTextureSampler()
 {
 	ViewDescription_t samplerDesc = D3D12_SAMPLER_DESC{};
@@ -1011,8 +1071,15 @@ void Renderer::InitStaticLighting()
 {
 	for (SurfaceLight& light : staticSurfaceLights)
 	{
-		SurfaceLight::Init(light);
+		SurfaceLight::InitIfValid(light);
 	}
+
+	// Remove lights with 0.0 area
+	staticSurfaceLights.erase(std::remove_if(staticSurfaceLights.begin(), staticSurfaceLights.end(), 
+		[](const SurfaceLight& light) 
+	{
+		return light.area == 0.0f;
+	}), staticSurfaceLights.end());
 }
 
 
@@ -1053,6 +1120,18 @@ std::vector<int> Renderer::BuildVisibleDynamicObjectsList(const Camera& camera, 
 	}
 
 	return visibleObjects;
+}
+
+void Renderer::RequestStateChange(State state)
+{
+	assert(requestedState.has_value() == false && "State Already requested");
+
+	requestedState = state;
+}
+
+Renderer::State Renderer::GetState() const
+{
+	return currentState;
 }
 
 void Renderer::EndFrameJob(GPUJobContext& context)
@@ -1108,7 +1187,22 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 	{
 		ImGui::Begin("Debug GUI");
 
-		ImGui::Checkbox("Draw bake points", &drawBakePointsDebugGeometry);
+		if (GetState() == State::Rendering)
+		{
+			ImGui::Checkbox("Draw bake points", &drawBakePointsDebugGeometry);
+
+			if (ImGui::Button("Bake Light"))
+			{
+				Renderer::Inst().RequestStateChange(State::LightBaking);
+			}
+
+		}
+		else
+		{
+			const LightBaker& baker = LightBaker::Inst();
+			ImGui::Text("Baking progress: %d / %d", baker.GetBakedProbes(), baker.GetTotalProbes());
+		}
+		
 
 		ImGui::End();
 	}
@@ -1767,6 +1861,13 @@ void Renderer::BeginFrame()
 		RebuildFrameGraph();
 	}
 
+	// State switch 
+
+	if (requestedState.has_value() == true)
+	{
+		SwitchToRequestedState();
+	}
+
 	// Start work on the current frame
 	AcquireMainThreadFrame();
 	Frame& frame = GetMainThreadFrame();
@@ -1782,6 +1883,16 @@ void Renderer::BeginFrame()
 void Renderer::EndFrame()
 {
 	Logs::Log(Logs::Category::Generic, "API: EndFrame");
+
+	if (GetState() == State::LightBaking)
+	{
+		const LightBaker& lightBaker = LightBaker::Inst();
+
+		if (lightBaker.GetBakedProbes() == lightBaker.GetTotalProbes())
+		{
+			RequestStateChange(State::Rendering);
+		}
+	}
 
 	// All heavy lifting is here
 

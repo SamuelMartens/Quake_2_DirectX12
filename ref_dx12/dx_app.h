@@ -145,6 +145,12 @@ class Renderer
 
 public:
 
+	enum class State
+	{
+		Rendering,
+		LightBaking
+	};
+
 	// Public because it is already wrapped up in class
 	std::unique_ptr<SequentialDescriptorHeapAllocator_t<Settings::RTV_DTV_DESCRIPTOR_HEAP_SIZE,
 		D3D12_DESCRIPTOR_HEAP_TYPE_RTV>>	rtvHeapAllocator = nullptr;
@@ -173,6 +179,9 @@ public:
 	void DrawDebugGuiJob(GPUJobContext& context);
 
 	std::vector<int> BuildVisibleDynamicObjectsList(const Camera& camera, const std::vector<entity_t>& entities) const;
+
+	void RequestStateChange(State state);
+	State GetState() const;
 
 private:
 
@@ -261,6 +270,11 @@ private:
 	int GenerateFenceValue();
 	int GetFenceValue() const;
 
+	/* State changes */
+	void SwitchToRequestedState();
+	void OnStateEnd(State state);
+	void OnStateStart(State state);
+
 	HWND		hWindows = nullptr;
 
 	refimport_t refImport;
@@ -316,6 +330,10 @@ private:
 	/* ImGui data */
 	int imGuiFontTexDescHandle = Const::INVALID_BUFFER_HANDLER;
 	WNDPROC standardWndProc = nullptr;
+
+	/* State */
+	State currentState = State::Rendering;
+	std::optional<State> requestedState;
 
 	/* Debug */
 	bool drawBakePointsDebugGeometry = false;

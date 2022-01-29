@@ -474,73 +474,82 @@ void FrameGraph::Execute(Frame& frame)
 	// NOTE: creation order is the order in which command Lists will be submitted.
 	// Set up dependencies 
 
-	/*  Handle dependencies */
+	/* Create Contexts */
 	GPUJobContext updateGlobalResJobContext = renderer.CreateContext(frame);
-
 	std::vector<GPUJobContext> framePassContexts;
+	// All passes depend from Global Resource Update	
 	for (PassTask& passTask : passTasks)
 	{
-		GPUJobContext& jobContext = framePassContexts.emplace_back(renderer.CreateContext(frame));
-
-		jobContext.CreateDependencyFrom({&updateGlobalResJobContext});
-	};
-
-	AddTexturesProxiesToPassJobContexts(framePassContexts);
+		framePassContexts.emplace_back(renderer.CreateContext(frame));
+	}
 
 	GPUJobContext endFrameJobContext = renderer.CreateContext(frame, false);
-
-	std::vector<GPUJobContext*> endFrameDependency;
-
-	endFrameDependency.reserve(endFrameDependency.size());
-
-	std::transform(framePassContexts.begin(), framePassContexts.end(), std::back_inserter(endFrameDependency),
-		[](GPUJobContext& context) 
-	{
-		return &context;
-	});
-
 	// NOTE: should always be last job, before submitting frame, because of sloppy Render Target
 	// state transition
 	GPUJobContext drawDebugGuiJobContext = renderer.CreateContext(frame);
 
+	/*  Handle dependencies */
+	std::vector<GPUJobContext*> endFrameDependency;
+
+	if (renderer.GetState() == Renderer::State::Rendering)
+	{
+		// All passes depend from Global Resource Update	
+		for (GPUJobContext& jobContext : framePassContexts)
+		{
+			jobContext.CreateDependencyFrom({ &updateGlobalResJobContext });
+		};
+
+		AddTexturesProxiesToPassJobContexts(framePassContexts);
+		endFrameDependency.reserve(endFrameDependency.size());
+
+		// End Frame Job depends on Passes Jobs
+		std::transform(framePassContexts.begin(), framePassContexts.end(), std::back_inserter(endFrameDependency),
+			[](GPUJobContext& context)
+		{
+			return &context;
+		});
+	}
+
+	// End Frame Job Depends on Draw Debug Gui Job
 	endFrameDependency.push_back(&drawDebugGuiJobContext);
-
 	endFrameJobContext.CreateDependencyFrom(endFrameDependency);
-
 
 	/* Enqueue jobs */
 	// NOTE: context SHOULD be passed by value. Otherwise it will not exist when another thread will try to execute 
 	// this job
-	jobQueue.Enqueue(Job([updateGlobalResJobContext, &renderer]() mutable
+	if (renderer.GetState() == Renderer::State::Rendering)
 	{
-		JOB_GUARD(updateGlobalResJobContext);
-		updateGlobalResJobContext.WaitDependency();
-
-		updateGlobalResJobContext.frame.frameGraph->UpdateGlobalResources(updateGlobalResJobContext);
-
-	}));
-
-	for (int i = 0; i < passTasks.size(); ++i)
-	{
-		jobQueue.Enqueue(Job(
-			[passJobContext = framePassContexts[i], &passTask = passTasks[i]]() mutable
+		jobQueue.Enqueue(Job([updateGlobalResJobContext, &renderer]() mutable
 		{
-			JOB_GUARD(passJobContext);
+			JOB_GUARD(updateGlobalResJobContext);
+			updateGlobalResJobContext.WaitDependency();
 
-			std::string_view passName = PassUtils::GetPassName(passTask.pass);
+			updateGlobalResJobContext.frame.frameGraph->UpdateGlobalResources(updateGlobalResJobContext);
 
-			Diagnostics::BeginEvent(passJobContext.commandList->GetGPUList(), passName);
-			Logs::Logf(Logs::Category::Job, "Pass job started: %s", passName);
-
-			passJobContext.WaitDependency();
-
-			passTask.Execute(passJobContext);
-
-			Logs::Logf(Logs::Category::Job, "Pass job end: %s", passName);
-			Diagnostics::EndEvent(passJobContext.commandList->GetGPUList());
 		}));
-	}
 
+		for (int i = 0; i < passTasks.size(); ++i)
+		{
+			jobQueue.Enqueue(Job(
+				[passJobContext = framePassContexts[i], &passTask = passTasks[i]]() mutable
+			{
+				JOB_GUARD(passJobContext);
+
+				std::string_view passName = PassUtils::GetPassName(passTask.pass);
+
+				Diagnostics::BeginEvent(passJobContext.commandList->GetGPUList(), passName);
+				Logs::Logf(Logs::Category::Job, "Pass job started: %s", passName);
+
+				passJobContext.WaitDependency();
+
+				passTask.Execute(passJobContext);
+
+				Logs::Logf(Logs::Category::Job, "Pass job end: %s", passName);
+				Diagnostics::EndEvent(passJobContext.commandList->GetGPUList());
+			}));
+		}
+	}
+	
 	jobQueue.Enqueue(Job([drawDebugGuiJobContext, &renderer]() mutable 
 	{
 		renderer.DrawDebugGuiJob(drawDebugGuiJobContext);

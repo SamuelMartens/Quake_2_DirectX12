@@ -29,7 +29,7 @@ namespace
 	}
 }
 
-void SurfaceLight::Init(SurfaceLight& light)
+void SurfaceLight::InitIfValid(SurfaceLight& light)
 {
 	assert(light.surfaceIndex != Const::INVALID_INDEX && "Invalid object index for surface light init");
 
@@ -43,14 +43,23 @@ void SurfaceLight::Init(SurfaceLight& light)
 
 	for (int triangleInd = 0; triangleInd < object.indices.size() / 3; ++triangleInd)
 	{
-		XMVECTOR sseV0 = XMLoadFloat4(&object.vertices[triangleInd * 3 + 0]);
-		XMVECTOR sseV1 = XMLoadFloat4(&object.vertices[triangleInd * 3 + 1]);
-		XMVECTOR sseV2 = XMLoadFloat4(&object.vertices[triangleInd * 3 + 2]);
+		const int V0Ind = object.indices[triangleInd * 3 + 0];
+		const int V1Ind = object.indices[triangleInd * 3 + 1];
+		const int V2Ind = object.indices[triangleInd * 3 + 2];
+
+		XMVECTOR sseV0 = XMLoadFloat4(&object.vertices[V0Ind]);
+		XMVECTOR sseV1 = XMLoadFloat4(&object.vertices[V1Ind]);
+		XMVECTOR sseV2 = XMLoadFloat4(&object.vertices[V2Ind]);
 
 		triangleAreas[triangleInd] = XMVectorGetX(XMVector3Length(XMVector3Cross(sseV1 - sseV0, sseV2 - sseV0)) / 2);
 	}
 
 	light.area = std::accumulate(triangleAreas.cbegin(), triangleAreas.cend(), 0.0f);
+
+	if (light.area == 0.0f)
+	{
+		return;
+	}
 
 	float currentSum = 0.0f;
 	
@@ -62,7 +71,6 @@ void SurfaceLight::Init(SurfaceLight& light)
 		[&light, &currentSum](const float triangleArea)
 	{
 		currentSum += triangleArea;
-
 		return currentSum / light.area;
 	});
 
