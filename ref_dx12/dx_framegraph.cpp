@@ -282,8 +282,6 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
 				{
-					//#DEBUG I hit it. Why is it here?
-					//assert(false && "Inline Cons Buffer View are not implemented");
 				}
 
 				if constexpr (std::is_same_v<T, RootArg::UAView>)

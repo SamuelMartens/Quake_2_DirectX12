@@ -4,6 +4,7 @@
 #include <memory>
 #include <array>
 #include <set>
+#include <functional>
 
 #include "dx_common.h"
 #include "dx_utils.h"
@@ -28,16 +29,14 @@ struct BSPNode
 
 class BSPTree
 {
-	//#DEBUG
-	friend class LightBaker;
-	//END
-
 public:
 
 	void Create(const mnode_t& root);
 	void InitClusterVisibility(const dvis_t& vis, int visSize);
 
-	std::vector<int> GetVisibleObjectsIndices(const Camera& camera) const;
+	std::vector<int> GetCameraVisibleObjectsIndices(const Camera& camera) const;
+	std::vector<int> GetPotentiallyVisibleObjects(const XMFLOAT4& position) const;
+
 	const BSPNode& GetNodeWithPoint(const XMFLOAT4& point) const;
 
 	Utils::AABB GetClusterAABB(const int clusterIndex) const;
@@ -45,13 +44,17 @@ public:
 
 	[[nodiscard]]
 	bool IsPointVisibleFromOtherPoint(const XMFLOAT4& p0, const XMFLOAT4& p1) const;
+	// Is Intersected something, Intersection result
+	[[nodiscard]]
+	std::tuple<bool, Utils::BSPNodeRayIntersectionResult> FindClosestRayIntersection(const Utils::Ray& ray) const;
 
 private:
 
-	int AddNode(const mnode_t& sourceNode, int& meshesNum);
+	std::vector<int> GetPotentiallyVisibleObjects(const XMFLOAT4& position, const std::function<bool(const BSPNode& node)>& predicate) const;
+	std::vector<bool> DecompressClusterVisibility(int cluster) const;
 
 	const BSPNode& GetNodeWithPoint(const XMFLOAT4& point, const BSPNode& node) const;
-	std::vector<bool> DecompressClusterVisibility(int cluster) const;
+	int AddNode(const mnode_t& sourceNode, int& meshesNum);
 
 	std::vector<std::byte> clusterVisibility;
 

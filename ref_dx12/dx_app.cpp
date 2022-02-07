@@ -1127,6 +1127,21 @@ std::vector<int> Renderer::BuildVisibleDynamicObjectsList(const Camera& camera, 
 	return visibleObjects;
 }
 
+const std::vector<SourceStaticObject>& Renderer::GetSourceStaticObjects() const
+{
+	return sourceStaticObjects;
+}
+
+const std::vector<SurfaceLight>& Renderer::GetStaticSurfaceLights() const
+{
+	return staticSurfaceLights;
+}
+
+const std::vector<PointLight>& Renderer::GetStaticPointLights() const
+{
+	return staticPointLights;
+}
+
 void Renderer::RequestStateChange(State state)
 {
 	assert(requestedState.has_value() == false && "State Already requested");
@@ -1940,7 +1955,7 @@ void Renderer::PreRenderSetUpFrame(Frame& frame)
 	XMStoreFloat4x4(&frame.uiProjectionMat, tempMat);
 	
 	// Static objects
-	frame.visibleStaticObjectsIndices = bspTree.GetVisibleObjectsIndices(frame.camera);
+	frame.visibleStaticObjectsIndices = bspTree.GetCameraVisibleObjectsIndices(frame.camera);
 
 	// Dynamic objects
 	frame.visibleEntitiesIndices = BuildVisibleDynamicObjectsList(frame.camera, frame.entities);

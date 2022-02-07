@@ -28,34 +28,14 @@ void BSPTree::InitClusterVisibility(const dvis_t& vis, int visSize)
 	memcpy(clusterVisibility.data(), &vis, visSize);
 }
 
-std::vector<int> BSPTree::GetVisibleObjectsIndices(const Camera& camera) const
+std::vector<int> BSPTree::GetCameraVisibleObjectsIndices(const Camera& camera) const
 {
-	std::vector<int> visibleObjects;
-
-	if (nodes.empty() == true)
+	const std::array<Utils::Plane, 6> frustum = camera.GetFrustumPlanes();
+	
+	return GetPotentiallyVisibleObjects(camera.position, [&frustum](const BSPNode& node) 
 	{
-		return visibleObjects;
-	}
-
-	const BSPNode& cameraNode = GetNodeWithPoint(camera.position);
-
-	assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
-
-	std::vector<bool> currentPVS = DecompressClusterVisibility(cameraNode.cluster);
-
-	std::array<Utils::Plane, 6> cameraFrustum = camera.GetFrustumPlanes();
-
-	for (const int leafIndex : leavesIndices)
-	{
-		const BSPNode& leaf = nodes[leafIndex];
-
-		if (leaf.cluster != Const::INVALID_INDEX && currentPVS[leaf.cluster] == true && AABBIntersectsCameraFrustum(leaf.aabb, cameraFrustum))
-		{
-			visibleObjects.insert(visibleObjects.end(), leaf.objectsIndices.cbegin(), leaf.objectsIndices.cend());
-		}
-	}
-
-	return visibleObjects;
+		return AABBIntersectsCameraFrustum(node.aabb, frustum);
+	});
 }
 
 int BSPTree::AddNode(const mnode_t& sourceNode, int& meshesNum)
@@ -153,8 +133,8 @@ std::set<int> BSPTree::GetClustersSet() const
 
 bool BSPTree::IsPointVisibleFromOtherPoint(const XMFLOAT4& p0, const XMFLOAT4& p1) const
 {
-	const BSPNode& p0Node = GetNodeWithPoint(p0, nodes.front());
-	const BSPNode& p1Node = GetNodeWithPoint(p1, nodes.front());
+	const BSPNode& p0Node = GetNodeWithPoint(p0);
+	const BSPNode& p1Node = GetNodeWithPoint(p1);
 
 	assert((p0Node.cluster != Const::INVALID_INDEX && p1Node.cluster != Const::INVALID_INDEX) &&
 		"Checking visibility for points, that have invalid cluster, is this intentional?");
@@ -178,7 +158,7 @@ bool BSPTree::IsPointVisibleFromOtherPoint(const XMFLOAT4& p0, const XMFLOAT4& p
 	ray.origin = p0;
 	XMStoreFloat4(&ray.direction, XMVector3Normalize(sseP1 - sseP0));
 
-	const std::vector<SourceStaticObject>& objects = Renderer::Inst().sourceStaticObjects;
+	const std::vector<SourceStaticObject>& objects = Renderer::Inst().GetSourceStaticObjects();
 
 	for (const int leafIndex : leavesIndices)
 	{
@@ -241,6 +221,46 @@ bool BSPTree::IsPointVisibleFromOtherPoint(const XMFLOAT4& p0, const XMFLOAT4& p
 	return true;
 }
 
+std::tuple<bool, Utils::BSPNodeRayIntersectionResult> BSPTree::FindClosestRayIntersection(const Utils::Ray& ray) const
+{
+	Utils::BSPNodeRayIntersectionResult nodeIntersectionResult;
+
+	// Find node where ray is originated
+	const BSPNode& node = GetNodeWithPoint(ray.origin);
+
+	// Ignore rays originated from empty nodes
+	if (node.cluster == Const::INVALID_INDEX)
+	{
+		return { false, nodeIntersectionResult };
+	}
+
+	// Try out this node first
+	if (Utils::FindClosestIntersectionInNode(ray, node, nodeIntersectionResult) == false)
+	{
+		// Time to check PVS
+		std::vector<bool> currentPVS = DecompressClusterVisibility(node.cluster);
+		const std::vector<BSPNode>& bspNodes = nodes;
+
+		for (const int leafIndex : leavesIndices)
+		{
+			const BSPNode& leaf = bspNodes[leafIndex];
+
+			if (leaf.cluster != Const::INVALID_INDEX &&
+				currentPVS[leaf.cluster] == true &&
+				// Ignore node that we just checked
+				&leaf != &node)
+			{
+				Utils::FindClosestIntersectionInNode(ray, leaf, nodeIntersectionResult);
+			}
+		}
+
+	}
+
+	const bool isIntersected = nodeIntersectionResult.rayTriangleIntersection.t != FLT_MAX;
+
+	return { isIntersected, nodeIntersectionResult };
+}
+
 const BSPNode& BSPTree::GetNodeWithPoint(const XMFLOAT4& point, const BSPNode& node) const
 {
 	// Only leaves have valid cluster values
@@ -263,6 +283,40 @@ const BSPNode& BSPTree::GetNodeWithPoint(const XMFLOAT4& point) const
 {
 	return GetNodeWithPoint(point, nodes.front());
 }
+
+std::vector<int> BSPTree::GetPotentiallyVisibleObjects(const XMFLOAT4& position) const
+{
+	return GetPotentiallyVisibleObjects(position, [](const BSPNode& node) { return true; });
+}
+
+std::vector<int> BSPTree::GetPotentiallyVisibleObjects(const XMFLOAT4& position, const std::function<bool(const BSPNode& node)>& predicate) const
+{
+	std::vector<int> visibleObjects;
+
+	if (nodes.empty() == true)
+	{
+		return visibleObjects;
+	}
+
+	const BSPNode& cameraNode = GetNodeWithPoint(position);
+
+	assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
+
+	std::vector<bool> currentPVS = DecompressClusterVisibility(cameraNode.cluster);
+
+	for (const int leafIndex : leavesIndices)
+	{
+		const BSPNode& leaf = nodes[leafIndex];
+
+		if (leaf.cluster != Const::INVALID_INDEX && currentPVS[leaf.cluster] == true && predicate(leaf))
+		{
+			visibleObjects.insert(visibleObjects.end(), leaf.objectsIndices.cbegin(), leaf.objectsIndices.cend());
+		}
+	}
+
+	return visibleObjects;
+}
+
 
 std::vector<bool> BSPTree::DecompressClusterVisibility(int cluster) const
 {

@@ -189,7 +189,7 @@ XMFLOAT4X4 Utils::ConstructV1ToV2RotationMatrix(const XMFLOAT4& v1, const XMFLOA
 	XMFLOAT4X4 rotationMatrix;
 	XMStoreFloat4x4(&rotationMatrix, sseRotationMatrix);
 
-	//#DEBUG remove this later I am just getting nervous if 
+	//Remove this later I am just getting nervous if 
 	// maybe I need to set this manually 
 	assert(rotationMatrix._44 == 1.0f && "Nooooooooooo");
 
@@ -861,4 +861,81 @@ bool Utils::IsRayIntersectsTriangle(const Ray& ray, const XMFLOAT4& v0, const XM
 	result.w = 1.0f - u - v;
 
 	return true;
+}
+
+bool Utils::FindClosestIntersectionInNode(const Utils::Ray& ray, const BSPNode& node, Utils::BSPNodeRayIntersectionResult& result)
+{
+	float nodeIntersectionT = FLT_MAX;
+
+	if (Utils::IsRayIntersectsAABB(ray, node.aabb, &nodeIntersectionT) == false ||
+		nodeIntersectionT > result.rayTriangleIntersection.t)
+	{
+		return false;
+	}
+
+	const std::vector<SourceStaticObject>& objects = Renderer::Inst().GetSourceStaticObjects();
+
+	float minRayT = FLT_MAX;
+
+	for (const int objectIndex : node.objectsIndices)
+	{
+		float rayT = FLT_MAX;
+
+		const SourceStaticObject& object = objects[objectIndex];
+
+		// No intersection at all
+		if (Utils::IsRayIntersectsAABB(ray, object.aabb, &rayT) == false)
+		{
+			continue;
+		}
+
+		// Potential intersection with object further than what we have, early reject
+		if (rayT > minRayT)
+		{
+			continue;
+		}
+
+		assert(object.indices.size() % 3 == 0 && "Invalid triangle indices");
+
+		for (int triangleIndex = 0; triangleIndex < object.indices.size() / 3; ++triangleIndex)
+		{
+			const XMFLOAT4& v0 = object.vertices[object.indices[triangleIndex * 3 + 0]];
+			const XMFLOAT4& v1 = object.vertices[object.indices[triangleIndex * 3 + 1]];
+			const XMFLOAT4& v2 = object.vertices[object.indices[triangleIndex * 3 + 2]];
+
+			Utils::RayTriangleIntersectionResult rayTriangleResult;
+
+			if (Utils::IsRayIntersectsTriangle(ray, v0, v1, v2, rayTriangleResult) == false)
+			{
+				continue;
+			}
+
+			if (rayTriangleResult.t > minRayT)
+			{
+				continue;
+			}
+
+			// Reject backface triangles. Dot product should be negative to make sure we hit the front side of triangle
+			XMVECTOR sseV0Normal = XMLoadFloat4(&object.normals[object.indices[triangleIndex * 3]]);
+			if (XMVectorGetX(XMVector3Dot(sseV0Normal, XMLoadFloat4(&ray.direction))) >= 0.0f)
+			{
+				continue;
+			}
+
+
+			minRayT = rayTriangleResult.t;
+
+			result.rayTriangleIntersection = rayTriangleResult;
+			result.staticObjIndex = objectIndex;
+			result.triangleIndex = triangleIndex;
+		}
+
+	}
+
+	if (minRayT != FLT_MAX)
+	{
+		return true;
+	}
+
+	return false;
 }

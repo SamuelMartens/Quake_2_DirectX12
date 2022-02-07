@@ -64,12 +64,6 @@ namespace FArg
 // 5) Implement occlusion query. If this is not enough, resurrect BSP tree.
 class Renderer
 {
-	//#DEBUG
-	friend class LightBaker;
-	friend class BSPTree;
-	friend struct SurfaceLight;
-	//END
-
 	DEFINE_SINGLETON(Renderer);
 
 	const refimport_t& GetRefImport() const { return refImport; };
@@ -109,11 +103,16 @@ class Renderer
 	int GetMSAASampleCount() const;
 	int GetMSAAQuality() const;
 	void GetDrawAreaSize(int* Width, int* Height);
-	const BSPTree& GetBSPTree() const;
 	const std::array<unsigned int, 256>& GetRawPalette() const;
 	const std::array<unsigned int, 256>& GetTable8To24() const;
+	const BSPTree& GetBSPTree() const;
+
+	/* Objects data */
 	const std::vector<StaticObject>& GetStaticObjects() const;
 	const std::unordered_map<model_t*, DynamicObjectModel>& GetDynamicModels() const;
+	const std::vector<SourceStaticObject>& GetSourceStaticObjects() const;
+	const std::vector<SurfaceLight>& GetStaticSurfaceLights() const;
+	const std::vector<PointLight>& GetStaticPointLights() const;
 
 	void Load8To24Table();
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
@@ -180,6 +179,7 @@ public:
 
 	std::vector<int> BuildVisibleDynamicObjectsList(const Camera& camera, const std::vector<entity_t>& entities) const;
 
+	/* State change */
 	void RequestStateChange(State state);
 	State GetState() const;
 
@@ -240,7 +240,6 @@ private:
 	void RegisterObjectsAtFrameGraphs();
 	static LONG WINAPI MainWndProcWrapper(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
-	//#DEBUG this and static lights vector should belong to light baker
 	void InitStaticLighting();
 
 	/* Frames */

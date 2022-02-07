@@ -17,9 +17,10 @@ struct ResourceDesc
 	int height = 0;
 	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
 	D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
-	//#DEBUG this probably shouldn't be here. Looks how this is sampled
-	// if this is just uniform radiance I can freely move this to Area Light
-	//#DEBUG this is int type, really?
+
+	// This is awkward to have this data in resource decs. The reason being that from
+	// game's perspective each texture (which mode if resources are) can have this values.
+	// Perhaps I should move to lighting texture sometime?
 	int radiance = 0;
 	XMFLOAT4 reflectivity = { 0.0f, 0.0f, 0.0f, 0.0f };
 

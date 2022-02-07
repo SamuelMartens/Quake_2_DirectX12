@@ -34,6 +34,8 @@
 
 using namespace DirectX;
 
+struct BSPNode;
+
 namespace Const
 {
 	constexpr int INVALID_OFFSET = -1;
@@ -65,6 +67,16 @@ namespace Utils
 		float u = 0;
 		float v = 0;
 		float w = 0;
+	};
+
+	struct BSPNodeRayIntersectionResult
+	{
+		int staticObjIndex = Const::INVALID_INDEX;
+		int triangleIndex = Const::INVALID_INDEX;
+
+		Utils::RayTriangleIntersectionResult rayTriangleIntersection;
+
+		static XMFLOAT4 GetNormal(const BSPNodeRayIntersectionResult& result);
 	};
 
 	struct AABB
@@ -211,6 +223,7 @@ namespace Utils
 	bool IsRayIntersectsAABB(const Utils::Ray& ray, const Utils::AABB& aabb, float* t = nullptr);
 	[[nodiscard]]
 	bool IsRayIntersectsTriangle(const Utils::Ray& ray, const XMFLOAT4& v0, const XMFLOAT4& v1, const XMFLOAT4& v2, RayTriangleIntersectionResult& result);
+	bool FindClosestIntersectionInNode(const Utils::Ray& ray, const BSPNode& node, Utils::BSPNodeRayIntersectionResult& result);
 
 	bool IsVectorNotZero(const XMFLOAT4& vector);
 

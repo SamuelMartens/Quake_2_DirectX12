@@ -362,16 +362,17 @@ SphericalHarmonic9_t<XMFLOAT4> LightBaker::ProjectOntoSphericalHarmonic(const XM
 	return sphericalHarmonic;
 }
 
-//#DEBUG continue by placing this function in a proper space
-XMFLOAT4 LightBaker::GatherDirectIrradianceAtInersectionPoint(const Utils::Ray& ray, const BSPNodeRayIntersectionResult& nodeIntersectionResult) const
+XMFLOAT4 LightBaker::GatherDirectIrradianceAtInersectionPoint(const Utils::Ray& ray, const Utils::BSPNodeRayIntersectionResult& nodeIntersectionResult) const
 {
+	const Renderer& renderer = Renderer::Inst();
+
 	XMVECTOR sseIntersectionPoint = XMLoadFloat4(&ray.origin) + XMLoadFloat4(&ray.direction) *
 		nodeIntersectionResult.rayTriangleIntersection.t;
 
 	XMFLOAT4 intersectionPoint;
 	XMStoreFloat4(&intersectionPoint, sseIntersectionPoint);
 
-	const SourceStaticObject& object = Renderer::Inst().sourceStaticObjects[nodeIntersectionResult.staticObjIndex];
+	const SourceStaticObject& object = renderer.GetSourceStaticObjects()[nodeIntersectionResult.staticObjIndex];
 
 	const int v0Index = object.indices[nodeIntersectionResult.triangleIndex * 3 + 0];
 	const int v1Index = object.indices[nodeIntersectionResult.triangleIndex * 3 + 1];
@@ -386,8 +387,8 @@ XMFLOAT4 LightBaker::GatherDirectIrradianceAtInersectionPoint(const Utils::Ray& 
 		sseV2Normal * nodeIntersectionResult.rayTriangleIntersection.w);
 
 	// Gather from point lights first 
-	const std::vector<PointLight>& pointLights = Renderer::Inst().staticPointLights;
-	const BSPTree& bsp = Renderer::Inst().bspTree;
+	const std::vector<PointLight>& pointLights = renderer.GetStaticPointLights();
+	const BSPTree& bsp = renderer.GetBSPTree();
 
 	XMVECTOR sseResultIrradiance = XMVectorZero();
 
@@ -434,40 +435,28 @@ XMFLOAT4 LightBaker::GatherDirectIrradianceAtInersectionPoint(const Utils::Ray& 
 	return resultIrradiance;
 }
 
-XMFLOAT4 LightBaker::GatherIrradianceFromAreaLights(const Utils::Ray& ray, const BSPNodeRayIntersectionResult& nodeIntersectionResult) const
+XMFLOAT4 LightBaker::GatherIrradianceFromAreaLights(const Utils::Ray& ray, const Utils::BSPNodeRayIntersectionResult& nodeIntersectionResult) const
 {
+	const Renderer& renderer = Renderer::Inst();
+
 	XMVECTOR sseIntersectionPoint = XMLoadFloat4(&ray.origin) + XMLoadFloat4(&ray.direction) *
 		nodeIntersectionResult.rayTriangleIntersection.t;
 
 	XMFLOAT4 intersectionPoint;
 	XMStoreFloat4(&intersectionPoint, sseIntersectionPoint);
 
-	const BSPTree& bsp = Renderer::Inst().bspTree;
+	const BSPTree& bsp = renderer.GetBSPTree();
 	
-	const BSPNode& intersectionNode = bsp.GetNodeWithPoint(intersectionPoint, bsp.nodes.front());
+	const BSPNode& intersectionNode = bsp.GetNodeWithPoint(intersectionPoint);
 	if (intersectionNode.cluster == Const::INVALID_INDEX)
 	{
 		return XMFLOAT4{0.0f, 0.0f, 0.0f, 0.0f};
 	}
 
-	//#DEBUG I do DecompressClusterVisibility() do often, should I wrap up GetNodeWithPoint() and this
-	// in a single method?
-	const std::vector<bool> intersectionPVS = bsp.DecompressClusterVisibility(intersectionNode.cluster);
-	const std::vector<SourceStaticObject>& staticObjects = Renderer::Inst().sourceStaticObjects;
-
 	// Get all potentially visible objects
-	std::vector<int> potentiallyVisibleObjects;
-	for (const int leafIndex : bsp.leavesIndices)
-	{
-		const BSPNode& leaf = bsp.nodes[leafIndex];
-
-		if (leaf.cluster != Const::INVALID_INDEX && intersectionPVS[leaf.cluster] == true)
-		{
-			potentiallyVisibleObjects.insert(potentiallyVisibleObjects.end(), leaf.objectsIndices.cbegin(), leaf.objectsIndices.cend());
-		}
-	}
-
-	const std::vector<SurfaceLight>& staticSurfaceLights = Renderer::Inst().staticSurfaceLights;
+	std::vector<int> potentiallyVisibleObjects = bsp.GetPotentiallyVisibleObjects(intersectionPoint);
+	
+	const std::vector<SurfaceLight>& staticSurfaceLights = renderer.GetStaticSurfaceLights();
 
 	// Get potentially visible light objects from all potentially visible objects
 	std::vector<int> potentiallyVisibleLightsIndices;
@@ -503,11 +492,11 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLights(const Utils::Ray& ray, const
 
 XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionPoint, const SurfaceLight& light) const
 {
-	const SourceStaticObject& lightMesh = Renderer::Inst().sourceStaticObjects[light.surfaceIndex];
+	const SourceStaticObject& lightMesh = Renderer::Inst().GetSourceStaticObjects()[light.surfaceIndex];
 
 	const std::vector<float>& lightTrianglesPDF = light.trianglesPDF;
 
-	const BSPTree& bsp = Renderer::Inst().bspTree;
+	const BSPTree& bsp = Renderer::Inst().GetBSPTree();
 
 	XMVECTOR sseSampleIrradiance = XMLoadFloat4(&light.irradiance);
 	XMVECTOR sseIntersectionPoint = XMLoadFloat4(&intersectionPoint);
@@ -533,7 +522,7 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionP
 		const float v = sample.y * std::sqrt(sample.x);
 		const float w = 1.0f - u - v;
 
-		//#DEBUG this is just for my sanity. I will delete it later
+		//This is just for my sanity. I will delete it later
 		assert(u + v <= 1.0f && "Something funky with barycentric coordinates");
 
 		const int V0Ind = lightMesh.indices[triangleIndex * 3 + 0];
@@ -584,6 +573,8 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionP
 // Will return indirect light that comes to probe via one sample
 XMFLOAT4 LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, XMFLOAT4& direction)
 {
+	const BSPTree& bspTree = Renderer::Inst().GetBSPTree();
+
 	XMVECTOR sseIrradiance = XMVectorZero();
 
 	XMFLOAT4 intersectionPoint = probeCoord;
@@ -621,7 +612,7 @@ XMFLOAT4 LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, XMFLOAT4& di
 		// Find intersection
 		Utils::Ray ray = { intersectionPoint, rayDir };
 
-		auto [isIntersected, intersectionResult] = FindClosestRayIntersection(ray);
+		auto [isIntersected, intersectionResult] = bspTree.FindClosestRayIntersection(ray);
 
 		if (isIntersected == false)
 		{
@@ -639,7 +630,7 @@ XMFLOAT4 LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, XMFLOAT4& di
 		sseIrradiance = sseIrradiance + XMLoadFloat4(&directIrradiance) * sseThoroughput;
 
 		// Generate new ray dir
-		XMFLOAT4 normal = BSPNodeRayIntersectionResult::GetNormal(intersectionResult);
+		XMFLOAT4 normal = Utils::BSPNodeRayIntersectionResult::GetNormal(intersectionResult);
 		XMVECTOR sseNormal = XMLoadFloat4(&normal);
 
 		const XMFLOAT4X4 rotationMat = Utils::ConstructV1ToV2RotationMatrix(Utils::AXIS_Z, normal);
@@ -680,128 +671,9 @@ XMFLOAT4 LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, XMFLOAT4& di
 	return irradiance;
 }
 
-std::tuple<bool, LightBaker::BSPNodeRayIntersectionResult> LightBaker::FindClosestRayIntersection(const Utils::Ray& ray) const
+XMFLOAT4 Utils::BSPNodeRayIntersectionResult::GetNormal(const Utils::BSPNodeRayIntersectionResult& result)
 {
-	const BSPTree& bsp = Renderer::Inst().GetBSPTree();
-
-	BSPNodeRayIntersectionResult nodeIntersectionResult;
-	float minT = FLT_MAX;
-
-	// Find node where ray is originated
-	const BSPNode& node = bsp.GetNodeWithPoint(ray.origin);
-
-	// Ignore rays originated from empty nodes
-	if (node.cluster == Const::INVALID_INDEX)
-	{
-		return {false, nodeIntersectionResult};
-	}
-
-	// Try out this node first
-	if (FindClosestIntersectionInNode(ray, node, nodeIntersectionResult, minT) == false)
-	{
-		//#DEBUG does the node I am in, include in this list as well?
-		
-		// Time to check PVS
-		std::vector<bool> currentPVS =  bsp.DecompressClusterVisibility(node.cluster);
-
-		for (const int leafIndex : bsp.leavesIndices)
-		{
-			const BSPNode& leaf = bsp.nodes[leafIndex];
-
-			if (leaf.cluster != Const::INVALID_INDEX && currentPVS[leaf.cluster] == true)
-			{
-				FindClosestIntersectionInNode(ray, node, nodeIntersectionResult, minT);
-			}
-		}
-
-	}
-
-	const bool isIntersected = minT != FLT_MAX;
-
-	return {isIntersected, nodeIntersectionResult};
-}
-
-bool LightBaker::FindClosestIntersectionInNode(const Utils::Ray& ray, const BSPNode& node, LightBaker::BSPNodeRayIntersectionResult& result, float& minT) const
-{
-	float nodeIntersectionT = FLT_MAX;
-
-	if (Utils::IsRayIntersectsAABB(ray, node.aabb, &nodeIntersectionT) == false || 
-		nodeIntersectionT > minT)
-	{
-		return false;
-	}
-
-	const std::vector<SourceStaticObject>& objects = Renderer::Inst().sourceStaticObjects;
-
-	float minRayT = FLT_MAX;
-
-	for (const int objectIndex : node.objectsIndices)
-	{
-		float rayT = FLT_MAX;
-
-		const SourceStaticObject& object = objects[objectIndex];
-
-		// No intersection at all
-		if (Utils::IsRayIntersectsAABB(ray, object.aabb, &rayT) == false)
-		{
-			continue;
-		}
-
-		// Potential intersection with object further than what we have, early reject
-		if (rayT > minRayT)
-		{
-			continue;
-		}
-
-		assert(object.indices.size() % 3 == 0 && "Invalid triangle indices");
-
-		for (int triangleIndex = 0; triangleIndex < object.indices.size() / 3; ++triangleIndex)
-		{
-			const XMFLOAT4& v0 = object.vertices[object.indices[triangleIndex * 3 + 0]];
-			const XMFLOAT4& v1 = object.vertices[object.indices[triangleIndex * 3 + 1]];
-			const XMFLOAT4& v2 = object.vertices[object.indices[triangleIndex * 3 + 2]];
-
-			Utils::RayTriangleIntersectionResult rayTriangleResult;
-
-			if (Utils::IsRayIntersectsTriangle(ray, v0, v1, v2, rayTriangleResult) == false)
-			{
-				continue;
-			}
-
-			if (rayTriangleResult.t > minRayT)
-			{
-				continue;
-			}
-
-			// Reject backface triangles. Dot product should be negative to make sure we hit the front side of triangle
-			XMVECTOR sseV0Normal = XMLoadFloat4(&object.normals[object.indices[triangleIndex * 3]]);
-			if (XMVectorGetX(XMVector3Dot(sseV0Normal, XMLoadFloat4(&ray.direction))) >= 0.0f)
-			{
-				continue;
-			}
-
-
-			minRayT = rayTriangleResult.t;
-
-			result.rayTriangleIntersection = rayTriangleResult;
-			result.staticObjIndex = objectIndex;
-			result.triangleIndex = triangleIndex;
-		}
-
-	}
-
-	if (minRayT != FLT_MAX)
-	{
-		minT = minRayT;
-		return true;
-	}
-
-	return false;
-}
-
-XMFLOAT4 LightBaker::BSPNodeRayIntersectionResult::GetNormal(const BSPNodeRayIntersectionResult& result)
-{
-	const SourceStaticObject& object = Renderer::Inst().sourceStaticObjects[result.staticObjIndex];
+	const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[result.staticObjIndex];
 
 	const int v0Index = object.indices[result.triangleIndex * 3 + 0];
 	const int v1Index = object.indices[result.triangleIndex * 3 + 1];

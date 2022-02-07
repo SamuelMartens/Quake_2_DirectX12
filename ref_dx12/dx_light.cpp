@@ -33,7 +33,7 @@ void SurfaceLight::InitIfValid(SurfaceLight& light)
 {
 	assert(light.surfaceIndex != Const::INVALID_INDEX && "Invalid object index for surface light init");
 
-	const SourceStaticObject& object = Renderer::Inst().sourceStaticObjects[light.surfaceIndex];
+	const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[light.surfaceIndex];
 
 	const int trianglesNum = object.indices.size() / 3;
 
@@ -83,7 +83,7 @@ void SurfaceLight::InitIfValid(SurfaceLight& light)
 // basically averaging albedo. 
 XMFLOAT4 SurfaceLight::CalculateReflectivity(const Resource& texture, const std::byte* textureData)
 {
-	//#DEBUG what is this? Shall I watch for this too?
+	// Not sure how relevant this is. Leaving this here just for remainder sake
 	/* The reflectivity is only relevant for wall textures. */
 	//if (image->type != it_wall)
 		//return;
@@ -124,12 +124,10 @@ XMFLOAT4 SurfaceLight::CalculateReflectivity(const Resource& texture, const std:
 
 XMFLOAT4 SurfaceLight::CalculateIrradiance(const SurfaceLight& light)
 {
-	//#DEBUG where should I use this function? Remember that some texture creation is
-	// deferred
 	assert(light.surfaceIndex != Const::INVALID_INDEX && "Invalid object index in light data");
 	assert(light.area != 0.0f && "Invalid are in light data");
 
-	const SourceStaticObject& object = Renderer::Inst().sourceStaticObjects[light.surfaceIndex];
+	const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[light.surfaceIndex];
 	const Resource* lightTexture = ResourceManager::Inst().FindResource(object.textureKey);
 
 	assert(lightTexture != nullptr && "Invalid texture name");
