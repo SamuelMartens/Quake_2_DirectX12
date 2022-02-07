@@ -296,7 +296,7 @@ std::vector<bool> BSPTree::DecompressClusterVisibility(int cluster) const
 	return result;
 }
 
-bool BSPNode::IsLeaf() const noexcept
+bool BSPNode::IsLeaf() const
 {
 	return children[0] == Const::INVALID_INDEX && children[1] == Const::INVALID_INDEX;
 }

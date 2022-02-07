@@ -169,20 +169,49 @@ void LightBaker::PostBake()
 	clusterBakePoints.clear();
 }
 
-std::vector<std::vector<XMFLOAT4>> LightBaker::GenerateClustersBakePoints() const
+std::vector<std::vector<XMFLOAT4>> LightBaker::GenerateClustersBakePoints()
 {
-	std::set<int> clustersSet = Renderer::Inst().GetBSPTree().GetClustersSet();
-	
-	if (clustersSet.empty() == true)
+	std::vector<std::vector<XMFLOAT4>> bakePoints;
+
+	switch (generationMode)
 	{
-		return {};
+	case LightBaker::GenerationMode::AllClusters:
+	{
+		std::set<int> clustersSet = Renderer::Inst().GetBSPTree().GetClustersSet();
+
+		if (clustersSet.empty() == true)
+		{
+			return {};
+		}
+
+		// Set is sorted. Here I am taking the last element which is MAX element,
+		// and use it as a new size for bake point array
+		bakePoints.resize(*clustersSet.rbegin() + 1);
+
+		for (const int cluster : clustersSet)
+		{
+			bakePoints[cluster] = GenerateClusterBakePoints(cluster);
+		}
+
+		return bakePoints;
 	}
-
-	std::vector<std::vector<XMFLOAT4>> bakePoints(*clustersSet.rbegin());
-
-	for (const int cluster : clustersSet)
+		break;
+	case LightBaker::GenerationMode::CurrentPositionCluster:
 	{
-		bakePoints[cluster] = GenerateClusterBakePoints(cluster);
+		assert(bakePosition.has_value() == true && "Bake position is not set");
+		const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(*bakePosition);
+
+		bakePosition.reset();
+
+		assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera node invalid index");
+
+		bakePoints.resize(cameraNode.cluster + 1);
+		bakePoints[cameraNode.cluster] = GenerateClusterBakePoints(cameraNode.cluster);
+	}
+		break;
+	default:
+		assert(false && "Invalid generation mode");
+		break;
 	}
 
 	return bakePoints;
@@ -282,6 +311,17 @@ int LightBaker::GetBakedProbes() const
 {
 	assert(probesBaked <= GetTotalProbes() && "Baked probes exceeded total probes");
 	return probesBaked;
+}
+
+void LightBaker::SetGenerationMode(GenerationMode genMode)
+{
+	generationMode = genMode;
+}
+
+void LightBaker::SetBakePosition(const XMFLOAT4& position)
+{
+	assert(bakePosition.has_value() == false && "Bake position is not cleared");
+	bakePosition = position;
 }
 
 SphericalHarmonic9_t<float> LightBaker::GetSphericalHarmonic9Basis(const XMFLOAT4& direction) const
@@ -644,11 +684,17 @@ std::tuple<bool, LightBaker::BSPNodeRayIntersectionResult> LightBaker::FindClose
 {
 	const BSPTree& bsp = Renderer::Inst().GetBSPTree();
 
-	// 1)
-	const BSPNode& node = bsp.GetNodeWithPoint(ray.origin);
-
 	BSPNodeRayIntersectionResult nodeIntersectionResult;
 	float minT = FLT_MAX;
+
+	// Find node where ray is originated
+	const BSPNode& node = bsp.GetNodeWithPoint(ray.origin);
+
+	// Ignore rays originated from empty nodes
+	if (node.cluster == Const::INVALID_INDEX)
+	{
+		return {false, nodeIntersectionResult};
+	}
 
 	// Try out this node first
 	if (FindClosestIntersectionInNode(ray, node, nodeIntersectionResult, minT) == false)

@@ -503,8 +503,12 @@ void Renderer::CreateSwapChainBuffersAndViews()
 
 		// Get i-th buffer in a swap chain
 		ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&buffView.buffer)));
-
 		buffView.viewIndex = rtvHeapAllocator->Allocate(buffView.buffer.Get());
+
+		Diagnostics::SetResourceName(buffView.buffer.Get(), 
+			"Back buffer Index :" + std::to_string(i) +
+			" ,View Index :" + std::to_string(buffView.viewIndex));
+
 	}
 }
 
@@ -571,6 +575,7 @@ void Renderer::CreateCommandQueue()
 	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 
 	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&commandQueue)));
+	Diagnostics::SetResourceName(commandQueue.Get(), "Main Graphics Command Queue");
 }
 
 void Renderer::CreateFences(ComPtr<ID3D12Fence>& fence)
@@ -856,7 +861,7 @@ void Renderer::ReleaseFrame(Frame& frame)
 {
 	frame.Release();
 
-	Logs::Log(Logs::Category::FrameSubmission, "Frame released");
+	Logs::Log(Logs::Category::FrameSubmission, "Frame released Index: " + std::to_string(frame.GetArrayIndex()));
 }
 
 void Renderer::WaitForFrame(Frame& frame) const
@@ -906,8 +911,8 @@ void Renderer::SwitchToRequestedState()
 {
 	assert(requestedState.has_value() == true && "Can't switch to requested state it's empty");
 
-	OnStateStart(currentState);
-	OnStateEnd(*requestedState);
+	OnStateEnd(currentState);
+	OnStateStart(*requestedState);
 
 	currentState = *requestedState;
 
@@ -1191,8 +1196,18 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 		{
 			ImGui::Checkbox("Draw bake points", &drawBakePointsDebugGeometry);
 
-			if (ImGui::Button("Bake Light"))
+			ImGui::Text("-- Start baking --");
+
+			if (ImGui::Button("Bake Light All Clusters"))
 			{
+				LightBaker::Inst().SetGenerationMode(LightBaker::GenerationMode::AllClusters);
+				Renderer::Inst().RequestStateChange(State::LightBaking);
+			}
+
+			if (ImGui::Button("Bake Light Camera Cluster"))
+			{
+				LightBaker::Inst().SetGenerationMode(LightBaker::GenerationMode::CurrentPositionCluster);
+				LightBaker::Inst().SetBakePosition(context.frame.camera.position);
 				Renderer::Inst().RequestStateChange(State::LightBaking);
 			}
 

@@ -23,7 +23,7 @@ struct BSPNode
 
 	std::vector<int> objectsIndices;
 
-	bool IsLeaf() const noexcept;
+	bool IsLeaf() const;
 };
 
 class BSPTree

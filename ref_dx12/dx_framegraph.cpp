@@ -470,19 +470,20 @@ void FrameGraph::Execute(Frame& frame)
 
 	Renderer& renderer = Renderer::Inst();
 	JobQueue& jobQueue = JobSystem::Inst().GetJobQueue();
+	const bool isRenderingState = renderer.GetState() == Renderer::State::Rendering;
 
 	// NOTE: creation order is the order in which command Lists will be submitted.
 	// Set up dependencies 
 
 	/* Create Contexts */
-	GPUJobContext updateGlobalResJobContext = renderer.CreateContext(frame);
+	GPUJobContext updateGlobalResJobContext = renderer.CreateContext(frame, isRenderingState);
 	std::vector<GPUJobContext> framePassContexts;
-	// All passes depend from Global Resource Update	
+	// All passes depend from Global Resource Update
 	for (PassTask& passTask : passTasks)
 	{
-		framePassContexts.emplace_back(renderer.CreateContext(frame));
+		framePassContexts.emplace_back(renderer.CreateContext(frame, isRenderingState));
 	}
-
+	
 	GPUJobContext endFrameJobContext = renderer.CreateContext(frame, false);
 	// NOTE: should always be last job, before submitting frame, because of sloppy Render Target
 	// state transition
@@ -491,14 +492,14 @@ void FrameGraph::Execute(Frame& frame)
 	/*  Handle dependencies */
 	std::vector<GPUJobContext*> endFrameDependency;
 
-	if (renderer.GetState() == Renderer::State::Rendering)
+	if (isRenderingState)
 	{
 		// All passes depend from Global Resource Update	
 		for (GPUJobContext& jobContext : framePassContexts)
 		{
 			jobContext.CreateDependencyFrom({ &updateGlobalResJobContext });
 		};
-
+		
 		AddTexturesProxiesToPassJobContexts(framePassContexts);
 		endFrameDependency.reserve(endFrameDependency.size());
 
@@ -517,7 +518,7 @@ void FrameGraph::Execute(Frame& frame)
 	/* Enqueue jobs */
 	// NOTE: context SHOULD be passed by value. Otherwise it will not exist when another thread will try to execute 
 	// this job
-	if (renderer.GetState() == Renderer::State::Rendering)
+	if (isRenderingState)
 	{
 		jobQueue.Enqueue(Job([updateGlobalResJobContext, &renderer]() mutable
 		{
@@ -549,8 +550,8 @@ void FrameGraph::Execute(Frame& frame)
 			}));
 		}
 	}
-	
-	jobQueue.Enqueue(Job([drawDebugGuiJobContext, &renderer]() mutable 
+
+	jobQueue.Enqueue(Job([drawDebugGuiJobContext, &renderer]() mutable
 	{
 		renderer.DrawDebugGuiJob(drawDebugGuiJobContext);
 	}));

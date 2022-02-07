@@ -12,7 +12,8 @@ void Frame::Init(int arrayIndexVal)
 	arrayIndex = arrayIndexVal;
 
 	renderer.CreateDepthStencilBuffer(depthStencilBuffer);
-	
+	Diagnostics::SetResourceName(depthStencilBuffer.Get(), "Depth Buffer Frame: " + std::to_string(arrayIndexVal));
+
 	depthBufferViewIndex = renderer.dsvHeapAllocator->Allocate(depthStencilBuffer.Get());
 
 	camera.Init();

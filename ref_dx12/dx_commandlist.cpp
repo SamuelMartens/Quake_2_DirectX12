@@ -34,7 +34,6 @@ void CommandList::Open()
 {
 	ThrowIfFailed(commandListAlloc->Reset());
 	ThrowIfFailed(commandList->Reset(commandListAlloc.Get(), nullptr));
-
 #ifdef VALIDATE_COMMAND_LIST
 	assert(isOpen == false && "Command list shouldn't be open twice");
 	isOpen = true;

@@ -64,7 +64,7 @@ namespace Logs
 		Category category = Category::Generic;
 	};
 
-	constexpr int BUFFER_SIZE = 65536;
+	constexpr int BUFFER_SIZE = 4098;
 
 	extern std::array<Event, BUFFER_SIZE> gEventsBuffer;
 	extern  std::atomic<int> gPos;

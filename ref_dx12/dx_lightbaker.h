@@ -4,6 +4,7 @@
 #include <array>
 #include <atomic>
 #include <tuple>
+#include <optional>
 
 #include "dx_utils.h"
 #include "dx_threadingutils.h"
@@ -31,11 +32,17 @@ class LightBaker
 public:
 	DEFINE_SINGLETON(LightBaker);
 
+	enum class GenerationMode
+	{
+		AllClusters,
+		CurrentPositionCluster
+	};
+
 	void PreBake();
 	void PostBake();
 
 	[[nodiscard]]
-	std::vector<std::vector<XMFLOAT4>> GenerateClustersBakePoints() const;
+	std::vector<std::vector<XMFLOAT4>> GenerateClustersBakePoints();
 
 	[[nodiscard]]
 	std::vector<XMFLOAT4> GenerateClusterBakePoints(int clusterIndex) const;
@@ -43,6 +50,9 @@ public:
 	void BakeJob();
 	int GetTotalProbes() const;
 	int GetBakedProbes() const;
+
+	void SetGenerationMode(GenerationMode genMode);
+	void SetBakePosition(const XMFLOAT4& position);
 
 //#DEBUG uncomment
 //private:
@@ -85,4 +95,7 @@ public:
 	std::atomic<int> probesBaked;
 	std::vector<DiffuseProbe> probes;
 	std::vector<ClusterProbeData> clusterProbeData;
+
+	GenerationMode generationMode;
+	std::optional<XMFLOAT4> bakePosition;
 }; 
