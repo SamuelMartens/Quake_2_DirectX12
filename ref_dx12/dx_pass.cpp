@@ -13,6 +13,7 @@
 #include "dx_memorymanager.h"
 #include "dx_lightbaker.h"
 
+const float Pass_Debug::SPHERE_RADIUS = 3.0f;
 
 namespace
 {
@@ -1354,7 +1355,7 @@ void Pass_PostProcess::SetComputeState(GPUJobContext& context)
 
 void Pass_Debug::Execute(GPUJobContext& context)
 {
-	if (context.frame.drawDebugGeometry == false)
+	if (context.frame.debugObjecs.empty() == true)
 	{
 		return;
 	}
@@ -1372,8 +1373,6 @@ void Pass_Debug::Init()
 {
 	vertexSize = sizeof(XMFLOAT4);
 
-	// Debug sphere init
-	constexpr float SPHERE_RADIUS = 3.0f;
 	sphereObjectVertices = Utils::CreateSphere(SPHERE_RADIUS);
 
 	sphereObjectVertexBufferSize = static_cast<int>(vertexSize * sphereObjectVertices.size());
@@ -1448,23 +1447,14 @@ void Pass_Debug::ReleasePersistentResources()
 
 void Pass_Debug::RegisterObjects(GPUJobContext& context)
 {
+	const std::vector<DebugObject>& debugObjects = context.frame.debugObjecs;
 
-	if (context.frame.drawDebugGeometry == false)
+	if (debugObjects.empty() == true)
 	{
 		return;
 	}
 
-	// Figure out all clusters we want to generate for
-	const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(context.frame.camera.position);
-	assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
-
-	//#TODO so far generate bake points only for current cluster, if it's not alright,
-	// I can start generate points for PVS
-	const std::vector<XMFLOAT4> bakePoints = LightBaker::Inst().GenerateClusterBakePoints(cameraNode.cluster);
-
-	assert(bakePoints.empty() == false && "Bake points are empty. Is this alright?");
-
-	const int debugObjectsVertexBufferSizeInBytes = sphereObjectVertexBufferSize * bakePoints.size();
+	const int debugObjectsVertexBufferSizeInBytes = sphereObjectVertexBufferSize * debugObjects.size();
 
 	assert(objectsVertexBufferMemory == Const::INVALID_BUFFER_HANDLER && "DebugObjects vertex buffer memory should be released");
 
@@ -1474,20 +1464,20 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 	objectsVertexBufferMemory = uploadMemory.Allocate(debugObjectsVertexBufferSizeInBytes);
 
 	assert(drawObjects.empty() == true && "Debug pass objects registration failed. Pass objects list should be empty");
-	drawObjects.reserve(bakePoints.size());
+	drawObjects.reserve(debugObjects.size());
 
 	std::vector<XMFLOAT4> debugObjectsVertices;
-	debugObjectsVertices.reserve(sphereObjectVertices.size() * bakePoints.size());
+	debugObjectsVertices.reserve(sphereObjectVertices.size() * debugObjects.size());
 
-	for (const XMFLOAT4& bakePoint : bakePoints)
+	for (const DebugObject& debugObject : debugObjects)
 	{
-		XMVECTOR sseBakePoint = XMLoadFloat4(&bakePoint);
+		XMVECTOR sseObjectPos = XMLoadFloat4(&debugObject.position);
 
 		std::transform(sphereObjectVertices.cbegin(), sphereObjectVertices.cend(), std::back_inserter(debugObjectsVertices),
-			[&sseBakePoint](const XMFLOAT4& vertex)
+			[&sseObjectPos](const XMFLOAT4& vertex)
 		{
 			XMFLOAT4 resultVertex;
-			XMStoreFloat4(&resultVertex, XMVectorSetW(XMLoadFloat4(&vertex) + sseBakePoint, 1.0f));
+			XMStoreFloat4(&resultVertex, XMVectorSetW(XMLoadFloat4(&vertex) + sseObjectPos, 1.0f));
 
 			return resultVertex;
 		});
@@ -1507,17 +1497,18 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 	if (perObjectConstBuffMemorySize != 0)
 	{
 		assert(objectsConstBufferMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Debug start not cleaned up memory");
-		objectsConstBufferMemory = uploadMemory.Allocate(perObjectConstBuffMemorySize * bakePoints.size());
+		objectsConstBufferMemory = uploadMemory.Allocate(perObjectConstBuffMemorySize * debugObjects.size());
 	}
 
 	RenderCallbacks::RegisterLocalObjectContext regContext = { context };
 	const unsigned passHashedName = HASH(passParameters.name.c_str());
 
-	for (int i = 0; i < bakePoints.size(); ++i)
+	for (int i = 0; i < debugObjects.size(); ++i)
 	{
 		PassObj& obj = drawObjects.emplace_back(PassObj{
-			passParameters.perObjectLocalRootArgsTemplate
-	});
+			passParameters.perObjectLocalRootArgsTemplate,
+			&debugObjects[i]
+		});
 
 		// Init object root args
 

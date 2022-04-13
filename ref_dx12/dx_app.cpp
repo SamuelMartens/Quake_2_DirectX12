@@ -781,8 +781,8 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	frame.uiDrawCalls.clear();
 	frame.streamingCbvSrvAllocator->Reset();
 
-	// Release debug info
-	frame.drawDebugGeometry = false;
+	// Release debug objects
+	frame.debugObjecs.clear();
 
 	if (frame.frameGraph != nullptr)
 	{
@@ -1125,6 +1125,35 @@ std::vector<int> Renderer::BuildVisibleDynamicObjectsList(const Camera& camera, 
 	}
 
 	return visibleObjects;
+}
+
+std::vector<DebugObject> Renderer::GenerateFrameDebugObjects(const Camera& camera) const
+{
+	std::vector<DebugObject> debugObjects;
+
+	if (drawBakePointsDebugGeometry == false)
+	{
+		return debugObjects;
+	}
+
+	// Figure out all clusters we want to generate for
+	const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(camera.position);
+	assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
+
+	//#TODO so far generate bake points only for current cluster, if it's not alright,
+	// I can start generate points for PVS
+	const std::vector<XMFLOAT4> bakePoints = LightBaker::Inst().GenerateClusterBakePoints(cameraNode.cluster);
+
+	assert(bakePoints.empty() == false && "Bake points are empty. Is this alright?");
+
+	debugObjects.reserve(bakePoints.size());
+
+	std::transform(bakePoints.cbegin(), bakePoints.cend(), std::back_inserter(debugObjects), [](const XMFLOAT4& bakePoint) 
+	{
+		return DebugObject{ DebugObject::Type::Sphere, bakePoint };
+	});
+
+	return debugObjects;
 }
 
 const std::vector<SourceStaticObject>& Renderer::GetSourceStaticObjects() const
@@ -1961,7 +1990,7 @@ void Renderer::PreRenderSetUpFrame(Frame& frame)
 	frame.visibleEntitiesIndices = BuildVisibleDynamicObjectsList(frame.camera, frame.entities);
 
 	// Debug objects
-	frame.drawDebugGeometry = drawBakePointsDebugGeometry;
+	frame.debugObjecs = GenerateFrameDebugObjects(frame.camera);
 }
 
 void Renderer::FlushAllFrames() const

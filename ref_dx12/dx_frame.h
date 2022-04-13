@@ -63,6 +63,7 @@ public:
 	// Populated on every frame
 	std::vector<entity_t> entities;
 	std::vector<particle_t> particles;
+	std::vector<DebugObject> debugObjecs;
 
 	std::vector<DrawCall_UI_t> uiDrawCalls;
 	std::vector<int> visibleStaticObjectsIndices;
@@ -92,9 +93,6 @@ public:
 	
 	std::unique_ptr<StreamingDescriptorHeapAllocator_t<Settings::FRAME_STREAMING_CBV_SRV_DESCRIPTOR_HEAP_SIZE, 
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV>> streamingCbvSrvAllocator = nullptr;
-
-	// Debug info
-	bool drawDebugGeometry = false;
 
 private:
 

@@ -178,6 +178,7 @@ public:
 	void DrawDebugGuiJob(GPUJobContext& context);
 
 	std::vector<int> BuildVisibleDynamicObjectsList(const Camera& camera, const std::vector<entity_t>& entities) const;
+	std::vector<DebugObject> GenerateFrameDebugObjects(const Camera& camera) const;
 
 	/* State change */
 	void RequestStateChange(State state);

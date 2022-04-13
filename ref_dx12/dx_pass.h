@@ -259,6 +259,9 @@ public:
 		const DebugObject* originalObj = nullptr;
 	};
 
+	// Debug sphere init
+	const static float SPHERE_RADIUS;
+
 public:
 
 	void Execute(GPUJobContext& context);

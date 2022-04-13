@@ -1026,7 +1026,7 @@ void FrameGraph::RegisterParticles(GPUJobContext& context)
 
 void FrameGraph::RegisterGlobalObjectsResDebug(GPUJobContext& context)
 {
-	if (context.frame.drawDebugGeometry == false)
+	if (context.frame.debugObjecs.empty() == true)
 	{
 		return;
 	}
@@ -1073,12 +1073,11 @@ void FrameGraph::RegisterGlobalObjectsResDebug(GPUJobContext& context)
 		RootArg::AttachConstBufferToArgs(args, objectOffset, objectGlobalMemory);
 		objectOffset += objSize;
 	}
-
 }
 
 void FrameGraph::UpdateGlobalObjectsResDebug(GPUJobContext& context)
 {
-	if (context.frame.drawDebugGeometry == false)
+	if (context.frame.debugObjecs.empty() == true)
 	{
 		return;
 	}

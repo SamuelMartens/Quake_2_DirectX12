@@ -531,7 +531,16 @@ namespace RenderCallbacks
 			{
 			case HASH("Debug"):
 			{
-
+				switch (paramName)
+				{
+				case HASH("gCenter"):
+				{
+					reinterpret_cast<XMFLOAT4&>(bindPoint) = obj.position;
+				}
+				break;
+				default:
+					break;
+				}
 			}
 			break;
 			default:

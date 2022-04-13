@@ -120,4 +120,14 @@ public:
 
 class DebugObject
 {
+public:
+
+	enum class Type
+	{
+		Sphere,
+		None
+	};
+
+	Type type = Type::None;
+	XMFLOAT4 position = { 0.0f, 0.0f, 0.0f, 1.0f };
 };
