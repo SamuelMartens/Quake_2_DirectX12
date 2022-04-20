@@ -30,6 +30,7 @@ baseq2
 *.suo
 *.user
 *.sln.docstates
+StructLayoutSettings.json
 
 # Build results
 [Dd]ebug/
