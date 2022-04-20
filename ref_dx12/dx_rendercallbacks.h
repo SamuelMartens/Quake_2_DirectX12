@@ -9,6 +9,7 @@
 #include "dx_app.h"
 #include "dx_resourcemanager.h"
 #include "dx_framegraph.h"
+#include "dx_lightbaker.h"
 
 // This is required because in some places template code will be generated for types where it's not intended.
 #define DO_IF_SAME_DECAYED_TYPE(T1, T2, code) if constexpr (std::is_same_v<std::decay_t<T1>, std::decay_t<T2>>) { code; } \
@@ -329,6 +330,10 @@ namespace RenderCallbacks
 			DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
 		}
 		break;
+		case HASH("sbDiffuseProbes"):
+		{
+		}
+		break;
 		default:
 			break;
 		}
@@ -413,6 +418,39 @@ namespace RenderCallbacks
 		case HASH("gCameraOrigin"):
 		{
 			reinterpret_cast<XMFLOAT4&>(bindPoint) = ctx.jobContext.frame.camera.position;
+		}
+		break;
+		case HASH("sbDiffuseProbes"):
+		{
+			ResourceManager& resMan = ResourceManager::Inst();
+			std::vector<DiffuseProbe> probeData = LightBaker::Inst().TransferBakingResult();
+
+			if (probeData.empty() == false)
+			{
+				Renderer::Inst().ConsumeDiffuseIndirectLightingData(std::move(probeData), ctx.jobContext);
+
+				Resource* probeGpuBuffer = resMan.FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME);
+				assert(probeGpuBuffer != nullptr);
+
+				//ViewDescription_t defaultSrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
+				ViewDescription_t defaultSrvDesc{ 
+					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(probeGpuBuffer, sizeof(DiffuseProbe::DiffuseSH_t)) };
+
+				DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, probeGpuBuffer->buffer.Get(), &defaultSrvDesc));
+			}
+
+			if (resMan.FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME) == nullptr)
+			{
+				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
+				DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
+			}
+		}
+		break;
+		case HASH("gIsDiffuseIndirectLightingReady"):
+		{
+			int& isDiffuseIndirectLightingReady = reinterpret_cast<int&>(bindPoint);
+			isDiffuseIndirectLightingReady = static_cast<int>(
+				ResourceManager::Inst().FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME) != nullptr);
 		}
 		break;
 		default:

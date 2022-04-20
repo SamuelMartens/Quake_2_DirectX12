@@ -211,11 +211,13 @@ Resource* ResourceManager::CreateStructuredBuffer(FArg::CreateStructuredBuffer& 
 	std::scoped_lock<std::mutex> lock(resources.mutex);
 
 	assert(args.desc->dimension == D3D12_RESOURCE_DIMENSION_BUFFER && "Invalid buffer dimension during resource creation");
+	assert(args.desc->format == DXGI_FORMAT_UNKNOWN && "Invalid structured buffer format");
 
 	FArg::CreateResource resCreationArgs;
 	resCreationArgs.desc = args.desc;
 	resCreationArgs.name = args.name;
 	resCreationArgs.context = args.context;
+	resCreationArgs.data = args.data;
 
 	return _CreateResource(resCreationArgs);
 }
@@ -663,7 +665,6 @@ ComPtr<ID3D12Resource> ResourceManager::_CreateGpuResource(FArg::_CreateGpuResou
 	if (args.raw != nullptr)
 	{
 		assert(args.context != nullptr && "If texture is initialized on creation GPU Context is required");
-		assert(args.desc->dimension != D3D12_RESOURCE_DIMENSION_BUFFER && "Immediate resource update is no implemented for buffers");
 
 		CommandList& commandList = *args.context->commandList;
 
@@ -677,8 +678,18 @@ ComPtr<ID3D12Resource> ResourceManager::_CreateGpuResource(FArg::_CreateGpuResou
 
 		D3D12_SUBRESOURCE_DATA textureData = {};
 		textureData.pData = args.raw;
-		// Divide by 8 cause bpp is bits per pixel, not bytes
-		textureData.RowPitch = args.desc->width * Resource::BPPFromFormat(args.desc->format) / 8;
+		
+		if (resourceDesc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
+		{
+			// Buffer always have unknown format, so no chance to use BPPFromFormat
+			textureData.RowPitch = args.desc->width;
+		}
+		else
+		{
+			// Divide by 8 cause bpp is bits per pixel, not bytes
+			textureData.RowPitch = args.desc->width * Resource::BPPFromFormat(args.desc->format) / 8;
+		}
+		
 		// Not SlicePitch but texture size in our case
 		textureData.SlicePitch = textureData.RowPitch * args.desc->height;
 

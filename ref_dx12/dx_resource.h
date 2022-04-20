@@ -34,6 +34,7 @@ public:
 
 	constexpr static char	RAW_TEXTURE_NAME[] = "__DX_MOVIE_TEXTURE__";
 	constexpr static char	FONT_TEXTURE_NAME[] = "conchars";
+	constexpr static char	PROBE_STRUCTURED_BUFFER_NAME[] = "__DIFFUSE_PROBES_STRUCTURED_BUFFER__";
 
 public:
 

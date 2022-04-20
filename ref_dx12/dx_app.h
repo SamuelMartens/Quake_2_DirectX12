@@ -32,6 +32,7 @@
 #include "dx_utils.h"
 #include "dx_bsp.h"
 #include "dx_light.h"
+#include "dx_lightbaker.h"
 
 extern "C"
 {
@@ -106,6 +107,9 @@ class Renderer
 	const std::array<unsigned int, 256>& GetRawPalette() const;
 	const std::array<unsigned int, 256>& GetTable8To24() const;
 	const BSPTree& GetBSPTree() const;
+	bool GetIsDiffuseIndirectLightingReady() const;
+
+	void ConsumeDiffuseIndirectLightingData(std::vector<DiffuseProbe>&& probeData, GPUJobContext& context);
 
 	/* Objects data */
 	const std::vector<StaticObject>& GetStaticObjects() const;
@@ -275,44 +279,52 @@ private:
 	void OnStateEnd(State state);
 	void OnStateStart(State state);
 
+	/* Windows and ref imports */
 	HWND		hWindows = nullptr;
 
 	refimport_t refImport;
 
+	/* Swap chains */
 	ComPtr<IDXGISwapChain> swapChain;
-
 	AssertBufferAndView swapChainBuffersAndViews[Settings::SWAP_CHAIN_BUFFER_COUNT];
 
+	/* Command lists and command queues */
 	ComPtr<ID3D12CommandQueue>	commandQueue;
 	//#TODO during building of frame graph I can ge exactly how much command lists I need
 	CommandListBuffer<Settings::COMMAND_LISTS_NUM> commandListBuffer;
 
+	/* Misc */
 	tagRECT scissorRect;
 
 	INT	currentBackBuffer = 0;
 
 	UINT MSQualityLevels = 0;
 
-	std::array<unsigned int, 256> Table8To24;
-	std::array<unsigned int, 256> rawPalette;
-
-	std::vector<SourceStaticObject> sourceStaticObjects;
-	std::vector<StaticObject> staticObjects;
-	std::unordered_map<model_t*, DynamicObjectModel> dynamicObjectsModels;
-
-	std::vector<PointLight> staticPointLights;
-	std::vector<SurfaceLight> staticSurfaceLights;
-
 	BSPTree bspTree;
-
-	std::array<Frame, Settings::FRAMES_NUM> frames;
-	int currentFrameIndex = Const::INVALID_INDEX;
 
 	std::atomic<int>	fenceValue = 0;
 	ComPtr<ID3D12Fence>	fence;
 
+	/* Color palettes */
+	std::array<unsigned int, 256> Table8To24;
+	std::array<unsigned int, 256> rawPalette;
+
+	/* Level objects collections */
+	std::vector<SourceStaticObject> sourceStaticObjects;
+	std::vector<StaticObject> staticObjects;
+	std::unordered_map<model_t*, DynamicObjectModel> dynamicObjectsModels;
+
+	/* Lights collections */
+	std::vector<PointLight> staticPointLights;
+	std::vector<SurfaceLight> staticSurfaceLights;
+
+	/* Frames  */
+	std::array<Frame, Settings::FRAMES_NUM> frames;
+	int currentFrameIndex = Const::INVALID_INDEX;
+
 	int frameCounter = 0;
 
+	/* Heaps data */
 	ComPtr<ID3D12DescriptorHeap> rtvHeap = nullptr;
 	ComPtr<ID3D12DescriptorHeap> dsvHeap = nullptr;
 	ComPtr<ID3D12DescriptorHeap> cbvSrvHeap = nullptr;

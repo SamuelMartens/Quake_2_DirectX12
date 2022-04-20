@@ -67,12 +67,13 @@ namespace FArg
 		GPUJobContext* context = nullptr; 
 		const XMFLOAT4* clearValue = nullptr;
 	};
-
+	
 	struct CreateStructuredBuffer
 	{
 		const ResourceDesc* desc = nullptr;
 		const char* name = nullptr;
 		GPUJobContext* context = nullptr;
+		const std::byte* data = nullptr;
 	};
 };
 

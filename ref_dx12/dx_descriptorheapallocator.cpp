@@ -96,3 +96,36 @@ D3D12_SHADER_RESOURCE_VIEW_DESC DescriptorHeapUtils::GetSRVTexture2DNullDescript
 
 	return srvDesc;
 }
+
+D3D12_SHADER_RESOURCE_VIEW_DESC DescriptorHeapUtils::GetSRVBufferNullDescription()
+{
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = DXGI_FORMAT_R8_UNORM;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+
+	return srvDesc;
+}
+
+D3D12_SHADER_RESOURCE_VIEW_DESC DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(Resource* buffer, int stride)
+{
+	assert(buffer->desc.dimension == D3D12_RESOURCE_DIMENSION_BUFFER && 
+		"Structured buffer view can be created for structured buffer only");
+
+	assert(stride > 0 && "Invalid stride for structured buffer view creation");
+
+	assert(buffer->desc.width % stride == 0 &&
+		"Structured buffer view creation error. Size and stride do not fit");
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+
+	srvDesc.Buffer.FirstElement = 0;
+	srvDesc.Buffer.NumElements = buffer->desc.width / stride;
+	srvDesc.Buffer.StructureByteStride = stride;
+	srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+	return srvDesc;
+}

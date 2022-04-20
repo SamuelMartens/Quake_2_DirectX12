@@ -13,7 +13,7 @@
 #include "dx_memorymanager.h"
 #include "dx_lightbaker.h"
 
-const float Pass_Debug::SPHERE_RADIUS = 3.0f;
+const float Pass_Debug::SPHERE_RADIUS = 6.0f;
 
 namespace
 {
@@ -1373,7 +1373,7 @@ void Pass_Debug::Init()
 {
 	vertexSize = sizeof(XMFLOAT4);
 
-	sphereObjectVertices = Utils::CreateSphere(SPHERE_RADIUS);
+	sphereObjectVertices = Utils::CreateSphere(SPHERE_RADIUS, 2);
 
 	sphereObjectVertexBufferSize = static_cast<int>(vertexSize * sphereObjectVertices.size());
 

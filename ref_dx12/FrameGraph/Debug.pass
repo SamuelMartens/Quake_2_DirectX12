@@ -16,8 +16,10 @@ Topology	 : Triangle
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
+DescriptorTable(SRV(t0, numDescriptors = 1)),
 CBV(b0),
-CBV(b1)
+CBV(b1),
+CBV(b2)
 }
 
 // Attributes
@@ -34,7 +36,10 @@ struct VertexOut
 	float4 LocalPos : POSITION;
 }
 
-// Resources 
+// Resources  
+[Global, PerPass]
+StructuredBuffer<float4> sbDiffuseProbes : register(t0)
+
 [Global, PerPass]
 cbuffer cbPerPass : register(b0)
 {
@@ -49,6 +54,12 @@ cbuffer cbPerPass : register(b0)
 cbuffer cbPerObject_Local : register(b1)
 {
 	float4 gCenter;
+}
+
+[Global, PerPass]
+cbuffer cbProbeData : register(b2)
+{
+	int gIsProbesEmpty;
 }
 
 // Shaders
@@ -68,7 +79,7 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : PS 
-External : VertexOut
+External : VertexOut, sbDiffuseProbes, cbProbeData
 <[
 float4 main(VertexOut vOut) : SV_Target
 {

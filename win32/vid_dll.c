@@ -480,7 +480,7 @@ typedef struct vidmode_s
 	int         width, height;
 	int         mode;
 } vidmode_t;
-
+//#INFO resolutions sets
 vidmode_t vid_modes[] =
 {
 	{ "Mode 0: 320x240",   320, 240,   0 },

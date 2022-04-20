@@ -1259,7 +1259,7 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 		else
 		{
 			const LightBaker& baker = LightBaker::Inst();
-			ImGui::Text("Baking progress: %d / %d", baker.GetBakedProbes(), baker.GetTotalProbes());
+			ImGui::Text("Baking progress: %d / %d", baker.GetBakedProbesNum(), baker.GetTotalProbesNum());
 		}
 		
 
@@ -1593,12 +1593,54 @@ void Renderer::GetDrawAreaSize(int* Width, int* Height)
 	cvar_t* mode = GetRefImport().Cvar_Get(modeVarName, modeVarVal, CVAR_ARCHIVE);
 
 	assert(mode);
-	GetRefImport().Vid_GetModeInfo(Width, Height, static_cast<int>(mode->value));
+	//#SWITCH resolution
+	//GetRefImport().Vid_GetModeInfo(Width, Height, static_cast<int>(mode->value));
+    *Width = 1024;
+	*Height = 768;
 }
 
 const BSPTree& Renderer::GetBSPTree() const
 {
 	return bspTree;
+}
+
+void Renderer::ConsumeDiffuseIndirectLightingData(std::vector<DiffuseProbe>&& probeData, GPUJobContext& context)
+{
+	ResourceManager& resMan = ResourceManager::Inst();
+
+	if (Resource* probeBuff = resMan.FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME))
+	{
+		resMan.DeleteResource(Resource::PROBE_STRUCTURED_BUFFER_NAME);
+	}
+
+	const int probeVectorSize = probeData.size() * sizeof(SphericalHarmonic9_t<XMFLOAT4>) / sizeof(XMFLOAT4);
+
+	std::vector<XMFLOAT4> probeGPUData;
+	probeGPUData.reserve(probeVectorSize);
+
+	for (const DiffuseProbe& probe : probeData)
+	{
+		for (const XMFLOAT4& probeCoeff : probe.radianceSh)
+		{
+			probeGPUData.push_back(probeCoeff);
+		}
+	}
+
+	ResourceDesc desc;
+	desc.width = probeVectorSize * sizeof(XMFLOAT4);
+	desc.height = 1;
+	desc.format = DXGI_FORMAT_UNKNOWN;
+	desc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	desc.flags = D3D12_RESOURCE_FLAG_NONE;
+	 
+
+	FArg::CreateStructuredBuffer args;
+	args.context = &context;
+	args.desc = &desc;
+	args.data = reinterpret_cast<std::byte*>(probeGPUData.data());
+	args.name = Resource::PROBE_STRUCTURED_BUFFER_NAME;
+
+	resMan.CreateStructuredBuffer(args);
 }
 
 const std::array<unsigned int, 256>& Renderer::GetRawPalette() const
@@ -1947,7 +1989,7 @@ void Renderer::EndFrame()
 	{
 		const LightBaker& lightBaker = LightBaker::Inst();
 
-		if (lightBaker.GetBakedProbes() == lightBaker.GetTotalProbes())
+		if (lightBaker.GetBakedProbesNum() == lightBaker.GetTotalProbesNum())
 		{
 			RequestStateChange(State::Rendering);
 		}
@@ -1990,7 +2032,7 @@ void Renderer::PreRenderSetUpFrame(Frame& frame)
 	frame.visibleEntitiesIndices = BuildVisibleDynamicObjectsList(frame.camera, frame.entities);
 
 	// Debug objects
-	frame.debugObjecs = GenerateFrameDebugObjects(frame.camera);
+	frame.debugObjecs = GenerateFrameDebugObjects(frame.camera); 
 }
 
 void Renderer::FlushAllFrames() const

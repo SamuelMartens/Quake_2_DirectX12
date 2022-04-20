@@ -135,15 +135,13 @@ void LightBaker::PreBake()
 {
 	ASSERT_MAIN_THREAD;
 
-	assert(probes.empty() == true && "Probes should be empty before bake");
 	assert(clusterProbeData.empty() == true && "Cluster probe data should be empty before bake");
 	assert(clusterBakePoints.empty() == true && "Cluster bake points should be empty before bake");
 	assert(probesBaked == 0 && "Amount of baked probes was not reset");
-
+	assert(probes.empty() == true && "Probes were baked, but not consumed");
+	
 	currentBakeCluster = 0;
-
 	clusterBakePoints = GenerateClustersBakePoints();
-
 	clusterProbeData.resize(clusterBakePoints.size());
 
 	int totalProbes = 0;
@@ -162,9 +160,9 @@ void LightBaker::PostBake()
 {
 	ASSERT_MAIN_THREAD;
 	
-	probesBaked = 0;
+	assert(probes.empty() == false && "Baking is finished, but no probes were generated");
 
-	probes.clear();
+	probesBaked = 0;
 	clusterProbeData.clear();
 	clusterBakePoints.clear();
 }
@@ -279,12 +277,14 @@ void LightBaker::BakeJob()
 			for (int i = 0; i < Settings::PROBE_SAMPLES_NUM; ++i)
 			{
 				XMFLOAT4 direction = { 0.0f, 0.0f, 0.0f, 1.0f };
+				// Result of one sample
 				const XMFLOAT4 sampleRadiance = PathTraceFromProbe(bakePoint, direction);
-
+				// Project single sample on SH
 				SphericalHarmonic9_t<XMFLOAT4> sampleShProjection = ProjectOntoSphericalHarmonic(direction, sampleRadiance);
 
 				for (int coeffIndex = 0; coeffIndex < totalShProjection.size(); ++coeffIndex)
 				{
+					// Accumulate from that value
 					XMStoreFloat4(&totalShProjection[coeffIndex], 
 						XMLoadFloat4(&totalShProjection[coeffIndex]) + XMLoadFloat4(&sampleShProjection[coeffIndex]));
 				}
@@ -302,15 +302,20 @@ void LightBaker::BakeJob()
 	}
 }
 
-int LightBaker::GetTotalProbes() const
+int LightBaker::GetTotalProbesNum() const
 {
 	return probes.size();
 }
 
-int LightBaker::GetBakedProbes() const
+int LightBaker::GetBakedProbesNum() const
 {
-	assert(probesBaked <= GetTotalProbes() && "Baked probes exceeded total probes");
+	assert(probesBaked <= GetTotalProbesNum() && "Baked probes exceeded total probes");
 	return probesBaked;
+}
+
+std::vector<DiffuseProbe> LightBaker::TransferBakingResult()
+{
+	return std::move(probes);
 }
 
 void LightBaker::SetGenerationMode(GenerationMode genMode)

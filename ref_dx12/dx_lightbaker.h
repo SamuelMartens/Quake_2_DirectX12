@@ -17,8 +17,10 @@ using SphericalHarmonic9_t = std::array<T, 9>;
 
 struct DiffuseProbe
 {
+	using DiffuseSH_t = SphericalHarmonic9_t<XMFLOAT4>;
+
 	//#TODO this is incoming radiance right?
-	SphericalHarmonic9_t<XMFLOAT4> radianceSh;
+	DiffuseSH_t radianceSh;
 };
 
 struct ClusterProbeData
@@ -48,8 +50,10 @@ public:
 	std::vector<XMFLOAT4> GenerateClusterBakePoints(int clusterIndex) const;
 
 	void BakeJob();
-	int GetTotalProbes() const;
-	int GetBakedProbes() const;
+	int GetTotalProbesNum() const;
+	int GetBakedProbesNum() const;
+
+	std::vector<DiffuseProbe> TransferBakingResult();
 
 	void SetGenerationMode(GenerationMode genMode);
 	void SetBakePosition(const XMFLOAT4& position);

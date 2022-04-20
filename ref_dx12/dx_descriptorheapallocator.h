@@ -9,6 +9,7 @@
 #include "dx_common.h"
 #include "dx_allocators.h"
 #include "dx_infrastructure.h"
+#include "dx_resource.h"
 
 using ViewDescription_t = std::variant<
 	D3D12_RENDER_TARGET_VIEW_DESC,
@@ -159,6 +160,8 @@ public:
 
 	void AllocateDescriptor(int allocatedIndex, ID3D12Resource* resource, const ViewDescription_t* desc) 
 	{	
+		// Can't keep body of this function in header, cause of circular dependency, so 
+		// making internal version
 		_AllocDescriptorInternal(allocatedIndex, resource, desc, TYPE);
 	};
 
@@ -179,5 +182,7 @@ using StreamingDescriptorHeapAllocator_t = GenericDescriptorHeapAllocator<Stream
 namespace DescriptorHeapUtils
 {
 	D3D12_SHADER_RESOURCE_VIEW_DESC GetSRVTexture2DNullDescription();
+	D3D12_SHADER_RESOURCE_VIEW_DESC GetSRVBufferNullDescription();
 	
+	D3D12_SHADER_RESOURCE_VIEW_DESC GenerateDefaultStructuredBufferViewDesc(Resource* buffer, int stride);
 }
