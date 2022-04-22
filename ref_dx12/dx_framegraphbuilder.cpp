@@ -1212,7 +1212,7 @@ namespace
 			break;
 			case Parsing::ResourceBindFrequency::PerPass:
 			{
-				int resIndex = RootArg::FindArg(passesGlobalRes, arg);
+				const int resIndex = RootArg::FindArg(passesGlobalRes, arg);
 
 				if (resIndex == Const::INVALID_INDEX)
 				{
@@ -1224,6 +1224,9 @@ namespace
 				}
 				else
 				{
+					assert(RootArg::GetBindIndex(arg) == RootArg::GetBindIndex(passesGlobalRes[resIndex]) &&
+					"Global pass resources must have same bind indexes. Seems like different passes, place them differently.");
+
 					pass.passGlobalRootArgsIndices.push_back(resIndex);
 				}
 			}

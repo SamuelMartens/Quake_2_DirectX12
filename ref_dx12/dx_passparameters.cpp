@@ -117,6 +117,14 @@ namespace RootArg
 		}, arg);
 	}
 
+	int GetBindIndex(const Arg_t& arg)
+	{
+		return std::visit([](auto&& arg) 
+		{
+			return arg.bindIndex;
+		}, arg);
+	}
+
 	int GetSize(const std::vector<Arg_t>& args)
 	{
 		return std::accumulate(args.cbegin(), args.cend(), 0, 
@@ -539,7 +547,7 @@ std::string PassParametersSource::ShaderTypeToStr(ShaderType type)
 
 void PassParameters::AddGlobalPerObjectRootArgIndex(std::vector<int>& perObjGlobalRootArgsIndicesTemplate, std::vector<RootArg::Arg_t>& perObjGlobalResTemplate, RootArg::Arg_t&& arg)
 {
-	int resTemplateIndex = RootArg::FindArg(perObjGlobalResTemplate, arg);
+	const int resTemplateIndex = RootArg::FindArg(perObjGlobalResTemplate, arg);
 	if (resTemplateIndex == Const::INVALID_INDEX)
 	{
 		// Res is not found create new
@@ -550,6 +558,9 @@ void PassParameters::AddGlobalPerObjectRootArgIndex(std::vector<int>& perObjGlob
 	}
 	else
 	{
+		assert(RootArg::GetBindIndex(arg) == RootArg::GetBindIndex(perObjGlobalResTemplate[resTemplateIndex]) &&
+			"Global per object resources must have same bind indexes. Seems like different passes, place them differently.");
+
 		perObjGlobalRootArgsIndicesTemplate.push_back(resTemplateIndex);
 	}
 }

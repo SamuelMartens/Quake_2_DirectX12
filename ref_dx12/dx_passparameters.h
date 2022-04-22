@@ -249,6 +249,7 @@ namespace RootArg
 
 	int GetDescTableSize(const DescTable& descTable);
 	int GetSize(const Arg_t& arg);
+	int GetBindIndex(const Arg_t& arg);
 
 
 	int GetSize(const std::vector<RootArg::Arg_t>& args);

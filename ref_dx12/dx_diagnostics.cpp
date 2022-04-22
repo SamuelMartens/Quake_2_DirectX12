@@ -55,17 +55,17 @@ namespace Logs
 	std::array<Event, BUFFER_SIZE> gEventsBuffer;
 	std::atomic<int> gPos = 0;
 
-	constexpr bool gEnableLogs = false;
+	constexpr bool gEnableLogs = true;
 	constexpr bool gPrintToConsole = true;
 
 	constexpr bool CategoryEnabled[static_cast<int>(Category::_Count)] =
 	{
 		true,	// Generic,
-		true,	// Synchronization,
-		true,	// FrameSubmission,
-		true,	// Textures, 
-		true,	// Job
-		true,	// Parser
+		false,	// Synchronization,
+		false,	// FrameSubmission,
+		false,	// Textures, 
+		false,	// Job
+		false,	// Parser
 	};
 }
 
