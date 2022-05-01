@@ -107,9 +107,9 @@ class Renderer
 	const std::array<unsigned int, 256>& GetRawPalette() const;
 	const std::array<unsigned int, 256>& GetTable8To24() const;
 	const BSPTree& GetBSPTree() const;
-	bool GetIsDiffuseIndirectLightingReady() const;
 
-	void ConsumeDiffuseIndirectLightingData(std::vector<DiffuseProbe>&& probeData, GPUJobContext& context);
+	void ConsumeDiffuseIndirectLightingBakingResult(BakingResult&& result);
+	bool TryTransferDiffuseIndirectLightingToGPU(GPUJobContext& context);
 
 	/* Objects data */
 	const std::vector<StaticObject>& GetStaticObjects() const;
@@ -304,6 +304,8 @@ private:
 
 	std::atomic<int>	fenceValue = 0;
 	ComPtr<ID3D12Fence>	fence;
+
+	LockObject<BakingResult> lightBakingResult;
 
 	/* Color palettes */
 	std::array<unsigned int, 256> Table8To24;

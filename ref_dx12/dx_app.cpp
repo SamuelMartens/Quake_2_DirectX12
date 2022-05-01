@@ -1129,6 +1129,8 @@ std::vector<int> Renderer::BuildVisibleDynamicObjectsList(const Camera& camera, 
 
 std::vector<DebugObject> Renderer::GenerateFrameDebugObjects(const Camera& camera) const
 {
+	ASSERT_MAIN_THREAD;
+
 	std::vector<DebugObject> debugObjects;
 
 	if (drawBakePointsDebugGeometry == false)
@@ -1148,10 +1150,49 @@ std::vector<DebugObject> Renderer::GenerateFrameDebugObjects(const Camera& camer
 
 	debugObjects.reserve(bakePoints.size());
 
-	std::transform(bakePoints.cbegin(), bakePoints.cend(), std::back_inserter(debugObjects), [](const XMFLOAT4& bakePoint) 
+	const BakingResult& bakeResult = lightBakingResult.obj;
+
+	const bool hasProbeDataOnGPU = 
+		ResourceManager::Inst().FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME) != nullptr;
+
+	for (int i = 0; i < bakePoints.size(); ++i)
 	{
-		return DebugObject{ DebugObject::Type::Sphere, bakePoint };
-	});
+		DebugObject object;
+
+		object.type = DebugObject::Type::Sphere;
+		object.probeIndex = Const::INVALID_INDEX;
+		object.position = bakePoints[i];
+
+
+		if (hasProbeDataOnGPU)
+		{
+			switch (bakeResult.bakingMode)
+			{
+			case LightBakingMode::CurrentPositionCluster:
+			{
+				assert(bakeResult.bakingCluster.has_value() == true && "Baking result should have value");
+
+				if (*bakeResult.bakingCluster == cameraNode.cluster)
+				{
+					object.probeIndex = i;
+				}
+			}
+			break;
+			case LightBakingMode::AllClusters:
+			{
+				assert(bakeResult.clusterSizes.has_value() == true && "Cluster sizes should have value");
+
+				object.probeIndex = i + bakeResult.clusterSizes.value()[cameraNode.cluster].startIndex;
+			}
+			break;
+			default:
+				assert(false && "Unknown baking mode");
+				break;
+			}
+		}
+
+		debugObjects.push_back(object);
+	}
 
 	return debugObjects;
 }
@@ -1244,13 +1285,13 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 
 			if (ImGui::Button("Bake Light All Clusters"))
 			{
-				LightBaker::Inst().SetGenerationMode(LightBaker::GenerationMode::AllClusters);
+				LightBaker::Inst().SetBakingMode(LightBakingMode::AllClusters);
 				Renderer::Inst().RequestStateChange(State::LightBaking);
 			}
 
 			if (ImGui::Button("Bake Light Camera Cluster"))
 			{
-				LightBaker::Inst().SetGenerationMode(LightBaker::GenerationMode::CurrentPositionCluster);
+				LightBaker::Inst().SetBakingMode(LightBakingMode::CurrentPositionCluster);
 				LightBaker::Inst().SetBakePosition(context.frame.camera.position);
 				Renderer::Inst().RequestStateChange(State::LightBaking);
 			}
@@ -1604,8 +1645,26 @@ const BSPTree& Renderer::GetBSPTree() const
 	return bspTree;
 }
 
-void Renderer::ConsumeDiffuseIndirectLightingData(std::vector<DiffuseProbe>&& probeData, GPUJobContext& context)
+void Renderer::ConsumeDiffuseIndirectLightingBakingResult(BakingResult&& results)
 {
+	ASSERT_MAIN_THREAD;
+
+	assert(results.bakingMode != LightBakingMode::None && "Invalid baking mode for baking results");
+	assert(results.probeData.empty() == false && "Can't consume empty probe data");
+
+	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
+	lightBakingResult.obj = std::move(results);
+}
+
+bool Renderer::TryTransferDiffuseIndirectLightingToGPU(GPUJobContext& context)
+{
+	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
+
+	if (lightBakingResult.obj.probeData.empty() == true)
+	{
+		return false;
+	}
+
 	ResourceManager& resMan = ResourceManager::Inst();
 
 	if (Resource* probeBuff = resMan.FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME))
@@ -1613,12 +1672,12 @@ void Renderer::ConsumeDiffuseIndirectLightingData(std::vector<DiffuseProbe>&& pr
 		resMan.DeleteResource(Resource::PROBE_STRUCTURED_BUFFER_NAME);
 	}
 
-	const int probeVectorSize = probeData.size() * sizeof(SphericalHarmonic9_t<XMFLOAT4>) / sizeof(XMFLOAT4);
+	const int probeVectorSize = lightBakingResult.obj.probeData.size() * sizeof(SphericalHarmonic9_t<XMFLOAT4>) / sizeof(XMFLOAT4);
 
 	std::vector<XMFLOAT4> probeGPUData;
 	probeGPUData.reserve(probeVectorSize);
 
-	for (const DiffuseProbe& probe : probeData)
+	for (const DiffuseProbe& probe : lightBakingResult.obj.probeData)
 	{
 		for (const XMFLOAT4& probeCoeff : probe.radianceSh)
 		{
@@ -1632,7 +1691,7 @@ void Renderer::ConsumeDiffuseIndirectLightingData(std::vector<DiffuseProbe>&& pr
 	desc.format = DXGI_FORMAT_UNKNOWN;
 	desc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
 	desc.flags = D3D12_RESOURCE_FLAG_NONE;
-	 
+
 
 	FArg::CreateStructuredBuffer args;
 	args.context = &context;
@@ -1641,6 +1700,11 @@ void Renderer::ConsumeDiffuseIndirectLightingData(std::vector<DiffuseProbe>&& pr
 	args.name = Resource::PROBE_STRUCTURED_BUFFER_NAME;
 
 	resMan.CreateStructuredBuffer(args);
+
+	// We transfered data to GPU and clean CPU side
+	lightBakingResult.obj.probeData.resize(0);
+
+	return true;
 }
 
 const std::array<unsigned int, 256>& Renderer::GetRawPalette() const

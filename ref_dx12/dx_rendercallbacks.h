@@ -376,16 +376,16 @@ namespace RenderCallbacks
 						texture[i] = rawPalette[std::to_integer<int>(movieDrawCall.data[i])];
 					}
 
-					ResourceManager::Inst().UpdateTexture(*tex, reinterpret_cast<std::byte*>(texture.data()), ctx.jobContext);
+					ResourceManager::Inst().UpdateResource(*tex, reinterpret_cast<std::byte*>(texture.data()), ctx.jobContext);
 				}
 
 				ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
-				DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
 			}
 			else
 			{
 				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVTexture2DNullDescription();
-				DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
 			}
 		}
 		break;
@@ -423,34 +423,22 @@ namespace RenderCallbacks
 		case HASH("sbDiffuseProbes"):
 		{
 			ResourceManager& resMan = ResourceManager::Inst();
-			std::vector<DiffuseProbe> probeData = LightBaker::Inst().TransferBakingResult();
+			
+			Renderer::Inst().TryTransferDiffuseIndirectLightingToGPU(ctx.jobContext);
 
-			if (probeData.empty() == false)
+			Resource* probeGpuBuffer = resMan.FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME);
+			if (probeGpuBuffer == nullptr)
 			{
-				Renderer::Inst().ConsumeDiffuseIndirectLightingData(std::move(probeData), ctx.jobContext);
-
-				Resource* probeGpuBuffer = resMan.FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME);
-				assert(probeGpuBuffer != nullptr);
-
-				//ViewDescription_t defaultSrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
+				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
+			}
+			else
+			{
 				ViewDescription_t defaultSrvDesc{ 
 					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(probeGpuBuffer, sizeof(DiffuseProbe::DiffuseSH_t)) };
 
-				DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, probeGpuBuffer->buffer.Get(), &defaultSrvDesc));
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, probeGpuBuffer->buffer.Get(), &defaultSrvDesc));
 			}
-
-			if (resMan.FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME) == nullptr)
-			{
-				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
-				DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
-			}
-		}
-		break;
-		case HASH("gIsDiffuseIndirectLightingReady"):
-		{
-			int& isDiffuseIndirectLightingReady = reinterpret_cast<int&>(bindPoint);
-			isDiffuseIndirectLightingReady = static_cast<int>(
-				ResourceManager::Inst().FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME) != nullptr);
 		}
 		break;
 		default:
@@ -574,6 +562,11 @@ namespace RenderCallbacks
 				case HASH("gCenter"):
 				{
 					reinterpret_cast<XMFLOAT4&>(bindPoint) = obj.position;
+				}
+				break;
+				case HASH("gProbeIndex"):
+				{
+					reinterpret_cast<int&>(bindPoint) = obj.probeIndex;
 				}
 				break;
 				default:

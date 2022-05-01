@@ -162,6 +162,8 @@ void LightBaker::PostBake()
 	
 	assert(probes.empty() == false && "Baking is finished, but no probes were generated");
 
+	Renderer::Inst().ConsumeDiffuseIndirectLightingBakingResult(TransferBakingResult());
+
 	probesBaked = 0;
 	clusterProbeData.clear();
 	clusterBakePoints.clear();
@@ -173,8 +175,10 @@ std::vector<std::vector<XMFLOAT4>> LightBaker::GenerateClustersBakePoints()
 
 	switch (generationMode)
 	{
-	case LightBaker::GenerationMode::AllClusters:
+	case LightBakingMode::AllClusters:
 	{
+		bakeCluster = std::nullopt;
+
 		std::set<int> clustersSet = Renderer::Inst().GetBSPTree().GetClustersSet();
 
 		if (clustersSet.empty() == true)
@@ -194,7 +198,7 @@ std::vector<std::vector<XMFLOAT4>> LightBaker::GenerateClustersBakePoints()
 		return bakePoints;
 	}
 		break;
-	case LightBaker::GenerationMode::CurrentPositionCluster:
+	case LightBakingMode::CurrentPositionCluster:
 	{
 		assert(bakePosition.has_value() == true && "Bake position is not set");
 		const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(*bakePosition);
@@ -202,6 +206,8 @@ std::vector<std::vector<XMFLOAT4>> LightBaker::GenerateClustersBakePoints()
 		bakePosition.reset();
 
 		assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera node invalid index");
+
+		bakeCluster = cameraNode.cluster;
 
 		bakePoints.resize(cameraNode.cluster + 1);
 		bakePoints[cameraNode.cluster] = GenerateClusterBakePoints(cameraNode.cluster);
@@ -313,12 +319,37 @@ int LightBaker::GetBakedProbesNum() const
 	return probesBaked;
 }
 
-std::vector<DiffuseProbe> LightBaker::TransferBakingResult()
+BakingResult LightBaker::TransferBakingResult()
 {
-	return std::move(probes);
+	BakingResult result;
+
+	result.probeData = std::move(probes);
+	result.bakingMode = generationMode;
+	result.bakingCluster = bakeCluster;
+
+	if (generationMode == LightBakingMode::AllClusters)
+	{
+		std::vector<BakingResult::ClusterSize> clusterSizes;
+		clusterSizes.reserve(clusterProbeData.size());
+
+		for (int i = 0; i < clusterProbeData.size(); ++i)
+		{
+			clusterSizes.push_back(BakingResult::ClusterSize{
+				clusterProbeData[i].startIndex, 
+				static_cast<int>(clusterBakePoints[i].size())});
+		}
+
+		result.clusterSizes = clusterSizes;
+	}
+
+	// Now clear rest of baking state result
+	generationMode = LightBakingMode::None;
+	bakeCluster = std::nullopt;
+
+	return result;
 }
 
-void LightBaker::SetGenerationMode(GenerationMode genMode)
+void LightBaker::SetBakingMode(LightBakingMode genMode)
 {
 	generationMode = genMode;
 }

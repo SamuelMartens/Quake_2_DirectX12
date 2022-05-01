@@ -55,7 +55,8 @@ public:
 	
 	// bits per pixel from format
 	static int BPPFromFormat(DXGI_FORMAT format);
-	
+	static int GetBPP(const ResourceDesc& desc);
+
 public:
 
 	ComPtr<ID3D12Resource> buffer;

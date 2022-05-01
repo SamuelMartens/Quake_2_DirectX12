@@ -103,7 +103,7 @@ public:
 	void CreateDeferredTextures(GPUJobContext& context);
 
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
-	void UpdateTexture(Resource& tex, const std::byte* data, GPUJobContext& context);
+	void UpdateResource(Resource& res, const std::byte* data, GPUJobContext& context);
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 
 	/* Resource management */

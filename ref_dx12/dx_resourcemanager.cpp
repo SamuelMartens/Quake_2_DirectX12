@@ -380,41 +380,43 @@ void ResourceManager::GetDrawTextureFullname(const char* name, char* dest, int d
 	}
 }
 
-void ResourceManager::UpdateTexture(Resource& tex, const std::byte* data, GPUJobContext& context)
+void ResourceManager::UpdateResource(Resource& res, const std::byte* data, GPUJobContext& context)
 {
-	Logs::Logf(Logs::Category::Resource, "Update Texture with name %s", tex.name.c_str());
+	Logs::Logf(Logs::Category::Resource, "Update Resource with name %s", res.name.c_str());
 
-	assert(tex.desc.dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && "UpdateTexture can only work with textures");
+	assert((res.desc.dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
+			res.desc.dimension == D3D12_RESOURCE_DIMENSION_BUFFER) &&
+		"UpdateResource received invalid resource type");
 
 	CommandList& commandList = *context.commandList;
 
 	// Count alignment and go for what we need
-	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(tex.buffer.Get(), 0, 1);
+	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(res.buffer.Get(), 0, 1);
 
-	ComPtr<ID3D12Resource> textureUploadBuffer = CreateUploadHeapBuffer(uploadBufferSize);
-	Diagnostics::SetResourceNameWithAutoId(textureUploadBuffer.Get(), "TextureUploadBuffer_UpdateTexture");
+	ComPtr<ID3D12Resource> resourceUploadBuffer = CreateUploadHeapBuffer(uploadBufferSize);
+	Diagnostics::SetResourceNameWithAutoId(resourceUploadBuffer.Get(), "ResourceUploadBuffer_UpdateResource");
 
-	DO_IN_LOCK(context.frame.uploadResources, push_back(textureUploadBuffer));
+	DO_IN_LOCK(context.frame.uploadResources, push_back(resourceUploadBuffer));
 
-	D3D12_SUBRESOURCE_DATA textureData = {};
-	textureData.pData = data;
+	D3D12_SUBRESOURCE_DATA resourceData = {};
+	resourceData.pData = data;
 	// Divide by 8 cause bpp is bits per pixel, not bytes
-	textureData.RowPitch = tex.desc.width * Resource::BPPFromFormat(tex.desc.format) / 8;
+	resourceData.RowPitch = res.desc.width * Resource::GetBPP(res.desc) / 8;
 	// Not SlicePitch but texture size in our case
-	textureData.SlicePitch = textureData.RowPitch * tex.desc.height;
+	resourceData.SlicePitch = resourceData.RowPitch * res.desc.height;
 
 	CD3DX12_RESOURCE_BARRIER copyDestTransition = CD3DX12_RESOURCE_BARRIER::Transition(
-		tex.buffer.Get(),
+		res.buffer.Get(),
 		Resource::DEFAULT_STATE,
 		D3D12_RESOURCE_STATE_COPY_DEST
 	);
 
 	commandList.GetGPUList()->ResourceBarrier(1, &copyDestTransition);
 
-	UpdateSubresources(commandList.GetGPUList(), tex.buffer.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
+	UpdateSubresources(commandList.GetGPUList(), res.buffer.Get(), resourceUploadBuffer.Get(), 0, 0, 1, &resourceData);
 
 	CD3DX12_RESOURCE_BARRIER pixelResourceTransition = CD3DX12_RESOURCE_BARRIER::Transition(
-		tex.buffer.Get(),
+		res.buffer.Get(),
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		Resource::DEFAULT_STATE);
 
@@ -676,24 +678,16 @@ ComPtr<ID3D12Resource> ResourceManager::_CreateGpuResource(FArg::_CreateGpuResou
 
 		DO_IN_LOCK(args.context->frame.uploadResources, push_back(textureUploadBuffer));
 
-		D3D12_SUBRESOURCE_DATA textureData = {};
-		textureData.pData = args.raw;
+		D3D12_SUBRESOURCE_DATA resourceData = {};
+		resourceData.pData = args.raw;
 		
-		if (resourceDesc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
-		{
-			// Buffer always have unknown format, so no chance to use BPPFromFormat
-			textureData.RowPitch = args.desc->width;
-		}
-		else
-		{
-			// Divide by 8 cause bpp is bits per pixel, not bytes
-			textureData.RowPitch = args.desc->width * Resource::BPPFromFormat(args.desc->format) / 8;
-		}
+		// Divide by 8 cause bpp is bits per pixel, not bytes
+		resourceData.RowPitch = args.desc->width * Resource::GetBPP(*args.desc) / 8;
 		
 		// Not SlicePitch but texture size in our case
-		textureData.SlicePitch = textureData.RowPitch * args.desc->height;
+		resourceData.SlicePitch = resourceData.RowPitch * args.desc->height;
 
-		UpdateSubresources(commandList.GetGPUList(), resource.Get(), textureUploadBuffer.Get(), 0, 0, 1, &textureData);
+		UpdateSubresources(commandList.GetGPUList(), resource.Get(), textureUploadBuffer.Get(), 0, 0, 1, &resourceData);
 		
 		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(
 			resource.Get(),

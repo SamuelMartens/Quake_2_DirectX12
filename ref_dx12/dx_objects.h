@@ -129,5 +129,8 @@ public:
 	};
 
 	Type type = Type::None;
+
+	int probeIndex = Const::INVALID_INDEX;
+
 	XMFLOAT4 position = { 0.0f, 0.0f, 0.0f, 1.0f };
 };

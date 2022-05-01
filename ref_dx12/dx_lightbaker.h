@@ -28,17 +28,38 @@ struct ClusterProbeData
 	int startIndex = Const::INVALID_INDEX;
 };
 
+enum class LightBakingMode
+{
+	AllClusters,
+	CurrentPositionCluster,
+	None
+};
+
+struct BakingResult
+{
+	struct ClusterSize
+	{
+		int startIndex = Const::INVALID_INDEX;
+		//#DEBUG not sure I need this size data
+		int size = Const::INVALID_SIZE;
+	};
+
+	LightBakingMode bakingMode = LightBakingMode::None;
+
+	// If baking mode is CurrentPositionCluster this will store current
+	// baking cluster
+	std::optional<int> bakingCluster;
+	std::optional<std::vector<ClusterSize>> clusterSizes;
+
+	std::vector<DiffuseProbe> probeData;
+};
+
 class LightBaker
 {
 	
 public:
 	DEFINE_SINGLETON(LightBaker);
 
-	enum class GenerationMode
-	{
-		AllClusters,
-		CurrentPositionCluster
-	};
 
 	void PreBake();
 	void PostBake();
@@ -53,17 +74,15 @@ public:
 	int GetTotalProbesNum() const;
 	int GetBakedProbesNum() const;
 
-	std::vector<DiffuseProbe> TransferBakingResult();
+	BakingResult TransferBakingResult();
 
-	void SetGenerationMode(GenerationMode genMode);
+	void SetBakingMode(LightBakingMode genMode);
 	void SetBakePosition(const XMFLOAT4& position);
 
 private:
 
 	SphericalHarmonic9_t<float> GetSphericalHarmonic9Basis(const XMFLOAT4& direction) const;
 	SphericalHarmonic9_t<XMFLOAT4> ProjectOntoSphericalHarmonic(const XMFLOAT4& direction, const XMFLOAT4& color) const;
-
-	
 
 	XMFLOAT4 GatherDirectIrradianceAtInersectionPoint(const Utils::Ray& ray, const Utils::BSPNodeRayIntersectionResult& nodeIntersectionResult) const;
 
@@ -81,9 +100,11 @@ private:
 	std::atomic<int> currentBakeCluster;
 
 	std::atomic<int> probesBaked;
-	std::vector<DiffuseProbe> probes;
 	std::vector<ClusterProbeData> clusterProbeData;
 
-	GenerationMode generationMode;
 	std::optional<XMFLOAT4> bakePosition;
+
+	LightBakingMode generationMode;
+	std::optional<int> bakeCluster;
+	std::vector<DiffuseProbe> probes;
 }; 

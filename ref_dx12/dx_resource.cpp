@@ -48,6 +48,22 @@ int Resource::BPPFromFormat(DXGI_FORMAT format)
 	return 0;
 }
 
+int Resource::GetBPP(const ResourceDesc& desc)
+{
+	switch (desc.dimension)
+	{
+	case D3D12_RESOURCE_DIMENSION_BUFFER:
+		return 8;
+	case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
+		return BPPFromFormat(desc.format);
+	default:
+		assert(false && "Unknown resource dimension");
+		break;
+	}
+
+	return 0;
+}
+
 ResourceProxy::ResourceProxy(ID3D12Resource& initResource):
 	resource(initResource)
 {}

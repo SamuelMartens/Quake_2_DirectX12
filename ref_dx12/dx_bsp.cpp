@@ -298,11 +298,11 @@ std::vector<int> BSPTree::GetPotentiallyVisibleObjects(const XMFLOAT4& position,
 		return visibleObjects;
 	}
 
-	const BSPNode& cameraNode = GetNodeWithPoint(position);
+	const BSPNode& positionNode = GetNodeWithPoint(position);
 
-	assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
+	assert(positionNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
 
-	std::vector<bool> currentPVS = DecompressClusterVisibility(cameraNode.cluster);
+	std::vector<bool> currentPVS = DecompressClusterVisibility(positionNode.cluster);
 
 	for (const int leafIndex : leavesIndices)
 	{

@@ -56,16 +56,17 @@ namespace Logs
 	std::atomic<int> gPos = 0;
 
 	constexpr bool gEnableLogs = true;
+	// NOTE: Logs are very slow if printed to console
 	constexpr bool gPrintToConsole = true;
 
 	constexpr bool CategoryEnabled[static_cast<int>(Category::_Count)] =
 	{
-		true,	// Generic,
+		false,	// Generic,
 		false,	// Synchronization,
 		false,	// FrameSubmission,
 		false,	// Textures, 
 		false,	// Job
-		false,	// Parser
+		true,	// Parser
 	};
 }
 
