@@ -175,23 +175,45 @@ XMFLOAT4X4 Utils::ConstructV1ToV2RotationMatrix(const XMFLOAT4& v1, const XMFLOA
 	const float sin = XMVectorGetX(XMVector3Length(sseRotationAxis));
 	const float cos = XMVectorGetX(XMVector3Dot(sseV1, sseV2));
 
-	XMMATRIX sseRotationAxisMatrix = XMMatrixSet(
-		0.0f, -XMVectorGetZ(sseRotationAxis), XMVectorGetY(sseRotationAxis), 0.0f,
-		XMVectorGetZ(sseRotationAxis), 0.0f, -XMVectorGetX(sseRotationAxis), 0.0f,
-		-XMVectorGetY(sseRotationAxis), XMVectorGetX(sseRotationAxis), 0.0f, 0.0f,
-		0.0f, 0.0f, 0.0f, 1.0f
-	);
-
-
-	XMMATRIX sseRotationMatrix = XMMatrixIdentity() + sin * sseRotationAxisMatrix + 
-		(1.0f - cos) * sseRotationAxisMatrix * sseRotationAxisMatrix;
-
 	XMFLOAT4X4 rotationMatrix;
-	XMStoreFloat4x4(&rotationMatrix, sseRotationMatrix);
 
-	//Remove this later I am just getting nervous if 
-	// maybe I need to set this manually 
-	assert(rotationMatrix._44 == 1.0f && "Nooooooooooo");
+	if (Utils::IsAlmostEqual(sin, 0.0f) == true)
+	{
+		// V1 and V2 are collinear vectors, special handling is needed
+
+		if (cos > 0.0f)
+		{
+			XMStoreFloat4x4(&rotationMatrix, XMMatrixIdentity());
+		}
+		else
+		{
+			XMStoreFloat4x4(&rotationMatrix, -1.0f * XMMatrixIdentity());
+			rotationMatrix._44 = 1.0f;
+		}
+	}
+	else
+	{
+		sseRotationAxis = XMVector3Normalize(sseRotationAxis);
+
+		XMMATRIX sseRotationAxisMatrix = XMMatrixSet(
+			0.0f, -XMVectorGetZ(sseRotationAxis), XMVectorGetY(sseRotationAxis), 0.0f,
+			XMVectorGetZ(sseRotationAxis), 0.0f, -XMVectorGetX(sseRotationAxis), 0.0f,
+			-XMVectorGetY(sseRotationAxis), XMVectorGetX(sseRotationAxis), 0.0f, 0.0f,
+			0.0f, 0.0f, 0.0f, 1.0f
+		);
+
+
+		XMMATRIX sseRotationMatrix = XMMatrixIdentity() + sin * sseRotationAxisMatrix +
+			(1.0f - cos) * sseRotationAxisMatrix * sseRotationAxisMatrix;
+
+
+		XMStoreFloat4x4(&rotationMatrix, XMMatrixTranspose(sseRotationMatrix));
+
+		// Got to manually correct this. It is fine if it is not equal to 1.0,
+		// look at the final rotation matrix calculation, and see what possible value
+		// can be here
+		rotationMatrix._44 = 1.0f;
+	}
 
 	return rotationMatrix;
 }
@@ -694,7 +716,7 @@ std::vector<uint32_t> Utils::GetIndicesListForTrianglelistFromPolygonPrimitive(i
 
 std::vector<XMFLOAT4> Utils::GenerateNormals(const std::vector<XMFLOAT4>& vertices, const std::vector<uint32_t>& indices)
 {
-	std::vector<XMFLOAT4> normals(vertices.size(), XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f));
+	std::vector<XMFLOAT4> normals(vertices.size(), XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f));
 
 	assert(indices.size() % 3 == 0 && "Invalid amount of indices");
 
@@ -719,8 +741,8 @@ std::vector<XMFLOAT4> Utils::GenerateNormals(const std::vector<XMFLOAT4>& vertic
 
 	for (XMFLOAT4& normal : normals)
 	{
-		normal.w = 1.0f;
 		XMStoreFloat4(&normal, XMVector3Normalize(XMLoadFloat4(&normal)));
+		assert(normal.w == 0.0f && "Normals w should always be 0");
 	}
 
 	return normals;
@@ -759,8 +781,8 @@ bool Utils::IsAlmostEqual(float a, float b)
 
 bool Utils::IsRayIntersectsAABB(const Ray& ray, const AABB& aabb, float* t)
 {
-	float tMin = FLT_MAX;
-	float tMax = -FLT_MAX;
+	float tMin = -FLT_MAX;
+	float tMax = FLT_MAX;
 
 	const float* rayDir = &ray.direction.x;
 	const float* rayOrigin = &ray.origin.x;
@@ -782,7 +804,7 @@ bool Utils::IsRayIntersectsAABB(const Ray& ray, const AABB& aabb, float* t)
 		{
 			std::swap(currentTMax, currentTMin);
 		}
-
+		
 		tMin = std::max(tMin, currentTMin);
 		tMax = std::min(tMax, currentTMax);
 
@@ -800,7 +822,7 @@ bool Utils::IsRayIntersectsAABB(const Ray& ray, const AABB& aabb, float* t)
 	}
 
 	// In case we were not able to find ANY intersection
-	if (tMin ==  FLT_MAX )
+	if (tMin == -FLT_MAX)
 	{
 		return false;
 	}

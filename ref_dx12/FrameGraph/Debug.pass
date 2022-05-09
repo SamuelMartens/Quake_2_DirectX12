@@ -74,7 +74,7 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : PS 
-External : VertexOut, sbDiffuseProbes, cbProbeData, cbPerObject_Local
+External : VertexOut, sbDiffuseProbes, cbPerObject_Local
 <[
 
 #define INVALID_INDEX -1

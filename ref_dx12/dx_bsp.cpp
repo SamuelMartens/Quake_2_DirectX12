@@ -136,17 +136,21 @@ bool BSPTree::IsPointVisibleFromOtherPoint(const XMFLOAT4& p0, const XMFLOAT4& p
 	const BSPNode& p0Node = GetNodeWithPoint(p0);
 	const BSPNode& p1Node = GetNodeWithPoint(p1);
 
-	assert((p0Node.cluster != Const::INVALID_INDEX && p1Node.cluster != Const::INVALID_INDEX) &&
-		"Checking visibility for points, that have invalid cluster, is this intentional?");
-
-	std::vector<bool> p0PVS = DecompressClusterVisibility(p0Node.cluster);
-
-	// p1 is out of p0 PVS
-	if (p0PVS[p1Node.cluster] == false)
+	if (p0Node.cluster != Const::INVALID_INDEX && p1Node.cluster != Const::INVALID_INDEX)
 	{
-		return false;
-	}
+		// Some objects, like area lights might be inside Node that doesn't contain any visibility data
+		// so we can't really use PVS in this case
 
+		std::vector<bool> p0PVS = DecompressClusterVisibility(p0Node.cluster);
+
+		// p1 is out of p0 PVS
+		if (p0PVS[p1Node.cluster] == false)
+		{
+			return false;
+		}
+
+	}
+	
 	XMVECTOR sseP0 = XMLoadFloat4(&p0);
 	XMVECTOR sseP1 = XMLoadFloat4(&p1);
 

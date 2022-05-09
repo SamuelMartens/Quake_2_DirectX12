@@ -678,18 +678,22 @@ XMFLOAT4 LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, XMFLOAT4& di
 
 		//#TODO the update order is messy, and very likely to be wrong.
 		// we might update with next values for something, not current one
-		// just be carefull
+		// just be careful
 
 		// Update ray dir
 		XMStoreFloat4(&rayDir, sseRayDir);
 
 		assert(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseNormal)), 1.0f) && "Normal is not normalized");
-		assert(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseRayDir)), 1.0f) && "Normal is not normalized");
+		assert(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseRayDir)), 1.0f) && "Ray Dir is not normalized");
 
 		// Update nDotL
 		nDotL = XMVectorGetX(XMVector3Dot(sseNormal, sseRayDir));
 
 		assert(nDotL > 0.0f && "nDotL is negative, is it ok?");
+		assert(Utils::IsAlmostEqual(nDotL, 
+			XMVectorGetX(XMVector3Dot(XMLoadFloat4(&Utils::AXIS_Z), XMLoadFloat4(&cosineWieghtedSample)))) &&
+		"Angle between unrotated sample and Z should be the same as angle between rotated sample and normal");
+
 
 		// Update PDF 
 		samplesPDF = GetCosineWeightedSamplePDF(nDotL);
