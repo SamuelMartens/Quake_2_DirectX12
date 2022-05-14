@@ -123,6 +123,40 @@ namespace
 		}, r);
 	}
 
+	void AlignConstBufferFields(Parsing::Resource_ConstBuff& constBuffer)
+	{
+		// According to HLSL documentation, max alignment go to 16 bytes
+		constexpr int MAX_FIELD_ALIGNMENT = 16;
+
+		assert(constBuffer.content.empty() == false && "Trying to align empty constant buffer");
+
+		std::vector<int> offsets;
+		offsets.reserve(constBuffer.content.size());
+
+		int maxAlignment = 0;
+		int alignedOffset = 0;
+
+		// Get aligned offsets for each field
+		for (const RootArg::ConstBuffField& f : constBuffer.content)
+		{
+			const int fieldAlignment = std::min<int>(f.size, MAX_FIELD_ALIGNMENT);
+			maxAlignment = std::max(maxAlignment, fieldAlignment);
+
+			alignedOffset = Utils::Align(alignedOffset, fieldAlignment);
+			offsets.push_back(alignedOffset);
+
+			alignedOffset += f.size;
+		}
+
+		for (int i = 0; i < constBuffer.content.size() - 1; ++i)
+		{
+			constBuffer.content[i].size = offsets[i + 1] - offsets[i];
+		}
+		// Fix up last size so the struct overall size is correct
+		// Padding will be added so the struct overall is aligned to the biggest alignment
+		constBuffer.content.back().size = Utils::Align(alignedOffset, maxAlignment) - offsets.back();
+	}
+
 	void InitPreprocessorParser(peg::parser& parser)
 	{
 		// Load grammar
@@ -1778,7 +1812,29 @@ std::vector<PassParametersSource> FrameGraphBuilder::GeneratePassesParameterSour
 		passesParametersSources.push_back(std::move(passParameterSource));
 	}
 
+	PostprocessPassesParameterSources(passesParametersSources);
+
 	return passesParametersSources;
+}
+
+void FrameGraphBuilder::PostprocessPassesParameterSources(std::vector<PassParametersSource>& parameters) const
+{
+	for (PassParametersSource& source : parameters)
+	{
+		for (Parsing::Resource_t& resource : source.resources)
+		{
+			std::visit([](auto&& res)
+			{
+				using T = std::decay_t<decltype(res)>;
+
+				if constexpr (std::is_same_v<T, Parsing::Resource_ConstBuff>)
+				{
+					AlignConstBufferFields(res);
+				}
+
+			}, resource);
+		}
+	}
 }
 
 std::unordered_map<std::string, std::string> FrameGraphBuilder::LoadPassFiles() const

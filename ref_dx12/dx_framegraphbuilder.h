@@ -142,6 +142,7 @@ private:
 	
 	/* Pass Parameters */
 	std::vector<PassParametersSource> GeneratePassesParameterSources() const;
+	void PostprocessPassesParameterSources(std::vector<PassParametersSource>& parameters) const;
 	PassParameters CompilePassParameters(PassParametersSource&& passSource, FrameGraph& frameGraph) const;
 	std::vector<PassTask::Callback_t> CompilePassCallbacks(const std::vector<PassParametersSource::FixedFunction_t>& fixedFunctions, const PassParameters& passParams) const;
 
