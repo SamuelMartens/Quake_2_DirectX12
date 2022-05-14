@@ -256,11 +256,14 @@ public:
 	struct PassObj
 	{
 		std::vector<RootArg::Arg_t> rootArgs;
-		const DebugObject* originalObj = nullptr;
+		const DebugObject_t* originalObj = nullptr;
+
+		int vertexBufferSize = Const::INVALID_SIZE;
 	};
 
 	// Debug sphere init
-	const static float SPHERE_RADIUS;
+	const static float LIGHT_PROBE_SPHERE_RADIUS;
+	const static float POINT_LIGHT_SPHERE_RADIUS;
 
 public:
 
@@ -291,9 +294,12 @@ private:
 	int vertexSize = Const::INVALID_SIZE;
 
 	int perObjectConstBuffMemorySize = Const::INVALID_SIZE;
-	int sphereObjectVertexBufferSize = Const::INVALID_SIZE;
-	
-	std::vector<XMFLOAT4> sphereObjectVertices;
+	//#DEBUG is it used?
+	int lightProbeDebugObjectVertexBufferSize = Const::INVALID_SIZE;
+	int pointLightDebugObjectVertexBufferSize = Const::INVALID_SIZE;
+
+	std::vector<XMFLOAT4> lightProbeDebugObjectVertices;
+	std::vector<XMFLOAT4> pointLightDebugObjectVertices;
 
 	// Recreated every frame
 	std::vector<PassObj> drawObjects;

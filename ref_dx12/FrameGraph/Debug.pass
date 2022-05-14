@@ -52,8 +52,12 @@ cbuffer cbPerPass : register(b0)
 [Local, PerObject]
 cbuffer cbPerObject_Local : register(b1)
 {
+	// Probes debug info
 	float4 gCenter;
 	int gProbeIndex;
+	
+	int gObjectType;
+
 }
 
 
@@ -62,13 +66,23 @@ cbuffer cbPerObject_Local : register(b1)
 Type : VS 
 External : cbPerPass, cbPerObject_Local, VertexIn, VertexOut
 <[
+
+//#DEBUG move this in define
+// Should match definition in C++
+#define DEBUG_OBJECT_LIGHT_PROBE 0
+#define DEBUG_OBJECT_LIGHT_SOURCE 1
+
 VertexOut main(VertexIn vIn)
 {
 	VertexOut vOut;
 	// Funny enought, by default matrices are packed as column major.
 	vOut.Pos = mul(gViewProj, vIn.Pos);
-	vOut.LocalPos =  vIn.Pos - gCenter; 
 	
+	if (gObjectType == DEBUG_OBJECT_LIGHT_PROBE)
+	{
+		vOut.LocalPos =  vIn.Pos - gCenter; 
+	}
+
 	return vOut;
 }
 ]>
@@ -76,6 +90,9 @@ VertexOut main(VertexIn vIn)
 Type : PS 
 External : VertexOut, sbDiffuseProbes, cbPerObject_Local
 <[
+// Should match definition in C++
+#define DEBUG_OBJECT_LIGHT_PROBE 0
+#define DEBUG_OBJECT_LIGHT_SOURCE 1
 
 #define INVALID_INDEX -1
 #define SH_VECTOR_SIZE 9
@@ -114,15 +131,24 @@ float4 ReconstructRadianceFromSf(float4 dir)
 
 float4 main(VertexOut vOut) : SV_Target
 {
-	float4 dirFromCenter = float4(normalize(vOut.LocalPos.xyz) * 0.5 + 0.5, 1.0);
-	float4 color = dirFromCenter;
-	
-	
-	if (gProbeIndex != INVALID_INDEX)
+	float4 color = float4(0.0, 0.0, 0.0, 1.0);
+
+	if (gObjectType == DEBUG_OBJECT_LIGHT_PROBE)
 	{
-		color = ReconstructRadianceFromSf(dirFromCenter);
+		float4 dirFromCenter = float4(normalize(vOut.LocalPos.xyz) * 0.5 + 0.5, 1.0);
+		color = dirFromCenter;
+		
+		if (gProbeIndex != INVALID_INDEX)
+		{
+			color = ReconstructRadianceFromSf(dirFromCenter);
+		}
 	}
 	
+	if (gObjectType == DEBUG_OBJECT_LIGHT_SOURCE)
+	{
+		color = float4(0.0f, 1.0f, 0.0f, 1.0f); 
+	}
+
     return color;
 }
 ]>

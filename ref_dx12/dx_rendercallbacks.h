@@ -168,7 +168,7 @@ namespace RenderCallbacks
 				break;
 			}
 		}
-		else if constexpr (std::is_same_v<objT, DebugObject>)
+		else if constexpr (std::is_same_v<objT, DebugObject_t>)
 		{
 		}
 		else
@@ -268,7 +268,7 @@ namespace RenderCallbacks
 				break;
 			}
 		}
-		else if constexpr (std::is_same_v<objT, DebugObject>)
+		else if constexpr (std::is_same_v<objT, DebugObject_t>)
 		{
 		}
 		else
@@ -498,7 +498,7 @@ namespace RenderCallbacks
 				break;
 			}
 		}
-		else if constexpr (std::is_same_v<objT, DebugObject>)
+		else if constexpr (std::is_same_v<objT, DebugObject_t>)
 		{
 			switch (passName)
 			{
@@ -551,7 +551,7 @@ namespace RenderCallbacks
 				break;
 			}
 		}
-		else if constexpr (std::is_same_v<objT, DebugObject>)
+		else if constexpr (std::is_same_v<objT, DebugObject_t>)
 		{
 			switch (passName)
 			{
@@ -561,12 +561,59 @@ namespace RenderCallbacks
 				{
 				case HASH("gCenter"):
 				{
-					reinterpret_cast<XMFLOAT4&>(bindPoint) = obj.position;
+					std::visit([&bindPoint](auto&& object) 
+					{
+						using T = std::decay_t<decltype(object)>;
+
+						if constexpr (std::is_same_v<T, DebugObject_LightProbe>)
+						{
+							reinterpret_cast<XMFLOAT4&>(bindPoint) = object.position;
+						}
+						else
+						{
+							reinterpret_cast<XMFLOAT4&>(bindPoint) = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
+						}
+					}, obj);
 				}
 				break;
 				case HASH("gProbeIndex"):
 				{
-					reinterpret_cast<int&>(bindPoint) = obj.probeIndex;
+					std::visit([&bindPoint](auto&& object)
+					{
+						using T = std::decay_t<decltype(object)>;
+
+						if constexpr (std::is_same_v<T, DebugObject_LightProbe>)
+						{
+							reinterpret_cast<int&>(bindPoint) = object.probeIndex;
+						}
+						else
+						{
+							reinterpret_cast<int&>(bindPoint) = Const::INVALID_INDEX;
+						}
+
+					}, obj);
+				}
+				break;
+				case HASH("gObjectType"):
+				{
+					std::visit([&bindPoint](auto&& object) 
+					{
+						using T = std::decay_t<decltype(object)>;
+
+						if constexpr (std::is_same_v<T, DebugObject_LightProbe>)
+						{
+							reinterpret_cast<int&>(bindPoint) = static_cast<int>(DebugObjectType::LightProbe);
+						}
+						else if constexpr (std::is_same_v<T, DebugObject_LightSource>)
+						{
+							reinterpret_cast<int&>(bindPoint) = static_cast<int>(DebugObjectType::LightSource);
+						}
+						else
+						{
+							assert(false && "Unidentified debug object type");
+						}
+
+					}, obj);
 				}
 				break;
 				default:

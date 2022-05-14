@@ -182,7 +182,7 @@ public:
 	void DrawDebugGuiJob(GPUJobContext& context);
 
 	std::vector<int> BuildVisibleDynamicObjectsList(const Camera& camera, const std::vector<entity_t>& entities) const;
-	std::vector<DebugObject> GenerateFrameDebugObjects(const Camera& camera) const;
+	std::vector<DebugObject_t> GenerateFrameDebugObjects(const Camera& camera) const;
 
 	/* State change */
 	void RequestStateChange(State state);
@@ -350,5 +350,6 @@ private:
 	std::optional<State> requestedState;
 
 	/* Debug */
-	bool drawBakePointsDebugGeometry = false;
+	bool drawLightProbesDebugGeometry = false;
+	bool drawLightSourcesDebugGeometry = false;
 };

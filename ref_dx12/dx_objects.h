@@ -118,19 +118,31 @@ public:
 	~DynamicObjectModel();
 };
 
-class DebugObject
+// Should match shader definition
+enum class DebugObjectType
 {
-public:
+	LightProbe = 0,
+	LightSource = 1,
+	None
+};
 
+struct DebugObject_LightSource
+{
 	enum class Type
 	{
-		Sphere,
+		Area,
+		Point,
 		None
 	};
 
 	Type type = Type::None;
+	int sourceIndex = Const::INVALID_INDEX;
+};
 
+struct DebugObject_LightProbe
+{
 	int probeIndex = Const::INVALID_INDEX;
-
 	XMFLOAT4 position = { 0.0f, 0.0f, 0.0f, 1.0f };
 };
+
+using DebugObject_t = std::variant<DebugObject_LightProbe, DebugObject_LightSource>;

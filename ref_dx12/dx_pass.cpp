@@ -13,7 +13,8 @@
 #include "dx_memorymanager.h"
 #include "dx_lightbaker.h"
 
-const float Pass_Debug::SPHERE_RADIUS = 6.0f;
+const float Pass_Debug::LIGHT_PROBE_SPHERE_RADIUS = 6.0f;
+const float Pass_Debug::POINT_LIGHT_SPHERE_RADIUS = 3.0f;
 
 namespace
 {
@@ -1372,10 +1373,12 @@ void Pass_Debug::Execute(GPUJobContext& context)
 void Pass_Debug::Init()
 {
 	vertexSize = sizeof(XMFLOAT4);
-
-	sphereObjectVertices = Utils::CreateSphere(SPHERE_RADIUS, 2);
-
-	sphereObjectVertexBufferSize = static_cast<int>(vertexSize * sphereObjectVertices.size());
+	//#DEBUG what is this subdivision? Make constant
+	lightProbeDebugObjectVertices = Utils::CreateSphere(LIGHT_PROBE_SPHERE_RADIUS, 2);
+	lightProbeDebugObjectVertexBufferSize = static_cast<int>(vertexSize * lightProbeDebugObjectVertices.size());
+	//#DEBUG what is this subdivision? Make constant
+	pointLightDebugObjectVertices = Utils::CreateSphere(POINT_LIGHT_SPHERE_RADIUS, 2);
+	pointLightDebugObjectVertexBufferSize = static_cast<int>(vertexSize * pointLightDebugObjectVertices.size());
 
 	// Resources
 	assert(passMemorySize == Const::INVALID_SIZE && "Pass_Debug memory size should be unitialized");
@@ -1447,41 +1450,105 @@ void Pass_Debug::ReleasePersistentResources()
 
 void Pass_Debug::RegisterObjects(GPUJobContext& context)
 {
-	const std::vector<DebugObject>& debugObjects = context.frame.debugObjecs;
+	const std::vector<DebugObject_t>& debugObjects = context.frame.debugObjecs;
 
 	if (debugObjects.empty() == true)
 	{
 		return;
 	}
-
-	const int debugObjectsVertexBufferSizeInBytes = sphereObjectVertexBufferSize * debugObjects.size();
-
+	
 	assert(objectsVertexBufferMemory == Const::INVALID_BUFFER_HANDLER && "DebugObjects vertex buffer memory should be released");
-
-	// Deal with vertex buffer
-	// Allocate memory
-	auto& uploadMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
-	objectsVertexBufferMemory = uploadMemory.Allocate(debugObjectsVertexBufferSizeInBytes);
 
 	assert(drawObjects.empty() == true && "Debug pass objects registration failed. Pass objects list should be empty");
 	drawObjects.reserve(debugObjects.size());
 
 	std::vector<XMFLOAT4> debugObjectsVertices;
-	debugObjectsVertices.reserve(sphereObjectVertices.size() * debugObjects.size());
+	debugObjectsVertices.reserve(lightProbeDebugObjectVertices.size() * debugObjects.size());
 
-	for (const DebugObject& debugObject : debugObjects)
+	const Renderer& renderer = Renderer::Inst();
+	const std::vector<SurfaceLight>& surfaceLights = renderer.GetStaticSurfaceLights();
+	const std::vector<PointLight>& pointLights = renderer.GetStaticPointLights();
+	const std::vector<SourceStaticObject>& staticObjects = renderer.GetSourceStaticObjects();
+
+	std::vector<int> debugObjectsVertexSizes;
+	debugObjectsVertexSizes.reserve(debugObjects.size());
+
+	for (const DebugObject_t& debugObject : debugObjects)
 	{
-		XMVECTOR sseObjectPos = XMLoadFloat4(&debugObject.position);
-
-		std::transform(sphereObjectVertices.cbegin(), sphereObjectVertices.cend(), std::back_inserter(debugObjectsVertices),
-			[&sseObjectPos](const XMFLOAT4& vertex)
+		std::visit([this, 
+			&debugObjectsVertices,
+			&surfaceLights,
+			&staticObjects,
+			&pointLights,
+			&debugObjectsVertexSizes](auto&& debugObject) 
 		{
-			XMFLOAT4 resultVertex;
-			XMStoreFloat4(&resultVertex, XMVectorSetW(XMLoadFloat4(&vertex) + sseObjectPos, 1.0f));
+			using T = std::decay_t<decltype(debugObject)>;
 
-			return resultVertex;
-		});
+			if constexpr (std::is_same_v<T, DebugObject_LightProbe>)
+			{
+				XMVECTOR sseObjectPos = XMLoadFloat4(&debugObject.position);
+
+				std::transform(lightProbeDebugObjectVertices.cbegin(), lightProbeDebugObjectVertices.cend(), std::back_inserter(debugObjectsVertices),
+					[&sseObjectPos](const XMFLOAT4& vertex)
+				{
+					XMFLOAT4 resultVertex;
+					XMStoreFloat4(&resultVertex, XMVectorSetW(XMLoadFloat4(&vertex) + sseObjectPos, 1.0f));
+
+					return resultVertex;
+				});
+
+				debugObjectsVertexSizes.push_back(lightProbeDebugObjectVertices.size() * vertexSize);
+			}
+
+			if constexpr (std::is_same_v<T, DebugObject_LightSource>)
+			{
+				assert(debugObject.type != DebugObject_LightSource::Type::None && 
+					"Invalid debug object light source type");
+
+				assert(debugObject.sourceIndex != Const::INVALID_INDEX && 
+					"Invalid index for debug object light source");
+
+				if (debugObject.type == DebugObject_LightSource::Type::Area)
+				{
+					const SurfaceLight& light = surfaceLights[debugObject.sourceIndex];
+
+					assert(light.surfaceIndex != Const::INVALID_INDEX && 
+						"Invalid index for surface light mesh");
+
+					const SourceStaticObject& staticObject = staticObjects[light.surfaceIndex];
+
+					debugObjectsVertices.insert(debugObjectsVertices.end(),
+						staticObject.vertices.cbegin(),
+						staticObject.vertices.cend());
+
+					debugObjectsVertexSizes.push_back(staticObject.vertices.size() * vertexSize);
+				}
+
+				if (debugObject.type == DebugObject_LightSource::Type::Point)
+				{
+					XMVECTOR sseLightPos = XMLoadFloat4(&pointLights[debugObject.sourceIndex].origin);
+
+					std::transform(pointLightDebugObjectVertices.cbegin(), pointLightDebugObjectVertices.cend(), std::back_inserter(debugObjectsVertices),
+						[&sseLightPos](const XMFLOAT4& vertex)
+					{
+						XMFLOAT4 resultVertex;
+						XMStoreFloat4(&resultVertex, XMVectorSetW(XMLoadFloat4(&vertex) + sseLightPos, 1.0f));
+
+						return resultVertex;
+					});
+
+					debugObjectsVertexSizes.push_back(pointLightDebugObjectVertices.size() * vertexSize);
+				}
+			}
+		}, debugObject);
 	}
+
+	const int debugObjectsVertexBufferSizeInBytes = debugObjectsVertices.size() * vertexSize;
+
+	// Deal with vertex buffer
+	// Allocate memory
+	auto& uploadMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+	objectsVertexBufferMemory = uploadMemory.Allocate(debugObjectsVertexBufferSizeInBytes);
 
 	FArg::UpdateUploadHeapBuff args;
 	args.buffer = uploadMemory.GetGpuBuffer();
@@ -1507,7 +1574,8 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 	{
 		PassObj& obj = drawObjects.emplace_back(PassObj{
 			passParameters.perObjectLocalRootArgsTemplate,
-			&debugObjects[i]
+			&debugObjects[i],
+			debugObjectsVertexSizes[i]
 		});
 
 		// Init object root args
@@ -1563,17 +1631,18 @@ void Pass_Debug::Draw(GPUJobContext& context)
 
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
 	vertexBufferView.StrideInBytes = vertexSize;
-	vertexBufferView.SizeInBytes = sphereObjectVertexBufferSize;
+	
+	auto& uploadMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
-	auto& uploadMemory =
-		MemoryManager::Inst().GetBuff<UploadBuffer_t>();
+	int objcetVertexBufferOffset = 0;
 
 	for (int i = 0; i < drawObjects.size(); ++i)
 	{
 		const PassObj& obj = drawObjects[i];
-		
+
+		vertexBufferView.SizeInBytes = obj.vertexBufferSize;
 		vertexBufferView.BufferLocation = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress() +
-			uploadMemory.GetOffset(objectsVertexBufferMemory) + i * sphereObjectVertexBufferSize;
+			uploadMemory.GetOffset(objectsVertexBufferMemory) + objcetVertexBufferOffset;
 
 		commandList.GetGPUList()->IASetVertexBuffers(0, 1, &vertexBufferView);
 
@@ -1588,6 +1657,8 @@ void Pass_Debug::Draw(GPUJobContext& context)
 		}
 		
 		commandList.GetGPUList()->DrawInstanced(vertexBufferView.SizeInBytes / vertexBufferView.StrideInBytes, 1, 0, 0);
+
+		objcetVertexBufferOffset += obj.vertexBufferSize;
 	}
 }
 

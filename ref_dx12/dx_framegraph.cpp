@@ -1057,7 +1057,7 @@ void FrameGraph::RegisterGlobalObjectsResDebug(GPUJobContext& context)
 	{
 		std::vector<RootArg::Arg_t>& objRes = debugObjRes.emplace_back(debugObjResTemplate);
 
-		_RegisterGlobalObjectRes(DebugObject(), objRes, regContext, *context.frame.streamingCbvSrvAllocator);
+		_RegisterGlobalObjectRes(DebugObject_t(), objRes, regContext, *context.frame.streamingCbvSrvAllocator);
 	}
 
 	// Allocate and attach memory
@@ -1090,7 +1090,7 @@ void FrameGraph::UpdateGlobalObjectsResDebug(GPUJobContext& context)
 	// I can start generate points for PVS
 	const std::vector<XMFLOAT4> bakePoints = LightBaker::Inst().GenerateClusterBakePoints(cameraNode.cluster);
 	// Passing dummy vector here since debug object doesn't contain anything
-	_UpdateGlobalObjectsRes<Parsing::PassInputType::Debug>(std::vector<DebugObject>(bakePoints.size()), context,
+	_UpdateGlobalObjectsRes<Parsing::PassInputType::Debug>(std::vector<DebugObject_t>(bakePoints.size()), context,
 		ResContext{ objGlobalResTemplate, objGlobalRes, objGlobalResMemory, perObjectGlobalMemorySize });
 }
 

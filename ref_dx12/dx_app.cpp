@@ -1127,71 +1127,88 @@ std::vector<int> Renderer::BuildVisibleDynamicObjectsList(const Camera& camera, 
 	return visibleObjects;
 }
 
-std::vector<DebugObject> Renderer::GenerateFrameDebugObjects(const Camera& camera) const
+std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& camera) const
 {
 	ASSERT_MAIN_THREAD;
 
-	std::vector<DebugObject> debugObjects;
+	std::vector<DebugObject_t> debugObjects;
 
-	if (drawBakePointsDebugGeometry == false)
+	if (drawLightProbesDebugGeometry == true)
 	{
-		return debugObjects;
-	}
+		// Figure out all clusters we want to generate for
+		const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(camera.position);
+		assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
 
-	// Figure out all clusters we want to generate for
-	const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(camera.position);
-	assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
+		//#TODO so far generate bake points only for current cluster, if it's not alright,
+		// I can start generate points for PVS
+		const std::vector<XMFLOAT4> bakePoints = LightBaker::Inst().GenerateClusterBakePoints(cameraNode.cluster);
 
-	//#TODO so far generate bake points only for current cluster, if it's not alright,
-	// I can start generate points for PVS
-	const std::vector<XMFLOAT4> bakePoints = LightBaker::Inst().GenerateClusterBakePoints(cameraNode.cluster);
+		assert(bakePoints.empty() == false && "Bake points are empty. Is this alright?");
 
-	assert(bakePoints.empty() == false && "Bake points are empty. Is this alright?");
+		debugObjects.reserve(bakePoints.size());
 
-	debugObjects.reserve(bakePoints.size());
+		const BakingResult& bakeResult = lightBakingResult.obj;
 
-	const BakingResult& bakeResult = lightBakingResult.obj;
+		const bool hasProbeDataOnGPU =
+			ResourceManager::Inst().FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME) != nullptr;
 
-	const bool hasProbeDataOnGPU = 
-		ResourceManager::Inst().FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME) != nullptr;
-
-	for (int i = 0; i < bakePoints.size(); ++i)
-	{
-		DebugObject object;
-
-		object.type = DebugObject::Type::Sphere;
-		object.probeIndex = Const::INVALID_INDEX;
-		object.position = bakePoints[i];
-
-
-		if (hasProbeDataOnGPU)
+		for (int i = 0; i < bakePoints.size(); ++i)
 		{
-			switch (bakeResult.bakingMode)
-			{
-			case LightBakingMode::CurrentPositionCluster:
-			{
-				assert(bakeResult.bakingCluster.has_value() == true && "Baking result should have value");
+			DebugObject_LightProbe object;
 
-				if (*bakeResult.bakingCluster == cameraNode.cluster)
+			object.probeIndex = Const::INVALID_INDEX;
+			object.position = bakePoints[i];
+
+			if (hasProbeDataOnGPU)
+			{
+				switch (bakeResult.bakingMode)
 				{
-					object.probeIndex = i;
+				case LightBakingMode::CurrentPositionCluster:
+				{
+					assert(bakeResult.bakingCluster.has_value() == true && "Baking result should have value");
+
+					if (*bakeResult.bakingCluster == cameraNode.cluster)
+					{
+						object.probeIndex = i;
+					}
+				}
+				break;
+				case LightBakingMode::AllClusters:
+				{
+					assert(bakeResult.clusterSizes.has_value() == true && "Cluster sizes should have value");
+
+					object.probeIndex = i + bakeResult.clusterSizes.value()[cameraNode.cluster].startIndex;
+				}
+				break;
+				default:
+					assert(false && "Unknown baking mode");
+					break;
 				}
 			}
-			break;
-			case LightBakingMode::AllClusters:
-			{
-				assert(bakeResult.clusterSizes.has_value() == true && "Cluster sizes should have value");
 
-				object.probeIndex = i + bakeResult.clusterSizes.value()[cameraNode.cluster].startIndex;
-			}
-			break;
-			default:
-				assert(false && "Unknown baking mode");
-				break;
-			}
+			debugObjects.push_back(object);
+		}
+	}
+
+	if (drawLightSourcesDebugGeometry == true) 
+	{
+		for (int i = 0; i < staticPointLights.size(); ++i)
+		{
+			DebugObject_LightSource object;
+			object.sourceIndex = i;
+			object.type = DebugObject_LightSource::Type::Point;
+
+			debugObjects.push_back(object);
 		}
 
-		debugObjects.push_back(object);
+		for (int i = 0; i < staticSurfaceLights.size(); ++i)
+		{
+			DebugObject_LightSource object;
+			object.sourceIndex = i;
+			object.type = DebugObject_LightSource::Type::Area;
+
+			debugObjects.push_back(object);
+		}
 	}
 
 	return debugObjects;
@@ -1279,7 +1296,10 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 
 		if (GetState() == State::Rendering)
 		{
-			ImGui::Checkbox("Draw bake points", &drawBakePointsDebugGeometry);
+			ImGui::Text(" Debug geometry ");
+
+			ImGui::Checkbox("Light Probes", &drawLightProbesDebugGeometry);
+			ImGui::Checkbox("Light Sources", &drawLightSourcesDebugGeometry);
 
 			ImGui::Text("-- Start baking --");
 

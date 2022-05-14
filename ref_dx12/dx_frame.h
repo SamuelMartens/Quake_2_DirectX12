@@ -63,7 +63,7 @@ public:
 	// Populated on every frame
 	std::vector<entity_t> entities;
 	std::vector<particle_t> particles;
-	std::vector<DebugObject> debugObjecs;
+	std::vector<DebugObject_t> debugObjecs;
 
 	std::vector<DrawCall_UI_t> uiDrawCalls;
 	std::vector<int> visibleStaticObjectsIndices;
