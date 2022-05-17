@@ -40,8 +40,6 @@ struct BakingResult
 	struct ClusterSize
 	{
 		int startIndex = Const::INVALID_INDEX;
-		//#DEBUG not sure I need this size data
-		int size = Const::INVALID_SIZE;
 	};
 
 	LightBakingMode bakingMode = LightBakingMode::None;

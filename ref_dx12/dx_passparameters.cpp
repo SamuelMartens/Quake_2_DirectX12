@@ -503,6 +503,15 @@ namespace Parsing
 			def);
 	}
 
+	int GetVertAttrSize(const VertAttr& vertAttr)
+	{
+		return std::accumulate(vertAttr.content.cbegin(), vertAttr.content.cend(),
+			0, [](int& sum, const Parsing::VertAttrField& field)
+		{
+			return sum + Parsing::GetParseDataTypeSize(field.type);
+		});
+	}
+
 }
 
 PassParametersSource::PassParametersSource()

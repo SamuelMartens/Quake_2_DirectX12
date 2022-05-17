@@ -457,11 +457,7 @@ void Pass_UI::Init()
 	// Calculate amount of memory for vertex buffers per objects
 	assert(perVertexMemorySize == Const::INVALID_SIZE && "Per Vertex Memory should be uninitialized");
 
-	perVertexMemorySize = std::accumulate(passParameters.vertAttr->content.cbegin(), passParameters.vertAttr->content.cend(),
-		0, [](int& sum, const Parsing::VertAttrField& field) 
-	{
-		return sum + Parsing::GetParseDataTypeSize(field.type);
-	});
+	perVertexMemorySize = Parsing::GetVertAttrSize(*passParameters.vertAttr);
 
 	assert(perObjectVertexMemorySize == Const::INVALID_SIZE && "Per Object Vertex Memory should be uninitialized");
 	// Every UI object is quad that consists of two triangles
@@ -1372,13 +1368,8 @@ void Pass_Debug::Execute(GPUJobContext& context)
 
 void Pass_Debug::Init()
 {
-	vertexSize = sizeof(XMFLOAT4);
-	//#DEBUG what is this subdivision? Make constant
-	lightProbeDebugObjectVertices = Utils::CreateSphere(LIGHT_PROBE_SPHERE_RADIUS, 2);
-	lightProbeDebugObjectVertexBufferSize = static_cast<int>(vertexSize * lightProbeDebugObjectVertices.size());
-	//#DEBUG what is this subdivision? Make constant
-	pointLightDebugObjectVertices = Utils::CreateSphere(POINT_LIGHT_SPHERE_RADIUS, 2);
-	pointLightDebugObjectVertexBufferSize = static_cast<int>(vertexSize * pointLightDebugObjectVertices.size());
+	lightProbeDebugObjectVertices = Utils::CreateSphere(LIGHT_PROBE_SPHERE_RADIUS, LIGHT_PROBE_SPHERE_SUBDIVISION);
+	pointLightDebugObjectVertices = Utils::CreateSphere(POINT_LIGHT_SPHERE_RADIUS, POINT_LIGHT_SPHERE_SUBDIVISION);
 
 	// Resources
 	assert(passMemorySize == Const::INVALID_SIZE && "Pass_Debug memory size should be unitialized");
@@ -1392,6 +1383,8 @@ void Pass_Debug::Init()
 
 	assert(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Debug perObject memory size should be unitialized");
 	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
+
+	perVertexMemorySize = Parsing::GetVertAttrSize(*passParameters.vertAttr);
 
 	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
 }
@@ -1497,7 +1490,7 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 					return resultVertex;
 				});
 
-				debugObjectsVertexSizes.push_back(lightProbeDebugObjectVertices.size() * vertexSize);
+				debugObjectsVertexSizes.push_back(lightProbeDebugObjectVertices.size() * perVertexMemorySize);
 			}
 
 			if constexpr (std::is_same_v<T, DebugObject_LightSource>)
@@ -1521,7 +1514,7 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 						staticObject.vertices.cbegin(),
 						staticObject.vertices.cend());
 
-					debugObjectsVertexSizes.push_back(staticObject.vertices.size() * vertexSize);
+					debugObjectsVertexSizes.push_back(staticObject.vertices.size() * perVertexMemorySize);
 				}
 
 				if (debugObject.type == DebugObject_LightSource::Type::Point)
@@ -1537,13 +1530,16 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 						return resultVertex;
 					});
 
-					debugObjectsVertexSizes.push_back(pointLightDebugObjectVertices.size() * vertexSize);
+					debugObjectsVertexSizes.push_back(pointLightDebugObjectVertices.size() * perVertexMemorySize);
 				}
 			}
 		}, debugObject);
 	}
 
-	const int debugObjectsVertexBufferSizeInBytes = debugObjectsVertices.size() * vertexSize;
+	const int debugObjectsVertexBufferSizeInBytes = debugObjectsVertices.size() * perVertexMemorySize;
+
+	assert(perVertexMemorySize == sizeof(XMFLOAT4) && 
+		"Invalid vertex size for debug pass, if this is intentional make sure you changed pass code for it");
 
 	// Deal with vertex buffer
 	// Allocate memory
@@ -1630,7 +1626,7 @@ void Pass_Debug::Draw(GPUJobContext& context)
 	}
 
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
-	vertexBufferView.StrideInBytes = vertexSize;
+	vertexBufferView.StrideInBytes = perVertexMemorySize;
 	
 	auto& uploadMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 

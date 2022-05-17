@@ -67,10 +67,9 @@ Type : VS
 External : cbPerPass, cbPerObject_Local, VertexIn, VertexOut
 <[
 
-//#DEBUG move this in define
-// Should match definition in C++
-#define DEBUG_OBJECT_LIGHT_PROBE 0
-#define DEBUG_OBJECT_LIGHT_SOURCE 1
+
+@include "DebugPass.passh"
+
 
 VertexOut main(VertexIn vIn)
 {
@@ -90,11 +89,11 @@ VertexOut main(VertexIn vIn)
 Type : PS 
 External : VertexOut, sbDiffuseProbes, cbPerObject_Local
 <[
-// Should match definition in C++
-#define DEBUG_OBJECT_LIGHT_PROBE 0
-#define DEBUG_OBJECT_LIGHT_SOURCE 1
 
-#define INVALID_INDEX -1
+@include "DebugPass.passh"
+@include "Constants.passh"
+
+
 #define SH_VECTOR_SIZE 9
 
 float4 ReconstructRadianceFromSf(float4 dir)

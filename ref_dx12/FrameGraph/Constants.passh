@@ -1,0 +1,2 @@
+#define INVALID_INDEX -1
+#define INVALID_SIZE -1

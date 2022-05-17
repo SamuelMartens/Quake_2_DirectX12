@@ -192,6 +192,8 @@ namespace
 			{
 				std::move(includeFilename),
 				std::distance(sv.ss, sv.c_str()),
+				// NOTE: include length also contains trailing new line symbols,
+				// so preprocessed file might be not exactly what you expect (some symbols might be lost)
 				static_cast<int>(sv.length())
 			};
 
@@ -1987,8 +1989,6 @@ void FrameGraphBuilder::PreprocessPassFiles(std::unordered_map<std::string, std:
 		{
 			// Add chunk before this include
 			processedFile += currentFile.substr(currentPos, include.pos - currentPos);
-			//NOTE: something weird is happening here. Insertion is not exact. I don't want
-			// to dive into it, but it might become a problem at some point :(
 			currentPos = include.pos + include.len;
 
 			// Add included file

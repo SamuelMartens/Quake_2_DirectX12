@@ -403,6 +403,8 @@ namespace Parsing
 
 	std::string_view GetMiscDefName(const Parsing::MiscDef_t& def);
 	std::string_view GetMiscDefRawView(const Parsing::MiscDef_t& def);
+
+	int GetVertAttrSize(const VertAttr& vertAttr);
 };
 
 

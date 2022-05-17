@@ -263,7 +263,10 @@ public:
 
 	// Debug sphere init
 	const static float LIGHT_PROBE_SPHERE_RADIUS;
+	const static int LIGHT_PROBE_SPHERE_SUBDIVISION = 2;
+
 	const static float POINT_LIGHT_SPHERE_RADIUS;
+	const static int POINT_LIGHT_SPHERE_SUBDIVISION = 1;
 
 public:
 
@@ -290,13 +293,10 @@ private:
 	int passMemorySize = Const::INVALID_SIZE;
 	BufferHandler passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
 
-	// Size of one vertex
-	int vertexSize = Const::INVALID_SIZE;
-
 	int perObjectConstBuffMemorySize = Const::INVALID_SIZE;
-	//#DEBUG is it used?
-	int lightProbeDebugObjectVertexBufferSize = Const::INVALID_SIZE;
-	int pointLightDebugObjectVertexBufferSize = Const::INVALID_SIZE;
+
+	// Size of one vertex
+	int perVertexMemorySize = Const::INVALID_SIZE;
 
 	std::vector<XMFLOAT4> lightProbeDebugObjectVertices;
 	std::vector<XMFLOAT4> pointLightDebugObjectVertices;

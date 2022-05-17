@@ -38,8 +38,9 @@ struct BSPNode;
 
 namespace Const
 {
+	//NOTE: values should match Constants.passh
+
 	constexpr int INVALID_OFFSET = -1;
-	//#DEBUG write comment that it's used in shader
 	constexpr int INVALID_INDEX = -1;
 	constexpr int INVALID_SIZE = -1;
 	constexpr int INVALID_HASHED_NAME = -1;

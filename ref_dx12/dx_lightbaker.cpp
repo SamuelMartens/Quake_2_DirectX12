@@ -19,9 +19,6 @@
 #undef max
 #endif
 
-//#DEBUG
-#pragma optimize("", off)
-//END
 
 namespace
 {
@@ -339,8 +336,7 @@ BakingResult LightBaker::TransferBakingResult()
 		for (int i = 0; i < clusterProbeData.size(); ++i)
 		{
 			clusterSizes.push_back(BakingResult::ClusterSize{
-				clusterProbeData[i].startIndex, 
-				static_cast<int>(clusterBakePoints[i].size())});
+				clusterProbeData[i].startIndex});
 		}
 
 		result.clusterSizes = clusterSizes;
@@ -442,7 +438,7 @@ XMFLOAT4 LightBaker::GatherDirectIrradianceAtInersectionPoint(const Utils::Ray& 
 		XMVECTOR sseIntersectionPointToLight = XMLoadFloat4(&light.origin) - sseIntersectionPoint;
 
 		const float distanceToLight = XMVectorGetX(XMVector3Length(sseIntersectionPoint));
-		//#DEBUG radius always 8, so I never pass this condition
+		//#LIGHT_INFO radius always 8, so I never pass this condition
 		if (distanceToLight > light.radius)
 		{
 			continue;
@@ -488,7 +484,7 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLights(const Utils::Ray& ray, const
 	const BSPTree& bsp = renderer.GetBSPTree();
 	
 	const BSPNode& intersectionNode = bsp.GetNodeWithPoint(intersectionPoint);
-	//#DEBUG watch out for this. Some intersection points do not have cluster and it is fine.
+	//#LIGHT_INFO watch out for this. Some intersection points do not have cluster and it is fine.
 	// Like the other day I fixed same issue in BSPTree::IsPointVisibleFromOtherPoint
 	if (intersectionNode.cluster == Const::INVALID_INDEX)
 	{
