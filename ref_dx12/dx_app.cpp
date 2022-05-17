@@ -782,7 +782,7 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	frame.streamingCbvSrvAllocator->Reset();
 
 	// Release debug objects
-	frame.debugObjecs.clear();
+	frame.debugObjects.clear();
 
 	if (frame.frameGraph != nullptr)
 	{
@@ -1132,7 +1132,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 	ASSERT_MAIN_THREAD;
 
 	std::vector<DebugObject_t> debugObjects;
-
+	// NOTE: order of registering here should match FrameGraph::RegisterGlobalObjectsResDebug
 	if (drawLightProbesDebugGeometry == true)
 	{
 		// Figure out all clusters we want to generate for
@@ -2116,7 +2116,7 @@ void Renderer::PreRenderSetUpFrame(Frame& frame)
 	frame.visibleEntitiesIndices = BuildVisibleDynamicObjectsList(frame.camera, frame.entities);
 
 	// Debug objects
-	frame.debugObjecs = GenerateFrameDebugObjects(frame.camera); 
+	frame.debugObjects = GenerateFrameDebugObjects(frame.camera); 
 }
 
 void Renderer::FlushAllFrames() const

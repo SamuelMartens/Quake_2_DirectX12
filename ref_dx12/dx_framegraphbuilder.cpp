@@ -35,6 +35,9 @@ namespace
 	std::string ReadFile(const std::filesystem::path& filePath)
 	{
 		std::ifstream file(filePath);
+
+		assert(file.is_open() == true && "Failed read a file");
+
 		std::stringstream buffer;
 		buffer << file.rdbuf();
 
@@ -337,6 +340,30 @@ namespace
 
 			currentPass.rasterPsoDesc.DepthStencilState.DepthWriteMask = peg::any_cast<bool>(sv[0]) ?
 				D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+		};
+
+		parser["DepthBiasSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		{
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			PassParametersSource& currentPass = parseCtx.passSources.back();
+
+			currentPass.rasterPsoDesc.RasterizerState.DepthBias = peg::any_cast<int>(sv[0]);
+		};
+
+		parser["DepthBiasSlopeSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		{
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			PassParametersSource& currentPass = parseCtx.passSources.back();
+
+			currentPass.rasterPsoDesc.RasterizerState.SlopeScaledDepthBias = peg::any_cast<float>(sv[0]);
+		};
+
+		parser["DepthBiasClampSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		{
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			PassParametersSource& currentPass = parseCtx.passSources.back();
+
+			currentPass.rasterPsoDesc.RasterizerState.DepthBiasClamp = peg::any_cast<float>(sv[0]);
 		};
 
 		parser["BlendStValues"] = [](const peg::SemanticValues& sv)

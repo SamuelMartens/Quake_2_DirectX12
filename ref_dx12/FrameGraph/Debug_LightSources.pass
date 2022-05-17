@@ -1,0 +1,99 @@
+PassProperties
+{
+PassInput : Debug
+PassVertAttr: VertexIn
+}
+
+State
+{
+ColorTarget  : BACK_BUFFER
+DepthTarget  : BACK_BUFFER
+Viewport	 : 0.0, 0.0, 1.0, 1.0
+BlendEnabled : false
+Topology	 : Triangle
+DepthBias	 : -5
+DepthBiasSlope : -2.0
+DepthBiasClamp : -50.0
+}
+
+RootSignature
+{
+RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
+CBV(b0),
+CBV(b1)
+}
+
+// Attributes
+
+struct VertexIn
+{
+	float4 Pos : POSITION;
+}
+
+
+struct VertexOut
+{
+	float4 Pos : SV_POSITION;
+}
+
+[Global, PerPass]
+cbuffer cbPerPass : register(b0)
+{
+    float4x4 gViewProj;
+    float4 gCameraYaw;
+    float4 gCameraPitch;
+    float4 gCameraRoll;
+    float4 gCameraOrigin;
+}
+
+[Global, PerObject]
+cbuffer cbPerObject_Global : register(b1)
+{
+	int gDebugObjectType;
+}
+
+// Shaders
+
+Type : VS 
+External : cbPerPass, cbPerObject_Global, VertexIn, VertexOut
+<[
+
+
+@include "Debug.passh"
+
+
+VertexOut main(VertexIn vIn)
+{
+	VertexOut vOut;
+	// Funny enought, by default matrices are packed as column major.
+	vOut.Pos = mul(gViewProj, vIn.Pos);
+	
+
+	return vOut;
+}
+]>
+
+Type : PS 
+External : VertexOut, cbPerObject_Global
+<[
+
+@include "Debug.passh"
+@include "Constants.passh"
+
+
+float4 main(VertexOut vOut) : SV_Target
+{
+	float4 color = float4(0.0, 0.0, 0.0, 1.0);
+
+	if (gDebugObjectType == DEBUG_OBJECT_LIGHT_SOURCE)
+	{
+		color = float4(0.0f, 1.0f, 0.0f, 1.0f); 
+	}
+	else
+	{
+		discard;
+	}
+
+    return color;
+}
+]>

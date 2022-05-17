@@ -1,7 +1,7 @@
 Pass <- PassProps State RSig PrePostPass ShaderDefs ShaderList
 
 ShaderDefs	<- T( < ( Resource / VertAttr / Function / MiscDef )* > )
-State       <- T( 'State' _ '{' _ < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendSt / DestBlendSt )* > '}' )
+State       <- T( 'State' _ '{' _ < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendSt / DestBlendSt / DepthBiasSt / DepthBiasSlopeSt / DepthBiasClampSt )* > '}' )
 ShaderList  <- T( < Shader* > )
 
 # --- Pass properties
@@ -28,6 +28,9 @@ SrcBlendSt			<- T( 'SrcBlend' _ ':' < BlendStValues > )
 DestBlendSt			<- T( 'DestBlend' _ ':' < BlendStValues > )
 TopologySt			<- T( 'Topology' _ ':' < TopologyStValues > )
 DepthWriteMaskSt	<- T( 'DepthWriteMask' _ ':' < Bool > )
+DepthBiasSt         <- T( 'DepthBias' _ ':' < Int > )
+DepthBiasSlopeSt    <- T( 'DepthBiasSlope' _ ':' < Float > )
+DepthBiasClampSt    <- T( 'DepthBiasClamp' _ ':' < Float > )
 
 BlendStValues		<- _ 'SrcAlpha' _ / _ 'InvSrcAlpha' _
 TopologyStValues    <- _ 'Triangle' _ / _ 'Point' _
@@ -113,8 +116,8 @@ RegisterId      <- T( [btsu] Int )
 
 # --- Types ---
 Bool    <- _ 'true' _ / _ 'false' _
-Float   <- T( < [0-9][0-9]* '.' [0-9][0-9]* > )
-Int     <- T( < [0-9][0-9]* > )
+Float   <- T( < '-'?[0-9][0-9]* '.' [0-9][0-9]* > )
+Int     <- T( < '-'?[0-9][0-9]* > )
 Word    <- T( < [a-zA-Z_][a-zA-Z_]* > )
 Float4	<- T( Float Comma Float Comma Float Comma Float )
 

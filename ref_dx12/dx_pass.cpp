@@ -1352,7 +1352,7 @@ void Pass_PostProcess::SetComputeState(GPUJobContext& context)
 
 void Pass_Debug::Execute(GPUJobContext& context)
 {
-	if (context.frame.debugObjecs.empty() == true)
+	if (context.frame.debugObjects.empty() == true)
 	{
 		return;
 	}
@@ -1443,7 +1443,7 @@ void Pass_Debug::ReleasePersistentResources()
 
 void Pass_Debug::RegisterObjects(GPUJobContext& context)
 {
-	const std::vector<DebugObject_t>& debugObjects = context.frame.debugObjecs;
+	const std::vector<DebugObject_t>& debugObjects = context.frame.debugObjects;
 
 	if (debugObjects.empty() == true)
 	{
@@ -1651,7 +1651,7 @@ void Pass_Debug::Draw(GPUJobContext& context)
 		{
 			RootArg::Bind(rootArg, *context.commandList);
 		}
-		
+
 		commandList.GetGPUList()->DrawInstanced(vertexBufferView.SizeInBytes / vertexBufferView.StrideInBytes, 1, 0, 0);
 
 		objcetVertexBufferOffset += obj.vertexBufferSize;

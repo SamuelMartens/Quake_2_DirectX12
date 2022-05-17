@@ -270,6 +270,33 @@ namespace RenderCallbacks
 		}
 		else if constexpr (std::is_same_v<objT, DebugObject_t>)
 		{
+			switch (paramName)
+			{
+			case HASH("gDebugObjectType"):
+			{
+				std::visit([&bindPoint](auto&& object)
+				{
+					using T = std::decay_t<decltype(object)>;
+
+					if constexpr (std::is_same_v<T, DebugObject_LightProbe>)
+					{
+						reinterpret_cast<int&>(bindPoint) = static_cast<int>(DebugObjectType::LightProbe);
+					}
+					else if constexpr (std::is_same_v<T, DebugObject_LightSource>)
+					{
+						reinterpret_cast<int&>(bindPoint) = static_cast<int>(DebugObjectType::LightSource);
+					}
+					else
+					{
+						assert(false && "Unidentified debug object type");
+					}
+
+				}, obj);
+			}
+			break;
+			default:
+				break;
+			}
 		}
 		else
 		{
@@ -589,28 +616,6 @@ namespace RenderCallbacks
 						else
 						{
 							reinterpret_cast<int&>(bindPoint) = Const::INVALID_INDEX;
-						}
-
-					}, obj);
-				}
-				break;
-				case HASH("gObjectType"):
-				{
-					std::visit([&bindPoint](auto&& object) 
-					{
-						using T = std::decay_t<decltype(object)>;
-
-						if constexpr (std::is_same_v<T, DebugObject_LightProbe>)
-						{
-							reinterpret_cast<int&>(bindPoint) = static_cast<int>(DebugObjectType::LightProbe);
-						}
-						else if constexpr (std::is_same_v<T, DebugObject_LightSource>)
-						{
-							reinterpret_cast<int&>(bindPoint) = static_cast<int>(DebugObjectType::LightSource);
-						}
-						else
-						{
-							assert(false && "Unidentified debug object type");
 						}
 
 					}, obj);

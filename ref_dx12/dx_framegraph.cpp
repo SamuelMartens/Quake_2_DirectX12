@@ -1026,20 +1026,12 @@ void FrameGraph::RegisterParticles(GPUJobContext& context)
 
 void FrameGraph::RegisterGlobalObjectsResDebug(GPUJobContext& context)
 {
-	if (context.frame.debugObjecs.empty() == true)
+	const std::vector<DebugObject_t>& debugObjects = context.frame.debugObjects;
+
+	if (debugObjects.empty() == true)
 	{
 		return;
 	}
-
-	// Figure out all clusters we want to generate for
-	const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(context.frame.camera.position);
-	assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
-
-	//#TODO so far generate bake points only for current cluster, if it's not alright,
-	// I can start generate points for PVS
-	const std::vector<XMFLOAT4> bakePoints = LightBaker::Inst().GenerateClusterBakePoints(cameraNode.cluster);
-	
-	assert(bakePoints.empty() == false && "RegisterGlobalObjectsResDebug failed, bakePoints are empty");
 
 	BufferHandler& debugObjMemory = objGlobalResMemory[static_cast<int>(Parsing::PassInputType::Debug)];
 
@@ -1053,15 +1045,15 @@ void FrameGraph::RegisterGlobalObjectsResDebug(GPUJobContext& context)
 	RenderCallbacks::RegisterGlobalObjectContext regContext = { context };
 
 	// Register 
-	for (const XMFLOAT4& bakePoint : bakePoints)
+	for (const DebugObject_t& obj : debugObjects)
 	{
 		std::vector<RootArg::Arg_t>& objRes = debugObjRes.emplace_back(debugObjResTemplate);
 
-		_RegisterGlobalObjectRes(DebugObject_t(), objRes, regContext, *context.frame.streamingCbvSrvAllocator);
+		_RegisterGlobalObjectRes(obj, objRes, regContext, *context.frame.streamingCbvSrvAllocator);
 	}
 
 	// Allocate and attach memory
-	_AllocateGlobalObjectConstMem<Parsing::PassInputType::Debug>(bakePoints.size(),
+	_AllocateGlobalObjectConstMem<Parsing::PassInputType::Debug>(debugObjects.size(),
 		ResContext{ objGlobalResTemplate, objGlobalRes, objGlobalResMemory, perObjectGlobalMemorySize });
 
 	int objectOffset = 0;
@@ -1077,20 +1069,14 @@ void FrameGraph::RegisterGlobalObjectsResDebug(GPUJobContext& context)
 
 void FrameGraph::UpdateGlobalObjectsResDebug(GPUJobContext& context)
 {
-	if (context.frame.debugObjecs.empty() == true)
+	const std::vector<DebugObject_t>& debugObjects = context.frame.debugObjects;
+
+	if (debugObjects.empty() == true)
 	{
 		return;
 	}
 
-	// Figure out all clusters we want to generate for
-	const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(context.frame.camera.position);
-	assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
-
-	//#TODO so far generate bake points only for current cluster, if it's not alright,
-	// I can start generate points for PVS
-	const std::vector<XMFLOAT4> bakePoints = LightBaker::Inst().GenerateClusterBakePoints(cameraNode.cluster);
-	// Passing dummy vector here since debug object doesn't contain anything
-	_UpdateGlobalObjectsRes<Parsing::PassInputType::Debug>(std::vector<DebugObject_t>(bakePoints.size()), context,
+	_UpdateGlobalObjectsRes<Parsing::PassInputType::Debug>(debugObjects, context,
 		ResContext{ objGlobalResTemplate, objGlobalRes, objGlobalResMemory, perObjectGlobalMemorySize });
 }
 
