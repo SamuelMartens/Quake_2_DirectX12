@@ -8,6 +8,7 @@
 #include <d3dcompiler.h>
 #include <optional>
 #include <windows.h>
+#include <numeric>
 #include <DirectXColors.h>
 
 
@@ -34,17 +35,10 @@ namespace
 	std::string ReadFile(const std::filesystem::path& filePath)
 	{
 		std::ifstream file(filePath);
+		std::stringstream buffer;
+		buffer << file.rdbuf();
 
-		assert(file.is_open() && "Failed to read the file. File can't be open");
-
-		// Get content of the file
-		file.seekg(0, std::ios::end);
-		size_t size = file.tellg();
-		std::string fileContent(size, ' ');
-		file.seekg(0);
-		file.read(&fileContent[0], size);
-
-		return fileContent;
+		return buffer.str();
 	}
 
 	
@@ -1985,14 +1979,17 @@ void FrameGraphBuilder::PreprocessPassFiles(std::unordered_map<std::string, std:
 		std::string& currentFile = passFiles[fileInclude.first];
 
 		std::string processedFile;
+		processedFile.reserve(currentFile.size());
 
 		int currentPos = 0;
-		
+
 		for (const Parsing::PreprocessorContext::Include& include : fileInclude.second)
 		{
 			// Add chunk before this include
 			processedFile += currentFile.substr(currentPos, include.pos - currentPos);
-			currentPos += include.pos + include.len;
+			//NOTE: something weird is happening here. Insertion is not exact. I don't want
+			// to dive into it, but it might become a problem at some point :(
+			currentPos = include.pos + include.len;
 
 			// Add included file
 			processedFile += ReadFile(GenPathToFile(Settings::FRAMEGRAPH_DIR + "/" + include.name));

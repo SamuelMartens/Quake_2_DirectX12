@@ -81,6 +81,7 @@ namespace Parsing
 		{
 			std::string name;
 			int pos = Const::INVALID_OFFSET;
+			// This is length of include statement, not file itself
 			int len = Const::INVALID_SIZE;
 		};
 
