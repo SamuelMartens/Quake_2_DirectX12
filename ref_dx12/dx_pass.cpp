@@ -1519,9 +1519,27 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 
 				if (debugObject.type == DebugObject_LightSource::Type::Point)
 				{
-					XMVECTOR sseLightPos = XMLoadFloat4(&pointLights[debugObject.sourceIndex].origin);
+					const PointLight& pointLight = pointLights[debugObject.sourceIndex];
 
-					std::transform(pointLightDebugObjectVertices.cbegin(), pointLightDebugObjectVertices.cend(), std::back_inserter(debugObjectsVertices),
+					XMVECTOR sseLightPos = XMLoadFloat4(&pointLight.origin);
+
+					const std::vector<XMFLOAT4>* sphereVertices = nullptr;
+
+					std::vector<XMFLOAT4> radiusSphereVertices;
+					
+					if (debugObject.showRadius)
+					{
+						assert(pointLight.radius > 0.0f && "Negative radius");
+
+						radiusSphereVertices = Utils::CreateSphere(pointLight.radius, POINT_LIGHT_SPHERE_SUBDIVISION);
+						sphereVertices = &radiusSphereVertices;
+					}
+					else
+					{
+						sphereVertices = &pointLightDebugObjectVertices;
+					}
+
+					std::transform(sphereVertices->cbegin(), sphereVertices->cend(), std::back_inserter(debugObjectsVertices),
 						[&sseLightPos](const XMFLOAT4& vertex)
 					{
 						XMFLOAT4 resultVertex;

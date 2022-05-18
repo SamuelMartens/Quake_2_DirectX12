@@ -352,4 +352,5 @@ private:
 	/* Debug */
 	bool drawLightProbesDebugGeometry = false;
 	bool drawLightSourcesDebugGeometry = false;
+	bool drawPointLightSourcesRadius = false;
 };

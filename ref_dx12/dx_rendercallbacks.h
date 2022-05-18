@@ -626,6 +626,31 @@ namespace RenderCallbacks
 				}
 			}
 			break;
+			case HASH("Debug_LightSources"):
+			{
+				switch (paramName)
+				{
+				case HASH("gLightSourceType"):
+				{
+					std::visit([&bindPoint](auto&& object)
+					{
+						using T = std::decay_t<decltype(object)>;
+
+						if constexpr (std::is_same_v<T, DebugObject_LightSource>)
+						{
+							reinterpret_cast<int&>(bindPoint) = static_cast<int>(object.type);
+						}
+						else
+						{
+							reinterpret_cast<int&>(bindPoint) = Const::INVALID_INDEX;
+						}
+					}, obj);
+				}
+				default:
+					break;
+				}
+			}
+			break;
 			default:
 				break;
 			}

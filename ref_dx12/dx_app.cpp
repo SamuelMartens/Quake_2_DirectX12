@@ -1197,6 +1197,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 			DebugObject_LightSource object;
 			object.sourceIndex = i;
 			object.type = DebugObject_LightSource::Type::Point;
+			object.showRadius = drawPointLightSourcesRadius;
 
 			debugObjects.push_back(object);
 		}
@@ -1206,6 +1207,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 			DebugObject_LightSource object;
 			object.sourceIndex = i;
 			object.type = DebugObject_LightSource::Type::Area;
+			object.showRadius = false;
 
 			debugObjects.push_back(object);
 		}
@@ -1300,6 +1302,12 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 
 			ImGui::Checkbox("Light Probes", &drawLightProbesDebugGeometry);
 			ImGui::Checkbox("Light Sources", &drawLightSourcesDebugGeometry);
+
+			if (drawLightSourcesDebugGeometry == true)
+			{
+				ImGui::Checkbox("Point Light Source Radius", &drawPointLightSourcesRadius);
+			}
+
 
 			ImGui::Text("-- Start baking --");
 

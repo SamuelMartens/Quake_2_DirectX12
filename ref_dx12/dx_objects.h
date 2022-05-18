@@ -118,7 +118,7 @@ public:
 	~DynamicObjectModel();
 };
 
-// Should match shader definition
+// Should match shader definition in Debug.passh
 enum class DebugObjectType
 {
 	LightProbe = 0,
@@ -128,15 +128,19 @@ enum class DebugObjectType
 
 struct DebugObject_LightSource
 {
+	// Should match shader definition in Debug.passh
 	enum class Type
 	{
-		Area,
-		Point,
+		Area = 0,
+		Point = 1,
 		None
 	};
 
 	Type type = Type::None;
 	int sourceIndex = Const::INVALID_INDEX;
+
+	// For point lights only
+	bool showRadius = false;
 };
 
 struct DebugObject_LightProbe

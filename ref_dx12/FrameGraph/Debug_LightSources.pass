@@ -20,7 +20,8 @@ RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0),
-CBV(b1)
+CBV(b1),
+CBV(b2)
 }
 
 // Attributes
@@ -52,6 +53,12 @@ cbuffer cbPerObject_Global : register(b1)
 	int gDebugObjectType;
 }
 
+[Local, PerObject]
+cbuffer cbPerObject_Local : register(b2)
+{
+	int gLightSourceType;
+}
+
 // Shaders
 
 Type : VS 
@@ -74,7 +81,7 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : PS 
-External : VertexOut, cbPerObject_Global
+External : VertexOut, cbPerObject_Global, cbPerObject_Local
 <[
 
 @include "Debug.passh"
@@ -83,15 +90,21 @@ External : VertexOut, cbPerObject_Global
 
 float4 main(VertexOut vOut) : SV_Target
 {
-	float4 color = float4(0.0, 0.0, 0.0, 1.0);
-
-	if (gDebugObjectType == DEBUG_OBJECT_LIGHT_SOURCE)
-	{
-		color = float4(0.0f, 1.0f, 0.0f, 1.0f); 
-	}
-	else
+	if (gDebugObjectType != DEBUG_OBJECT_LIGHT_SOURCE)
 	{
 		discard;
+	}
+
+	float4 color = float4(0.0, 0.0, 0.0, 1.0);
+
+	if (gLightSourceType == DEBUG_AREA_LIGHT)
+	{
+		color = float4(1.0, 0.0, 0.0, 1.0);
+	}
+	
+	if (gLightSourceType == DEBUG_POINT_LIGHT)
+	{
+		color = float4(0.0, 1.0, 0.0, 1.0);
 	}
 
     return color;

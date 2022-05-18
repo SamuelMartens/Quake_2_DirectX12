@@ -86,6 +86,10 @@ VertexOut main(VertexIn vIn)
 	{
 		vOut.LocalPos =  vIn.Pos - gCenter; 
 	}
+	else
+	{
+		vOut.LocalPos = float4(0.0, 0.0, 0.0, 0.0);
+	}
 
 	return vOut;
 }
@@ -135,23 +139,21 @@ float4 ReconstructRadianceFromSf(float4 dir)
 
 float4 main(VertexOut vOut) : SV_Target
 {
-	float4 color = float4(0.0, 0.0, 0.0, 1.0);
-
-	if (gDebugObjectType == DEBUG_OBJECT_LIGHT_PROBE)
-	{
-		float4 dirFromCenter = float4(normalize(vOut.LocalPos.xyz) * 0.5 + 0.5, 1.0);
-		color = dirFromCenter;
-		
-		if (gProbeIndex != INVALID_INDEX)
-		{
-			color = ReconstructRadianceFromSf(dirFromCenter);
-		}
-	}
-	else
+	if (gDebugObjectType != DEBUG_OBJECT_LIGHT_PROBE)
 	{
 		discard;
 	}
+
+	float4 color = float4(0.0, 0.0, 0.0, 1.0);
 	
+	float4 dirFromCenter = float4(normalize(vOut.LocalPos.xyz) * 0.5 + 0.5, 1.0);
+	color = dirFromCenter;
+		
+	if (gProbeIndex != INVALID_INDEX)
+	{
+		color = ReconstructRadianceFromSf(dirFromCenter);
+	}
+
     return color;
 }
 ]>
