@@ -286,6 +286,10 @@ namespace RenderCallbacks
 					{
 						reinterpret_cast<int&>(bindPoint) = static_cast<int>(DebugObjectType::LightSource);
 					}
+					else if constexpr (std::is_same_v<T, DebugObject_ProbePathSegment>)
+					{
+						reinterpret_cast<int&>(bindPoint) = static_cast<int>(DebugObjectType::ProbePathTrace);
+					}
 					else
 					{
 						assert(false && "Unidentified debug object type");

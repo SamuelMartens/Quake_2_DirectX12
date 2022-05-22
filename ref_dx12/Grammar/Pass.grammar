@@ -33,7 +33,7 @@ DepthBiasSlopeSt    <- T( 'DepthBiasSlope' _ ':' < Float > )
 DepthBiasClampSt    <- T( 'DepthBiasClamp' _ ':' < Float > )
 
 BlendStValues		<- _ 'SrcAlpha' _ / _ 'InvSrcAlpha' _
-TopologyStValues    <- _ 'Triangle' _ / _ 'Point' _
+TopologyStValues    <- _ 'Triangle' _ / _ 'Point' _ / _ 'Line' _
 
 # --- Root Signature ---
 RSig                <- T( 'RootSignature' _ '{' < RSigFlagsDecl ( Comma RSigEntity )+ > '}' )

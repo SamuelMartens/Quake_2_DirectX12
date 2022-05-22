@@ -111,6 +111,9 @@ class Renderer
 	void ConsumeDiffuseIndirectLightingBakingResult(BakingResult&& result);
 	bool TryTransferDiffuseIndirectLightingToGPU(GPUJobContext& context);
 
+	[[nodiscard]]
+	std::vector<std::vector<XMFLOAT4>> GenProbePathSegmentsVertices() const;
+
 	/* Objects data */
 	const std::vector<StaticObject>& GetStaticObjects() const;
 	const std::unordered_map<model_t*, DynamicObjectModel>& GetDynamicModels() const;
@@ -305,7 +308,8 @@ private:
 	std::atomic<int>	fenceValue = 0;
 	ComPtr<ID3D12Fence>	fence;
 
-	LockObject<BakingResult> lightBakingResult;
+	// Mutable because of mutex :( 
+	mutable LockObject<BakingResult> lightBakingResult;
 
 	/* Color palettes */
 	std::array<unsigned int, 256> Table8To24;
@@ -353,4 +357,7 @@ private:
 	bool drawLightProbesDebugGeometry = false;
 	bool drawLightSourcesDebugGeometry = false;
 	bool drawPointLightSourcesRadius = false;
+	bool drawBakeRayPaths = false;
+
+	bool saveBakeRayPaths = false;
 };

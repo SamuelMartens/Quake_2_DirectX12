@@ -7,10 +7,12 @@
 
 class Resource;
 
+// In reality this is not Point light, but Spherical area light 
 struct PointLight
 {
 	XMFLOAT4 origin = { 0.0f, 0.0f, 0.0f, 1.0f };
 	XMFLOAT4 color = { 0.0f, 0.0f, 0.0f, 1.0f };
+	// NOTE: this doesn't indicate how far this light can reach, instead it shows physical size of this light.
 	float radius = 0.0f;
 	float intensity = 0.0f;
 

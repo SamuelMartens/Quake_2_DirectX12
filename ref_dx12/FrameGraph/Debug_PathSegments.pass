@@ -10,18 +10,14 @@ ColorTarget  : BACK_BUFFER
 DepthTarget  : BACK_BUFFER
 Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
-Topology	 : Triangle
-DepthBias	 : -5
-DepthBiasSlope : -2.0
-DepthBiasClamp : -50.0
+Topology	 : Line
 }
 
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0),
-CBV(b1),
-CBV(b2)
+CBV(b1)
 }
 
 // Attributes
@@ -53,12 +49,6 @@ cbuffer cbPerObject_Global : register(b1)
 	int gDebugObjectType;
 }
 
-[Local, PerObject]
-cbuffer cbPerObject_Local : register(b2)
-{
-	int gLightSourceType;
-}
-
 // Shaders
 
 Type : VS 
@@ -77,7 +67,7 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : PS 
-External : VertexOut, cbPerObject_Global, cbPerObject_Local
+External : VertexOut, cbPerObject_Global
 <[
 
 @include "Debug.passh"
@@ -86,22 +76,12 @@ External : VertexOut, cbPerObject_Global, cbPerObject_Local
 
 float4 main(VertexOut vOut) : SV_Target
 {
-	if (gDebugObjectType != DEBUG_OBJECT_LIGHT_SOURCE)
+	if (gDebugObjectType != DEBUG_OBJECT_PATH_SEGMENT)
 	{
 		discard;
 	}
 
-	float4 color = float4(0.0, 0.0, 0.0, 1.0);
-
-	if (gLightSourceType == DEBUG_AREA_LIGHT)
-	{
-		color = float4(1.0, 0.0, 0.0, 1.0);
-	}
-	
-	if (gLightSourceType == DEBUG_POINT_LIGHT)
-	{
-		color = float4(0.0, 1.0, 0.0, 1.0);
-	}
+	float4 color = float4(0.0, 0.0, 1.0, 1.0);
 
     return color;
 }

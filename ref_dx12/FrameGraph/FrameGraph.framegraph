@@ -6,4 +6,5 @@ Steps
     Particles
 	Debug
 	Debug_LightSources
+	Debug_PathSegments
 }

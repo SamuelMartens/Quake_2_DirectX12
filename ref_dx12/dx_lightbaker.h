@@ -21,6 +21,10 @@ struct DiffuseProbe
 
 	//#TODO this is incoming radiance right?
 	DiffuseSH_t radianceSh;
+
+	// Contains lines list, that describe rays used for tracing
+	// these probes
+	std::optional<std::vector<XMFLOAT4>> pathTracingSegments;
 };
 
 struct ClusterProbeData
@@ -33,6 +37,20 @@ enum class LightBakingMode
 	AllClusters,
 	CurrentPositionCluster,
 	None
+};
+
+struct ProbePathTraceResult
+{
+	XMFLOAT4 radiance;
+
+	std::optional<std::vector<XMFLOAT4>> pathSegments;
+};
+
+enum class BakeFlags
+{
+	SaveRayPath,
+
+	Count
 };
 
 struct BakingResult
@@ -52,9 +70,9 @@ struct BakingResult
 	std::vector<DiffuseProbe> probeData;
 };
 
+
 class LightBaker
 {
-	
 public:
 	DEFINE_SINGLETON(LightBaker);
 
@@ -76,6 +94,7 @@ public:
 
 	void SetBakingMode(LightBakingMode genMode);
 	void SetBakePosition(const XMFLOAT4& position);
+	void SetBakeFlag(BakeFlags flag, bool value);
 
 private:
 
@@ -91,7 +110,7 @@ private:
 		const SurfaceLight& light) const;
 
 	//#TODO passing direction by ref seems silly. Need to pass multiple value
-	XMFLOAT4 PathTraceFromProbe(const XMFLOAT4& probeCoord, XMFLOAT4& direction);
+	ProbePathTraceResult PathTraceFromProbe(const XMFLOAT4& probeCoord, XMFLOAT4& direction);
 
 	std::vector<std::vector<XMFLOAT4>> clusterBakePoints;
 	
@@ -103,6 +122,8 @@ private:
 	std::optional<XMFLOAT4> bakePosition;
 
 	LightBakingMode generationMode;
+	Utils::Flags<BakeFlags> bakeFlags;
+
 	std::optional<int> bakeCluster;
 	std::vector<DiffuseProbe> probes;
 }; 

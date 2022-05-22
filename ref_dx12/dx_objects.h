@@ -123,7 +123,14 @@ enum class DebugObjectType
 {
 	LightProbe = 0,
 	LightSource = 1,
+	ProbePathTrace = 2,
 	None
+};
+
+struct DebugObject_ProbePathSegment
+{
+	int probeIndex = Const::INVALID_INDEX;
+	int segmentIndex = Const::INVALID_INDEX;
 };
 
 struct DebugObject_LightSource
@@ -149,4 +156,5 @@ struct DebugObject_LightProbe
 	XMFLOAT4 position = { 0.0f, 0.0f, 0.0f, 1.0f };
 };
 
-using DebugObject_t = std::variant<DebugObject_LightProbe, DebugObject_LightSource>;
+// NOTE: when adding new type, add registration in Pass_Debug::RegisterObjects()
+using DebugObject_t = std::variant<DebugObject_LightProbe, DebugObject_LightSource, DebugObject_ProbePathSegment>;

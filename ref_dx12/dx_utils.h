@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <vector>
 #include <functional>
+#include <bitset>
 #include <DirectXMath.h>
 
 #include "dx_shaderdefinitions.h"
@@ -183,6 +184,74 @@ namespace Utils
 	private:
 
 		T& objRef;
+	};
+
+	// From https://m-peko.github.io/craft-cpp/posts/different-ways-to-define-binary-flags/
+	template<typename EnumT>
+	class Flags
+	{
+		static_assert(std::is_enum_v<EnumT>, "Flags can only be specialized for enum types");
+
+		using UnderlyingT = typename std::make_unsigned_t<typename std::underlying_type_t<EnumT>>;
+
+	public:
+		Flags& set(EnumT e, bool value = true)
+		{
+			bits_.set(underlying(e), value);
+			return *this;
+		}
+
+		Flags& reset(EnumT e)
+		{
+			set(e, false);
+			return *this;
+		}
+
+		Flags& reset()
+		{
+			bits_.reset();
+			return *this;
+		}
+
+		[[nodiscard]] bool all() const
+		{
+			return bits_.all();
+		}
+
+		[[nodiscard]] bool any() const
+		{
+			return bits_.any();
+		}
+
+		[[nodiscard]] bool none() const
+		{
+			return bits_.none();
+		}
+
+		[[nodiscard]] constexpr std::size_t size() const
+		{
+			return bits_.size();
+		}
+
+		[[nodiscard]] std::size_t count() const
+		{
+			return bits_.count();
+		}
+
+		constexpr bool operator[](EnumT e) const
+		{
+			return bits_[underlying(e)];
+		}
+
+	private:
+
+		static constexpr UnderlyingT underlying(EnumT e)
+		{
+			return static_cast<UnderlyingT>(e);
+		}
+
+	private:
+		std::bitset<underlying(EnumT::Count)> bits_;
 	};
 
 	/* FUNCTIONS */

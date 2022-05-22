@@ -472,13 +472,13 @@ void ResourceManager::DeleteResource(const char* name)
 {
 	std::scoped_lock<std::mutex> lock(resources.mutex);
 
-	Logs::Logf(Logs::Category::Resource, "Delete texture %s", name);
+	Logs::Logf(Logs::Category::Resource, "Delete resource %s", name);
 
-	auto texIt = resources.obj.find(name);
+	auto resIt = resources.obj.find(name);
 
-	assert(texIt != resources.obj.end() && "Trying to delete texture that doesn't exist");
-	
-	resources.obj.erase(texIt);
+	assert(resIt != resources.obj.end() && "Trying to delete resource that doesn't exist");
+	// This will eventually result in call to RequestResourceDeletion	
+	resources.obj.erase(resIt);
 }
 
 Resource* ResourceManager::_CreateResource(FArg::CreateResource& args)

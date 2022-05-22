@@ -32,7 +32,7 @@ namespace Settings
 	constexpr int		 DEFAULT_MEMORY_BUFFER_SIZE = 256 * 1024 * 1024;
 	constexpr int		 DEFAULT_MEMORY_BUFFER_HANDLERS_NUM = 64 * 1024;
 
-	constexpr bool		 DEBUG_LAYER_ENABLED = false;
+	constexpr bool		 DEBUG_LAYER_ENABLED = true;
 	constexpr bool		 DEBUG_MESSAGE_FILTER_ENABLED = true;
 
 	constexpr DXGI_FORMAT BACK_BUFFER_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -65,12 +65,16 @@ namespace Settings
 
 
 	/* Light Baker */
-	//#TODO might need to tune this one
+	//#DEBUG tune this
 	constexpr float AREA_LIGHTS_MAX_DISTANCE = 300.0f;
+	//#DEBUG tune this
+	constexpr float POINT_LIGHTS_MAX_DISTANCE = 240.0f;
 
 	constexpr float RUSSIAN_ROULETTE_TERMINATION_PROBABILITY = 0.5f;
 
-	constexpr int PROBE_SAMPLES_NUM = 16;
+	//#DEBUG might roll this value back
+	constexpr int PROBE_SAMPLES_NUM = 14;
+	//#DEBUG might roll this value back
 	constexpr int GUARANTEED_BOUNCES_NUM = 2;
 	constexpr int AREA_LIGHTS_SAMPLES_NUM = 4;
 }

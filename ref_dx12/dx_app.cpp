@@ -9,6 +9,7 @@
 #include <DirectXColors.h>
 #include <memory>
 #include <tuple>
+#include <numeric>
 
 
 #include "Lib/imgui/imgui.h"
@@ -1213,6 +1214,28 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 		}
 	}
 
+	if (drawBakeRayPaths == true)
+	{
+		std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
+
+		for (int probeIndex = 0; probeIndex < lightBakingResult.obj.probeData.size(); ++probeIndex)
+		{
+			const DiffuseProbe& probe = lightBakingResult.obj.probeData[probeIndex];
+
+			assert(probe.pathTracingSegments.has_value() == true && "No probe path tracing data");
+			assert(probe.pathTracingSegments->size() % 2 == 0 && "Invalid number of segment vertices");
+
+			for (int segmentIndex = 0; segmentIndex < probe.pathTracingSegments->size() / 2; segmentIndex++)
+			{
+				DebugObject_ProbePathSegment object;
+				object.probeIndex = probeIndex;
+				object.segmentIndex = segmentIndex;
+
+				debugObjects.push_back(object);
+			}
+		}
+	}
+
 	return debugObjects;
 }
 
@@ -1302,18 +1325,26 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 
 			ImGui::Checkbox("Light Probes", &drawLightProbesDebugGeometry);
 			ImGui::Checkbox("Light Sources", &drawLightSourcesDebugGeometry);
+			ImGui::Checkbox("Bake Ray Paths", &drawBakeRayPaths);
 
 			if (drawLightSourcesDebugGeometry == true)
 			{
 				ImGui::Checkbox("Point Light Source Radius", &drawPointLightSourcesRadius);
 			}
 
+			ImGui::Text("-- Bake Options --");
+
+			ImGui::Text("Only use this option if baking for camera cluster");
+			ImGui::Checkbox("Save Bake Ray Paths", &saveBakeRayPaths);
 
 			ImGui::Text("-- Start baking --");
 
 			if (ImGui::Button("Bake Light All Clusters"))
 			{
 				LightBaker::Inst().SetBakingMode(LightBakingMode::AllClusters);
+				// Enforce false here
+				LightBaker::Inst().SetBakeFlag(BakeFlags::SaveRayPath, false);
+
 				Renderer::Inst().RequestStateChange(State::LightBaking);
 			}
 
@@ -1321,6 +1352,8 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 			{
 				LightBaker::Inst().SetBakingMode(LightBakingMode::CurrentPositionCluster);
 				LightBaker::Inst().SetBakePosition(context.frame.camera.position);
+				LightBaker::Inst().SetBakeFlag(BakeFlags::SaveRayPath, saveBakeRayPaths);
+
 				Renderer::Inst().RequestStateChange(State::LightBaking);
 			}
 
@@ -1729,10 +1762,24 @@ bool Renderer::TryTransferDiffuseIndirectLightingToGPU(GPUJobContext& context)
 
 	resMan.CreateStructuredBuffer(args);
 
-	// We transfered data to GPU and clean CPU side
-	lightBakingResult.obj.probeData.resize(0);
-
 	return true;
+}
+
+std::vector<std::vector<XMFLOAT4>> Renderer::GenProbePathSegmentsVertices() const
+{
+	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
+
+	std::vector<std::vector<XMFLOAT4>> vertices;
+	vertices.reserve(lightBakingResult.obj.probeData.size());
+
+	for (const DiffuseProbe& probe : lightBakingResult.obj.probeData)
+	{
+		assert(probe.pathTracingSegments.has_value() && "Can't generate path segment vertices. No source data");
+
+		vertices.push_back(*probe.pathTracingSegments);
+	}
+
+	return vertices;
 }
 
 const std::array<unsigned int, 256>& Renderer::GetRawPalette() const
