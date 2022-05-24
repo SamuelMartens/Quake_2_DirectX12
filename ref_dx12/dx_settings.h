@@ -21,6 +21,8 @@ namespace Settings
 	constexpr int		 RTV_DTV_DESCRIPTOR_HEAP_SIZE = 16;
 	constexpr int		 SAMPLER_DESCRIPTOR_HEAP_SIZE = 16;
 
+	constexpr int		 GPU_RESOURCE_DELETION_THRESHOLD = 16;
+
 	constexpr int		 COMMAND_LISTS_PER_FRAME = 10;
 	// Try to avoid to set up any particular number for this, instead change command lists per frame
 	constexpr int		 COMMAND_LISTS_NUM = COMMAND_LISTS_PER_FRAME * FRAMES_NUM;
@@ -65,16 +67,14 @@ namespace Settings
 
 
 	/* Light Baker */
-	//#DEBUG tune this
+	//#LIGHT_INFO tune this
 	constexpr float AREA_LIGHTS_MAX_DISTANCE = 300.0f;
-	//#DEBUG tune this
+	//#LIGHT_INFO tune this
 	constexpr float POINT_LIGHTS_MAX_DISTANCE = 240.0f;
 
 	constexpr float RUSSIAN_ROULETTE_TERMINATION_PROBABILITY = 0.5f;
 
-	//#DEBUG might roll this value back
 	constexpr int PROBE_SAMPLES_NUM = 14;
-	//#DEBUG might roll this value back
 	constexpr int GUARANTEED_BOUNCES_NUM = 2;
 	constexpr int AREA_LIGHTS_SAMPLES_NUM = 4;
 }

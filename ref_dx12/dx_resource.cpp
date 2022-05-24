@@ -15,8 +15,11 @@ Resource& Resource::operator=(Resource&& other)
 
 	buffer = other.buffer;
 
-	ResourceManager::Inst().RequestResourceDeletion(other.buffer);
-	other.buffer = nullptr;
+	if (other.buffer != nullptr)
+	{
+		ResourceManager::Inst().RequestResourceDeletion(other.buffer);
+		other.buffer = nullptr;
+	}
 
 	name = std::move(other.name);
 
@@ -27,9 +30,12 @@ Resource& Resource::operator=(Resource&& other)
 
 Resource::~Resource()
 {
-	// This is a bit lame cause, buffer might actually not be deleted, if 
-	// some other resource owns it.
-	ResourceManager::Inst().RequestResourceDeletion(buffer);
+	if (buffer != nullptr)
+	{
+		// This is a bit lame cause, buffer might actually not be deleted, if 
+		// some other resource owns it.
+		ResourceManager::Inst().RequestResourceDeletion(buffer);
+	}
 }
 
 int Resource::BPPFromFormat(DXGI_FORMAT format)

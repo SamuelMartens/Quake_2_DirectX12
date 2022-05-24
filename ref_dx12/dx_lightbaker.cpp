@@ -19,11 +19,6 @@
 #undef max
 #endif
 
-//#DEBUG
-#pragma optimize("", off)
-//END
-
-
 namespace
 {
 	inline float CalculateDistanceFalloff(float dist, float dist0, float distMax)

@@ -1285,9 +1285,6 @@ void Renderer::EndFrameJob(GPUJobContext& context)
 	ReleaseFrame(frame);
 
 	ThreadingUtils::AssertUnlocked(context.frame.uploadResources);
-	
-	// Delete shared resources marked for deletion
-	ResourceManager::Inst().DeleteRequestedResources();
 
 	Logs::Log(Logs::Category::Job, "EndFrame job ended");
 }
@@ -2093,6 +2090,9 @@ void Renderer::AddDrawCall_Char(int x, int y, int num)
 void Renderer::BeginFrame()
 {
 	Logs::Log(Logs::Category::Generic, "API: Begin frame");
+
+	// That might flush all frames
+	ResourceManager::Inst().DeleteRequestedResources();
 
 	// Frame graph processing
 

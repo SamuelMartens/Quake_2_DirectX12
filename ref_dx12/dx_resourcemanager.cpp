@@ -224,6 +224,8 @@ Resource* ResourceManager::CreateStructuredBuffer(FArg::CreateStructuredBuffer& 
 
 void ResourceManager::RequestResourceDeletion(ComPtr<ID3D12Resource> resourceToDelete)
 {
+	assert(resourceToDelete != nullptr && "Can't request deletion of empty resource");
+
 	std::scoped_lock<std::mutex> lock(resourcesToDelete.mutex);
 
 	resourcesToDelete.obj.push_back(resourceToDelete);
@@ -231,9 +233,26 @@ void ResourceManager::RequestResourceDeletion(ComPtr<ID3D12Resource> resourceToD
 
 void ResourceManager::DeleteRequestedResources()
 {
-	std::scoped_lock<std::mutex> lock(resourcesToDelete.mutex);
+	// For now I have no mechanism to be sure that resources that needs to be deleted
+	// are not used in some frames. So what I do is I force flush all frames and the then delete.
+	// Ugly, but it works
+	ASSERT_MAIN_THREAD;
 
-	resourcesToDelete.obj.clear();
+	{
+		std::scoped_lock<std::mutex> lock(resourcesToDelete.mutex);
+
+		if (resourcesToDelete.obj.size() < Settings::GPU_RESOURCE_DELETION_THRESHOLD)
+		{
+			return;
+		}
+	}
+
+	Renderer::Inst().FlushAllFrames();
+
+	{
+		std::scoped_lock<std::mutex> lock(resourcesToDelete.mutex);
+		resourcesToDelete.obj.clear();
+	}
 }
 
 Resource* ResourceManager::FindOrCreateResource(std::string_view resourceName, GPUJobContext& context)
