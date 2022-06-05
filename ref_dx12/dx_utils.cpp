@@ -730,9 +730,7 @@ std::vector<XMFLOAT4> Utils::GenerateNormals(const std::vector<XMFLOAT4>& vertic
 		XMVECTOR sseV1 = XMLoadFloat4(&vertices[v1Ind]);
 		XMVECTOR sseV2 = XMLoadFloat4(&vertices[v2Ind]);
 
-		// Make sure direction is right, I might end up with normals facing inside,
-		// in this case tweak order in which vertices are subtracted
-		XMVECTOR sseFaceCrossProd = XMVector3Cross(sseV1 - sseV0, sseV2 - sseV0);
+		XMVECTOR sseFaceCrossProd = XMVector3Cross(sseV2 - sseV0, sseV1 - sseV0);
 
 		XMStoreFloat4(&normals[v0Ind], XMLoadFloat4(&normals[v0Ind]) + sseFaceCrossProd);
 		XMStoreFloat4(&normals[v1Ind], XMLoadFloat4(&normals[v1Ind]) + sseFaceCrossProd);
@@ -877,7 +875,15 @@ bool Utils::IsRayIntersectsTriangle(const Ray& ray, const XMFLOAT4& v0, const XM
 		return false;
 	}
 
-	result.t = f * XMVectorGetX(XMVector3Dot(sseEdge2, sseQ));
+	const float t = f * XMVectorGetX(XMVector3Dot(sseEdge2, sseQ));
+
+	// Triangle is behind the ray
+	if (t < 0.0f)
+	{
+		return false;
+	}
+
+	result.t = t;
 	result.u = u;
 	result.v = v;
 	result.w = 1.0f - u - v;
@@ -888,7 +894,7 @@ bool Utils::IsRayIntersectsTriangle(const Ray& ray, const XMFLOAT4& v0, const XM
 bool Utils::FindClosestIntersectionInNode(const Utils::Ray& ray, const BSPNode& node, Utils::BSPNodeRayIntersectionResult& result)
 {
 	float nodeIntersectionT = FLT_MAX;
-
+	
 	if (Utils::IsRayIntersectsAABB(ray, node.aabb, &nodeIntersectionT) == false ||
 		nodeIntersectionT > result.rayTriangleIntersection.t)
 	{
@@ -904,7 +910,6 @@ bool Utils::FindClosestIntersectionInNode(const Utils::Ray& ray, const BSPNode& 
 		float rayT = FLT_MAX;
 
 		const SourceStaticObject& object = objects[objectIndex];
-
 		// No intersection at all
 		if (Utils::IsRayIntersectsAABB(ray, object.aabb, &rayT) == false)
 		{

@@ -655,6 +655,32 @@ namespace RenderCallbacks
 				}
 			}
 			break;
+			case HASH("Debug_PathSegments"): 
+			{
+				switch (paramName)
+				{
+				case HASH("gBounceNum"):
+				{
+					std::visit([&bindPoint](auto&& object)
+					{
+						using T = std::decay_t<decltype(object)>;
+
+						if constexpr (std::is_same_v<T, DebugObject_ProbePathSegment>)
+						{
+
+							reinterpret_cast<int&>(bindPoint) = static_cast<int>(object.bounce);
+						}
+						else
+						{
+							reinterpret_cast<int&>(bindPoint) = -1;
+						}
+					}, obj);
+				}
+				default:
+					break;
+				}
+			}
+			break;
 			default:
 				break;
 			}

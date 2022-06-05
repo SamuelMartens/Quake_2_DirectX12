@@ -35,6 +35,10 @@
 #undef max
 #endif
 
+#ifdef min
+#undef min
+#endif
+
 namespace
 {
 	std::mutex drawDebugGuiMutex;
@@ -106,6 +110,28 @@ namespace
 			}
 			
 			order += 3 * vertCount;
+		}
+	}
+
+	void AddProbeDebugRaySegments(std::vector<DebugObject_t>& debugObjects, const std::vector<DiffuseProbe>& probeData, int probeIndex)
+	{
+		// NOTE: most likely you need to lock mutex for probe data outside of this function
+
+		const DiffuseProbe& probe = probeData[probeIndex];
+
+		if (probe.pathTracingSegments.has_value() == false)
+		{
+			return;
+		}
+
+		for (int segmentIndex = 0; segmentIndex < probe.pathTracingSegments->size(); segmentIndex++)
+		{
+			DebugObject_ProbePathSegment object;
+			object.probeIndex = probeIndex;
+			object.segmentIndex = segmentIndex;
+			object.bounce = probe.pathTracingSegments->at(segmentIndex).bounce;
+
+			debugObjects.push_back(object);
 		}
 	}
 
@@ -1162,7 +1188,9 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 
 			if (hasProbeDataOnGPU)
 			{
-				switch (bakeResult.bakingMode)
+				assert(bakeResult.bakingMode.has_value() == true && "No value for baking mode");
+
+				switch (*bakeResult.bakingMode)
 				{
 				case LightBakingMode::CurrentPositionCluster:
 				{
@@ -1218,20 +1246,30 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 	{
 		std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
 
-		for (int probeIndex = 0; probeIndex < lightBakingResult.obj.probeData.size(); ++probeIndex)
+		if (lightBakingResult.obj.probeData.empty() == false)
 		{
-			const DiffuseProbe& probe = lightBakingResult.obj.probeData[probeIndex];
-
-			assert(probe.pathTracingSegments.has_value() == true && "No probe path tracing data");
-			assert(probe.pathTracingSegments->size() % 2 == 0 && "Invalid number of segment vertices");
-
-			for (int segmentIndex = 0; segmentIndex < probe.pathTracingSegments->size() / 2; segmentIndex++)
+			switch (drawBakeRayPathsMode)
 			{
-				DebugObject_ProbePathSegment object;
-				object.probeIndex = probeIndex;
-				object.segmentIndex = segmentIndex;
+			case Renderer::DrawRayPathMode::AllClusterProbes:
+			{
+				for (int probeIndex = 0; probeIndex < lightBakingResult.obj.probeData.size(); ++probeIndex)
+				{
+					AddProbeDebugRaySegments(debugObjects, lightBakingResult.obj.probeData, probeIndex);
+				}
 
-				debugObjects.push_back(object);
+				break;
+			}
+			case Renderer::DrawRayPathMode::SingleProbe:
+			{
+				assert(drawBakeRayPathsProbeIndex < lightBakingResult.obj.probeData.size() && "Invalid probe index");
+
+				AddProbeDebugRaySegments(debugObjects, lightBakingResult.obj.probeData, drawBakeRayPathsProbeIndex);
+
+				break;
+			}
+			default:
+				assert(false && "Invalid draw ray path mode");
+				break;
 			}
 		}
 	}
@@ -1300,6 +1338,8 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 		return;
 	}
 
+	LightBaker& lightBaker = LightBaker::Inst();
+
 	ID3D12GraphicsCommandList* gpuCommanList = context.commandList->GetGPUList();
 
 	Diagnostics::BeginEvent(gpuCommanList, "Debug GUI");
@@ -1321,44 +1361,73 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 			ImGui::Text(" Debug geometry ");
 
 			ImGui::Checkbox("Light Probes", &drawLightProbesDebugGeometry);
+			
 			ImGui::Checkbox("Light Sources", &drawLightSourcesDebugGeometry);
-			ImGui::Checkbox("Bake Ray Paths", &drawBakeRayPaths);
 
 			if (drawLightSourcesDebugGeometry == true)
 			{
+				ImGui::SameLine();
 				ImGui::Checkbox("Point Light Source Radius", &drawPointLightSourcesRadius);
 			}
 
+			ImGui::Checkbox("Show Ray Paths", &drawBakeRayPaths);
+
+			{
+				int drawRayMode = static_cast<int>(drawBakeRayPathsMode);
+
+				ImGui::RadioButton("Single probe", &drawRayMode, static_cast<int>(DrawRayPathMode::SingleProbe));
+				ImGui::SameLine();
+				ImGui::RadioButton("All probes", &drawRayMode, static_cast<int>(DrawRayPathMode::AllClusterProbes));
+				drawBakeRayPathsMode = static_cast<DrawRayPathMode>(drawRayMode);
+			}
+
+			ImGui::Text("Probes num: %d", lightBakingResult.obj.probeData.size());
+			ImGui::InputInt("Probe ray index", &drawBakeRayPathsProbeIndex);
+			drawBakeRayPathsProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probeData.size(), drawBakeRayPathsProbeIndex));
+
+			ImGui::Separator();
 			ImGui::Text("-- Bake Options --");
 
 			ImGui::Text("Only use this option if baking for camera cluster");
-			ImGui::Checkbox("Save Bake Ray Paths", &saveBakeRayPaths);
 
+			bool saveBakeRayPaths = LightBaker::Inst().GetBakeFlag(BakeFlags::SaveRayPath);
+			if (ImGui::Checkbox("Save Bake Ray Paths", &saveBakeRayPaths))
+			{
+				lightBaker.SetBakeFlag(BakeFlags::SaveRayPath, saveBakeRayPaths);
+			}
+
+
+			{
+				int bakeMode = static_cast<int>(LightBaker::Inst().GetBakingMode());
+				
+				ImGui::RadioButton("Camera cluster", &bakeMode, static_cast<int>(LightBakingMode::CurrentPositionCluster));
+				ImGui::SameLine();
+				ImGui::RadioButton("All clusters", &bakeMode, static_cast<int>(LightBakingMode::AllClusters));
+				lightBaker.SetBakingMode(static_cast<LightBakingMode>(bakeMode));
+			}
+			
+
+			ImGui::Separator();
 			ImGui::Text("-- Start baking --");
 
-			if (ImGui::Button("Bake Light All Clusters"))
+			if (ImGui::Button("Start bake"))
 			{
-				LightBaker::Inst().SetBakingMode(LightBakingMode::AllClusters);
-				// Enforce false here
-				LightBaker::Inst().SetBakeFlag(BakeFlags::SaveRayPath, false);
+				if (lightBaker.GetBakingMode() == LightBakingMode::CurrentPositionCluster)
+				{
+					lightBaker.SetBakePosition(context.frame.camera.position);
+				}
+				else
+				{
+					// Enforce false here
+					lightBaker.SetBakeFlag(BakeFlags::SaveRayPath, false);
+				}
 
-				Renderer::Inst().RequestStateChange(State::LightBaking);
+				RequestStateChange(State::LightBaking);
 			}
-
-			if (ImGui::Button("Bake Light Camera Cluster"))
-			{
-				LightBaker::Inst().SetBakingMode(LightBakingMode::CurrentPositionCluster);
-				LightBaker::Inst().SetBakePosition(context.frame.camera.position);
-				LightBaker::Inst().SetBakeFlag(BakeFlags::SaveRayPath, saveBakeRayPaths);
-
-				Renderer::Inst().RequestStateChange(State::LightBaking);
-			}
-
 		}
 		else
 		{
-			const LightBaker& baker = LightBaker::Inst();
-			ImGui::Text("Baking progress: %d / %d", baker.GetBakedProbesNum(), baker.GetTotalProbesNum());
+			ImGui::Text("Baking progress: %d / %d", lightBaker.GetBakedProbesNum(), lightBaker.GetTotalProbesNum());
 		}
 		
 
@@ -1707,7 +1776,7 @@ void Renderer::ConsumeDiffuseIndirectLightingBakingResult(BakingResult&& results
 {
 	ASSERT_MAIN_THREAD;
 
-	assert(results.bakingMode != LightBakingMode::None && "Invalid baking mode for baking results");
+	assert(results.bakingMode.has_value() == true && "Invalid baking mode for baking results");
 	assert(results.probeData.empty() == false && "Can't consume empty probe data");
 
 	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
@@ -1730,7 +1799,7 @@ bool Renderer::TryTransferDiffuseIndirectLightingToGPU(GPUJobContext& context)
 		resMan.DeleteResource(Resource::PROBE_STRUCTURED_BUFFER_NAME);
 	}
 
-	const int probeVectorSize = lightBakingResult.obj.probeData.size() * sizeof(SphericalHarmonic9_t<XMFLOAT4>) / sizeof(XMFLOAT4);
+	const int probeVectorSize = lightBakingResult.obj.probeData.size() * sizeof(DiffuseProbe::DiffuseSH_t) / sizeof(XMFLOAT4);
 
 	std::vector<XMFLOAT4> probeGPUData;
 	probeGPUData.reserve(probeVectorSize);
@@ -1769,11 +1838,21 @@ std::vector<std::vector<XMFLOAT4>> Renderer::GenProbePathSegmentsVertices() cons
 	std::vector<std::vector<XMFLOAT4>> vertices;
 	vertices.reserve(lightBakingResult.obj.probeData.size());
 
+	std::vector<XMFLOAT4> singleProbeVertices;
+
 	for (const DiffuseProbe& probe : lightBakingResult.obj.probeData)
 	{
 		assert(probe.pathTracingSegments.has_value() && "Can't generate path segment vertices. No source data");
 
-		vertices.push_back(*probe.pathTracingSegments);
+		singleProbeVertices.clear();
+
+		for (const PathSegment& seg : *probe.pathTracingSegments)
+		{
+			singleProbeVertices.push_back(seg.v0);
+			singleProbeVertices.push_back(seg.v1);
+		}
+
+		vertices.push_back(singleProbeVertices);
 	}
 
 	return vertices;
@@ -1885,10 +1964,10 @@ void Renderer::FindImageScaledSizes(int width, int height, int& scaledWidth, int
 	constexpr int maxSize = 256;
 
 	for (scaledWidth = 1; scaledWidth < width; scaledWidth <<= 1);	
-	min(scaledWidth, maxSize);
+	scaledWidth = std::min(scaledWidth, maxSize);
 
 	for (scaledHeight = 1; scaledHeight < height; scaledHeight <<= 1);
-	min(scaledHeight, maxSize);
+	scaledHeight = std::min(scaledHeight, maxSize);
 }
 
 bool Renderer::IsVisible(const entity_t& entity, const Camera& camera) const

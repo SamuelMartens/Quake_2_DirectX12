@@ -151,6 +151,12 @@ class Renderer
 
 public:
 
+	enum class DrawRayPathMode
+	{
+		AllClusterProbes,
+		SingleProbe
+	};
+
 	enum class State
 	{
 		Rendering,
@@ -357,7 +363,10 @@ private:
 	bool drawLightProbesDebugGeometry = false;
 	bool drawLightSourcesDebugGeometry = false;
 	bool drawPointLightSourcesRadius = false;
+	
+	DrawRayPathMode drawBakeRayPathsMode = DrawRayPathMode::SingleProbe;
+	int drawBakeRayPathsProbeIndex = 0;
+
 	bool drawBakeRayPaths = false;
 
-	bool saveBakeRayPaths = false;
 };

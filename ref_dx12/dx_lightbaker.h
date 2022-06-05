@@ -15,6 +15,16 @@
 template<typename T>
 using SphericalHarmonic9_t = std::array<T, 9>;
 
+struct PathSegment
+{
+	XMFLOAT4 v0 = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+	XMFLOAT4 v1 = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+
+	XMFLOAT4 radiance = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+
+	int bounce = 0;
+};
+
 struct DiffuseProbe
 {
 	using DiffuseSH_t = SphericalHarmonic9_t<XMFLOAT4>;
@@ -24,7 +34,7 @@ struct DiffuseProbe
 
 	// Contains lines list, that describe rays used for tracing
 	// these probes
-	std::optional<std::vector<XMFLOAT4>> pathTracingSegments;
+	std::optional<std::vector<PathSegment>> pathTracingSegments;
 };
 
 struct ClusterProbeData
@@ -35,15 +45,15 @@ struct ClusterProbeData
 enum class LightBakingMode
 {
 	AllClusters,
-	CurrentPositionCluster,
-	None
+	CurrentPositionCluster
 };
+
 
 struct ProbePathTraceResult
 {
 	XMFLOAT4 radiance;
 
-	std::optional<std::vector<XMFLOAT4>> pathSegments;
+	std::optional<std::vector<PathSegment>> pathSegments;
 };
 
 enum class BakeFlags
@@ -60,7 +70,7 @@ struct BakingResult
 		int startIndex = Const::INVALID_INDEX;
 	};
 
-	LightBakingMode bakingMode = LightBakingMode::None;
+	std::optional<LightBakingMode> bakingMode;
 
 	// If baking mode is CurrentPositionCluster this will store current
 	// baking cluster
@@ -89,6 +99,9 @@ public:
 	void BakeJob();
 	int GetTotalProbesNum() const;
 	int GetBakedProbesNum() const;
+
+	LightBakingMode GetBakingMode() const;
+	bool GetBakeFlag(BakeFlags flag) const;
 
 	BakingResult TransferBakingResult();
 
@@ -121,7 +134,7 @@ private:
 
 	std::optional<XMFLOAT4> bakePosition;
 
-	LightBakingMode generationMode;
+	LightBakingMode generationMode = LightBakingMode::CurrentPositionCluster;
 	Utils::Flags<BakeFlags> bakeFlags;
 
 	std::optional<int> bakeCluster;

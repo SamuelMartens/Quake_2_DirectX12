@@ -75,6 +75,11 @@ namespace Settings
 	constexpr float RUSSIAN_ROULETTE_TERMINATION_PROBABILITY = 0.5f;
 
 	constexpr int PROBE_SAMPLES_NUM = 14;
+
 	constexpr int GUARANTEED_BOUNCES_NUM = 2;
 	constexpr int AREA_LIGHTS_SAMPLES_NUM = 4;
+
+	// Because of floating point math errors, funding and reconstruction intersection point
+	// might not work correctly sometimes. This small Epsilon is used to fix this problem
+	constexpr float PATH_TRACING_EPSILON =  0.00015f;
 }

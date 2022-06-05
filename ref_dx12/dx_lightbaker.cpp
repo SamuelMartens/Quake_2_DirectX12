@@ -139,6 +139,21 @@ namespace
 	{
 		return cosTheta / M_PI;
 	}
+
+	void AddPathSegment(std::vector<PathSegment>& segments, 
+		const XMFLOAT4& v0, 
+		const XMFLOAT4& v1,
+		int bounce,
+		const XMFLOAT4& radiance)
+	{
+		PathSegment segment;
+		segment.v0 = v0;
+		segment.v1 = v1;
+		segment.bounce = bounce;
+		segment.radiance = radiance;
+
+		segments.push_back(segment);
+	}
 }
 
 void LightBaker::PreBake()
@@ -241,6 +256,22 @@ std::vector<XMFLOAT4> LightBaker::GenerateClusterBakePoints(int clusterIndex) co
 
 	Utils::AABB clusterAABB = Renderer::Inst().GetBSPTree().GetClusterAABB(clusterIndex);
 	
+	constexpr XMFLOAT4 epsilonVec = XMFLOAT4(
+		Settings::PATH_TRACING_EPSILON,
+		Settings::PATH_TRACING_EPSILON,
+		Settings::PATH_TRACING_EPSILON, 0.0f);
+
+	XMVECTOR sseEpsilonVec = XMLoadFloat4(&epsilonVec);
+
+	// Because of floating point math errors sometimes bake points would be slightly behind
+	// actual meshes, so reduce AABB we use to generate bake points a little bir
+	XMStoreFloat4(&clusterAABB.minVert, 
+		XMLoadFloat4(&clusterAABB.minVert) + sseEpsilonVec);
+
+	XMStoreFloat4(&clusterAABB.maxVert,
+		XMLoadFloat4(&clusterAABB.maxVert) - sseEpsilonVec);
+
+	
 	// Amount of bake points along X axis
 	const int xAxisNum = std::ceil((clusterAABB.maxVert.x - clusterAABB.minVert.x) / bakePointsInterval);
 	// Amount of bake points along Y axis
@@ -298,7 +329,7 @@ void LightBaker::BakeJob()
 			
 			if (bakeFlags[BakeFlags::SaveRayPath] == true)
 			{
-				probe.pathTracingSegments = std::vector<XMFLOAT4>();
+				probe.pathTracingSegments = std::vector<PathSegment>();
 			}
 
 			for (int i = 0; i < Settings::PROBE_SAMPLES_NUM; ++i)
@@ -350,6 +381,16 @@ int LightBaker::GetBakedProbesNum() const
 	return probesBaked;
 }
 
+LightBakingMode LightBaker::GetBakingMode() const
+{
+	return generationMode;
+}
+
+bool LightBaker::GetBakeFlag(BakeFlags flag) const
+{
+	return bakeFlags[flag];
+}
+
 BakingResult LightBaker::TransferBakingResult()
 {
 	BakingResult result;
@@ -372,8 +413,6 @@ BakingResult LightBaker::TransferBakingResult()
 		result.clusterSizes = clusterSizes;
 	}
 
-	// Now clear rest of baking state result
-	generationMode = LightBakingMode::None;
 	bakeCluster = std::nullopt;
 
 	return result;
@@ -665,7 +704,7 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 
 	if (bakeFlags[BakeFlags::SaveRayPath] == true)
 	{
-		result.pathSegments = std::vector<XMFLOAT4>();
+		result.pathSegments = std::vector<PathSegment>();
 	}
 
 	const BSPTree& bspTree = Renderer::Inst().GetBSPTree();
@@ -700,13 +739,12 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 			{
 				break;
 			}
-
+			
 			sseThoroughput = sseThoroughput / (1.0f - Settings::RUSSIAN_ROULETTE_TERMINATION_PROBABILITY);
 		}
 
 		// Find intersection
 		Utils::Ray ray = { intersectionPoint, rayDir };
-
 		auto [isIntersected, intersectionResult] = bspTree.FindClosestRayIntersection(ray);
 
 		if (isIntersected == false)
@@ -721,14 +759,21 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 				XMFLOAT4 secondRayPoint;
 				XMStoreFloat4(&secondRayPoint, sseSecondRayPoint);
 
-				result.pathSegments->push_back(ray.origin);
-				result.pathSegments->push_back(secondRayPoint);
+				
+				XMFLOAT4 radiance;
+				XMStoreFloat4(&radiance, sseIrradiance);
+
+				AddPathSegment(*result.pathSegments,
+					ray.origin,
+					secondRayPoint,
+					rayBounce,
+					radiance);
 			}
 
 			break;
 		}
-
-		XMVECTOR sseIntersectionPoint = XMLoadFloat4(&ray.direction) * intersectionResult.rayTriangleIntersection.t +
+		// Subtract epsilon, because floating point math error causes reconstructed intersection point to be slightly behind actual mesh
+		XMVECTOR sseIntersectionPoint = XMLoadFloat4(&ray.direction) * (intersectionResult.rayTriangleIntersection.t - Settings::PATH_TRACING_EPSILON) +
 			XMLoadFloat4(&ray.origin);
 
 		// Update intersection point
@@ -736,8 +781,14 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 
 		if (bakeFlags[BakeFlags::SaveRayPath] == true)
 		{
-			result.pathSegments->push_back(ray.origin);
-			result.pathSegments->push_back(intersectionPoint);
+			XMFLOAT4 radiance;
+			XMStoreFloat4(&radiance, sseIrradiance);
+			
+			AddPathSegment(*result.pathSegments,
+				ray.origin,
+				intersectionPoint,
+				rayBounce,
+				radiance);
 		}
 
 		XMFLOAT4 directIrradiance = GatherDirectIrradianceAtInersectionPoint(ray, intersectionResult);

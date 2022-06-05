@@ -17,7 +17,8 @@ RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0),
-CBV(b1)
+CBV(b1),
+CBV(b2)
 }
 
 // Attributes
@@ -49,6 +50,12 @@ cbuffer cbPerObject_Global : register(b1)
 	int gDebugObjectType;
 }
 
+[Local, PerObject]
+cbuffer cbPerObject_Local : register(b2)
+{
+	int gBounceNum;
+}
+
 // Shaders
 
 Type : VS 
@@ -67,7 +74,7 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : PS 
-External : VertexOut, cbPerObject_Global
+External : VertexOut, cbPerObject_Global, cbPerObject_Local
 <[
 
 @include "Debug.passh"

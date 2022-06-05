@@ -131,6 +131,10 @@ struct DebugObject_ProbePathSegment
 {
 	int probeIndex = Const::INVALID_INDEX;
 	int segmentIndex = Const::INVALID_INDEX;
+
+	// This is stupid, but I must duplicate data here from original segment structure
+	// otherwise it is not thread safe
+	int bounce = -1;
 };
 
 struct DebugObject_LightSource
