@@ -15,6 +15,23 @@
 template<typename T>
 using SphericalHarmonic9_t = std::array<T, 9>;
 
+struct LightSamplePoint
+{
+	struct Sample
+	{
+		XMFLOAT4 position = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+		XMFLOAT4 radiance = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+
+		DebugObject_LightSource::Type lightType = DebugObject_LightSource::Type::None;
+	};
+
+	XMFLOAT4 position = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+
+	std::vector<Sample> samples;
+};
+
+using PathLightSampleInfo_t = std::vector<LightSamplePoint>;
+
 struct PathSegment
 {
 	XMFLOAT4 v0 = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -35,6 +52,10 @@ struct DiffuseProbe
 	// Contains lines list, that describe rays used for tracing
 	// these probes
 	std::optional<std::vector<PathSegment>> pathTracingSegments;
+	// Contains data about sampling light sources during path tracing.
+	// Each vector is a list of intersection point for a single path. So for
+	// one probe we have a list of path segments
+	std::optional<std::vector<PathLightSampleInfo_t>> lightSamples;
 };
 
 struct ClusterProbeData
@@ -54,11 +75,13 @@ struct ProbePathTraceResult
 	XMFLOAT4 radiance;
 
 	std::optional<std::vector<PathSegment>> pathSegments;
+	std::optional<PathLightSampleInfo_t> lightSamples;
 };
 
 enum class BakeFlags
 {
 	SaveRayPath,
+	SaveLightSampling,
 
 	Count
 };
@@ -114,7 +137,10 @@ private:
 	SphericalHarmonic9_t<float> GetSphericalHarmonic9Basis(const XMFLOAT4& direction) const;
 	SphericalHarmonic9_t<XMFLOAT4> ProjectOntoSphericalHarmonic(const XMFLOAT4& direction, const XMFLOAT4& color) const;
 
-	XMFLOAT4 GatherDirectIrradianceAtInersectionPoint(const Utils::Ray& ray, const Utils::BSPNodeRayIntersectionResult& nodeIntersectionResult) const;
+	XMFLOAT4 GatherDirectRadianceAtInersectionPoint(
+		const Utils::Ray& ray, 
+		const Utils::BSPNodeRayIntersectionResult& nodeIntersectionResult,
+		LightSamplePoint* lightSampleDebugInfo) const;
 
 	XMFLOAT4 GatherIrradianceFromAreaLights(const Utils::Ray& ray,
 		const  Utils::BSPNodeRayIntersectionResult& nodeIntersectionResult) const;

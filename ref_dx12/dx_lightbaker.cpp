@@ -332,6 +332,11 @@ void LightBaker::BakeJob()
 				probe.pathTracingSegments = std::vector<PathSegment>();
 			}
 
+			if (bakeFlags[BakeFlags::SaveLightSampling] == true)
+			{
+				probe.lightSamples = std::vector<PathLightSampleInfo_t>();
+			}
+
 			for (int i = 0; i < Settings::PROBE_SAMPLES_NUM; ++i)
 			{
 				XMFLOAT4 direction = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -345,6 +350,11 @@ void LightBaker::BakeJob()
 
 					probe.pathTracingSegments->insert(probe.pathTracingSegments->end(),
 						sampleRes.pathSegments->cbegin(), sampleRes.pathSegments->cend());
+				}
+
+				if (bakeFlags[BakeFlags::SaveLightSampling] == true)
+				{
+					probe.lightSamples->push_back(*sampleRes.lightSamples);
 				}
 
 				// Project single sample on SH
@@ -472,7 +482,7 @@ SphericalHarmonic9_t<XMFLOAT4> LightBaker::ProjectOntoSphericalHarmonic(const XM
 	return sphericalHarmonic;
 }
 
-XMFLOAT4 LightBaker::GatherDirectIrradianceAtInersectionPoint(const Utils::Ray& ray, const Utils::BSPNodeRayIntersectionResult& nodeIntersectionResult) const
+XMFLOAT4 LightBaker::GatherDirectRadianceAtInersectionPoint(const Utils::Ray& ray, const Utils::BSPNodeRayIntersectionResult& nodeIntersectionResult, LightSamplePoint* lightSampleDebugInfo) const
 {
 	const Renderer& renderer = Renderer::Inst();
 
@@ -481,6 +491,11 @@ XMFLOAT4 LightBaker::GatherDirectIrradianceAtInersectionPoint(const Utils::Ray& 
 
 	XMFLOAT4 intersectionPoint;
 	XMStoreFloat4(&intersectionPoint, sseIntersectionPoint);
+
+	if (lightSampleDebugInfo != nullptr)
+	{
+		lightSampleDebugInfo->position = intersectionPoint;
+	}
 
 	const SourceStaticObject& object = renderer.GetSourceStaticObjects()[nodeIntersectionResult.staticObjIndex];
 
@@ -500,7 +515,7 @@ XMFLOAT4 LightBaker::GatherDirectIrradianceAtInersectionPoint(const Utils::Ray& 
 	const std::vector<PointLight>& pointLights = renderer.GetStaticPointLights();
 	const BSPTree& bsp = renderer.GetBSPTree();
 
-	XMVECTOR sseResultIrradiance = XMVectorZero();
+	XMVECTOR sseResultRadiance = XMVectorZero();
 
 	for (const PointLight& light : pointLights)
 	{
@@ -518,8 +533,7 @@ XMFLOAT4 LightBaker::GatherDirectIrradianceAtInersectionPoint(const Utils::Ray& 
 			continue;
 		}
 
-		//#DEBUG it should be const
-		float normalAndIntersectionDotProduct = XMVectorGetX(XMVector3Dot(sseIntersectionPointToLight, sseNormal));
+		const float normalAndIntersectionDotProduct = XMVectorGetX(XMVector3Dot(sseIntersectionPointToLight, sseNormal));
 
 		if (normalAndIntersectionDotProduct <= 0.0f)
 		{
@@ -532,31 +546,35 @@ XMFLOAT4 LightBaker::GatherDirectIrradianceAtInersectionPoint(const Utils::Ray& 
 			continue;
 		}
 
-		//#DEBUG remove 10.0f
-		//const float distanceFalloff = CalculateDistanceFalloff(distanceToLight, light.radius * 10.0f, Settings::POINT_LIGHTS_MAX_DISTANCE);
-		const float distanceFalloff = 1.0f;
+		const float distanceFalloff = CalculateDistanceFalloff(distanceToLight, light.radius, Settings::POINT_LIGHTS_MAX_DISTANCE);
 
 		if (distanceFalloff == 0.0f)
 		{
 			continue;
 		}
 
-		//#DEBUG
-		normalAndIntersectionDotProduct = 1.0f;
-		//END
+		XMVECTOR sseLightRadiance = distanceFalloff * XMLoadFloat4(&light.color) * light.intensity * normalAndIntersectionDotProduct;
+		sseResultRadiance = sseResultRadiance + sseLightRadiance;
 
-		sseResultIrradiance = sseResultIrradiance + 
-			 distanceFalloff * XMLoadFloat4(&light.color) * light.intensity * normalAndIntersectionDotProduct;
+		if (lightSampleDebugInfo != nullptr)
+		{
+			LightSamplePoint::Sample sample;
+			sample.lightType = DebugObject_LightSource::Type::Point;
+			sample.position = light.origin;
+			XMStoreFloat4(&sample.radiance, sseLightRadiance);
+
+			lightSampleDebugInfo->samples.push_back(sample);
+		}	 
 	}
 
 	//#DEBUG discable area lights as I am focused on point lights
 	//const XMFLOAT4 areaLightIrradiance = GatherIrradianceFromAreaLights(ray, nodeIntersectionResult);
 	const XMFLOAT4 areaLightIrradiance = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 
-	XMFLOAT4 resultIrradiance;
-	XMStoreFloat4(&resultIrradiance, sseResultIrradiance + XMLoadFloat4(&areaLightIrradiance));
+	XMFLOAT4 resultRadiance;
+	XMStoreFloat4(&resultRadiance, sseResultRadiance + XMLoadFloat4(&areaLightIrradiance));
 
-	return resultIrradiance;
+	return resultRadiance;
 }
 
 XMFLOAT4 LightBaker::GatherIrradianceFromAreaLights(const Utils::Ray& ray, const Utils::BSPNodeRayIntersectionResult& nodeIntersectionResult) const
@@ -707,9 +725,14 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 		result.pathSegments = std::vector<PathSegment>();
 	}
 
+	if (bakeFlags[BakeFlags::SaveLightSampling] == true)
+	{
+		result.lightSamples = PathLightSampleInfo_t();
+	}
+
 	const BSPTree& bspTree = Renderer::Inst().GetBSPTree();
 
-	XMVECTOR sseIrradiance = XMVectorZero();
+	XMVECTOR sseRadiance = XMVectorZero();
 
 	XMFLOAT4 intersectionPoint = probeCoord;
 	XMFLOAT4 rayDir = GenerateUniformSphereSample();
@@ -761,7 +784,7 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 
 				
 				XMFLOAT4 radiance;
-				XMStoreFloat4(&radiance, sseIrradiance);
+				XMStoreFloat4(&radiance, sseRadiance);
 
 				AddPathSegment(*result.pathSegments,
 					ray.origin,
@@ -782,7 +805,7 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 		if (bakeFlags[BakeFlags::SaveRayPath] == true)
 		{
 			XMFLOAT4 radiance;
-			XMStoreFloat4(&radiance, sseIrradiance);
+			XMStoreFloat4(&radiance, sseRadiance);
 			
 			AddPathSegment(*result.pathSegments,
 				ray.origin,
@@ -791,9 +814,16 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 				radiance);
 		}
 
-		XMFLOAT4 directIrradiance = GatherDirectIrradianceAtInersectionPoint(ray, intersectionResult);
+		LightSamplePoint* lightGatherInfo = nullptr;
 
-		sseIrradiance = sseIrradiance + XMLoadFloat4(&directIrradiance) * sseThoroughput;
+		if (bakeFlags[BakeFlags::SaveLightSampling] == true)
+		{
+			lightGatherInfo = &result.lightSamples->emplace_back(LightSamplePoint{});
+		}
+
+		XMFLOAT4 directIrradiance = GatherDirectRadianceAtInersectionPoint(ray, intersectionResult, lightGatherInfo);
+
+		sseRadiance = sseRadiance + XMLoadFloat4(&directIrradiance) * sseThoroughput;
 
 		// Generate new ray dir
 		XMFLOAT4 normal = Utils::BSPNodeRayIntersectionResult::GetNormal(intersectionResult);
@@ -835,8 +865,7 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 		++rayBounce;
 	}
 
-	//#DEBUG radiance and irradiance?
-	XMStoreFloat4(&result.radiance, sseIrradiance);
+	XMStoreFloat4(&result.radiance, sseRadiance);
 
 	return result;
 }

@@ -298,7 +298,8 @@ private:
 	// Size of one vertex
 	int perVertexMemorySize = Const::INVALID_SIZE;
 
-	int pathSegmentMemorySize = Const::INVALID_SIZE;
+	int pathSegmenVertextMemorySize = Const::INVALID_SIZE;
+	int lightSampleVertexMemorySize = Const::INVALID_SIZE;
 
 	std::vector<XMFLOAT4> lightProbeDebugObjectVertices;
 	std::vector<XMFLOAT4> pointLightDebugObjectVertices;

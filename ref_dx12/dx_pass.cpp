@@ -1386,7 +1386,8 @@ void Pass_Debug::Init()
 
 	perVertexMemorySize = Parsing::GetVertAttrSize(*passParameters.vertAttr);
 
-	pathSegmentMemorySize = perVertexMemorySize * 2;
+	pathSegmenVertextMemorySize = perVertexMemorySize * 2;
+	lightSampleVertexMemorySize = perVertexMemorySize * 2;
 
 	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
 }
@@ -1470,6 +1471,9 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 
 	std::optional<std::vector<std::vector<XMFLOAT4>>> pathSegmentVertices;
 
+	// :(
+	std::optional<std::vector<std::vector<std::vector<std::vector<XMFLOAT4>>>>> lightSampleVertices;
+
 	for (const DebugObject_t& debugObject : debugObjects)
 	{
 		std::visit([this, 
@@ -1479,7 +1483,8 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 			&pointLights,
 			&debugObjectsVertexSizes,
 			&renderer,
-			&pathSegmentVertices](auto&& debugObject) 
+			&pathSegmentVertices,
+			&lightSampleVertices](auto&& debugObject) 
 		{
 			using T = std::decay_t<decltype(debugObject)>;
 
@@ -1570,7 +1575,22 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 				debugObjectsVertices.push_back(pathSegmentVertices->
 					at(debugObject.probeIndex)[debugObject.segmentIndex * 2 + 1]);
 
-				debugObjectsVertexSizes.push_back(pathSegmentMemorySize);
+				debugObjectsVertexSizes.push_back(pathSegmenVertextMemorySize);
+			}
+
+			if constexpr (std::is_same_v<T, DebugObject_ProbeLightSample>)
+			{
+				if (lightSampleVertices.has_value() == false)
+				{
+					lightSampleVertices = renderer.GenLightSampleVertices(); 
+				}
+
+				const std::vector<XMFLOAT4>& samplePointVertices = lightSampleVertices->at(debugObject.probeIndex)[debugObject.pathIndex][debugObject.pathPointIndex];
+
+				debugObjectsVertices.push_back(samplePointVertices[debugObject.sampleIndex * 2]);
+				debugObjectsVertices.push_back(samplePointVertices[debugObject.sampleIndex * 2 + 1]);
+
+				debugObjectsVertexSizes.push_back(lightSampleVertexMemorySize);
 			}
 
 		}, debugObject);

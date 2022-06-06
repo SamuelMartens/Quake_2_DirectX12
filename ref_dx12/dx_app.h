@@ -114,6 +114,10 @@ class Renderer
 	[[nodiscard]]
 	std::vector<std::vector<XMFLOAT4>> GenProbePathSegmentsVertices() const;
 
+	// Vector of probes of paths of samples (and each has a set of vertices)
+	[[nodiscard]]
+	std::vector<std::vector<std::vector<std::vector<XMFLOAT4>>>> GenLightSampleVertices() const;
+
 	/* Objects data */
 	const std::vector<StaticObject>& GetStaticObjects() const;
 	const std::unordered_map<model_t*, DynamicObjectModel>& GetDynamicModels() const;
@@ -155,6 +159,14 @@ public:
 	{
 		AllClusterProbes,
 		SingleProbe
+	};
+
+	enum class DrawPathLightSampleMode
+	{
+		AllSamples,
+		ProbeSamples,
+		PathSamples,
+		PointSamples,
 	};
 
 	enum class State
@@ -369,4 +381,10 @@ private:
 
 	bool drawBakeRayPaths = false;
 
+	DrawPathLightSampleMode drawPathLightSampleMode = DrawPathLightSampleMode::PathSamples;
+	int drawPathLightSamples_ProbeIndex = 0;
+	int drawPathLightSamples_PathIndex = 0;
+	int drawPathLightSamples_PointIndex = 0;
+
+	bool drawLightPathSamples = false;
 };

@@ -124,12 +124,42 @@ namespace
 			return;
 		}
 
-		for (int segmentIndex = 0; segmentIndex < probe.pathTracingSegments->size(); segmentIndex++)
+		for (int segmentIndex = 0; segmentIndex < probe.pathTracingSegments->size(); ++segmentIndex)
 		{
 			DebugObject_ProbePathSegment object;
 			object.probeIndex = probeIndex;
 			object.segmentIndex = segmentIndex;
 			object.bounce = probe.pathTracingSegments->at(segmentIndex).bounce;
+
+			debugObjects.push_back(object);
+		}
+	}
+
+	void AddPointLightSampleSegments(std::vector<DebugObject_t>& debugObjects, 
+		const std::vector<DiffuseProbe>& probeData,
+		int probeIndex,
+		int pathIndex,
+		int pointIndex)
+	{
+		// NOTE: most likely you need to lock mutex for probe data outside of this function
+
+		const DiffuseProbe& probe = probeData[probeIndex];
+
+		if (probe.lightSamples.has_value() == false)
+		{
+			return;
+		}
+
+		const LightSamplePoint& point = probe.lightSamples->at(pathIndex)[pointIndex];
+
+		for (int sampleIndex = 0; sampleIndex < point.samples.size(); ++sampleIndex)
+		{
+			DebugObject_ProbeLightSample object;
+			object.probeIndex = probeIndex;
+			object.pathIndex = pathIndex;
+			object.pathPointIndex = pointIndex;		
+			object.sampleIndex = sampleIndex;
+			object.radiance = point.samples[sampleIndex].radiance;
 
 			debugObjects.push_back(object);
 		}
@@ -1274,6 +1304,108 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 		}
 	}
 
+	if (drawLightPathSamples == true)
+	{
+		std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
+
+		if (lightBakingResult.obj.probeData.empty() == false)
+		{
+			switch (drawPathLightSampleMode)
+			{
+			case Renderer::DrawPathLightSampleMode::AllSamples:
+			{
+				for (int probeIndex = 0; probeIndex < lightBakingResult.obj.probeData.size(); ++probeIndex)
+				{
+					const DiffuseProbe& probe = lightBakingResult.obj.probeData[probeIndex];
+
+					if (probe.lightSamples.has_value() == false)
+					{
+						continue;
+					}
+
+					for (int pathIndex = 0; pathIndex < probe.lightSamples->size(); ++pathIndex)
+					{
+						const PathLightSampleInfo_t& path = probe.lightSamples->at(pathIndex);
+
+						for (int pointIndex = 0; pointIndex < path.size(); ++pointIndex)
+						{
+							AddPointLightSampleSegments(debugObjects, lightBakingResult.obj.probeData, probeIndex, pathIndex, pointIndex);
+						}
+					}
+				}
+
+				break;
+			}
+			case Renderer::DrawPathLightSampleMode::ProbeSamples:
+			{
+				const DiffuseProbe& probe = lightBakingResult.obj.probeData[drawPathLightSamples_ProbeIndex];
+
+				if (probe.lightSamples.has_value() == true)
+				{
+					for (int pathIndex = 0; pathIndex < probe.lightSamples->size(); ++pathIndex)
+					{
+						const PathLightSampleInfo_t& path = probe.lightSamples->at(pathIndex);
+
+						for (int pointIndex = 0; pointIndex < path.size(); ++pointIndex)
+						{
+							AddPointLightSampleSegments(
+								debugObjects, 
+								lightBakingResult.obj.probeData,
+								drawPathLightSamples_ProbeIndex,
+								pathIndex,
+								pointIndex);
+						}
+					}
+				}
+
+				break;
+			}
+			case Renderer::DrawPathLightSampleMode::PathSamples:
+			{
+				const DiffuseProbe& probe = lightBakingResult.obj.probeData[drawPathLightSamples_ProbeIndex];
+
+				if (probe.lightSamples.has_value() == true)
+				{
+					const PathLightSampleInfo_t& path = probe.lightSamples->at(drawPathLightSamples_PathIndex);
+
+					for (int pointIndex = 0; pointIndex < path.size(); ++pointIndex)
+					{
+						AddPointLightSampleSegments(
+							debugObjects,
+							lightBakingResult.obj.probeData,
+							drawPathLightSamples_ProbeIndex,
+							drawPathLightSamples_PathIndex,
+							pointIndex);
+					}
+				}
+
+				break;
+			}
+			case Renderer::DrawPathLightSampleMode::PointSamples:
+			{
+				const DiffuseProbe& probe = lightBakingResult.obj.probeData[drawPathLightSamples_ProbeIndex];
+
+				if (probe.lightSamples.has_value() == true)
+				{
+					const PathLightSampleInfo_t& path = probe.lightSamples->at(drawPathLightSamples_PathIndex);
+
+					AddPointLightSampleSegments(
+						debugObjects,
+						lightBakingResult.obj.probeData,
+						drawPathLightSamples_ProbeIndex,
+						drawPathLightSamples_PathIndex,
+						drawPathLightSamples_PointIndex);
+				}
+
+				break;
+			}
+			default:
+				assert(false && "Invalid draw light sample mode");
+				break;
+			}
+		}
+	}
+
 	return debugObjects;
 }
 
@@ -1370,7 +1502,7 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 				ImGui::Checkbox("Point Light Source Radius", &drawPointLightSourcesRadius);
 			}
 
-			ImGui::Checkbox("Show Ray Paths", &drawBakeRayPaths);
+			ImGui::Separator();
 
 			{
 				int drawRayMode = static_cast<int>(drawBakeRayPathsMode);
@@ -1378,12 +1510,56 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 				ImGui::RadioButton("Single probe", &drawRayMode, static_cast<int>(DrawRayPathMode::SingleProbe));
 				ImGui::SameLine();
 				ImGui::RadioButton("All probes", &drawRayMode, static_cast<int>(DrawRayPathMode::AllClusterProbes));
+
 				drawBakeRayPathsMode = static_cast<DrawRayPathMode>(drawRayMode);
 			}
 
+			
+
 			ImGui::Text("Probes num: %d", lightBakingResult.obj.probeData.size());
 			ImGui::InputInt("Probe ray index", &drawBakeRayPathsProbeIndex);
-			drawBakeRayPathsProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probeData.size(), drawBakeRayPathsProbeIndex));
+			drawBakeRayPathsProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probeData.size() - 1, drawBakeRayPathsProbeIndex));
+
+			ImGui::Checkbox("Show Ray Paths", &drawBakeRayPaths);
+
+			ImGui::Separator();
+
+			{
+				int drawLightSamplesMode = static_cast<int>(drawPathLightSampleMode);
+
+				ImGui::RadioButton("Single Probe", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode::ProbeSamples));
+				ImGui::SameLine();
+				ImGui::RadioButton("Single Path", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode::PathSamples));
+				ImGui::SameLine();
+				ImGui::RadioButton("Single Point", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode::PointSamples));
+				ImGui::SameLine();
+				ImGui::RadioButton("All Samples", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode::AllSamples));
+
+				drawPathLightSampleMode = static_cast<DrawPathLightSampleMode>(drawLightSamplesMode);
+			}
+
+			ImGui::Text("Probes num: %d", lightBakingResult.obj.probeData.size());
+			ImGui::InputInt("Probe index", &drawPathLightSamples_ProbeIndex);
+			drawPathLightSamples_ProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probeData.size() - 1, drawPathLightSamples_ProbeIndex));
+
+			const bool isLightSamplePathDataExists = lightBakingResult.obj.probeData.empty() == false &&
+				lightBakingResult.obj.probeData[drawPathLightSamples_ProbeIndex].lightSamples.has_value();
+
+			const int lightSamplePathNum = isLightSamplePathDataExists ?
+				lightBakingResult.obj.probeData[drawPathLightSamples_ProbeIndex].lightSamples->size() : 0;
+
+			ImGui::Text("Paths num: %d", lightSamplePathNum);
+			ImGui::InputInt("Path index", &drawPathLightSamples_PathIndex);
+			drawPathLightSamples_PathIndex = std::max(0, std::min<int>(lightSamplePathNum - 1, drawPathLightSamples_PathIndex));
+
+			const int lightSamplePointsNum = isLightSamplePathDataExists ?
+				lightBakingResult.obj.probeData[drawPathLightSamples_ProbeIndex].lightSamples->at(drawPathLightSamples_PathIndex).size() : 0;
+
+			ImGui::Text("Sample points num: %d", lightSamplePointsNum);
+			ImGui::InputInt("Sample point index ", &drawPathLightSamples_PointIndex);
+			drawPathLightSamples_PointIndex = std::max(0, std::min<int>(lightSamplePointsNum - 1, drawPathLightSamples_PointIndex));
+
+			ImGui::Checkbox("Show Light Sample Rays", &drawLightPathSamples);
 
 			ImGui::Separator();
 			ImGui::Text("-- Bake Options --");
@@ -1391,11 +1567,18 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 			ImGui::Text("Only use this option if baking for camera cluster");
 
 			bool saveBakeRayPaths = LightBaker::Inst().GetBakeFlag(BakeFlags::SaveRayPath);
+
 			if (ImGui::Checkbox("Save Bake Ray Paths", &saveBakeRayPaths))
 			{
 				lightBaker.SetBakeFlag(BakeFlags::SaveRayPath, saveBakeRayPaths);
 			}
 
+			bool saveLightSamples = LightBaker::Inst().GetBakeFlag(BakeFlags::SaveLightSampling);
+
+			if (ImGui::Checkbox("Save Light Samples", &saveLightSamples))
+			{
+				lightBaker.SetBakeFlag(BakeFlags::SaveLightSampling, saveLightSamples);
+			}
 
 			{
 				int bakeMode = static_cast<int>(LightBaker::Inst().GetBakingMode());
@@ -1408,8 +1591,7 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 			
 
 			ImGui::Separator();
-			ImGui::Text("-- Start baking --");
-
+		
 			if (ImGui::Button("Start bake"))
 			{
 				if (lightBaker.GetBakingMode() == LightBakingMode::CurrentPositionCluster)
@@ -1418,8 +1600,9 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 				}
 				else
 				{
-					// Enforce false here
+					// Enforce false, because certain flags can only be used for certain modes
 					lightBaker.SetBakeFlag(BakeFlags::SaveRayPath, false);
+					lightBaker.SetBakeFlag(BakeFlags::SaveLightSampling, false);
 				}
 
 				RequestStateChange(State::LightBaking);
@@ -1853,6 +2036,49 @@ std::vector<std::vector<XMFLOAT4>> Renderer::GenProbePathSegmentsVertices() cons
 		}
 
 		vertices.push_back(singleProbeVertices);
+	}
+
+	return vertices;
+}
+
+std::vector<std::vector<std::vector<std::vector<XMFLOAT4>>>> Renderer::GenLightSampleVertices() const
+{
+	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
+
+	std::vector<std::vector<std::vector<std::vector<XMFLOAT4>>>> vertices;
+	vertices.reserve(lightBakingResult.obj.probeData.size());
+
+	std::vector<std::vector<std::vector<XMFLOAT4>>> singleProbeVerts;
+	std::vector<std::vector<XMFLOAT4>> singlePathVert;
+	std::vector<XMFLOAT4> singlePointVert;
+
+	for (const DiffuseProbe& probe : lightBakingResult.obj.probeData)
+	{
+		assert(probe.lightSamples.has_value() && "Can't generate debug light segments. No source data");
+
+		singleProbeVerts.clear();
+
+		for (const PathLightSampleInfo_t& path : *probe.lightSamples)
+		{
+			singlePathVert.clear();
+
+			for (const LightSamplePoint& point : path)
+			{
+				singlePointVert.clear();
+
+				for (const LightSamplePoint::Sample& sample : point.samples)
+				{
+					singlePointVert.push_back(point.position);
+					singlePointVert.push_back(sample.position);
+				}
+
+				singlePathVert.push_back(singlePointVert);
+			}
+
+			singleProbeVerts.push_back(singlePathVert);
+		}
+
+		vertices.push_back(singleProbeVerts);
 	}
 
 	return vertices;

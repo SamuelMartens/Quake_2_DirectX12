@@ -288,7 +288,11 @@ namespace RenderCallbacks
 					}
 					else if constexpr (std::is_same_v<T, DebugObject_ProbePathSegment>)
 					{
-						reinterpret_cast<int&>(bindPoint) = static_cast<int>(DebugObjectType::ProbePathTrace);
+						reinterpret_cast<int&>(bindPoint) = static_cast<int>(DebugObjectType::ProbePathTraceSegment);
+					}
+					else if constexpr (std::is_same_v<T, DebugObject_ProbeLightSample>)
+					{
+						reinterpret_cast<int&>(bindPoint) = static_cast<int>(DebugObjectType::ProbeLightSample);
 					}
 					else
 					{
