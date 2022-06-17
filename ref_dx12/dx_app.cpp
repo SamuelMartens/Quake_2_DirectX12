@@ -139,7 +139,8 @@ namespace
 		const std::vector<DiffuseProbe>& probeData,
 		int probeIndex,
 		int pathIndex,
-		int pointIndex)
+		int pointIndex,
+		Renderer::DrawPathLightSampleMode_Type type)
 	{
 		// NOTE: most likely you need to lock mutex for probe data outside of this function
 
@@ -154,12 +155,26 @@ namespace
 
 		for (int sampleIndex = 0; sampleIndex < point.samples.size(); ++sampleIndex)
 		{
+			const LightSamplePoint::Sample& sample = point.samples[sampleIndex];
+
+			if (type == Renderer::DrawPathLightSampleMode_Type::Point &&
+				sample.lightType != DebugObject_LightSource::Type::Point)
+			{
+				continue;
+			}
+
+			if (type == Renderer::DrawPathLightSampleMode_Type::Area &&
+				sample.lightType != DebugObject_LightSource::Type::Area)
+			{
+				continue;
+			}
+
 			DebugObject_ProbeLightSample object;
 			object.probeIndex = probeIndex;
 			object.pathIndex = pathIndex;
 			object.pathPointIndex = pointIndex;		
 			object.sampleIndex = sampleIndex;
-			object.radiance = point.samples[sampleIndex].radiance;
+			object.radiance = sample.radiance;
 
 			debugObjects.push_back(object);
 		}
@@ -1310,9 +1325,9 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 
 		if (lightBakingResult.obj.probeData.empty() == false)
 		{
-			switch (drawPathLightSampleMode)
+			switch (drawPathLightSampleMode_Scale)
 			{
-			case Renderer::DrawPathLightSampleMode::AllSamples:
+			case Renderer::DrawPathLightSampleMode_Scale::AllSamples:
 			{
 				for (int probeIndex = 0; probeIndex < lightBakingResult.obj.probeData.size(); ++probeIndex)
 				{
@@ -1329,14 +1344,20 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 
 						for (int pointIndex = 0; pointIndex < path.size(); ++pointIndex)
 						{
-							AddPointLightSampleSegments(debugObjects, lightBakingResult.obj.probeData, probeIndex, pathIndex, pointIndex);
+							AddPointLightSampleSegments(
+								debugObjects,
+								lightBakingResult.obj.probeData,
+								probeIndex,
+								pathIndex,
+								pointIndex,
+								drawPathLightSampleMode_Type);
 						}
 					}
 				}
 
 				break;
 			}
-			case Renderer::DrawPathLightSampleMode::ProbeSamples:
+			case Renderer::DrawPathLightSampleMode_Scale::ProbeSamples:
 			{
 				const DiffuseProbe& probe = lightBakingResult.obj.probeData[drawPathLightSamples_ProbeIndex];
 
@@ -1353,14 +1374,15 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 								lightBakingResult.obj.probeData,
 								drawPathLightSamples_ProbeIndex,
 								pathIndex,
-								pointIndex);
+								pointIndex,
+								drawPathLightSampleMode_Type);
 						}
 					}
 				}
 
 				break;
 			}
-			case Renderer::DrawPathLightSampleMode::PathSamples:
+			case Renderer::DrawPathLightSampleMode_Scale::PathSamples:
 			{
 				const DiffuseProbe& probe = lightBakingResult.obj.probeData[drawPathLightSamples_ProbeIndex];
 
@@ -1375,13 +1397,14 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 							lightBakingResult.obj.probeData,
 							drawPathLightSamples_ProbeIndex,
 							drawPathLightSamples_PathIndex,
-							pointIndex);
+							pointIndex,
+							drawPathLightSampleMode_Type);
 					}
 				}
 
 				break;
 			}
-			case Renderer::DrawPathLightSampleMode::PointSamples:
+			case Renderer::DrawPathLightSampleMode_Scale::PointSamples:
 			{
 				const DiffuseProbe& probe = lightBakingResult.obj.probeData[drawPathLightSamples_ProbeIndex];
 
@@ -1394,7 +1417,8 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 						lightBakingResult.obj.probeData,
 						drawPathLightSamples_ProbeIndex,
 						drawPathLightSamples_PathIndex,
-						drawPathLightSamples_PointIndex);
+						drawPathLightSamples_PointIndex,
+						drawPathLightSampleMode_Type);
 				}
 
 				break;
@@ -1525,17 +1549,29 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 			ImGui::Separator();
 
 			{
-				int drawLightSamplesMode = static_cast<int>(drawPathLightSampleMode);
+				int drawLightSamplesMode = static_cast<int>(drawPathLightSampleMode_Scale);
 
-				ImGui::RadioButton("Single Probe", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode::ProbeSamples));
+				ImGui::RadioButton("Single Probe", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::ProbeSamples));
 				ImGui::SameLine();
-				ImGui::RadioButton("Single Path", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode::PathSamples));
+				ImGui::RadioButton("Single Path", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::PathSamples));
 				ImGui::SameLine();
-				ImGui::RadioButton("Single Point", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode::PointSamples));
+				ImGui::RadioButton("Single Point", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::PointSamples));
 				ImGui::SameLine();
-				ImGui::RadioButton("All Samples", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode::AllSamples));
+				ImGui::RadioButton("All Samples", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::AllSamples));
 
-				drawPathLightSampleMode = static_cast<DrawPathLightSampleMode>(drawLightSamplesMode);
+				drawPathLightSampleMode_Scale = static_cast<DrawPathLightSampleMode_Scale>(drawLightSamplesMode);
+			}
+
+			{
+				int drawLightSampleMode = static_cast<int>(drawPathLightSampleMode_Type);
+
+				ImGui::RadioButton("Point", &drawLightSampleMode, static_cast<int>(DrawPathLightSampleMode_Type::Point));
+				ImGui::SameLine();
+				ImGui::RadioButton("Area", &drawLightSampleMode, static_cast<int>(DrawPathLightSampleMode_Type::Area));
+				ImGui::SameLine();
+				ImGui::RadioButton("All", &drawLightSampleMode, static_cast<int>(DrawPathLightSampleMode_Type::All));
+
+				drawPathLightSampleMode_Type = static_cast<DrawPathLightSampleMode_Type>(drawLightSampleMode);
 			}
 
 			ImGui::Text("Probes num: %d", lightBakingResult.obj.probeData.size());

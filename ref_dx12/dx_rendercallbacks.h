@@ -680,6 +680,23 @@ namespace RenderCallbacks
 						}
 					}, obj);
 				}
+				case HASH("gRadiance"):
+				{
+					std::visit([&bindPoint](auto&& object)
+					{
+						using T = std::decay_t<decltype(object)>;
+
+						if constexpr (std::is_same_v<T, DebugObject_ProbeLightSample>)
+						{
+
+							reinterpret_cast<XMFLOAT4&>(bindPoint) = object.radiance;
+						}
+						else
+						{
+							reinterpret_cast<XMFLOAT4&>(bindPoint) = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+						}
+					}, obj);
+				}
 				default:
 					break;
 				}

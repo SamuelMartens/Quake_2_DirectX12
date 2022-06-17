@@ -108,13 +108,13 @@ std::vector<XMFLOAT4> Utils::CreateSphere(float radius, int numSubdivisions /*= 
 	};
 
 	constexpr int icosahedronVertsNum = 60;
-
+     
 	const int indices[icosahedronVertsNum] =
 	{
-		1,4,0,  4,9,0,  4,5,9,  8,5,4,  1,8,4,
-		1,10,8, 10,3,8, 8,3,5,  3,2,5,  3,7,2,
-		3,10,7, 10,6,7, 6,11,7, 6,0,11, 6,1,0,
-		10,1,6, 11,0,9, 2,11,9, 5,2,9,  11,2,7
+		1,0,4,  4,0,9,  4,9,5,  8,4,5,  1,4,8,
+		1,8,10, 10,8,3, 8,5,3,  3,5,2,  3,2,7,
+		3,7,10, 10,7,6, 6,7,11, 6,11,0, 6,0,1,
+		10,6,1, 11,9,0, 2,9,11, 5,9,2,  11,7,2
 	};
 
 	vertices.reserve(icosahedronVertsNum);

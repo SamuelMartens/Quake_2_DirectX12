@@ -142,11 +142,16 @@ private:
 		const Utils::BSPNodeRayIntersectionResult& nodeIntersectionResult,
 		LightSamplePoint* lightSampleDebugInfo) const;
 
-	XMFLOAT4 GatherIrradianceFromAreaLights(const Utils::Ray& ray,
-		const  Utils::BSPNodeRayIntersectionResult& nodeIntersectionResult) const;
+	XMFLOAT4 GatherIrradianceFromAreaLights(
+		const XMFLOAT4& intersectionPoint,
+		const XMFLOAT4& intersectionSurfaceNormal,
+		LightSamplePoint* lightSampleDebugInfo) const;
 
-	XMFLOAT4 GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionPoint,
-		const SurfaceLight& light) const;
+	XMFLOAT4 GatherIrradianceFromAreaLight(
+		const XMFLOAT4& intersectionPoint,
+		const XMFLOAT4& intersectionSurfaceNormal,
+		const SurfaceLight& light,
+		LightSamplePoint* lightSampleDebugInfo) const;
 
 	//#TODO passing direction by ref seems silly. Need to pass multiple value
 	ProbePathTraceResult PathTraceFromProbe(const XMFLOAT4& probeCoord, XMFLOAT4& direction);

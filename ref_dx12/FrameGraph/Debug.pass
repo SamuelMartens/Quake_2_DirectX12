@@ -151,7 +151,8 @@ float4 main(VertexOut vOut) : SV_Target
 		
 	if (gProbeIndex != INVALID_INDEX)
 	{
-		color = ReconstructRadianceFromSf(dirFromCenter);
+		float4 sampleDir = float4(normalize(vOut.LocalPos.xyz), 0.0);
+		color = ReconstructRadianceFromSf(sampleDir);
 	}
 
     return color;

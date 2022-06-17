@@ -161,12 +161,19 @@ public:
 		SingleProbe
 	};
 
-	enum class DrawPathLightSampleMode
+	enum class DrawPathLightSampleMode_Scale
 	{
 		AllSamples,
 		ProbeSamples,
 		PathSamples,
 		PointSamples,
+	};
+
+	enum class DrawPathLightSampleMode_Type
+	{
+		Point,
+		Area,
+		All
 	};
 
 	enum class State
@@ -381,10 +388,12 @@ private:
 
 	bool drawBakeRayPaths = false;
 
-	DrawPathLightSampleMode drawPathLightSampleMode = DrawPathLightSampleMode::PathSamples;
+	DrawPathLightSampleMode_Scale drawPathLightSampleMode_Scale = DrawPathLightSampleMode_Scale::PointSamples;
 	int drawPathLightSamples_ProbeIndex = 0;
 	int drawPathLightSamples_PathIndex = 0;
 	int drawPathLightSamples_PointIndex = 0;
+
+	DrawPathLightSampleMode_Type drawPathLightSampleMode_Type = DrawPathLightSampleMode_Type::All;
 
 	bool drawLightPathSamples = false;
 };

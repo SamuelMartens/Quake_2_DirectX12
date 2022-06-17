@@ -486,8 +486,8 @@ XMFLOAT4 LightBaker::GatherDirectRadianceAtInersectionPoint(const Utils::Ray& ra
 {
 	const Renderer& renderer = Renderer::Inst();
 
-	XMVECTOR sseIntersectionPoint = XMLoadFloat4(&ray.origin) + XMLoadFloat4(&ray.direction) *
-		nodeIntersectionResult.rayTriangleIntersection.t;
+	XMVECTOR sseIntersectionPoint = XMLoadFloat4(&ray.origin) + XMLoadFloat4(&ray.direction) * 
+		(nodeIntersectionResult.rayTriangleIntersection.t - Settings::PATH_TRACING_EPSILON);
 
 	XMFLOAT4 intersectionPoint;
 	XMStoreFloat4(&intersectionPoint, sseIntersectionPoint);
@@ -526,7 +526,7 @@ XMFLOAT4 LightBaker::GatherDirectRadianceAtInersectionPoint(const Utils::Ray& ra
 
 		XMVECTOR sseIntersectionPointToLight = XMLoadFloat4(&light.origin) - sseIntersectionPoint;
 
-		const float distanceToLight = XMVectorGetX(XMVector3Length(sseIntersectionPoint));
+		const float distanceToLight = XMVectorGetX(XMVector3Length(sseIntersectionPointToLight));
 
 		if (distanceToLight > Settings::POINT_LIGHTS_MAX_DISTANCE)
 		{
@@ -562,14 +562,15 @@ XMFLOAT4 LightBaker::GatherDirectRadianceAtInersectionPoint(const Utils::Ray& ra
 			sample.lightType = DebugObject_LightSource::Type::Point;
 			sample.position = light.origin;
 			XMStoreFloat4(&sample.radiance, sseLightRadiance);
-
+			
 			lightSampleDebugInfo->samples.push_back(sample);
 		}	 
 	}
 
-	//#DEBUG discable area lights as I am focused on point lights
-	//const XMFLOAT4 areaLightIrradiance = GatherIrradianceFromAreaLights(ray, nodeIntersectionResult);
-	const XMFLOAT4 areaLightIrradiance = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+	XMFLOAT4 intersectionNormal;
+	XMStoreFloat4(&intersectionNormal, sseNormal);
+
+	const XMFLOAT4 areaLightIrradiance = GatherIrradianceFromAreaLights(intersectionPoint, intersectionNormal, lightSampleDebugInfo);
 
 	XMFLOAT4 resultRadiance;
 	XMStoreFloat4(&resultRadiance, sseResultRadiance + XMLoadFloat4(&areaLightIrradiance));
@@ -577,15 +578,11 @@ XMFLOAT4 LightBaker::GatherDirectRadianceAtInersectionPoint(const Utils::Ray& ra
 	return resultRadiance;
 }
 
-XMFLOAT4 LightBaker::GatherIrradianceFromAreaLights(const Utils::Ray& ray, const Utils::BSPNodeRayIntersectionResult& nodeIntersectionResult) const
+XMFLOAT4 LightBaker::GatherIrradianceFromAreaLights(const XMFLOAT4& intersectionPoint, const XMFLOAT4& intersectionSurfaceNormal, LightSamplePoint* lightSampleDebugInfo) const
 {
 	const Renderer& renderer = Renderer::Inst();
 
-	XMVECTOR sseIntersectionPoint = XMLoadFloat4(&ray.origin) + XMLoadFloat4(&ray.direction) *
-		nodeIntersectionResult.rayTriangleIntersection.t;
-
-	XMFLOAT4 intersectionPoint;
-	XMStoreFloat4(&intersectionPoint, sseIntersectionPoint);
+	XMVECTOR sseIntersectionPoint = XMLoadFloat4(&intersectionPoint);
 
 	const BSPTree& bsp = renderer.GetBSPTree();
 	
@@ -623,7 +620,9 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLights(const Utils::Ray& ray, const
 	{
 		XMFLOAT4 lightIrradiance = GatherIrradianceFromAreaLight(
 			intersectionPoint,
-			staticSurfaceLights[lightIndex]);
+			intersectionSurfaceNormal,
+			staticSurfaceLights[lightIndex],
+			lightSampleDebugInfo);
 
 		sseResultIrradiance = sseResultIrradiance + XMLoadFloat4(&lightIrradiance);
 	}
@@ -634,7 +633,7 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLights(const Utils::Ray& ray, const
 	return resultIrradiance;
 } 
 
-XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionPoint, const SurfaceLight& light) const
+XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionPoint, const XMFLOAT4& intersectionSurfaceNormal, const SurfaceLight& light, LightSamplePoint* lightSampleDebugInfo) const
 {
 	const SourceStaticObject& lightMesh = Renderer::Inst().GetSourceStaticObjects()[light.surfaceIndex];
 
@@ -679,14 +678,38 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionP
 
 		XMVECTOR sseLightSamplePoint = sseV0 * u + sseV1 * v + sseV2 * w;
 		
+		// Patch up light sample point, otherwise it might be a bit behind actual mesh
+		XMVECTOR sseIntersectionToLightDir = XMVector3Normalize(sseLightSamplePoint - sseIntersectionPoint);
+		sseLightSamplePoint = sseIntersectionPoint + sseIntersectionToLightDir * 
+			(XMVectorGetX(XMVector3Length(sseLightSamplePoint - sseIntersectionPoint)) - Settings::PATH_TRACING_EPSILON);
+
+
+		XMVECTOR sseIntersectionToSample = sseLightSamplePoint - sseIntersectionPoint;
+
 		const float lightToRayAndLightNormalDot = XMVectorGetX(XMVector3Dot(
-		 	sseLightSamplePoint - sseIntersectionPoint, 
+		 	sseIntersectionToSample, 
 			XMLoadFloat4(&lightMesh.normals[V0Ind])));
 
-		if (lightToRayAndLightNormalDot <= 0.0f)
+		if (lightToRayAndLightNormalDot >= 0.0f)
 		{
 			// This point is behind chosen light. It will not contribute,
 			// moving to the next sample
+			continue;
+		}
+
+		const float distanceToSample = XMVectorGetX(XMVector3Length(sseIntersectionToSample));
+		
+		if (distanceToSample > Settings::AREA_LIGHTS_MAX_DISTANCE)
+		{
+			continue;
+		}
+
+		const float intersectionToSampleAndNormalDot = XMVectorGetX(XMVector3Dot(sseIntersectionToSample,
+			XMLoadFloat4(&intersectionSurfaceNormal)));
+
+		if (intersectionToSampleAndNormalDot <= 0.0f)
+		{
+			// Light is behind intersection surface
 			continue;
 		}
 
@@ -698,12 +721,26 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionP
 			continue;
 		}
 		
-		const float distanceToSample = XMVectorGetX(XMVector3Length(sseLightSamplePoint - sseIntersectionPoint));
-
 		//#DEBUG I have 1.0f for reference dist here. But I dunno actually what should I have for area lights
+		const float distanceFalloff = CalculateDistanceFalloff(distanceToSample, 1.0f, Settings::AREA_LIGHTS_MAX_DISTANCE);
+
+		if (distanceFalloff == 0.0f)
+		{
+			continue;
+		}
+		
 		sseIrradiance = sseIrradiance + 
-			sseSampleIrradiance * CalculateDistanceFalloff(distanceToSample, 1.0f, Settings::AREA_LIGHTS_MAX_DISTANCE) *
-			lightToRayAndLightNormalDot;
+			sseSampleIrradiance * distanceFalloff * intersectionToSampleAndNormalDot;
+
+		if (lightSampleDebugInfo != nullptr)
+		{
+			LightSamplePoint::Sample sample;
+			sample.lightType = DebugObject_LightSource::Type::Area;
+			sample.position = lightSamplePoint;
+			XMStoreFloat4(&sample.radiance, sseIrradiance);
+
+			lightSampleDebugInfo->samples.push_back(sample);
+		}
 	}
 
 	// Now do Monte Carlo integration

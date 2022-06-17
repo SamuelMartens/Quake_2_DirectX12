@@ -53,6 +53,7 @@ cbuffer cbPerObject_Global : register(b1)
 [Local, PerObject]
 cbuffer cbPerObject_Local : register(b2)
 {
+	float4 gRadiance;
 	int gBounceNum;
 }
 
