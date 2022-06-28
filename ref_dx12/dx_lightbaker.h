@@ -142,12 +142,12 @@ private:
 		const Utils::BSPNodeRayIntersectionResult& nodeIntersectionResult,
 		LightSamplePoint* lightSampleDebugInfo) const;
 
-	XMFLOAT4 GatherIrradianceFromAreaLights(
+	XMFLOAT4 GatherRadianceFromAreaLights(
 		const XMFLOAT4& intersectionPoint,
 		const XMFLOAT4& intersectionSurfaceNormal,
 		LightSamplePoint* lightSampleDebugInfo) const;
 
-	XMFLOAT4 GatherIrradianceFromAreaLight(
+	XMFLOAT4 GatherRadianceFromAreaLight(
 		const XMFLOAT4& intersectionPoint,
 		const XMFLOAT4& intersectionSurfaceNormal,
 		const SurfaceLight& light,

@@ -19,6 +19,10 @@
 #undef max
 #endif
 
+//#DEBUG
+//#pragma optimize("", off)
+//END
+
 namespace
 {
 	inline float CalculateDistanceFalloff(float dist, float dist0, float distMax)
@@ -153,6 +157,13 @@ namespace
 		segment.radiance = radiance;
 
 		segments.push_back(segment);
+	}
+
+	float GetDiffuseBRDF()
+	{
+		// This is temporarily. Until I get proper albedo from texture
+		constexpr float albedo = 0.5;
+		return albedo / M_PI;
 	}
 }
 
@@ -533,7 +544,8 @@ XMFLOAT4 LightBaker::GatherDirectRadianceAtInersectionPoint(const Utils::Ray& ra
 			continue;
 		}
 
-		const float normalAndIntersectionDotProduct = XMVectorGetX(XMVector3Dot(sseIntersectionPointToLight, sseNormal));
+		const float normalAndIntersectionDotProduct = 
+			XMVectorGetX(XMVector3Dot(XMVector3Normalize(sseIntersectionPointToLight), sseNormal));
 
 		if (normalAndIntersectionDotProduct <= 0.0f)
 		{
@@ -553,7 +565,13 @@ XMFLOAT4 LightBaker::GatherDirectRadianceAtInersectionPoint(const Utils::Ray& ra
 			continue;
 		}
 
-		XMVECTOR sseLightRadiance = distanceFalloff * XMLoadFloat4(&light.color) * light.intensity * normalAndIntersectionDotProduct;
+		XMVECTOR sseLightRadiance = 
+			GetDiffuseBRDF() *
+			distanceFalloff * 
+			XMLoadFloat4(&light.color) * 
+			light.intensity * 
+			normalAndIntersectionDotProduct;
+
 		sseResultRadiance = sseResultRadiance + sseLightRadiance;
 
 		if (lightSampleDebugInfo != nullptr)
@@ -569,16 +587,17 @@ XMFLOAT4 LightBaker::GatherDirectRadianceAtInersectionPoint(const Utils::Ray& ra
 
 	XMFLOAT4 intersectionNormal;
 	XMStoreFloat4(&intersectionNormal, sseNormal);
-
-	const XMFLOAT4 areaLightIrradiance = GatherIrradianceFromAreaLights(intersectionPoint, intersectionNormal, lightSampleDebugInfo);
+	//#DEBUG switch
+	const XMFLOAT4 areaLightRadiance = GatherRadianceFromAreaLights(intersectionPoint, intersectionNormal, lightSampleDebugInfo);
+	//const XMFLOAT4 areaLightRadiance = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 
 	XMFLOAT4 resultRadiance;
-	XMStoreFloat4(&resultRadiance, sseResultRadiance + XMLoadFloat4(&areaLightIrradiance));
+	XMStoreFloat4(&resultRadiance, sseResultRadiance + XMLoadFloat4(&areaLightRadiance));
 
 	return resultRadiance;
 }
 
-XMFLOAT4 LightBaker::GatherIrradianceFromAreaLights(const XMFLOAT4& intersectionPoint, const XMFLOAT4& intersectionSurfaceNormal, LightSamplePoint* lightSampleDebugInfo) const
+XMFLOAT4 LightBaker::GatherRadianceFromAreaLights(const XMFLOAT4& intersectionPoint, const XMFLOAT4& intersectionSurfaceNormal, LightSamplePoint* lightSampleDebugInfo) const
 {
 	const Renderer& renderer = Renderer::Inst();
 
@@ -618,7 +637,7 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLights(const XMFLOAT4& intersection
 
 	for (const int lightIndex : potentiallyVisibleLightsIndices)
 	{
-		XMFLOAT4 lightIrradiance = GatherIrradianceFromAreaLight(
+		XMFLOAT4 lightIrradiance = GatherRadianceFromAreaLight(
 			intersectionPoint,
 			intersectionSurfaceNormal,
 			staticSurfaceLights[lightIndex],
@@ -633,7 +652,7 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLights(const XMFLOAT4& intersection
 	return resultIrradiance;
 } 
 
-XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionPoint, const XMFLOAT4& intersectionSurfaceNormal, const SurfaceLight& light, LightSamplePoint* lightSampleDebugInfo) const
+XMFLOAT4 LightBaker::GatherRadianceFromAreaLight(const XMFLOAT4& intersectionPoint, const XMFLOAT4& intersectionSurfaceNormal, const SurfaceLight& light, LightSamplePoint* lightSampleDebugInfo) const
 {
 	const SourceStaticObject& lightMesh = Renderer::Inst().GetSourceStaticObjects()[light.surfaceIndex];
 
@@ -641,10 +660,10 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionP
 
 	const BSPTree& bsp = Renderer::Inst().GetBSPTree();
 
-	XMVECTOR sseSampleIrradiance = XMLoadFloat4(&light.irradiance);
+	XMVECTOR sseSampleRadiance = XMLoadFloat4(&light.irradiance);
 	XMVECTOR sseIntersectionPoint = XMLoadFloat4(&intersectionPoint);
 
-	XMVECTOR sseIrradiance = XMVectorZero();
+	XMVECTOR sseRadiance = XMVectorZero();
 
 	for (int i = 0; i < Settings::AREA_LIGHTS_SAMPLES_NUM; ++i)
 	{
@@ -704,7 +723,8 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionP
 			continue;
 		}
 
-		const float intersectionToSampleAndNormalDot = XMVectorGetX(XMVector3Dot(sseIntersectionToSample,
+		const float intersectionToSampleAndNormalDot = 
+			XMVectorGetX(XMVector3Dot(XMVector3Normalize(sseIntersectionToSample),
 			XMLoadFloat4(&intersectionSurfaceNormal)));
 
 		if (intersectionToSampleAndNormalDot <= 0.0f)
@@ -729,26 +749,29 @@ XMFLOAT4 LightBaker::GatherIrradianceFromAreaLight(const XMFLOAT4& intersectionP
 			continue;
 		}
 		
-		sseIrradiance = sseIrradiance + 
-			sseSampleIrradiance * distanceFalloff * intersectionToSampleAndNormalDot;
+		sseRadiance = sseRadiance + 
+			GetDiffuseBRDF() *
+			sseSampleRadiance * 
+			distanceFalloff * intersectionToSampleAndNormalDot;
 
 		if (lightSampleDebugInfo != nullptr)
 		{
 			LightSamplePoint::Sample sample;
 			sample.lightType = DebugObject_LightSource::Type::Area;
 			sample.position = lightSamplePoint;
-			XMStoreFloat4(&sample.radiance, sseIrradiance);
+			XMStoreFloat4(&sample.radiance, sseRadiance);
 
 			lightSampleDebugInfo->samples.push_back(sample);
 		}
 	}
 
 	// Now do Monte Carlo integration
-	sseIrradiance = sseIrradiance / SurfaceLight::GetUniformSamplePDF(light) / Settings::AREA_LIGHTS_SAMPLES_NUM;
+	sseRadiance = sseRadiance / SurfaceLight::GetUniformSamplePDF(light) / Settings::AREA_LIGHTS_SAMPLES_NUM;
 
 	XMFLOAT4 irradiance;
-	XMStoreFloat4(&irradiance, sseIrradiance);
-
+	XMStoreFloat4(&irradiance, sseRadiance);
+	//#DEBUG it is actually irradiance, because solid angle is not zero. Well I should remain everything related to
+	// area lights to irradiance
 	return irradiance;
 }
 
@@ -792,6 +815,10 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 
 		if (isGuaranteedBounce == false)
 		{
+			//#DEBUG disable Russian roulette for now, I need to reintroduce it to avoid bias
+			break;
+			//END
+
 			// Apply Russian Roulette to terminate.
 			const float sample = GenerateNormalizedUniformDistributioSample();
 			//#TODO MJP uses throughtput as well. But I don't quite understand his logic
@@ -799,7 +826,7 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 			{
 				break;
 			}
-			
+			//#DEBUG this also contributes to increase of throughtput. And I don't think it's right.
 			sseThoroughput = sseThoroughput / (1.0f - Settings::RUSSIAN_ROULETTE_TERMINATION_PROBABILITY);
 		}
 
@@ -882,7 +909,7 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 
 		assert(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseNormal)), 1.0f) && "Normal is not normalized");
 		assert(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseRayDir)), 1.0f) && "Ray Dir is not normalized");
-
+		//#DEBUG check if this is right
 		// Update nDotL
 		nDotL = XMVectorGetX(XMVector3Dot(sseNormal, sseRayDir));
 
@@ -891,12 +918,14 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 			XMVectorGetX(XMVector3Dot(XMLoadFloat4(&Utils::AXIS_Z), XMLoadFloat4(&cosineWieghtedSample)))) &&
 		"Angle between unrotated sample and Z should be the same as angle between rotated sample and normal");
 
-
 		// Update PDF 
 		samplesPDF = GetCosineWeightedSamplePDF(nDotL);
 
 		// Update Throughput
-		sseThoroughput = sseThoroughput * nDotL / samplesPDF;
+		const float brdf = GetDiffuseBRDF();
+		// I need to divide by PDF here because in all hemisphere I take only one sample of reflected light.
+		// So in some sense I still do monte carlo but with only 1 sample
+		sseThoroughput = sseThoroughput * brdf * nDotL / samplesPDF;
 
 
 		++rayBounce;
