@@ -1,14 +1,6 @@
 #include "dx_framegraphbuilder.h"
 
-#include <string_view>
 #include <fstream>
-#include <vector>
-#include <tuple>
-#include <d3dcompiler.h>
-#include <optional>
-#include <windows.h>
-#include <numeric>
-#include <DirectXColors.h>
 
 
 #ifdef max
@@ -21,14 +13,7 @@
 
 #include "Lib/crc32.h"
 #include "Lib/peglib.h"
-#include "dx_settings.h"
-#include "dx_diagnostics.h"
 #include "dx_app.h"
-#include "dx_infrastructure.h"
-#include "dx_memorymanager.h"
-#include "dx_diagnostics.h"
-#include "dx_resourcemanager.h"
-#include "dx_assert.h"
 
 namespace
 {

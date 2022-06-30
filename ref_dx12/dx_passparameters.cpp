@@ -2,12 +2,8 @@
 
 #include <numeric>
 
-#include "d3dx12.h"
-#include "dx_settings.h"
 #include "dx_app.h"
-#include "dx_memorymanager.h"
 #include "dx_framegraphbuilder.h"
-#include "dx_pass.h"
 
 const std::string PassParameters::BACK_BUFFER_NAME = "BACK_BUFFER";
 

@@ -1,8 +1,6 @@
 #include "dx_commandlist.h"
 
 #include "dx_app.h"
-#include "dx_infrastructure.h"
-#include "dx_diagnostics.h"
 
 void CommandList::Init()
 {

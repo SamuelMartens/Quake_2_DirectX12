@@ -1,6 +1,5 @@
 #include "dx_diagnostics.h"
 
-#include <stdarg.h>
 
 #include "dx_utils.h"
 #include "dx_assert.h"

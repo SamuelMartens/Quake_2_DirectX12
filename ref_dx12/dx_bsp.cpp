@@ -1,6 +1,5 @@
 #include "dx_bsp.h"
 
-#include <algorithm>
 
 #include "dx_app.h"
 

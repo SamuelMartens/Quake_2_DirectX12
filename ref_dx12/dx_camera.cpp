@@ -1,8 +1,6 @@
 #include "dx_camera.h"
-#include "dx_utils.h"
 #include "dx_app.h"
 
-#include <limits>
 
 #ifdef max
 #undef max

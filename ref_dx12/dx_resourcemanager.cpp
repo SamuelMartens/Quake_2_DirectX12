@@ -1,10 +1,6 @@
 #include "dx_resourcemanager.h"
 
-#include "dx_infrastructure.h"
-#include "dx_diagnostics.h"
 #include "dx_app.h"
-#include "dx_threadingutils.h"
-#include "dx_light.h"
 
 
 ComPtr<ID3D12Resource> ResourceManager::CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, GPUJobContext& context)

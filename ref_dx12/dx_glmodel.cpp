@@ -1,8 +1,6 @@
 #include "dx_glmodel.h"
 
 #include "dx_app.h"
-#include "dx_resourcemanager.h"
-#include "dx_assert.h"
 
 model_t	*loadmodel;
 int		modfilelen;

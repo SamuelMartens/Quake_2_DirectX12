@@ -1,9 +1,7 @@
 #include "dx_objects.h"
 
-#include <limits>
 
 #include "dx_app.h"
-#include "dx_utils.h"
 
 #ifdef min
 #undef min

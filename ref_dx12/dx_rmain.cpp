@@ -3,10 +3,8 @@
 
 extern "C"
 {
-	#include "../client/ref.h"
 }
 
-#include "dx_local.h"
 
 
 

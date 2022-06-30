@@ -1,15 +1,9 @@
 #include "dx_lightbaker.h"
 
-#include <set>
 #include <random>
-#include <limits>
-#include <numeric>
-#include <mutex>
 #define _USE_MATH_DEFINES
-#include <cmath>
 
 #include "dx_app.h"
-#include "dx_assert.h"
 
 #ifdef min
 #undef min

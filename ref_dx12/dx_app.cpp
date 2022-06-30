@@ -1,35 +1,12 @@
 #include "dx_app.h"
 
-#include <string>
-#include <fstream>
-#include <algorithm>
-#include <string_view>
-#include <d3dcompiler.h>
-#include <DirectXColors.h>
-#include <memory>
-#include <tuple>
-#include <numeric>
 
 
-#include "Lib/imgui/imgui.h"
 #include "Lib/imgui/backends/imgui_impl_dx12.h"
 #include "Lib/imgui/backends/imgui_impl_win32.h"
 #include "../win32/winquake.h"
-#include "dx_utils.h"
-#include "dx_shaderdefinitions.h"
-#include "dx_glmodel.h"
-#include "dx_camera.h"
-#include "dx_diagnostics.h"
-#include "dx_infrastructure.h"
-#include "dx_settings.h"
 #include "dx_framegraphbuilder.h"
-#include "dx_resourcemanager.h"
-#include "dx_memorymanager.h"
 #include "dx_jobmultithreading.h"
-#include "dx_rendercallbacks.h"
-#include "dx_descriptorheapallocator.h"
-#include "dx_lightbaker.h"
-#include "dx_assert.h"
 
 #ifdef max
 #undef max

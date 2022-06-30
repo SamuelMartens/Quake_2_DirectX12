@@ -1,8 +1,6 @@
 #include "dx_threadingutils.h"
 
 #include "dx_diagnostics.h"
-#include "dx_frame.h"
-#include "dx_commandlist.h"
 
 #define SEMAPHORE_TIME_OUT INFINITE
 

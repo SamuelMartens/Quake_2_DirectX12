@@ -3,7 +3,6 @@
 #include <numeric>
 
 #include "dx_app.h"
-#include "dx_assert.h"
 
 #ifdef max
 #undef max

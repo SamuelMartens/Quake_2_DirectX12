@@ -1,17 +1,7 @@
 #include "dx_pass.h"
 
-#include <numeric>
 
-#include "dx_threadingutils.h"
 #include "dx_rendercallbacks.h"
-#include "dx_utils.h"
-#include "dx_settings.h"
-#include "dx_app.h"
-#include "dx_jobmultithreading.h"
-#include "dx_resourcemanager.h"
-#include "dx_memorymanager.h"
-#include "dx_lightbaker.h"
-#include "dx_assert.h"
 
 const float Pass_Debug::LIGHT_PROBE_SPHERE_RADIUS = 6.0f;
 const float Pass_Debug::POINT_LIGHT_SPHERE_RADIUS = 3.0f;

@@ -1,11 +1,7 @@
 #include "dx_framegraph.h"
 
-#include "dx_app.h"
 #include "dx_jobmultithreading.h"
-#include "dx_memorymanager.h"
 #include "dx_rendercallbacks.h"
-#include "dx_diagnostics.h"
-#include "dx_lightbaker.h"
 
 namespace
 {

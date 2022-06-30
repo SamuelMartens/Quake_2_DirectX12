@@ -1,8 +1,6 @@
 #include "dx_frame.h"
 
-#include<cassert>
 
-#include "dx_jobmultithreading.h"
 #include "dx_app.h"
 
 void Frame::Init(int arrayIndexVal)

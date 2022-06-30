@@ -1,7 +1,6 @@
 #include "dx_resource.h"
 
 #include "dx_app.h"
-#include "dx_resourcemanager.h"
 #include "Lib/crc32.h"
 
 Resource::Resource(Resource&& other)
