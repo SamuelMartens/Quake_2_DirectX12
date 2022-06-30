@@ -1,15 +1,15 @@
 #include "dx_lightbaker.h"
-#include "dx_app.h"
 
 #include <set>
-#include <cassert>
 #include <random>
 #include <limits>
 #include <numeric>
 #include <mutex>
-
 #define _USE_MATH_DEFINES
 #include <cmath>
+
+#include "dx_app.h"
+#include "dx_assert.h"
 
 #ifdef min
 #undef min
@@ -39,8 +39,8 @@ namespace
 			return 1.0f;
 		}
 
-		assert(dist > 0.0f && "Can't have negative distance");
-		assert(distMax > 0 && "Max distance must be more than zero");
+		DX_ASSERT(dist > 0.0f && "Can't have negative distance");
+		DX_ASSERT(distMax > 0 && "Max distance must be more than zero");
 
 		// Real-Time Rendering (4th Edition), page 113
 		const float windowedFunctionValue = std::powf(std::max(0.0f, 1.0f - std::powf(dist / distMax, 4)), 2);
@@ -171,11 +171,11 @@ void LightBaker::PreBake()
 {
 	ASSERT_MAIN_THREAD;
 
-	assert(clusterProbeData.empty() == true && "Cluster probe data should be empty before bake");
-	assert(clusterBakePoints.empty() == true && "Cluster bake points should be empty before bake");
-	assert(probesBaked == 0 && "Amount of baked probes was not reset");
-	assert(probes.empty() == true && "Probes were baked, but not consumed");
-	assert(generationMode != LightBakingMode::AllClusters || bakeFlags[BakeFlags::SaveRayPath] == false &&
+	DX_ASSERT(clusterProbeData.empty() == true && "Cluster probe data should be empty before bake");
+	DX_ASSERT(clusterBakePoints.empty() == true && "Cluster bake points should be empty before bake");
+	DX_ASSERT(probesBaked == 0 && "Amount of baked probes was not reset");
+	DX_ASSERT(probes.empty() == true && "Probes were baked, but not consumed");
+	DX_ASSERT(generationMode != LightBakingMode::AllClusters || bakeFlags[BakeFlags::SaveRayPath] == false &&
 	"Can't save ray path if baking for all clusters");
 
 	currentBakeCluster = 0;
@@ -198,7 +198,7 @@ void LightBaker::PostBake()
 {
 	ASSERT_MAIN_THREAD;
 	
-	assert(probes.empty() == false && "Baking is finished, but no probes were generated");
+	DX_ASSERT(probes.empty() == false && "Baking is finished, but no probes were generated");
 
 	Renderer::Inst().ConsumeDiffuseIndirectLightingBakingResult(TransferBakingResult());
 
@@ -240,12 +240,12 @@ std::vector<std::vector<XMFLOAT4>> LightBaker::GenerateClustersBakePoints()
 		break;
 	case LightBakingMode::CurrentPositionCluster:
 	{
-		assert(bakePosition.has_value() == true && "Bake position is not set");
+		DX_ASSERT(bakePosition.has_value() == true && "Bake position is not set");
 		const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(*bakePosition);
 
 		bakePosition.reset();
 
-		assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera node invalid index");
+		DX_ASSERT(cameraNode.cluster != Const::INVALID_INDEX && "Camera node invalid index");
 
 		bakeCluster = cameraNode.cluster;
 
@@ -254,7 +254,7 @@ std::vector<std::vector<XMFLOAT4>> LightBaker::GenerateClustersBakePoints()
 	}
 		break;
 	default:
-		assert(false && "Invalid generation mode");
+		DX_ASSERT(false && "Invalid generation mode");
 		break;
 	}
 
@@ -327,7 +327,7 @@ void LightBaker::BakeJob()
 		const std::vector<XMFLOAT4>& bakePoints = clusterBakePoints[currentCluster];
 		const int clusterProbeStartIndex = clusterProbeData[currentCluster].startIndex;
 
-		assert(clusterProbeStartIndex != Const::INVALID_INDEX && "Invalid cluster probe start index");
+		DX_ASSERT(clusterProbeStartIndex != Const::INVALID_INDEX && "Invalid cluster probe start index");
 
 		for (int bakePointIndex = 0; bakePointIndex < bakePoints.size(); ++bakePointIndex)
 		{
@@ -356,7 +356,7 @@ void LightBaker::BakeJob()
 
 				if (bakeFlags[BakeFlags::SaveRayPath] == true)
 				{
-					assert(sampleRes.pathSegments.has_value() == true && 
+					DX_ASSERT(sampleRes.pathSegments.has_value() == true && 
 						"If SaveRayPath flag is on there should be segments");
 
 					probe.pathTracingSegments->insert(probe.pathTracingSegments->end(),
@@ -398,7 +398,7 @@ int LightBaker::GetTotalProbesNum() const
 
 int LightBaker::GetBakedProbesNum() const
 {
-	assert(probesBaked <= GetTotalProbesNum() && "Baked probes exceeded total probes");
+	DX_ASSERT(probesBaked <= GetTotalProbesNum() && "Baked probes exceeded total probes");
 	return probesBaked;
 }
 
@@ -446,7 +446,7 @@ void LightBaker::SetBakingMode(LightBakingMode genMode)
 
 void LightBaker::SetBakePosition(const XMFLOAT4& position)
 {
-	assert(bakePosition.has_value() == false && "Bake position is not cleared");
+	DX_ASSERT(bakePosition.has_value() == false && "Bake position is not cleared");
 	bakePosition = position;
 }
 
@@ -675,7 +675,7 @@ XMFLOAT4 LightBaker::GatherRadianceFromAreaLight(const XMFLOAT4& intersectionPoi
 			return trianglePDF >= sample.z;
 		});
 
-		assert(trinangleIndexIt != lightTrianglesPDF.cend() && "Triangle sample not found");
+		DX_ASSERT(trinangleIndexIt != lightTrianglesPDF.cend() && "Triangle sample not found");
 
 		const int triangleIndex = std::distance(lightTrianglesPDF.cbegin(), trinangleIndexIt);
 
@@ -685,7 +685,7 @@ XMFLOAT4 LightBaker::GatherRadianceFromAreaLight(const XMFLOAT4& intersectionPoi
 		const float w = 1.0f - u - v;
 
 		//This is just for my sanity. I will delete it later
-		assert(u + v <= 1.0f && "Something funky with barycentric coordinates");
+		DX_ASSERT(u + v <= 1.0f && "Something funky with barycentric coordinates");
 
 		const int V0Ind = lightMesh.indices[triangleIndex * 3 + 0];
 		const int V1Ind = lightMesh.indices[triangleIndex * 3 + 1];
@@ -907,14 +907,14 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 		// Update ray dir
 		XMStoreFloat4(&rayDir, sseRayDir);
 
-		assert(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseNormal)), 1.0f) && "Normal is not normalized");
-		assert(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseRayDir)), 1.0f) && "Ray Dir is not normalized");
+		DX_ASSERT(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseNormal)), 1.0f) && "Normal is not normalized");
+		DX_ASSERT(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseRayDir)), 1.0f) && "Ray Dir is not normalized");
 		//#DEBUG check if this is right
 		// Update nDotL
 		nDotL = XMVectorGetX(XMVector3Dot(sseNormal, sseRayDir));
 
-		assert(nDotL > 0.0f && "nDotL is negative, is it ok?");
-		assert(Utils::IsAlmostEqual(nDotL, 
+		DX_ASSERT(nDotL > 0.0f && "nDotL is negative, is it ok?");
+		DX_ASSERT(Utils::IsAlmostEqual(nDotL, 
 			XMVectorGetX(XMVector3Dot(XMLoadFloat4(&Utils::AXIS_Z), XMLoadFloat4(&cosineWieghtedSample)))) &&
 		"Angle between unrotated sample and Z should be the same as angle between rotated sample and normal");
 

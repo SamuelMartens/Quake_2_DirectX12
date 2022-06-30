@@ -35,7 +35,7 @@ void Frame::Init(int arrayIndexVal)
 void Frame::ResetSyncData()
 
 {
-	assert(executeCommandListFenceValue != -1 && executeCommandListEvenHandle != INVALID_HANDLE_VALUE && 
+	DX_ASSERT(executeCommandListFenceValue != -1 && executeCommandListEvenHandle != INVALID_HANDLE_VALUE && 
 		"Trying to reset frame's sync data. But this data is invalid");
 
 	CloseHandle(executeCommandListEvenHandle);
@@ -54,8 +54,8 @@ void Frame::Acquire()
 {
 	std::scoped_lock<std::mutex> lock(ownershipMutex);
 
-	assert(frameFinishedSemaphore == nullptr && "Open frame error. Frame is not cleaned up.");
-	assert(isInUse == false && "Trying to acquire frame that is still in use");
+	DX_ASSERT(frameFinishedSemaphore == nullptr && "Open frame error. Frame is not cleaned up.");
+	DX_ASSERT(isInUse == false && "Trying to acquire frame that is still in use");
 
 	isInUse = true;
 	frameFinishedSemaphore = std::make_shared<Semaphore>(1);
@@ -65,7 +65,7 @@ void Frame::Release()
 {
 	std::scoped_lock<std::mutex> lock(ownershipMutex);
 
-	assert(isInUse == true && "Trying to release frame, that's already released.");
+	DX_ASSERT(isInUse == true && "Trying to release frame, that's already released.");
 
 	frameFinishedSemaphore->Signal();
 	frameFinishedSemaphore = nullptr;
@@ -80,7 +80,7 @@ bool Frame::GetIsInUse() const
 
 int Frame::GetArrayIndex() const
 {
-	assert(arrayIndex != Const::INVALID_INDEX && "Trying to get frame index. But it is invalid");
+	DX_ASSERT(arrayIndex != Const::INVALID_INDEX && "Trying to get frame index. But it is invalid");
 	return arrayIndex;
 }
 

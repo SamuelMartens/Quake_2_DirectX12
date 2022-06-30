@@ -1,9 +1,8 @@
 #include "dx_glmodel.h"
 
-#include <cassert>
-
 #include "dx_app.h"
 #include "dx_resourcemanager.h"
+#include "dx_assert.h"
 
 model_t	*loadmodel;
 int		modfilelen;
@@ -115,8 +114,8 @@ void BuildPolygonFromSurface(msurface_t *fa)
 
 const PointLight* Mod_StaticPointLights(int* numlights)
 {
-	assert(staticpointlights != NULL && "Asking for empty static point lights");
-	assert(numlights != NULL && "Argument for Mod_StaticPointLights is NULL");
+	DX_ASSERT(staticpointlights != NULL && "Asking for empty static point lights");
+	DX_ASSERT(numlights != NULL && "Argument for Mod_StaticPointLights is NULL");
 
 	*numlights = staticpointlightsnum;
 
@@ -125,7 +124,7 @@ const PointLight* Mod_StaticPointLights(int* numlights)
 
 void Mod_AllocStaticPointLights()
 {
-	assert(staticpointlights == NULL && "Static point lights is not cleaned up");
+	DX_ASSERT(staticpointlights == NULL && "Static point lights is not cleaned up");
 
 	staticpointlights = new PointLight[POINT_LIGHTS_MAX_ENTITY_LIGHTS];
 	staticpointlightsnum = 0;
@@ -133,7 +132,7 @@ void Mod_AllocStaticPointLights()
 
 void Mod_FreeStaticPointLights()
 {
-	assert(staticpointlights != NULL && "Trying to free static point lights array, but it is empty");
+	DX_ASSERT(staticpointlights != NULL && "Trying to free static point lights array, but it is empty");
 
 	delete[] (staticpointlights);
 
@@ -192,7 +191,7 @@ void EnsurePointLightDoesNotIntersectWalls(PointLight *pointlight)
 
 	mleaf_t *leaf;
 	
-	assert(pointlight != NULL);
+	DX_ASSERT(pointlight != NULL);
 
 	vec3_t origin;
 	origin[0] = pointlight->origin.x;
@@ -223,8 +222,8 @@ void EnsurePointLightDoesNotIntersectWalls(PointLight *pointlight)
 
 void ParseEntityVector(XMFLOAT4* vec, const char* str)
 {
-	assert(vec != NULL);
-	assert(str != NULL);
+	DX_ASSERT(vec != NULL);
+	DX_ASSERT(str != NULL);
 
 	sscanf(str, "%f %f %f", &vec->x, &vec->y, &vec->z);
 }
@@ -241,7 +240,7 @@ void BuildClusterListForPointLight(PointLight* pointlight)
 	short num_clusters;
 	qboolean already_listed;
 
-	assert(pointlight != NULL);
+	DX_ASSERT(pointlight != NULL);
 
 	stack_size = 0;
 	r = pointlight->radius;

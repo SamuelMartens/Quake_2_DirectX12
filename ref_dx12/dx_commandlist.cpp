@@ -35,7 +35,7 @@ void CommandList::Open()
 	ThrowIfFailed(commandListAlloc->Reset());
 	ThrowIfFailed(commandList->Reset(commandListAlloc.Get(), nullptr));
 #ifdef VALIDATE_COMMAND_LIST
-	assert(isOpen == false && "Command list shouldn't be open twice");
+	DX_ASSERT(isOpen == false && "Command list shouldn't be open twice");
 	isOpen = true;
 #endif // VALIDATE_COMMAND_LIST
 
@@ -46,7 +46,7 @@ void CommandList::Close()
 	ThrowIfFailed(commandList->Close());
 
 #ifdef VALIDATE_COMMAND_LIST
-	assert(isOpen == true && "Command list should be open before closed");
+	DX_ASSERT(isOpen == true && "Command list should be open before closed");
 	isOpen = false;
 #endif // VALIDATE_COMMAND_LIST
 

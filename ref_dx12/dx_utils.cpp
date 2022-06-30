@@ -167,8 +167,8 @@ XMFLOAT4X4 Utils::ConstructV1ToV2RotationMatrix(const XMFLOAT4& v1, const XMFLOA
 	XMVECTOR sseV1 = XMLoadFloat4(&v1);
 	XMVECTOR sseV2 = XMLoadFloat4(&v2);
 
-	assert(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseV1)), 1.0f) && "V1 is not normalized");
-	assert(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseV2)), 1.0f) && "V2 is not normalized");
+	DX_ASSERT(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseV1)), 1.0f) && "V1 is not normalized");
+	DX_ASSERT(Utils::IsAlmostEqual(XMVectorGetX(XMVector3Length(sseV2)), 1.0f) && "V2 is not normalized");
 
 	XMVECTOR sseRotationAxis = XMVector3Cross(sseV1, sseV2);
 
@@ -336,7 +336,7 @@ void Utils::Sprintf(char* dest, int size, const char* fmt, ...)
 	len = vsprintf(bigbuffer, fmt, argptr);
 	va_end(argptr);
 
-	assert(len < size);
+	DX_ASSERT(len < size);
 
 	strncpy(dest, bigbuffer, size - 1);
 }
@@ -697,7 +697,7 @@ std::vector<uint32_t> Utils::GetIndicesListForTrianglelistFromPolygonPrimitive(i
 {
 	constexpr int TRIANGLE_VERT_NUM = 3;
 
-	assert(numVertices >= TRIANGLE_VERT_NUM && "Invalid vert num for triangle list generation");
+	DX_ASSERT(numVertices >= TRIANGLE_VERT_NUM && "Invalid vert num for triangle list generation");
 
 	std::vector<uint32_t> indices;
 	indices.reserve((numVertices - 2) * TRIANGLE_VERT_NUM);
@@ -718,7 +718,7 @@ std::vector<XMFLOAT4> Utils::GenerateNormals(const std::vector<XMFLOAT4>& vertic
 {
 	std::vector<XMFLOAT4> normals(vertices.size(), XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f));
 
-	assert(indices.size() % 3 == 0 && "Invalid amount of indices");
+	DX_ASSERT(indices.size() % 3 == 0 && "Invalid amount of indices");
 
 	for (int triangleInd = 0; triangleInd < indices.size() / 3; ++triangleInd)
 	{
@@ -740,7 +740,7 @@ std::vector<XMFLOAT4> Utils::GenerateNormals(const std::vector<XMFLOAT4>& vertic
 	for (XMFLOAT4& normal : normals)
 	{
 		XMStoreFloat4(&normal, XMVector3Normalize(XMLoadFloat4(&normal)));
-		assert(normal.w == 0.0f && "Normals w should always be 0");
+		DX_ASSERT(normal.w == 0.0f && "Normals w should always be 0");
 	}
 
 	return normals;
@@ -922,7 +922,7 @@ bool Utils::FindClosestIntersectionInNode(const Utils::Ray& ray, const BSPNode& 
 			continue;
 		}
 
-		assert(object.indices.size() % 3 == 0 && "Invalid triangle indices");
+		DX_ASSERT(object.indices.size() % 3 == 0 && "Invalid triangle indices");
 
 		for (int triangleIndex = 0; triangleIndex < object.indices.size() / 3; ++triangleIndex)
 		{

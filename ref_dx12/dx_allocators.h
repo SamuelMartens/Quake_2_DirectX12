@@ -6,6 +6,7 @@
 #include <atomic>
 
 #include "dx_utils.h"
+#include "dx_assert.h"
 
 template<int SIZE>
 class FlagAllocator
@@ -31,7 +32,7 @@ public:
 			++index;
 		}
 
-		assert(index < flags.size() && "Failed allocation attempt in flag allocator");
+		DX_ASSERT(index < flags.size() && "Failed allocation attempt in flag allocator");
 
 		flags[index] = true;
 
@@ -65,7 +66,7 @@ public:
 			}
 		}
 
-		assert(setInRow == size && "Failed range allocation attempt in flag allocator");
+		DX_ASSERT(setInRow == size && "Failed range allocation attempt in flag allocator");
 
 		// Mark bit as allocated
 		for (; setInRow > 0; setInRow--, index--)
@@ -81,7 +82,7 @@ public:
 	{
 		std::scoped_lock<std::mutex> lock(mutex);
 
-		assert(flags[index] == true && "Attempt to delete free memory in flag allocator");
+		DX_ASSERT(flags[index] == true && "Attempt to delete free memory in flag allocator");
 
 		flags[index] = false;
 
@@ -93,7 +94,7 @@ public:
 
 		for (int i = index; i < index + size; ++i)
 		{
-			assert(flags[i] == true && "DeleteRange trying to free some flag twice");
+			DX_ASSERT(flags[i] == true && "DeleteRange trying to free some flag twice");
 
 			flags[i] = false;
 		}
@@ -123,7 +124,7 @@ public:
 	int Allocate(int size)
 	{
 		const int result = currentAllocationIndex.fetch_add(size);
-		assert(currentAllocationIndex < SIZE && "Streaming allocator exceeded it's maximum size");
+		DX_ASSERT(currentAllocationIndex < SIZE && "Streaming allocator exceeded it's maximum size");
 
 		return result;
 	}
@@ -164,7 +165,7 @@ public:
 	{
 		std::scoped_lock<std::mutex> lock(mutex);
 
-		assert(size > 0 && "Invalid allocation size request");
+		DX_ASSERT(size > 0 && "Invalid allocation size request");
 
 		// Check before existing allocations
 		{
@@ -215,7 +216,7 @@ public:
 				}
 			}
 
-			assert(false && "Failed to allocate part of buffer");
+			DX_ASSERT(false && "Failed to allocate part of buffer");
 			return Const::INVALID_OFFSET;
 
 		}
@@ -233,7 +234,7 @@ public:
 
 		if (it == allocations.end())
 		{
-			assert(false && "Trying to delete memory that wasn't allocated.");
+			DX_ASSERT(false && "Trying to delete memory that wasn't allocated.");
 			return;
 		}
 
@@ -270,14 +271,14 @@ private:
 			int prevSize = -1;
 			for (auto it = allocations.cbegin(); it != allocations.cend(); ++it)
 			{
-				assert(it->offset > prevOffset);
-				assert(it->offset != Const::INVALID_OFFSET);
-				assert(it->size != Const::INVALID_SIZE);
-				assert(it->offset + it->size < SIZE);
+				DX_ASSERT(it->offset > prevOffset);
+				DX_ASSERT(it->offset != Const::INVALID_OFFSET);
+				DX_ASSERT(it->size != Const::INVALID_SIZE);
+				DX_ASSERT(it->offset + it->size < SIZE);
 
 				if (prevOffset != -1)
 				{
-					assert(prevOffset + prevSize <= it->offset);
+					DX_ASSERT(prevOffset + prevSize <= it->offset);
 				}
 
 				prevOffset = it->offset;

@@ -163,7 +163,7 @@ namespace RootArg
 	template<typename T>
 	int AllocateDescTableView(const DescTable& descTable, T& allocator)
 	{ 
-		assert(descTable.content.empty() == false && "Allocation view error. Desc table content can't be empty.");
+		DX_ASSERT(descTable.content.empty() == false && "Allocation view error. Desc table content can't be empty.");
 
 		// Figure what kind of desc hep to use from inspection of the first element
 		return std::visit([size = descTable.content.size(), &allocator](auto&& descTableEntity)
@@ -187,7 +187,7 @@ namespace RootArg
 			}
 			else
 			{
-				assert(false && "AllocateDescTableView error. Unknown type of desc table entity ");
+				DX_ASSERT(false && "AllocateDescTableView error. Unknown type of desc table entity ");
 			}
 
 			return -1;
@@ -198,7 +198,7 @@ namespace RootArg
 	template<typename T>
 	void ReleaseDescTableView(DescTable& descTable, T& allocator)
 	{
-		assert(descTable.content.empty() == false && "DesctTable release error. Desc table content can't be empty.");
+		DX_ASSERT(descTable.content.empty() == false && "DesctTable release error. Desc table content can't be empty.");
 
 		std::visit([&allocator, &descTable](auto&& desctTableEntity)
 		{

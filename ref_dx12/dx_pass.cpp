@@ -1,6 +1,5 @@
 #include "dx_pass.h"
 
-#include <cassert>
 #include <numeric>
 
 #include "dx_threadingutils.h"
@@ -12,6 +11,7 @@
 #include "dx_resourcemanager.h"
 #include "dx_memorymanager.h"
 #include "dx_lightbaker.h"
+#include "dx_assert.h"
 
 const float Pass_Debug::LIGHT_PROBE_SPHERE_RADIUS = 6.0f;
 const float Pass_Debug::POINT_LIGHT_SPHERE_RADIUS = 3.0f;
@@ -32,7 +32,7 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::RootConstant>)
 				{
-					assert(false && "Root constant is not implemented");
+					DX_ASSERT(false && "Root constant is not implemented");
 				}
 
 				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
@@ -42,7 +42,7 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
 				{
-					assert(arg.buffer == nullptr && "Structured buffer pointed for root arg resource should be empty");
+					DX_ASSERT(arg.buffer == nullptr && "Structured buffer pointed for root arg resource should be empty");
 
 					Utils::PointerAsRef<decltype(arg.buffer)> refToPointer{ &arg.buffer };
 
@@ -70,7 +70,7 @@ namespace
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 							{
-								assert(false && "Desc table view is probably not implemented! Make sure it is");
+								DX_ASSERT(false && "Desc table view is probably not implemented! Make sure it is");
 							}
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture>)
@@ -117,7 +117,7 @@ namespace
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_StructuredBufferView>)
 							{
-								assert(descTableEntitiy.internalBindName.has_value() == false && "Internal resource for Structured buffer is not implemented");
+								DX_ASSERT(descTableEntitiy.internalBindName.has_value() == false && "Internal resource for Structured buffer is not implemented");
 
 								RenderCallbacks::RegisterLocalPass(
 									HASH(passParameters.name.c_str()),
@@ -150,7 +150,7 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::RootConstant>)
 				{
-					assert(false && "Root constants are not implemented");
+					DX_ASSERT(false && "Root constants are not implemented");
 				}
 
 				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
@@ -173,7 +173,7 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
 				{
-					assert(arg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
+					DX_ASSERT(arg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
 
 					RenderCallbacks::UpdateLocalPass(
 						HASH(passParameters.name.c_str()),
@@ -196,7 +196,7 @@ namespace
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 							{
-								assert(false && "Desc table view is probably not implemented! Make sure it is");
+								DX_ASSERT(false && "Desc table view is probably not implemented! Make sure it is");
 							}
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||
@@ -248,7 +248,7 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::RootConstant>)
 				{
-					assert(false && "Root constant is not implemented");
+					DX_ASSERT(false && "Root constant is not implemented");
 				}
 
 				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
@@ -258,7 +258,7 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
 				{
-					assert(rootArg.buffer == nullptr && "Structured buffer pointed for root arg resource should be empty");
+					DX_ASSERT(rootArg.buffer == nullptr && "Structured buffer pointed for root arg resource should be empty");
 
 					Utils::PointerAsRef<decltype(rootArg.buffer)> refToPointer{ &rootArg.buffer };
 
@@ -286,14 +286,14 @@ namespace
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 							{
-								assert(false && "Const buffer view is not implemented");
+								DX_ASSERT(false && "Const buffer view is not implemented");
 							}
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||
 								std::is_same_v<T, RootArg::DescTableEntity_UAView> ||
 								std::is_same_v<T, RootArg::DescTableEntity_StructuredBufferView>)
 							{
-								assert(descTableEntitiy.internalBindName.has_value() == false && 
+								DX_ASSERT(descTableEntitiy.internalBindName.has_value() == false && 
 									"PerObject resources is not suited to use internal bind");
 
 								RenderCallbacks::RegisterLocalObject(
@@ -324,7 +324,7 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::RootConstant>)
 				{
-					assert(false && "Root constant is not implemented");
+					DX_ASSERT(false && "Root constant is not implemented");
 				};
 
 				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
@@ -348,7 +348,7 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
 				{
-					assert(rootArg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
+					DX_ASSERT(rootArg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
 
 					RenderCallbacks::UpdateLocalObject(
 						passHashedName,
@@ -372,7 +372,7 @@ namespace
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 							{
-								assert(false && "Desc table view is probably not implemented! Make sure it is");
+								DX_ASSERT(false && "Desc table view is probably not implemented! Make sure it is");
 							}
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||
@@ -437,12 +437,12 @@ void Pass_UI::Init()
 {
 	// Pass memory exists have the same lifetime as pass itself. So unlike objects memory
 	// I can allocate it only one time
-	assert(passMemorySize == Const::INVALID_SIZE && "Pass_UI memory size should be uninitialized");
+	DX_ASSERT(passMemorySize == Const::INVALID_SIZE && "Pass_UI memory size should be uninitialized");
 	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
 
 	if (passMemorySize > 0)
 	{
-		assert(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_UI not cleaned up memory");
+		DX_ASSERT(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_UI not cleaned up memory");
 		passConstBuffMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(passMemorySize);
 	}
 
@@ -450,16 +450,16 @@ void Pass_UI::Init()
 	// used for each run
 
 	// Calculate amount of memory for const buffers per objects
-	assert(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Per object const memory should be uninitialized");
+	DX_ASSERT(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Per object const memory should be uninitialized");
 	perObjectConstBuffMemorySize =  RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
 
 
 	// Calculate amount of memory for vertex buffers per objects
-	assert(perVertexMemorySize == Const::INVALID_SIZE && "Per Vertex Memory should be uninitialized");
+	DX_ASSERT(perVertexMemorySize == Const::INVALID_SIZE && "Per Vertex Memory should be uninitialized");
 
 	perVertexMemorySize = Parsing::GetVertAttrSize(*passParameters.vertAttr);
 
-	assert(perObjectVertexMemorySize == Const::INVALID_SIZE && "Per Object Vertex Memory should be uninitialized");
+	DX_ASSERT(perObjectVertexMemorySize == Const::INVALID_SIZE && "Per Object Vertex Memory should be uninitialized");
 	// Every UI object is quad that consists of two triangles
 	perObjectVertexMemorySize = perVertexMemorySize * 6;
 
@@ -475,7 +475,7 @@ void Pass_UI::RegisterObjects(GPUJobContext& context)
 
 	if (perObjectConstBuffMemorySize != 0)
 	{
-		assert(objectConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_UI start not cleaned up memory");
+		DX_ASSERT(objectConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_UI start not cleaned up memory");
 		objectConstBuffMemory = uploadMemory.Allocate(perObjectConstBuffMemorySize * objects.size());
 	}
 
@@ -510,7 +510,7 @@ void Pass_UI::RegisterObjects(GPUJobContext& context)
 		{
 			using T = std::decay_t<decltype(drawCall)>;
 
-			assert(perVertexMemorySize == sizeof(ShDef::Vert::PosTexCoord) && "Per vertex memory invalid size");
+			DX_ASSERT(perVertexMemorySize == sizeof(ShDef::Vert::PosTexCoord) && "Per vertex memory invalid size");
 			Renderer& renderer = Renderer::Inst();
 			auto& uploadMemory =
 				MemoryManager::Inst().GetBuff<UploadBuffer_t>();
@@ -736,16 +736,16 @@ void Pass_Static::Execute(GPUJobContext& context)
 
 void Pass_Static::Init()
 {
-	assert(passMemorySize == Const::INVALID_SIZE && "Pass_Static memory size should be unitialized");
+	DX_ASSERT(passMemorySize == Const::INVALID_SIZE && "Pass_Static memory size should be unitialized");
 	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
 
 	if (passMemorySize > 0)
 	{
-		assert(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Static not cleaned up memory");
+		DX_ASSERT(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Static not cleaned up memory");
 		passConstBuffMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(passMemorySize);
 	}
 
-	assert(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Static perObject memory size should be unitialized");
+	DX_ASSERT(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Static perObject memory size should be unitialized");
 	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
 
 	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
@@ -793,7 +793,7 @@ void Pass_Static::ReleasePersistentResources()
 
 void Pass_Static::RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& context)
 {
-	assert(drawObjects.empty() == true && "Static pass Object registration failed. Pass objects list should be empty");
+	DX_ASSERT(drawObjects.empty() == true && "Static pass Object registration failed. Pass objects list should be empty");
 
 	const unsigned passHashedName = HASH(passParameters.name.c_str());
 
@@ -950,16 +950,16 @@ void Pass_Dynamic::Execute(GPUJobContext& context)
 
 void Pass_Dynamic::Init()
 {
-	assert(passMemorySize == Const::INVALID_SIZE && "Pass_Dynamic memory size should be unitialized");
+	DX_ASSERT(passMemorySize == Const::INVALID_SIZE && "Pass_Dynamic memory size should be unitialized");
 	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
 
 	if (passMemorySize > 0)
 	{
-		assert(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Dynamic not cleaned up memory");
+		DX_ASSERT(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Dynamic not cleaned up memory");
 		passConstBuffMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(passMemorySize);
 	}
 
-	assert(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Dynamic perObject memory size should be unitialized");
+	DX_ASSERT(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Dynamic perObject memory size should be unitialized");
 	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
 
 	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
@@ -1013,11 +1013,11 @@ void Pass_Dynamic::ReleasePersistentResources()
 
 void Pass_Dynamic::RegisterEntities(GPUJobContext& context)
 {
-	assert(drawObjects.empty() == true && "Dynamic pass entities registration failed. Pass objects list should be empty");
+	DX_ASSERT(drawObjects.empty() == true && "Dynamic pass entities registration failed. Pass objects list should be empty");
 
 	const std::vector<int>& visibleEntitiesIndices = context.frame.visibleEntitiesIndices;
 
-	assert(objectsConstBufferMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Dynamic start not cleaned up memory");
+	DX_ASSERT(objectsConstBufferMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Dynamic start not cleaned up memory");
 	auto& uploadMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 	
 	if (perObjectConstBuffMemorySize != 0)
@@ -1065,7 +1065,7 @@ void Pass_Dynamic::UpdateDrawEntities(GPUJobContext& context)
 
 	if (perObjectConstBuffMemorySize != 0)
 	{
-		assert(objectsConstBufferMemory != Const::INVALID_BUFFER_HANDLER && "Pass_Dynamic memory is invalid");
+		DX_ASSERT(objectsConstBufferMemory != Const::INVALID_BUFFER_HANDLER && "Pass_Dynamic memory is invalid");
 
 		FArg::UpdateUploadHeapBuff updateConstBufferArgs;
 		updateConstBufferArgs.buffer = uploadMemory.GetGpuBuffer();
@@ -1181,17 +1181,17 @@ void Pass_Particles::Execute(GPUJobContext& context)
 
 void Pass_Particles::Init()
 {
-	assert(passMemorySize == Const::INVALID_SIZE && "Pass_Particles memory size should be uninitialized");
+	DX_ASSERT(passMemorySize == Const::INVALID_SIZE && "Pass_Particles memory size should be uninitialized");
 	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
 
 	if (passMemorySize > 0)
 	{
-		assert(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Particles not cleaned up memory");
+		DX_ASSERT(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Particles not cleaned up memory");
 		passConstBuffMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(passMemorySize);
 	}
 
-	assert(passParameters.perObjectLocalRootArgsTemplate.empty() == true && "Particle pass is not suited to have local per object resources");
-	assert(passParameters.perObjGlobalRootArgsIndicesTemplate.empty() == true && "Particle pass is not suited to have global per object resources");
+	DX_ASSERT(passParameters.perObjectLocalRootArgsTemplate.empty() == true && "Particle pass is not suited to have local per object resources");
+	DX_ASSERT(passParameters.perObjGlobalRootArgsIndicesTemplate.empty() == true && "Particle pass is not suited to have global per object resources");
 
 	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
 }
@@ -1270,17 +1270,17 @@ void Pass_PostProcess::Execute(GPUJobContext& context)
 
 void Pass_PostProcess::Init()
 {
-	assert(passMemorySize == Const::INVALID_SIZE && "Pass_PostProcess memory size should be uninitialized");
+	DX_ASSERT(passMemorySize == Const::INVALID_SIZE && "Pass_PostProcess memory size should be uninitialized");
 	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
 
 	if (passMemorySize > 0)
 	{
-		assert(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_PostProcess not cleaned up memory");
+		DX_ASSERT(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_PostProcess not cleaned up memory");
 		passConstBuffMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(passMemorySize);
 	}
 
-	assert(passParameters.perObjectLocalRootArgsTemplate.empty() == true && "PostProcess pass is not suited to have local per object resources");
-	assert(passParameters.perObjGlobalRootArgsIndicesTemplate.empty() == true && "PostProcess pass is not suited to have global per object resources");
+	DX_ASSERT(passParameters.perObjectLocalRootArgsTemplate.empty() == true && "PostProcess pass is not suited to have local per object resources");
+	DX_ASSERT(passParameters.perObjGlobalRootArgsIndicesTemplate.empty() == true && "PostProcess pass is not suited to have global per object resources");
 
 }
 
@@ -1328,7 +1328,7 @@ void Pass_PostProcess::Dispatch(GPUJobContext& context)
 		RootArg::BindCompute(arg, commandList);
 	}
 
-	assert(passParameters.threadGroups.has_value() == true && "PostProcess pass has not threadGroups specified");
+	DX_ASSERT(passParameters.threadGroups.has_value() == true && "PostProcess pass has not threadGroups specified");
 
 	commandList.GetGPUList()->Dispatch(
 		passParameters.threadGroups.value()[0],
@@ -1372,16 +1372,16 @@ void Pass_Debug::Init()
 	pointLightDebugObjectVertices = Utils::CreateSphere(POINT_LIGHT_SPHERE_RADIUS, POINT_LIGHT_SPHERE_SUBDIVISION);
 
 	// Resources
-	assert(passMemorySize == Const::INVALID_SIZE && "Pass_Debug memory size should be unitialized");
+	DX_ASSERT(passMemorySize == Const::INVALID_SIZE && "Pass_Debug memory size should be unitialized");
 	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
 
 	if (passMemorySize > 0)
 	{
-		assert(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Debug not cleaned up memory");
+		DX_ASSERT(passConstBuffMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Debug not cleaned up memory");
 		passConstBuffMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>().Allocate(passMemorySize);
 	}
 
-	assert(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Debug perObject memory size should be unitialized");
+	DX_ASSERT(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Debug perObject memory size should be unitialized");
 	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
 
 	perVertexMemorySize = Parsing::GetVertAttrSize(*passParameters.vertAttr);
@@ -1453,9 +1453,9 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 		return;
 	}
 	
-	assert(objectsVertexBufferMemory == Const::INVALID_BUFFER_HANDLER && "DebugObjects vertex buffer memory should be released");
+	DX_ASSERT(objectsVertexBufferMemory == Const::INVALID_BUFFER_HANDLER && "DebugObjects vertex buffer memory should be released");
 
-	assert(drawObjects.empty() == true && "Debug pass objects registration failed. Pass objects list should be empty");
+	DX_ASSERT(drawObjects.empty() == true && "Debug pass objects registration failed. Pass objects list should be empty");
 	drawObjects.reserve(debugObjects.size());
 
 	std::vector<XMFLOAT4> debugObjectsVertices;
@@ -1506,17 +1506,17 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 
 			if constexpr (std::is_same_v<T, DebugObject_LightSource>)
 			{
-				assert(debugObject.type != DebugObject_LightSource::Type::None && 
+				DX_ASSERT(debugObject.type != DebugObject_LightSource::Type::None && 
 					"Invalid debug object light source type");
 
-				assert(debugObject.sourceIndex != Const::INVALID_INDEX && 
+				DX_ASSERT(debugObject.sourceIndex != Const::INVALID_INDEX && 
 					"Invalid index for debug object light source");
 
 				if (debugObject.type == DebugObject_LightSource::Type::Area)
 				{
 					const SurfaceLight& light = surfaceLights[debugObject.sourceIndex];
 
-					assert(light.surfaceIndex != Const::INVALID_INDEX && 
+					DX_ASSERT(light.surfaceIndex != Const::INVALID_INDEX && 
 						"Invalid index for surface light mesh");
 
 					const SourceStaticObject& staticObject = staticObjects[light.surfaceIndex];
@@ -1540,7 +1540,7 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 					
 					if (debugObject.showRadius)
 					{
-						assert(pointLight.radius > 0.0f && "Negative radius");
+						DX_ASSERT(pointLight.radius > 0.0f && "Negative radius");
 
 						radiusSphereVertices = Utils::CreateSphere(pointLight.radius, POINT_LIGHT_SPHERE_SUBDIVISION);
 						sphereVertices = &radiusSphereVertices;
@@ -1598,7 +1598,7 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 
 	const int debugObjectsVertexBufferSizeInBytes = debugObjectsVertices.size() * perVertexMemorySize;
 
-	assert(perVertexMemorySize == sizeof(XMFLOAT4) && 
+	DX_ASSERT(perVertexMemorySize == sizeof(XMFLOAT4) && 
 		"Invalid vertex size for debug pass, if this is intentional make sure you changed pass code for it");
 
 	// Deal with vertex buffer
@@ -1619,7 +1619,7 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 	// Check if we need to free this memory, maybe same amount needs to allocated
 	if (perObjectConstBuffMemorySize != 0)
 	{
-		assert(objectsConstBufferMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Debug start not cleaned up memory");
+		DX_ASSERT(objectsConstBufferMemory == Const::INVALID_BUFFER_HANDLER && "Pass_Debug start not cleaned up memory");
 		objectsConstBufferMemory = uploadMemory.Allocate(perObjectConstBuffMemorySize * debugObjects.size());
 	}
 
@@ -1765,11 +1765,11 @@ void PassUtils::ClearColorBackBufferCallback(XMFLOAT4 color, GPUJobContext& cont
 
 void PassUtils::ClearColorCallback(XMFLOAT4 color, GPUJobContext& context, const Pass_t* pass)
 {
-	assert(pass != nullptr && "Pass value is nullptr");
+	DX_ASSERT(pass != nullptr && "Pass value is nullptr");
 
 	const PassParameters& params = GetPassParameters(*pass);
 
-	assert(params.colorTargetViewIndex != Const::INVALID_INDEX && "ClearColorCallback invalid index");
+	DX_ASSERT(params.colorTargetViewIndex != Const::INVALID_INDEX && "ClearColorCallback invalid index");
 
 	D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = Renderer::Inst().GetRtvHandleCPU(params.colorTargetViewIndex);
 	context.commandList->GetGPUList()->ClearRenderTargetView(colorRenderTargetView, &color.x, 0, nullptr);
@@ -1790,11 +1790,11 @@ void PassUtils::ClearDepthBackBufferCallback(float value, GPUJobContext& context
 
 void PassUtils::ClearDeptCallback(float value, GPUJobContext& context, const Pass_t* pass)
 {
-	assert(pass != nullptr && "Pass value is nullptr");
+	DX_ASSERT(pass != nullptr && "Pass value is nullptr");
 
 	const PassParameters& params = GetPassParameters(*pass);
 
-	assert(params.depthTargetViewIndex != Const::INVALID_INDEX && "ClearDeptCallback invalid index");
+	DX_ASSERT(params.depthTargetViewIndex != Const::INVALID_INDEX && "ClearDeptCallback invalid index");
 
 	D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = Renderer::Inst().GetDsvHandleCPU(params.depthTargetViewIndex);
 	context.commandList->GetGPUList()->ClearDepthStencilView(
@@ -1820,7 +1820,7 @@ void PassUtils::InternalTextureProxiesToInterPassStateCallback(GPUJobContext& co
 
 void PassUtils::RenderTargetToRenderStateCallback(GPUJobContext& context, const Pass_t* pass)
 {
-	assert(pass != nullptr && "Pass value is nullptr");
+	DX_ASSERT(pass != nullptr && "Pass value is nullptr");
 
 	const PassParameters& params = GetPassParameters(*pass);
 
@@ -1844,7 +1844,7 @@ void PassUtils::CopyTextureCallback(const std::string sourceName, const std::str
 		return proxy.hashedName == sourceHashedName;
 	});
 
-	assert(sourceProxyIt != proxies.end() && "CopyTextureCallback failed. Can't find source proxy");
+	DX_ASSERT(sourceProxyIt != proxies.end() && "CopyTextureCallback failed. Can't find source proxy");
 	sourceProxyIt->TransitionTo(D3D12_RESOURCE_STATE_COPY_SOURCE, context.commandList->GetGPUList());
 
 
@@ -1856,7 +1856,7 @@ void PassUtils::CopyTextureCallback(const std::string sourceName, const std::str
 		return proxy.hashedName == destinationHashedName;
 	});
 
-	assert(destinationProxyIt != proxies.end() && "CopyTextureCallback failed. Can't find source proxy");
+	DX_ASSERT(destinationProxyIt != proxies.end() && "CopyTextureCallback failed. Can't find source proxy");
 	destinationProxyIt->TransitionTo(D3D12_RESOURCE_STATE_COPY_DEST, context.commandList->GetGPUList());
 
 	context.commandList->GetGPUList()->CopyResource(&destinationProxyIt->resource, &sourceProxyIt->resource);

@@ -2,7 +2,6 @@
 
 #include <string_view>
 #include <fstream>
-#include <cassert>
 #include <vector>
 #include <tuple>
 #include <d3dcompiler.h>
@@ -29,6 +28,7 @@
 #include "dx_memorymanager.h"
 #include "dx_diagnostics.h"
 #include "dx_resourcemanager.h"
+#include "dx_assert.h"
 
 namespace
 {

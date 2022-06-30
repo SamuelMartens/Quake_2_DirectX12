@@ -13,7 +13,7 @@
 
 // This is required because in some places template code will be generated for types where it's not intended.
 #define DO_IF_SAME_DECAYED_TYPE(T1, T2, code) if constexpr (std::is_same_v<std::decay_t<T1>, std::decay_t<T2>>) { code; } \
-	else { assert(false && "DO_IF_SAME_DECAYED_TYPE type failed in runtime" ); }
+	else { DX_ASSERT(false && "DO_IF_SAME_DECAYED_TYPE type failed in runtime" ); }
 
 extern "C"
 {
@@ -135,7 +135,7 @@ namespace RenderCallbacks
 			{
 			case HASH("gDiffuseMap"):
 			{
-				assert(obj.skin == nullptr && "Custom skin. I am not prepared for this");
+				DX_ASSERT(obj.skin == nullptr && "Custom skin. I am not prepared for this");
 
 				Renderer& renderer = Renderer::Inst();
 
@@ -157,7 +157,7 @@ namespace RenderCallbacks
 					}
 				}
 
-				assert(tex != nullptr && "Not texture found for dynamic object rendering. Implement fall back");
+				DX_ASSERT(tex != nullptr && "Not texture found for dynamic object rendering. Implement fall back");
 
 				ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
 				DO_IF_SAME_DECAYED_TYPE(bT, int, 
@@ -173,7 +173,7 @@ namespace RenderCallbacks
 		}
 		else
 		{
-			assert(false && "RegisterGlobalObject unknown object type");
+			DX_ASSERT(false && "RegisterGlobalObject unknown object type");
 		}
 	}
 
@@ -296,7 +296,7 @@ namespace RenderCallbacks
 					}
 					else
 					{
-						assert(false && "Unidentified debug object type");
+						DX_ASSERT(false && "Unidentified debug object type");
 					}
 
 				}, obj);
@@ -308,7 +308,7 @@ namespace RenderCallbacks
 		}
 		else
 		{
-			assert(false && "UpdateGlobalObject unknown object type");
+			DX_ASSERT(false && "UpdateGlobalObject unknown object type");
 		}
 
 	}
@@ -322,7 +322,7 @@ namespace RenderCallbacks
 		// resources are handled on GPU side.
 		Resource* tex = ResourceManager::Inst().FindResource(internalResourceName);
 
-		assert(tex != nullptr && "Can register internal resource. Target texture doesn't exist");
+		DX_ASSERT(tex != nullptr && "Can register internal resource. Target texture doesn't exist");
 
 		ViewDescription_t emtpySrvDesc;
 		if constexpr( std::is_same_v<DescT,D3D12_SHADER_RESOURCE_VIEW_DESC>)
@@ -337,7 +337,7 @@ namespace RenderCallbacks
 		
 		if constexpr (std::is_same_v<DescT, D3D12_CONSTANT_BUFFER_VIEW_DESC>)
 		{
-			assert(false && "Not implemented");
+			DX_ASSERT(false && "Not implemented");
 		}
 
 		DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
@@ -382,7 +382,7 @@ namespace RenderCallbacks
 		case HASH("gMovieTex"):
 		{
 			Resource* tex = ResourceManager::Inst().FindResource(Resource::RAW_TEXTURE_NAME);
-			assert(tex != nullptr && "Draw_RawPic texture doesn't exist");
+			DX_ASSERT(tex != nullptr && "Draw_RawPic texture doesn't exist");
 
 			std::vector<DrawCall_UI_t>& uiDrawCalls = ctx.jobContext.frame.uiDrawCalls;
 
@@ -548,7 +548,7 @@ namespace RenderCallbacks
 		}
 		else
 		{
-			assert(false && "RegisterLocalObject unknown type");
+			DX_ASSERT(false && "RegisterLocalObject unknown type");
 		}
 	}
 
@@ -708,7 +708,7 @@ namespace RenderCallbacks
 		}
 		else
 		{
-			assert(false && "UpdateLocalObject unknown type");
+			DX_ASSERT(false && "UpdateLocalObject unknown type");
 		}
 	}
 }

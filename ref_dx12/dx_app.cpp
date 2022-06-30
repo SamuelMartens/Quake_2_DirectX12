@@ -1,6 +1,5 @@
 #include "dx_app.h"
 
-#include <cassert>
 #include <string>
 #include <fstream>
 #include <algorithm>
@@ -30,6 +29,7 @@
 #include "dx_rendercallbacks.h"
 #include "dx_descriptorheapallocator.h"
 #include "dx_lightbaker.h"
+#include "dx_assert.h"
 
 #ifdef max
 #undef max
@@ -62,7 +62,7 @@ namespace
 				break;
 			}
 
-			assert(vertCount * vertCount >= 9 && "Weird vert count, during dynamic geom transform");
+			DX_ASSERT(vertCount * vertCount >= 9 && "Weird vert count, during dynamic geom transform");
 
 			if (vertCount < 0)
 			{
@@ -194,7 +194,7 @@ namespace
 			return std::make_tuple(reorderInd, reorderTexCoord, reorderVert);
 		}
 
-		assert(originalInd.size() % 3 == 0 && "Invalid indices in Tex Coord normalization");
+		DX_ASSERT(originalInd.size() % 3 == 0 && "Invalid indices in Tex Coord normalization");
 
 		// Find max index
 		int maxIndex = 0;
@@ -249,7 +249,7 @@ namespace
 
 			if (unnormalizedVertInd == -1)
 			{
-				assert(false && "Uninitialized vert ind");
+				DX_ASSERT(false && "Uninitialized vert ind");
 				normalizedVertices.push_back(XMFLOAT4(0.0f, 0.0f, 0.0f, -1.0f));
 			}
 			else
@@ -303,7 +303,7 @@ void Renderer::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 	windowClass.lpszClassName  = static_cast<LPCSTR>(windowsClassName.c_str());
 
 	ATOM classReg = RegisterClass(&windowClass);
-	assert(classReg != 0 && "Failed to register win class.");
+	DX_ASSERT(classReg != 0 && "Failed to register win class.");
 
 	screenRect.left = 0;
 	screenRect.top = 0;
@@ -340,7 +340,7 @@ void Renderer::InitWin32(WNDPROC WindowProc, HINSTANCE hInstance)
 		NULL
 	);
 
-	assert(hWindows && "Failed to create windows");
+	DX_ASSERT(hWindows && "Failed to create windows");
 
 	ShowWindow(hWindows, SW_SHOW);
 	UpdateWindow(hWindows);
@@ -487,7 +487,7 @@ void Renderer::InitScissorRect()
 
 void Renderer::InitFrames()
 {
-	assert(Settings::SWAP_CHAIN_BUFFER_COUNT == Settings::FRAMES_NUM && "Swap chain buffer count shall be equal to frames num");
+	DX_ASSERT(Settings::SWAP_CHAIN_BUFFER_COUNT == Settings::FRAMES_NUM && "Swap chain buffer count shall be equal to frames num");
 
 	for (int i = 0; i < Settings::FRAMES_NUM; ++i)
 	{
@@ -635,7 +635,7 @@ void Renderer::CheckMSAAQualitySupport()
 	));
 
 	MSQualityLevels = qualityLevels.NumQualityLevels;
-	assert(MSQualityLevels > 0 && "Unexpected MSAA quality levels");
+	DX_ASSERT(MSQualityLevels > 0 && "Unexpected MSAA quality levels");
 }
 
 void Renderer::CreateCommandQueue()
@@ -783,14 +783,14 @@ CD3DX12_GPU_DESCRIPTOR_HANDLE Renderer::GetSamplerHandleGPU(int index) const
 Frame& Renderer::GetMainThreadFrame()
 {
 	ASSERT_MAIN_THREAD;
-	assert(currentFrameIndex != Const::INVALID_INDEX && "Trying to get current frame which is invalid");
+	DX_ASSERT(currentFrameIndex != Const::INVALID_INDEX && "Trying to get current frame which is invalid");
 
 	return frames[currentFrameIndex];
 }
 
 void Renderer::SubmitFrame(Frame& frame)
 {
-	assert(frame.acquiredCommandListsIndices.empty() == false && "Trying to execute empty command lists");
+	DX_ASSERT(frame.acquiredCommandListsIndices.empty() == false && "Trying to execute empty command lists");
 
 	std::vector<ID3D12CommandList*> commandLists(frame.acquiredCommandListsIndices.size(), nullptr);
 
@@ -802,7 +802,7 @@ void Renderer::SubmitFrame(Frame& frame)
 
 	commandQueue->ExecuteCommandLists(commandLists.size(), commandLists.data());
 
-	assert(frame.executeCommandListFenceValue == -1 && frame.executeCommandListEvenHandle == INVALID_HANDLE_VALUE &&
+	DX_ASSERT(frame.executeCommandListFenceValue == -1 && frame.executeCommandListEvenHandle == INVALID_HANDLE_VALUE &&
 		"Trying to set up sync primitives for frame that already has it");
 
 	frame.executeCommandListFenceValue = GenerateFenceValue();
@@ -866,7 +866,7 @@ void Renderer::AcquireMainThreadFrame()
 {
 	ASSERT_MAIN_THREAD;
 
-	assert(currentFrameIndex == Const::INVALID_INDEX && "Trying to acquire frame, while there is already frame acquired.");
+	DX_ASSERT(currentFrameIndex == Const::INVALID_INDEX && "Trying to acquire frame, while there is already frame acquired.");
 
 	// currentFrameIndex - index of frame that is used by main thread.
 	//						 and also indicates if new frame shall be used
@@ -910,7 +910,7 @@ void Renderer::AcquireMainThreadFrame()
 		}
 	}
 
-	assert(frameIt != frames.end() && "Can't find free frame");
+	DX_ASSERT(frameIt != frames.end() && "Can't find free frame");
 
 	OpenFrame(*frameIt);
 	currentFrameIndex = std::distance(frames.begin(), frameIt);
@@ -922,7 +922,7 @@ void Renderer::DetachMainThreadFrame()
 {
 	ASSERT_MAIN_THREAD;
 
-	assert(currentFrameIndex != Const::INVALID_INDEX && "Trying to detach frame. But there is nothing to detach.");
+	DX_ASSERT(currentFrameIndex != Const::INVALID_INDEX && "Trying to detach frame. But there is nothing to detach.");
 
 	Logs::Logf(Logs::Category::FrameSubmission, "Frame with index %d and frameNumber %d detached", currentFrameIndex, frames[currentFrameIndex].frameNumber);
 
@@ -938,14 +938,14 @@ void Renderer::ReleaseFrame(Frame& frame)
 
 void Renderer::WaitForFrame(Frame& frame) const
 {
-	assert(frame.executeCommandListFenceValue != -1 && frame.executeCommandListEvenHandle != INVALID_HANDLE_VALUE &&
+	DX_ASSERT(frame.executeCommandListFenceValue != -1 && frame.executeCommandListEvenHandle != INVALID_HANDLE_VALUE &&
 		"Trying to wait for frame that has invalid sync primitives.");
 
 	if (fence->GetCompletedValue() < frame.executeCommandListFenceValue)
 	{
 		DWORD res = WaitForSingleObject(frame.executeCommandListEvenHandle, INFINITE);
 
-		assert(res == WAIT_OBJECT_0 && "Frame wait ended in unexpected way.");
+		DX_ASSERT(res == WAIT_OBJECT_0 && "Frame wait ended in unexpected way.");
 	}
 }
 
@@ -981,7 +981,7 @@ int Renderer::GetFenceValue() const
 
 void Renderer::SwitchToRequestedState()
 {
-	assert(requestedState.has_value() == true && "Can't switch to requested state it's empty");
+	DX_ASSERT(requestedState.has_value() == true && "Can't switch to requested state it's empty");
 
 	OnStateEnd(currentState);
 	OnStateStart(*requestedState);
@@ -1057,7 +1057,7 @@ void Renderer::CreateTextureSampler()
 
 void Renderer::InitDebugGui()
 {
-	assert(hWindows != nullptr &&
+	DX_ASSERT(hWindows != nullptr &&
 		cbvSrvHeap != nullptr &&
 		Infr::Inst().GetDevice() != nullptr &&
 	"ImGUI init error. Some required components are not initialized");
@@ -1135,7 +1135,7 @@ void Renderer::RegisterObjectsAtFrameGraphs()
 		DetachMainThreadFrame();
 	}
 
-	assert(frameIndex == frames.size() && "Not all frames registered objects");
+	DX_ASSERT(frameIndex == frames.size() && "Not all frames registered objects");
 
 	// Now when registration is over release everything
 	for (Frame& frame : frames)
@@ -1173,7 +1173,7 @@ LONG WINAPI Renderer::MainWndProcWrapper(HWND hWnd, UINT uMsg, WPARAM wParam, LP
 		}
 	}
 
-	assert(Renderer::Inst().standardWndProc != nullptr && "Standard input function is not found");
+	DX_ASSERT(Renderer::Inst().standardWndProc != nullptr && "Standard input function is not found");
 
 	return Renderer::Inst().standardWndProc(hWnd, uMsg, wParam, lParam);
 }
@@ -1209,13 +1209,13 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 	{
 		// Figure out all clusters we want to generate for
 		const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(camera.position);
-		assert(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
+		DX_ASSERT(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
 
 		//#TODO so far generate bake points only for current cluster, if it's not alright,
 		// I can start generate points for PVS
 		const std::vector<XMFLOAT4> bakePoints = LightBaker::Inst().GenerateClusterBakePoints(cameraNode.cluster);
 
-		assert(bakePoints.empty() == false && "Bake points are empty. Is this alright?");
+		DX_ASSERT(bakePoints.empty() == false && "Bake points are empty. Is this alright?");
 
 		debugObjects.reserve(bakePoints.size());
 
@@ -1233,13 +1233,13 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 
 			if (hasProbeDataOnGPU)
 			{
-				assert(bakeResult.bakingMode.has_value() == true && "No value for baking mode");
+				DX_ASSERT(bakeResult.bakingMode.has_value() == true && "No value for baking mode");
 
 				switch (*bakeResult.bakingMode)
 				{
 				case LightBakingMode::CurrentPositionCluster:
 				{
-					assert(bakeResult.bakingCluster.has_value() == true && "Baking result should have value");
+					DX_ASSERT(bakeResult.bakingCluster.has_value() == true && "Baking result should have value");
 
 					if (*bakeResult.bakingCluster == cameraNode.cluster)
 					{
@@ -1249,13 +1249,13 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 				break;
 				case LightBakingMode::AllClusters:
 				{
-					assert(bakeResult.clusterSizes.has_value() == true && "Cluster sizes should have value");
+					DX_ASSERT(bakeResult.clusterSizes.has_value() == true && "Cluster sizes should have value");
 
 					object.probeIndex = i + bakeResult.clusterSizes.value()[cameraNode.cluster].startIndex;
 				}
 				break;
 				default:
-					assert(false && "Unknown baking mode");
+					DX_ASSERT(false && "Unknown baking mode");
 					break;
 				}
 			}
@@ -1306,14 +1306,14 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 			}
 			case Renderer::DrawRayPathMode::SingleProbe:
 			{
-				assert(drawBakeRayPathsProbeIndex < lightBakingResult.obj.probeData.size() && "Invalid probe index");
+				DX_ASSERT(drawBakeRayPathsProbeIndex < lightBakingResult.obj.probeData.size() && "Invalid probe index");
 
 				AddProbeDebugRaySegments(debugObjects, lightBakingResult.obj.probeData, drawBakeRayPathsProbeIndex);
 
 				break;
 			}
 			default:
-				assert(false && "Invalid draw ray path mode");
+				DX_ASSERT(false && "Invalid draw ray path mode");
 				break;
 			}
 		}
@@ -1424,7 +1424,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 				break;
 			}
 			default:
-				assert(false && "Invalid draw light sample mode");
+				DX_ASSERT(false && "Invalid draw light sample mode");
 				break;
 			}
 		}
@@ -1450,7 +1450,7 @@ const std::vector<PointLight>& Renderer::GetStaticPointLights() const
 
 void Renderer::RequestStateChange(State state)
 {
-	assert(requestedState.has_value() == false && "State Already requested");
+	DX_ASSERT(requestedState.has_value() == false && "State Already requested");
 
 	requestedState = state;
 }
@@ -1699,7 +1699,7 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	object.name = model->name;
 
 	const dmdl_t* aliasHeader = reinterpret_cast<dmdl_t*>(model->extradata);
-	assert(aliasHeader != nullptr && "Alias header for dynamic object is not found.");
+	DX_ASSERT(aliasHeader != nullptr && "Alias header for dynamic object is not found.");
 
 	// Header data
 	object.headerData.animFrameSizeInBytes = aliasHeader->framesize;
@@ -1833,7 +1833,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 		}
 	}
 
-	assert(vertices.empty() == false && "Static object cannot be created from empty vertices");
+	DX_ASSERT(vertices.empty() == false && "Static object cannot be created from empty vertices");
 
 	StaticObject& obj = staticObjects.emplace_back(StaticObject());
 
@@ -1979,7 +1979,7 @@ void Renderer::GetDrawAreaSize(int* Width, int* Height)
 	char modeVarVal[] = "3";
 	cvar_t* mode = GetRefImport().Cvar_Get(modeVarName, modeVarVal, CVAR_ARCHIVE);
 
-	assert(mode);
+	DX_ASSERT(mode);
 	//#SWITCH resolution
 	//GetRefImport().Vid_GetModeInfo(Width, Height, static_cast<int>(mode->value));
     *Width = 1024;
@@ -1995,8 +1995,8 @@ void Renderer::ConsumeDiffuseIndirectLightingBakingResult(BakingResult&& results
 {
 	ASSERT_MAIN_THREAD;
 
-	assert(results.bakingMode.has_value() == true && "Invalid baking mode for baking results");
-	assert(results.probeData.empty() == false && "Can't consume empty probe data");
+	DX_ASSERT(results.bakingMode.has_value() == true && "Invalid baking mode for baking results");
+	DX_ASSERT(results.probeData.empty() == false && "Can't consume empty probe data");
 
 	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
 	lightBakingResult.obj = std::move(results);
@@ -2061,7 +2061,7 @@ std::vector<std::vector<XMFLOAT4>> Renderer::GenProbePathSegmentsVertices() cons
 
 	for (const DiffuseProbe& probe : lightBakingResult.obj.probeData)
 	{
-		assert(probe.pathTracingSegments.has_value() && "Can't generate path segment vertices. No source data");
+		DX_ASSERT(probe.pathTracingSegments.has_value() && "Can't generate path segment vertices. No source data");
 
 		singleProbeVertices.clear();
 
@@ -2090,7 +2090,7 @@ std::vector<std::vector<std::vector<std::vector<XMFLOAT4>>>> Renderer::GenLightS
 
 	for (const DiffuseProbe& probe : lightBakingResult.obj.probeData)
 	{
-		assert(probe.lightSamples.has_value() && "Can't generate debug light segments. No source data");
+		DX_ASSERT(probe.lightSamples.has_value() && "Can't generate debug light segments. No source data");
 
 		singleProbeVerts.clear();
 

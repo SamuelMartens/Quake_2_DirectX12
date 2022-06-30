@@ -3,6 +3,7 @@
 #include <stdarg.h>
 
 #include "dx_utils.h"
+#include "dx_assert.h"
 
 void Diagnostics::BeginEvent(ID3D12GraphicsCommandList* commandList, std::string_view msg)
 {
@@ -34,7 +35,7 @@ void Diagnostics::SetResourceName(ID3D12Object* resource, const std::string& nam
 {
 	if constexpr (ENABLE_DX_RESOURCE_NAMING == true)
 	{
-		assert(resource != nullptr && "SetResourceNameReceived invalid resource");
+		DX_ASSERT(resource != nullptr && "SetResourceNameReceived invalid resource");
 
 		resource->SetName(Utils::StringToWideString(name).c_str());
 	}

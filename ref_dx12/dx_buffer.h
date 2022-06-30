@@ -5,7 +5,6 @@
 #include <limits>
 #include <d3d12.h>
 #include <memory>
-#include <cassert>
 #include <algorithm>
 #include <mutex>
 
@@ -14,7 +13,7 @@
 #include "dx_utils.h"
 #include "dx_resourcemanager.h"
 #include "dx_diagnostics.h"
-
+#include "dx_assert.h"
 
 using BufferHandler = uint32_t;
 
@@ -90,7 +89,7 @@ public:
 	[[nodiscard]]
 	BufferHandler Allocate(int size)
 	{
-		assert(size > 0 && "Invalid allocation size request");
+		DX_ASSERT(size > 0 && "Invalid allocation size request");
 
 		std::scoped_lock<std::mutex> lock(mutex);
 
@@ -105,7 +104,7 @@ public:
 			return h == Const::INVALID_OFFSET;
 		});
 
-		assert(handlerIt != handlers.end() && "Can't find free handler during allocation");
+		DX_ASSERT(handlerIt != handlers.end() && "Can't find free handler during allocation");
 
 		const BufferHandler handler = std::distance(handlers.begin(), handlerIt);
 
@@ -118,9 +117,9 @@ public:
 	{
 		std::scoped_lock<std::mutex> lock(mutex);
 
-		assert(handler != Const::INVALID_BUFFER_HANDLER && "Trying to delete invalid default buffer handler");
+		DX_ASSERT(handler != Const::INVALID_BUFFER_HANDLER && "Trying to delete invalid default buffer handler");
 
-		assert(handlers[handler] != Const::INVALID_OFFSET);
+		DX_ASSERT(handlers[handler] != Const::INVALID_OFFSET);
 
 		allocBuffer.allocator.Delete(handlers[handler]);
 
@@ -134,7 +133,7 @@ public:
 	{
 		std::scoped_lock<std::mutex> lock(mutex);
 
-		assert(handlers[handler] != Const::INVALID_OFFSET && "BufferHandler is invalid, can't get offset");
+		DX_ASSERT(handlers[handler] != Const::INVALID_OFFSET && "BufferHandler is invalid, can't get offset");
 		return handlers[handler];
 	}
 

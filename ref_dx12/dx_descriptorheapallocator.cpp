@@ -12,7 +12,7 @@ void _AllocDescriptorInternal(int allocatedIndex, ID3D12Resource* resource, cons
 	{
 		CD3DX12_CPU_DESCRIPTOR_HANDLE handle = Renderer::Inst().GetRtvHandleCPU(allocatedIndex);
 
-		assert((resource != nullptr || desc != nullptr) 
+		DX_ASSERT((resource != nullptr || desc != nullptr) 
 			&& "RTV allocation failure. Resource or Description shall not be nullptr");
 
 		const D3D12_RENDER_TARGET_VIEW_DESC* rtvDesc = (desc == nullptr) ?
@@ -25,7 +25,7 @@ void _AllocDescriptorInternal(int allocatedIndex, ID3D12Resource* resource, cons
 	{
 		CD3DX12_CPU_DESCRIPTOR_HANDLE handle = Renderer::Inst().GetDsvHandleCPU(allocatedIndex);
 
-		assert((resource != nullptr || desc != nullptr)
+		DX_ASSERT((resource != nullptr || desc != nullptr)
 			&& "DSV allocation failure. Resource or Description shall not be nullptr");
 
 		const D3D12_DEPTH_STENCIL_VIEW_DESC* dsvDesc = (desc == nullptr) ?
@@ -38,7 +38,7 @@ void _AllocDescriptorInternal(int allocatedIndex, ID3D12Resource* resource, cons
 	{
 		CD3DX12_CPU_DESCRIPTOR_HANDLE handle = Renderer::Inst().GetCbvSrvHandleCPU(allocatedIndex);
 
-		assert(desc != nullptr
+		DX_ASSERT(desc != nullptr
 			&& "CBV_SRV_UAV allocation failure. Description shall not be nullptr");
 
 		std::visit([&resource, &handle](auto&& description) 
@@ -63,7 +63,7 @@ void _AllocDescriptorInternal(int allocatedIndex, ID3D12Resource* resource, cons
 			
 			if constexpr (std::is_same_v<T, std::optional<D3D12_CONSTANT_BUFFER_VIEW_DESC>>)
 			{
-				assert(false && "Not implemented");
+				DX_ASSERT(false && "Not implemented");
 			}
 
 		}, *desc);
@@ -81,7 +81,7 @@ void _AllocDescriptorInternal(int allocatedIndex, ID3D12Resource* resource, cons
 	}
 	default:
 	{
-		assert(false && "Invalid descriptor heap type");
+		DX_ASSERT(false && "Invalid descriptor heap type");
 		break;
 	}
 	}
@@ -109,12 +109,12 @@ D3D12_SHADER_RESOURCE_VIEW_DESC DescriptorHeapUtils::GetSRVBufferNullDescription
 
 D3D12_SHADER_RESOURCE_VIEW_DESC DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(Resource* buffer, int stride)
 {
-	assert(buffer->desc.dimension == D3D12_RESOURCE_DIMENSION_BUFFER && 
+	DX_ASSERT(buffer->desc.dimension == D3D12_RESOURCE_DIMENSION_BUFFER && 
 		"Structured buffer view can be created for structured buffer only");
 
-	assert(stride > 0 && "Invalid stride for structured buffer view creation");
+	DX_ASSERT(stride > 0 && "Invalid stride for structured buffer view creation");
 
-	assert(buffer->desc.width % stride == 0 &&
+	DX_ASSERT(buffer->desc.width % stride == 0 &&
 		"Structured buffer view creation error. Size and stride do not fit");
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};

@@ -76,7 +76,7 @@ namespace
 
 					if constexpr (std::is_same_v<T, RootArg::RootConstant>)
 					{
-						assert(false && "Root constant is not implemented");
+						DX_ASSERT(false && "Root constant is not implemented");
 					};
 
 					if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
@@ -100,7 +100,7 @@ namespace
 
 					if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
 					{
-						assert(arg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
+						DX_ASSERT(arg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
 
 						RenderCallbacks::UpdateGlobalObject(
 							arg.hashedName,
@@ -119,7 +119,7 @@ namespace
 
 								if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 								{
-									assert(false && "Desc table view is probably not implemented! Make sure it is");
+									DX_ASSERT(false && "Desc table view is probably not implemented! Make sure it is");
 								}
 							}, descTableEntity);
 						}
@@ -182,7 +182,7 @@ namespace
 
 					if constexpr (std::is_same_v<T, RootArg::RootConstant>)
 					{
-						assert(false && "Root constant is not implemented");
+						DX_ASSERT(false && "Root constant is not implemented");
 					};
 
 					if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
@@ -206,7 +206,7 @@ namespace
 
 					if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
 					{
-						assert(arg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
+						DX_ASSERT(arg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
 
 						RenderCallbacks::UpdateGlobalObject(
 							arg.hashedName,
@@ -225,7 +225,7 @@ namespace
 
 								if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 								{
-									assert(false && "Desc table view is probably not implemented! Make sure it is");
+									DX_ASSERT(false && "Desc table view is probably not implemented! Make sure it is");
 								}
 							}, descTableEntity);
 						}
@@ -256,7 +256,7 @@ namespace
 		// Allocate memory
 		BufferHandler& objectGlobalMem = resContext.objGlobalResMemory[INPUT_TYPE_INDEX];
 
-		assert(objectGlobalMem == Const::INVALID_BUFFER_HANDLER && "_RegisterGlobalObjectsRes error. Per object global mem should is not deallocated");
+		DX_ASSERT(objectGlobalMem == Const::INVALID_BUFFER_HANDLER && "_RegisterGlobalObjectsRes error. Per object global mem should is not deallocated");
 
 		const int objMemorySize = resContext.perObjectGlobalMemorySize[INPUT_TYPE_INDEX];
 
@@ -277,7 +277,7 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::RootConstant>)
 				{
-					assert(false && "Root constant is not implemented");
+					DX_ASSERT(false && "Root constant is not implemented");
 				}
 
 				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
@@ -286,12 +286,12 @@ namespace
 
 				if constexpr (std::is_same_v<T, RootArg::UAView>)
 				{
-					assert(false && "Inline UAV are not implemented");
+					DX_ASSERT(false && "Inline UAV are not implemented");
 				}
 
 				if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
 				{
-					assert(arg.buffer == nullptr && "Structured buffer pointed for root arg resource should be empty");
+					DX_ASSERT(arg.buffer == nullptr && "Structured buffer pointed for root arg resource should be empty");
 
 					Utils::PointerAsRef<decltype(arg.buffer)> refToPointer{&arg.buffer};
 
@@ -318,14 +318,14 @@ namespace
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 							{
-								assert(false && "Desc table view is probably not implemented! Make sure it is");
+								DX_ASSERT(false && "Desc table view is probably not implemented! Make sure it is");
 							}
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||
 								std::is_same_v<T, RootArg::DescTableEntity_UAView> ||
 								std::is_same_v<T, RootArg::DescTableEntity_StructuredBufferView>)
 							{
-								assert(descTableEntitiy.internalBindName.has_value() == false &&
+								DX_ASSERT(descTableEntitiy.internalBindName.has_value() == false &&
 									"PerObject resources is not suited to use internal bind");
 
 								RenderCallbacks::RegisterGlobalObject(
@@ -348,7 +348,7 @@ namespace
 	template< Parsing::PassInputType INPUT_TYPE, typename T, typename ResContextT, typename AllocT>
 	void _RegisterGlobalObjectsRes(const std::vector<T>& objects, GPUJobContext& context, ResContextT resContext, AllocT& alloc)
 	{
-		assert(objects.empty() == false && "Register global object res received request with empty objects");
+		DX_ASSERT(objects.empty() == false && "Register global object res received request with empty objects");
 		
 		constexpr int INPUT_TYPE_INDEX = static_cast<int>(INPUT_TYPE);
 
@@ -446,19 +446,19 @@ FrameGraph::~FrameGraph()
 	}
 	std::get<static_cast<int>(Parsing::PassInputType::PostProcess)>(objGlobalRes).clear();
 
-#ifdef _DEBUG
+#if (ENABLE_ASSERTS_VALIDATION)
 	// Dirty way to make sure I cleaned up everything
 	std::apply([](const auto&... resources) 
 	{
-		((assert(resources.empty() == true && "Not all resources were deleted on FrameGraph destruction")), ...);
+		((DX_ASSERT(resources.empty() == true && "Not all resources were deleted on FrameGraph destruction")), ...);
 
 	}, objGlobalRes);
 #endif
 
-	assert(std::get<static_cast<int>(Parsing::PassInputType::Dynamic)>(objGlobalRes).empty() == true &&
+	DX_ASSERT(std::get<static_cast<int>(Parsing::PassInputType::Dynamic)>(objGlobalRes).empty() == true &&
 		"Dynamic per frame resources were not cleaned up");
 
-	assert(std::get<static_cast<int>(Parsing::PassInputType::UI)>(objGlobalRes).empty() == true &&
+	DX_ASSERT(std::get<static_cast<int>(Parsing::PassInputType::UI)>(objGlobalRes).empty() == true &&
 		"UI per frame resources were not cleaned up");
 }
 
@@ -612,10 +612,10 @@ void FrameGraph::RegisterObjects(const std::vector<StaticObject>& objects, GPUJo
 		return;
 	}
 
-	assert(std::get<static_cast<int>(Parsing::PassInputType::Static)>(objGlobalRes).empty() &&
+	DX_ASSERT(std::get<static_cast<int>(Parsing::PassInputType::Static)>(objGlobalRes).empty() &&
 		"Object global res should be empty on registration");
 
-	assert(objGlobalResMemory[static_cast<int>(Parsing::PassInputType::Static)] == Const::INVALID_BUFFER_HANDLER &&
+	DX_ASSERT(objGlobalResMemory[static_cast<int>(Parsing::PassInputType::Static)] == Const::INVALID_BUFFER_HANDLER &&
 		"Object global memory should be empty on registration");
 
 	auto resContext = ResContext{ objGlobalResTemplate, objGlobalRes, objGlobalResMemory, perObjectGlobalMemorySize };
@@ -663,12 +663,12 @@ void FrameGraph::RegisterGlobalObjectsResDynamicEntities(GPUJobContext& context)
 
 	BufferHandler& entityMemory = objGlobalResMemory[static_cast<int>(Parsing::PassInputType::Dynamic)];
 
-	assert(entityMemory == Const::INVALID_BUFFER_HANDLER && "Entity memory should be cleaned up");
+	DX_ASSERT(entityMemory == Const::INVALID_BUFFER_HANDLER && "Entity memory should be cleaned up");
 
 	std::vector<std::vector<RootArg::Arg_t>>& entityRes = std::get<static_cast<int>(Parsing::PassInputType::Dynamic)>(objGlobalRes);
 	const std::vector<RootArg::Arg_t>& objResTemplate = std::get<static_cast<int>(Parsing::PassInputType::Dynamic)>(objGlobalResTemplate);
 
-	assert(entityRes.empty() == true && "Entity Res should be cleaned up");
+	DX_ASSERT(entityRes.empty() == true && "Entity Res should be cleaned up");
 
 	RenderCallbacks::RegisterGlobalObjectContext regContext = { context };
 
@@ -811,7 +811,7 @@ std::vector<ResourceProxy> FrameGraph::GetTextureProxy() const
 
 void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>& jobContexts) const
 {
-	assert(jobContexts.empty() == false && "Can't attach texture proxies to job contexts, cause it is empty");
+	DX_ASSERT(jobContexts.empty() == false && "Can't attach texture proxies to job contexts, cause it is empty");
 
 	// Attach internal texture proxies 
 	for (GPUJobContext& jobContext : jobContexts)
@@ -913,7 +913,7 @@ void FrameGraph::UpdateGlobalObjectsResDynamic(GPUJobContext& context)
 
 				if constexpr (std::is_same_v<T, RootArg::RootConstant>)
 				{
-					assert(false && "Root constant is not implemented");
+					DX_ASSERT(false && "Root constant is not implemented");
 				};
 
 				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
@@ -937,7 +937,7 @@ void FrameGraph::UpdateGlobalObjectsResDynamic(GPUJobContext& context)
 
 				if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
 				{
-					assert(arg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
+					DX_ASSERT(arg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
 
 					RenderCallbacks::UpdateGlobalObject(
 						arg.hashedName,
@@ -956,7 +956,7 @@ void FrameGraph::UpdateGlobalObjectsResDynamic(GPUJobContext& context)
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 							{
-								assert(false && "Desc table view is probably not implemented! Make sure it is");
+								DX_ASSERT(false && "Desc table view is probably not implemented! Make sure it is");
 							}
 						}, descTableEntity);
 					}
@@ -1011,7 +1011,7 @@ void FrameGraph::RegisterParticles(GPUJobContext& context)
 
 	auto& uploadMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
-	assert(particlesVertexMemory == Const::INVALID_BUFFER_HANDLER && "Particle vertex memory is not cleaned up");
+	DX_ASSERT(particlesVertexMemory == Const::INVALID_BUFFER_HANDLER && "Particle vertex memory is not cleaned up");
 	particlesVertexMemory = uploadMemory.Allocate(vertexBufferSize);
 
 	// Deal with vertex buffer
@@ -1035,12 +1035,12 @@ void FrameGraph::RegisterGlobalObjectsResDebug(GPUJobContext& context)
 
 	BufferHandler& debugObjMemory = objGlobalResMemory[static_cast<int>(Parsing::PassInputType::Debug)];
 
-	assert(debugObjMemory == Const::INVALID_BUFFER_HANDLER && "Debug objects memory should be cleaned up");
+	DX_ASSERT(debugObjMemory == Const::INVALID_BUFFER_HANDLER && "Debug objects memory should be cleaned up");
 
 	std::vector<std::vector<RootArg::Arg_t>>& debugObjRes = std::get<static_cast<int>(Parsing::PassInputType::Debug)>(objGlobalRes);
 	const std::vector<RootArg::Arg_t>& debugObjResTemplate = std::get<static_cast<int>(Parsing::PassInputType::Debug)>(objGlobalResTemplate);
 
-	assert(debugObjRes.empty() == true && "Debug Res should be cleaned up");
+	DX_ASSERT(debugObjRes.empty() == true && "Debug Res should be cleaned up");
 
 	RenderCallbacks::RegisterGlobalObjectContext regContext = { context };
 
@@ -1083,7 +1083,7 @@ void FrameGraph::UpdateGlobalObjectsResDebug(GPUJobContext& context)
 void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 {
 
-	assert(passGlobalMemory == Const::INVALID_BUFFER_HANDLER && "Pass Global Memory shouldn't be preallocated");
+	DX_ASSERT(passGlobalMemory == Const::INVALID_BUFFER_HANDLER && "Pass Global Memory shouldn't be preallocated");
 
 	if (passGlobalMemorySize != 0)
 	{
@@ -1103,7 +1103,7 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 
 			if constexpr (std::is_same_v<T, RootArg::RootConstant>)
 			{
-				assert(false && "Root constant is not implemented");
+				DX_ASSERT(false && "Root constant is not implemented");
 			}
 
 			if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
@@ -1116,7 +1116,7 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 
 			if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
 			{
-				assert(arg.buffer == nullptr && "Structured buffer pointed for root arg resource should be empty");
+				DX_ASSERT(arg.buffer == nullptr && "Structured buffer pointed for root arg resource should be empty");
 
 				Utils::PointerAsRef<decltype(arg.buffer)> refToPointer{ &arg.buffer };
 
@@ -1143,7 +1143,7 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 
 						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 						{
-							assert(false && "Desc table view is probably not implemented! Make sure it is");
+							DX_ASSERT(false && "Desc table view is probably not implemented! Make sure it is");
 							//#TODO make view allocation
 							descTableEntitiy.gpuMem.handler = passGlobalMemory;
 							descTableEntitiy.gpuMem.offset = offset;
@@ -1193,7 +1193,7 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 
 						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_StructuredBufferView>)
 						{
-							assert(descTableEntitiy.internalBindName.has_value() == false && "Internal resource for Structured buffer is not implemented");
+							DX_ASSERT(descTableEntitiy.internalBindName.has_value() == false && "Internal resource for Structured buffer is not implemented");
 
 							RenderCallbacks::RegisterGlobalPass(
 								descTableEntitiy.hashedName,
@@ -1223,7 +1223,7 @@ void FrameGraph::UpdateGlobalPasslRes(GPUJobContext& context)
 
 			if constexpr (std::is_same_v<T, RootArg::RootConstant>)
 			{
-				assert(false && "Root constants are not implemented");
+				DX_ASSERT(false && "Root constants are not implemented");
 			}
 
 			if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
@@ -1245,7 +1245,7 @@ void FrameGraph::UpdateGlobalPasslRes(GPUJobContext& context)
 
 			if constexpr (std::is_same_v<T, RootArg::StructuredBufferView>)
 			{
-				assert(arg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
+				DX_ASSERT(arg.buffer != nullptr && "Structured buffer pointed for root arg resource should be initialized");
 
 				RenderCallbacks::UpdateGlobalPass(
 					arg.hashedName,
@@ -1266,7 +1266,7 @@ void FrameGraph::UpdateGlobalPasslRes(GPUJobContext& context)
 
 						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 						{
-							assert(false && "Desc table view is probably not implemented! Make sure it is");
+							DX_ASSERT(false && "Desc table view is probably not implemented! Make sure it is");
 						}
 
 						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Texture> ||

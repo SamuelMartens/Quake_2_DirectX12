@@ -24,6 +24,7 @@
     <ClInclude Include="..\win32\winquake.h" />
     <ClInclude Include="d3dx12.h" />
     <ClInclude Include="dx_allocators.h" />
+    <ClInclude Include="dx_assert.h" />
     <ClInclude Include="dx_buffer.h" />
     <ClInclude Include="dx_camera.h" />
     <ClInclude Include="dx_commandlist.h" />

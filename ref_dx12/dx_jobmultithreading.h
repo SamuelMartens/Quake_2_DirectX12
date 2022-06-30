@@ -1,7 +1,6 @@
 #pragma once
 
 #include <functional>
-#include <cassert>
 #include <thread>
 #include <queue>
 #include <mutex>
@@ -10,6 +9,7 @@
 #include <unordered_map>
 
 #include "dx_utils.h"
+#include "dx_assert.h"
 
 // Core job stuff
 

@@ -47,7 +47,7 @@ int Resource::BPPFromFormat(DXGI_FORMAT format)
 	case DXGI_FORMAT_R8_UNORM:
 		return 8;
 	default:
-		assert(false && "Unknown format for BPPFromFormat");
+		DX_ASSERT(false && "Unknown format for BPPFromFormat");
 		break;
 	}
 
@@ -63,7 +63,7 @@ int Resource::GetBPP(const ResourceDesc& desc)
 	case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
 		return BPPFromFormat(desc.format);
 	default:
-		assert(false && "Unknown resource dimension");
+		DX_ASSERT(false && "Unknown resource dimension");
 		break;
 	}
 
@@ -107,7 +107,7 @@ void ResourceProxy::FindAndTranslateTo(const std::string& name, std::vector<Reso
 		return proxy.hashedName == hashedName;
 	});
 
-	assert(targetProxyIt != proxies.end() && "FindAndTranslateTo failed. Can't find target proxy");
+	DX_ASSERT(targetProxyIt != proxies.end() && "FindAndTranslateTo failed. Can't find target proxy");
 
 	targetProxyIt->TransitionTo(newSate, commandList);
 }

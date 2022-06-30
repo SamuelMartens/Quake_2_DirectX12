@@ -6,7 +6,7 @@ Job::Job(std::function<void()> jobCallback):
 
 void Job::Execute()
 {
-	assert(callback && "Trying to execute job with empty callback");
+	DX_ASSERT(callback && "Trying to execute job with empty callback");
 
 	callback();
 }

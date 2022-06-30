@@ -24,7 +24,7 @@ Semaphore::~Semaphore()
 
 void Semaphore::Signal()
 {
-	assert(waitValue != 0 && "Not initialized semaphore is signaled");
+	DX_ASSERT(waitValue != 0 && "Not initialized semaphore is signaled");
 
 	Logs::Logf(Logs::Category::Synchronization, "Semaphore signaled, handle %x", reinterpret_cast<unsigned>(winSemaphore));
 
@@ -48,8 +48,8 @@ void Semaphore::Wait() const
 		// Restore signaled state, since Wait() will change semaphore value
 		ReleaseSemaphore(winSemaphore, 1, &prevVal);
 		
-		assert(res == WAIT_OBJECT_0 && "Semaphore wait ended in unexpected way.");
-		assert(prevVal == 0 && "Prev val assert");
+		DX_ASSERT(res == WAIT_OBJECT_0 && "Semaphore wait ended in unexpected way.");
+		DX_ASSERT(prevVal == 0 && "Prev val assert");
 	}
 
 	Logs::Logf(Logs::Category::Synchronization, "Semaphore wait finished, handle %x", reinterpret_cast<unsigned>(winSemaphore));
@@ -59,14 +59,14 @@ void Semaphore::WaitForMultipleAny(const std::vector<std::shared_ptr<Semaphore>>
 {
 	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait any entered");
 
-	assert(waitForSemaphores.empty() == false && "WaitForMultipleAny received empty semaphore list.");
+	DX_ASSERT(waitForSemaphores.empty() == false && "WaitForMultipleAny received empty semaphore list.");
 
 	std::vector<HANDLE> winSemaphores;
 	winSemaphores.reserve(waitForSemaphores.size());
 
 	for (const std::shared_ptr<Semaphore>& s : waitForSemaphores)
 	{
-		assert(s != nullptr && "WaitForMultipleAny received empty pointer");
+		DX_ASSERT(s != nullptr && "WaitForMultipleAny received empty pointer");
 
 		// If any of semaphores is ready, we are done
 		if (s->counter.load() >= s->waitValue)
@@ -80,12 +80,12 @@ void Semaphore::WaitForMultipleAny(const std::vector<std::shared_ptr<Semaphore>>
 	}
 	LONG prevVal = -1;
 	DWORD res = WaitForMultipleObjects(winSemaphores.size(), winSemaphores.data(), FALSE, SEMAPHORE_TIME_OUT);
-	assert(res >= WAIT_OBJECT_0 && res < WAIT_OBJECT_0 + waitForSemaphores.size()
+	DX_ASSERT(res >= WAIT_OBJECT_0 && res < WAIT_OBJECT_0 + waitForSemaphores.size()
 		&& "WaitForMultipleAny ended in unexpected way.");
 	
 	// Restore signaled state, since Wait() will change semaphore value
 	ReleaseSemaphore(winSemaphores[res - WAIT_OBJECT_0], 1, &prevVal);
-	assert(prevVal == 0 && "Multiple prev val is not equal to 0");
+	DX_ASSERT(prevVal == 0 && "Multiple prev val is not equal to 0");
 
 	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait any finished, handle %x", reinterpret_cast<unsigned>(winSemaphores[res - WAIT_OBJECT_0]));
 
@@ -95,11 +95,11 @@ void Semaphore::WaitForMultipleAll(const std::vector<std::shared_ptr<Semaphore>>
 {
 	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait all entered");
 
-	assert(waitForSemaphores.empty() == false && "WaitForMultipleAll received empty semaphore list.");
+	DX_ASSERT(waitForSemaphores.empty() == false && "WaitForMultipleAll received empty semaphore list.");
 
 	for (const std::shared_ptr<Semaphore>& s : waitForSemaphores)
 	{
-		assert(s != nullptr && "WaitForMultipleAll received empty pointer");
+		DX_ASSERT(s != nullptr && "WaitForMultipleAll received empty pointer");
 
 		s->Wait();
 	}
@@ -119,7 +119,7 @@ std::thread::id ThreadingUtils::GetMainThreadId()
 
 void ThreadingUtils::AssertMainThread()
 {
-	assert(std::this_thread::get_id() == gMainThreadId && "This supposed to be executed in main thread only.");
+	DX_ASSERT(std::this_thread::get_id() == gMainThreadId && "This supposed to be executed in main thread only.");
 }
 
 
@@ -132,8 +132,8 @@ void GPUJobContext::CreateDependencyFrom(std::vector<GPUJobContext*> dependsFrom
 {
 	ASSERT_MAIN_THREAD;
 
-	assert(dependsFromList.empty() == false && "Trying to create dependency from empty list");
-	assert(waitDependancy == nullptr && "Trying to create dependency to job that already has it");
+	DX_ASSERT(dependsFromList.empty() == false && "Trying to create dependency from empty list");
+	DX_ASSERT(waitDependancy == nullptr && "Trying to create dependency to job that already has it");
 
 	waitDependancy = std::make_shared<Semaphore>(dependsFromList.size());
 

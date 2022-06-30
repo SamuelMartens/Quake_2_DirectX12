@@ -3,13 +3,13 @@
 #include <mutex>
 #include <vector>
 #include <unordered_map>
-#include <cassert>
 #include <memory>
 #include <atomic>
 
 #include "dx_common.h"
 #include "dx_utils.h"
 #include "dx_resource.h"
+#include "dx_assert.h"
 
 class Frame;
 class CommandList;
@@ -75,7 +75,7 @@ namespace ThreadingUtils
 	{
 #ifdef _DEBUG
 		// Note according to documentation of try_lock() "This function is allowed to fail spuriously". 
-		assert(obj.mutex.try_lock() == true && "Oops. This mutex should be unlocked at this point.");
+		DX_ASSERT(obj.mutex.try_lock() == true && "Oops. This mutex should be unlocked at this point.");
 		obj.mutex.unlock();
 #endif
 	};

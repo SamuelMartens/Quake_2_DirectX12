@@ -156,6 +156,9 @@
     <ClInclude Include="dx_lightbaker.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="dx_assert.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ref_dx12.def">

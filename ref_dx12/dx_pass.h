@@ -332,7 +332,7 @@ public:
 	template<typename T>
 	static int AllocateRenderTargetView(std::string_view renderTargetName, T& descriptorHeapAllocator)
 	{
-		assert(renderTargetName.empty() == false && "AllocateRenderTargetView failed. Invalid render target name");
+		DX_ASSERT(renderTargetName.empty() == false && "AllocateRenderTargetView failed. Invalid render target name");
 
 		if (renderTargetName == PassParameters::BACK_BUFFER_NAME)
 		{
@@ -341,7 +341,7 @@ public:
 		
 		Resource* tex = ResourceManager::Inst().FindResource(renderTargetName);
 
-		assert(tex != nullptr && "AllocateRenderTargetView failed. No such texture");
+		DX_ASSERT(tex != nullptr && "AllocateRenderTargetView failed. No such texture");
 
 		return descriptorHeapAllocator.Allocate(tex->buffer.Get());
 	}
@@ -353,7 +353,7 @@ public:
 	{
 		if (renderTargetName == PassParameters::BACK_BUFFER_NAME)
 		{
-			assert(renderTargetIndex == Const::INVALID_INDEX && "Render target view index should be clean if it is back buffer");
+			DX_ASSERT(renderTargetIndex == Const::INVALID_INDEX && "Render target view index should be clean if it is back buffer");
 			return;
 		}
 

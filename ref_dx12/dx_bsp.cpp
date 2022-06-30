@@ -106,7 +106,7 @@ Utils::AABB BSPTree::GetClusterAABB(const int clusterIndex) const
 		sseAABBMin = XMVectorMin(sseAABBMin, XMLoadFloat4(&node.aabb.minVert));
 	}
 
-	assert(static_cast<bool>(XMVectorGetX(XMVectorEqual(sseAABBMax, sseAABBMin))) == false && "Cluster AABB is invalid");
+	DX_ASSERT(static_cast<bool>(XMVectorGetX(XMVectorEqual(sseAABBMax, sseAABBMin))) == false && "Cluster AABB is invalid");
 
 	XMStoreFloat4(&clusterAABB.maxVert, sseAABBMax);
 	XMStoreFloat4(&clusterAABB.minVert, sseAABBMin);
@@ -195,7 +195,7 @@ bool BSPTree::IsPointVisibleFromOtherPoint(const XMFLOAT4& p0, const XMFLOAT4& p
 				continue;
 			}
 
-			assert(object.indices.size() % 3 == 0 && "Invalid triangle indices");
+			DX_ASSERT(object.indices.size() % 3 == 0 && "Invalid triangle indices");
 
 			for (int triangleIndex = 0; triangleIndex < object.indices.size() / 3; ++triangleIndex)
 			{
@@ -278,7 +278,7 @@ const BSPNode& BSPTree::GetNodeWithPoint(const XMFLOAT4& point, const BSPNode& n
 
 	const int childrenNodeInt = pointToPlane > 0 ? node.children[0] : node.children[1];
 
-	assert(childrenNodeInt != Const::INVALID_INDEX && "GetPointInNode failed. Invalid children node index");
+	DX_ASSERT(childrenNodeInt != Const::INVALID_INDEX && "GetPointInNode failed. Invalid children node index");
 
 	return GetNodeWithPoint(point, nodes[childrenNodeInt]);
 }
@@ -304,7 +304,7 @@ std::vector<int> BSPTree::GetPotentiallyVisibleObjects(const XMFLOAT4& position,
 
 	const BSPNode& positionNode = GetNodeWithPoint(position);
 
-	assert(positionNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
+	DX_ASSERT(positionNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
 
 	std::vector<bool> currentPVS = DecompressClusterVisibility(positionNode.cluster);
 

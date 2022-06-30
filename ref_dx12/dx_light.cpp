@@ -1,9 +1,9 @@
 #include "dx_light.h"
 
-#include <cassert>
 #include <numeric>
 
 #include "dx_app.h"
+#include "dx_assert.h"
 
 #ifdef max
 #undef max
@@ -31,13 +31,13 @@ namespace
 
 void SurfaceLight::InitIfValid(SurfaceLight& light)
 {
-	assert(light.surfaceIndex != Const::INVALID_INDEX && "Invalid object index for surface light init");
+	DX_ASSERT(light.surfaceIndex != Const::INVALID_INDEX && "Invalid object index for surface light init");
 
 	const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[light.surfaceIndex];
 
 	const int trianglesNum = object.indices.size() / 3;
 
-	assert(trianglesNum > 0 && "Invalid triangles num in GenerateObjectTrianglesPDF");
+	DX_ASSERT(trianglesNum > 0 && "Invalid triangles num in GenerateObjectTrianglesPDF");
 
 	std::vector<float> triangleAreas(trianglesNum, 0.0f);
 
@@ -63,7 +63,7 @@ void SurfaceLight::InitIfValid(SurfaceLight& light)
 
 	float currentSum = 0.0f;
 	
-	assert(light.trianglesPDF.empty() == true && "Light data should be empty during init");
+	DX_ASSERT(light.trianglesPDF.empty() == true && "Light data should be empty during init");
 
 	light.trianglesPDF.reserve(triangleAreas.size());
 
@@ -74,7 +74,7 @@ void SurfaceLight::InitIfValid(SurfaceLight& light)
 		return currentSum / light.area;
 	});
 
-	assert(light.trianglesPDF.back() == 1.0f && "Something wrong with triangle PDF generation");
+	DX_ASSERT(light.trianglesPDF.back() == 1.0f && "Something wrong with triangle PDF generation");
 
 	light.irradiance = CalculateIrradiance(light);
 }
@@ -88,9 +88,9 @@ XMFLOAT4 SurfaceLight::CalculateReflectivity(const Resource& texture, const std:
 	//if (image->type != it_wall)
 		//return;
 
-	assert(textureData != nullptr && "Invalid texture data");
-	assert(texture.desc.dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && "Unknown texture dimension");
-	assert(texture.desc.format == DXGI_FORMAT_R8G8B8A8_UNORM && "Invalid texture format");
+	DX_ASSERT(textureData != nullptr && "Invalid texture data");
+	DX_ASSERT(texture.desc.dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && "Unknown texture dimension");
+	DX_ASSERT(texture.desc.format == DXGI_FORMAT_R8G8B8A8_UNORM && "Invalid texture format");
 
 	XMFLOAT4 reflectivity = { 0.0f, 0.0f, 0.0f, 0.0f };
 
@@ -124,13 +124,13 @@ XMFLOAT4 SurfaceLight::CalculateReflectivity(const Resource& texture, const std:
 
 XMFLOAT4 SurfaceLight::CalculateIrradiance(const SurfaceLight& light)
 {
-	assert(light.surfaceIndex != Const::INVALID_INDEX && "Invalid object index in light data");
-	assert(light.area != 0.0f && "Invalid are in light data");
+	DX_ASSERT(light.surfaceIndex != Const::INVALID_INDEX && "Invalid object index in light data");
+	DX_ASSERT(light.area != 0.0f && "Invalid are in light data");
 
 	const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[light.surfaceIndex];
 	const Resource* lightTexture = ResourceManager::Inst().FindResource(object.textureKey);
 
-	assert(lightTexture != nullptr && "Invalid texture name");
+	DX_ASSERT(lightTexture != nullptr && "Invalid texture name");
 
 	XMFLOAT4 irradiance;
 
