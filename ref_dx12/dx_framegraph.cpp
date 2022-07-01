@@ -442,7 +442,7 @@ FrameGraph::~FrameGraph()
 	}
 	std::get<static_cast<int>(Parsing::PassInputType::PostProcess)>(objGlobalRes).clear();
 
-#if (ENABLE_ASSERTS_VALIDATION)
+#if (ENABLE_VALIDATION)
 	// Dirty way to make sure I cleaned up everything
 	std::apply([](const auto&... resources) 
 	{

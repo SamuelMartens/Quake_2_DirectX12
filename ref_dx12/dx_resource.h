@@ -21,7 +21,11 @@ struct ResourceDesc
 	// This is awkward to have this data in resource decs. The reason being that from
 	// game's perspective each texture (which mode if resources are) can have this values.
 	// Perhaps I should move to lighting texture sometime?
-	int radiance = 0;
+	// Flux of the surface = iradiance * reflectivity 
+	// Iradiance is just intensity, which describes how much we want to scale reflectivity
+	// Reflectivity is normalized vector and describes how much of each component of RGB
+	// is emitted by this surface
+	int iradiance = 0;
 	XMFLOAT4 reflectivity = { 0.0f, 0.0f, 0.0f, 0.0f };
 
 	D3D12_RESOURCE_DIMENSION dimension = D3D12_RESOURCE_DIMENSION_UNKNOWN;

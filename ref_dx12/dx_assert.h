@@ -22,9 +22,9 @@ namespace DXAssert
 
 #define _DX_ASSERT_SOURCE_LOCATION DXAssert::SourceLocation{__FILE__, __LINE__, __func__}
 
-#define ENABLE_ASSERTS_VALIDATION true
+#define ENABLE_VALIDATION true
 
-#if (ENABLE_ASSERTS_VALIDATION)
+#if (ENABLE_VALIDATION)
 #define DX_ASSERT(expr) DXAssert::Assert(expr, _DX_ASSERT_SOURCE_LOCATION, #expr)
 #else
 #define DX_ASSERT(expr) ((void)0)

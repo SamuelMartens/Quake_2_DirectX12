@@ -953,7 +953,7 @@ void Mod_LoadTexinfo(lump_t *l, GPUJobContext& context)
 
 		out->image = ResourceManager::Inst().FindOrCreateResource(name, context);
 
-		out->image->desc.radiance = in->value;
+		out->image->desc.iradiance = in->value;
 
 		if (!out->image)
 		{

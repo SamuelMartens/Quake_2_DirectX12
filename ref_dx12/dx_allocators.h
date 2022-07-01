@@ -251,11 +251,11 @@ public:
 
 private:
 
-	constexpr static bool isValidateAllocations = false;
+	constexpr static bool VALIDATE_ALLOCATIONS = false;
 
 	void ValidateAllocations() const
 	{
-		if constexpr (isValidateAllocations == true)
+		if constexpr (VALIDATE_ALLOCATIONS == true)
 		{
 			constexpr int period = 60;
 			static int count = 0;

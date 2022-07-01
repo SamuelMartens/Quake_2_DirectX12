@@ -75,7 +75,7 @@ void SurfaceLight::InitIfValid(SurfaceLight& light)
 
 	DX_ASSERT(light.trianglesPDF.back() == 1.0f && "Something wrong with triangle PDF generation");
 
-	light.irradiance = CalculateIrradiance(light);
+	light.radiance = CalculateRadiance(light);
 }
 
 // Taken from Q2-Pathtracing CalcReflectivityForPathtracing()
@@ -121,7 +121,7 @@ XMFLOAT4 SurfaceLight::CalculateReflectivity(const Resource& texture, const std:
 	return reflectivity;
 }
 
-XMFLOAT4 SurfaceLight::CalculateIrradiance(const SurfaceLight& light)
+XMFLOAT4 SurfaceLight::CalculateRadiance(const SurfaceLight& light)
 {
 	DX_ASSERT(light.surfaceIndex != Const::INVALID_INDEX && "Invalid object index in light data");
 	DX_ASSERT(light.area != 0.0f && "Invalid are in light data");
@@ -131,18 +131,15 @@ XMFLOAT4 SurfaceLight::CalculateIrradiance(const SurfaceLight& light)
 
 	DX_ASSERT(lightTexture != nullptr && "Invalid texture name");
 
-	XMFLOAT4 irradiance;
+	XMFLOAT4 radiance;
 
-	// If reflectivity * radiance == radiant flux 
-	// then
-	// reflectivity * radiance / area == irradiance
-	XMStoreFloat4(&irradiance, 
-		XMLoadFloat4(&lightTexture->desc.reflectivity) * lightTexture->desc.radiance / light.area);
+	XMStoreFloat4(&radiance, 
+		XMLoadFloat4(&lightTexture->desc.reflectivity) * lightTexture->desc.iradiance / (light.area * M_PI));
 
-	return irradiance;
+	return radiance;
 }
 
 float SurfaceLight::GetUniformSamplePDF(const SurfaceLight& light)
 {
-	return 1 / light.area;
+	return 1.0f / light.area;
 }

@@ -1817,7 +1817,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	// If this is a light surface, add it to the list
 	if ((surf.texinfo->flags & SURF_WARP) == 0 && 
 		(surf.texinfo->flags & (SURF_LIGHT | SURF_SKY)) != 0 &&
-		surf.texinfo->image->desc.radiance > 0)
+		surf.texinfo->image->desc.iradiance > 0)
 	{
 		staticSurfaceLights.emplace_back(SurfaceLight{ 
 			static_cast<int>(staticObjects.size()) - 1 });

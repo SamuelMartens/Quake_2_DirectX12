@@ -137,17 +137,17 @@ private:
 	SphericalHarmonic9_t<float> GetSphericalHarmonic9Basis(const XMFLOAT4& direction) const;
 	SphericalHarmonic9_t<XMFLOAT4> ProjectOntoSphericalHarmonic(const XMFLOAT4& direction, const XMFLOAT4& color) const;
 
-	XMFLOAT4 GatherDirectRadianceAtInersectionPoint(
+	XMFLOAT4 GatherDirectIradianceAtInersectionPoint(
 		const Utils::Ray& ray, 
 		const Utils::BSPNodeRayIntersectionResult& nodeIntersectionResult,
 		LightSamplePoint* lightSampleDebugInfo) const;
 
-	XMFLOAT4 GatherRadianceFromAreaLights(
+	XMFLOAT4 GatherIradianceFromAreaLights(
 		const XMFLOAT4& intersectionPoint,
 		const XMFLOAT4& intersectionSurfaceNormal,
 		LightSamplePoint* lightSampleDebugInfo) const;
 
-	XMFLOAT4 GatherRadianceFromAreaLight(
+	XMFLOAT4 GatherIradianceFromAreaLight(
 		const XMFLOAT4& intersectionPoint,
 		const XMFLOAT4& intersectionSurfaceNormal,
 		const SurfaceLight& light,
