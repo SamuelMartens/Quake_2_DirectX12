@@ -17,19 +17,7 @@
 
 namespace
 {
-	std::string ReadFile(const std::filesystem::path& filePath)
-	{
-		std::ifstream file(filePath);
 
-		assert(file.is_open() == true && "Failed read a file");
-
-		std::stringstream buffer;
-		buffer << file.rdbuf();
-
-		return buffer.str();
-	}
-
-	
 	template<typename T>
 	const T* FindResourceOfTypeAndRegId(const std::vector<Parsing::Resource_t>& resources, int registerId)
 	{
@@ -142,7 +130,7 @@ namespace
 	void InitPreprocessorParser(peg::parser& parser)
 	{
 		// Load grammar
-		const std::string preprocessorGrammar = ReadFile(FrameGraphBuilder::Inst().GenPathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_PREPROCESSOR_FILENAME));
+		const std::string preprocessorGrammar = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_PREPROCESSOR_FILENAME));
 
 		parser.log = [](size_t line, size_t col, const std::string& msg)
 		{
@@ -196,7 +184,7 @@ namespace
 	void InitPassParser(peg::parser& parser) 
 	{
 		// Load grammar
-		const std::string passGrammar = ReadFile(FrameGraphBuilder::Inst().GenPathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_PASS_FILENAME));
+		const std::string passGrammar = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_PASS_FILENAME));
 
 		parser.log = [](size_t line, size_t col, const std::string& msg)
 		{
@@ -1028,7 +1016,7 @@ namespace
 	void InitFrameGraphParser(peg::parser& parser)
 	{
 		// Load grammar
-		const std::string frameGraphGrammar = ReadFile(FrameGraphBuilder::Inst().GenPathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_FRAMEGRAPH_FILENAME));
+		const std::string frameGraphGrammar = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_FRAMEGRAPH_FILENAME));
 
 		parser.log = [](size_t line, size_t col, const std::string& msg)
 		{
@@ -1588,24 +1576,6 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 	return passCompiledShaders;
 }
 
-FrameGraphBuilder::FrameGraphBuilder()
-{
-	std::string pathToThisFile = __FILE__;
-	ROOT_DIR_PATH = pathToThisFile.substr(0, pathToThisFile.rfind("\\"));
-}
-
-FrameGraphBuilder& FrameGraphBuilder::Inst()
-{
-	static FrameGraphBuilder* matCompiler = nullptr;
-
-	if (matCompiler == nullptr)
-	{
-		matCompiler = new FrameGraphBuilder();
-	}
-
-	return *matCompiler;
-}
-
 void FrameGraphBuilder::BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph)
 {
 	outFrameGraph = std::make_unique<FrameGraph>(CompileFrameGraph(GenerateFrameGraphSource()));
@@ -1851,7 +1821,7 @@ std::unordered_map<std::string, std::string> FrameGraphBuilder::LoadPassFiles() 
 {
 	std::unordered_map<std::string, std::string> passFiles;
 
-	for (const auto& file : std::filesystem::directory_iterator(GenPathToFile(Settings::FRAMEGRAPH_DIR)))
+	for (const auto& file : std::filesystem::directory_iterator(Utils::GenAbsolutePathToFile(Settings::FRAMEGRAPH_DIR)))
 	{
 		const std::filesystem::path filePath = file.path();
 
@@ -1859,7 +1829,7 @@ std::unordered_map<std::string, std::string> FrameGraphBuilder::LoadPassFiles() 
 		{
 			Logs::Logf(Logs::Category::Parser, "Read pass file %s", filePath.c_str());
 
-			std::string passFileContent = ReadFile(filePath);
+			std::string passFileContent = Utils::ReadFile(filePath);
 
 			passFiles.emplace(std::make_pair(
 				filePath.filename().string(),
@@ -1872,7 +1842,7 @@ std::unordered_map<std::string, std::string> FrameGraphBuilder::LoadPassFiles() 
 
 std::string FrameGraphBuilder::LoadFrameGraphFile() const
 {
-	for (const auto& file : std::filesystem::directory_iterator(GenPathToFile(Settings::FRAMEGRAPH_DIR)))
+	for (const auto& file : std::filesystem::directory_iterator(Utils::GenAbsolutePathToFile(Settings::FRAMEGRAPH_DIR)))
 	{
 		const std::filesystem::path filePath = file.path();
 
@@ -1880,7 +1850,7 @@ std::string FrameGraphBuilder::LoadFrameGraphFile() const
 		{
 			Logs::Logf(Logs::Category::Parser, "Read frame graph file %s", filePath.c_str());
 
-			std::string frameGraphFileContent = ReadFile(filePath);
+			std::string frameGraphFileContent = Utils::ReadFile(filePath);
 
 			return frameGraphFileContent;
 		}
@@ -1954,7 +1924,7 @@ bool FrameGraphBuilder::IsSourceChanged()
 	if (sourceWatchHandle == INVALID_HANDLE_VALUE)
 	{
 		// First time requested. Init handler
-		sourceWatchHandle = FindFirstChangeNotification(ROOT_DIR_PATH.string().c_str(), TRUE, 
+		sourceWatchHandle = FindFirstChangeNotification(Utils::GetAbsolutePathToRootDir().string().c_str(), TRUE,
 			FILE_NOTIFY_CHANGE_FILE_NAME |
 			FILE_NOTIFY_CHANGE_DIR_NAME |
 			FILE_NOTIFY_CHANGE_LAST_WRITE);
@@ -2006,7 +1976,7 @@ void FrameGraphBuilder::PreprocessPassFiles(std::unordered_map<std::string, std:
 			currentPos = include.pos + include.len;
 
 			// Add included file
-			processedFile += ReadFile(GenPathToFile(Settings::FRAMEGRAPH_DIR + "/" + include.name));
+			processedFile += Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::FRAMEGRAPH_DIR + "/" + include.name));
 		}
 
 		assert(currentPos < currentFile.size() && "PreprocessPassFile, something wrong with current pos");
@@ -2446,12 +2416,4 @@ std::vector<PassTask::Callback_t> FrameGraphBuilder::CompilePassCallbacks(const 
 	}
 
 	return callbacks;
-}
-
-std::filesystem::path FrameGraphBuilder::GenPathToFile(const std::string fileName) const
-{
-	std::filesystem::path path = ROOT_DIR_PATH;
-	path.append(fileName);
-
-	return path;
 }

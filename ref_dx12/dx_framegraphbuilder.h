@@ -3,7 +3,6 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
-#include <filesystem>
 #include <memory>
 #include <functional>
 
@@ -106,29 +105,15 @@ namespace Parsing
 
 class FrameGraphBuilder
 {
-
-private:
-	FrameGraphBuilder();
-
 public:
-
-	FrameGraphBuilder(const FrameGraphBuilder&) = delete;
-	FrameGraphBuilder& operator=(const FrameGraphBuilder&) = delete;
-	FrameGraphBuilder(FrameGraphBuilder&&) = delete;
-	FrameGraphBuilder& operator=(FrameGraphBuilder&&) = delete;
-
-	~FrameGraphBuilder() = default;
-
-	static FrameGraphBuilder& Inst();
 
 	using PassCompiledShaders_t = std::vector<std::pair<PassParametersSource::ShaderType, ComPtr<ID3DBlob>>>;
 
-public:
+	DEFINE_SINGLETON(FrameGraphBuilder);
+
 
 	bool IsSourceChanged();
 	void BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph);
-
-	std::filesystem::path GenPathToFile(const std::string fileName) const;
 
 private:
 
@@ -181,6 +166,5 @@ private:
 	void ValidateResources(const std::vector<PassParametersSource>& passesParametersSources) const;
 	void AttachSpecialPostPreCallbacks(std::vector<PassTask>& passTasks) const;
 
-	std::filesystem::path ROOT_DIR_PATH;
 	HANDLE sourceWatchHandle = INVALID_HANDLE_VALUE;
 };

@@ -1,5 +1,6 @@
 #include "dx_utils.h"
 
+#include <fstream>
 
 #include "dx_app.h"
 
@@ -960,4 +961,31 @@ bool Utils::FindClosestIntersectionInNode(const Utils::Ray& ray, const BSPNode& 
 	}
 
 	return false;
+}
+
+std::filesystem::path Utils::GetAbsolutePathToRootDir()
+{
+	// Ugly hacks time!
+	const static std::string pathToThisFile = __FILE__;
+	std::filesystem::path rootDirPath = 
+		pathToThisFile.substr(0, pathToThisFile.rfind("\\"));
+
+	return rootDirPath;
+}
+
+std::filesystem::path Utils::GenAbsolutePathToFile(const std::string& relativePath)
+{
+	return GetAbsolutePathToRootDir().append(relativePath);
+}
+
+std::string Utils::ReadFile(const std::filesystem::path& filePath)
+{
+	std::ifstream file(filePath);
+
+	DX_ASSERT(file.is_open() == true && "Failed read a file");
+
+	std::stringstream buffer;
+	buffer << file.rdbuf();
+
+	return buffer.str();
 }

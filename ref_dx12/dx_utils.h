@@ -9,6 +9,7 @@
 #include <vector>
 #include <functional>
 #include <bitset>
+#include <filesystem>
 #include <DirectXMath.h>
 
 #include "dx_shaderdefinitions.h"
@@ -283,12 +284,16 @@ namespace Utils
 	}
 
 	Plane ConstructPlane(const XMFLOAT4& p0, const XMFLOAT4& p1, const XMFLOAT4& p2);
-	bool IsAABBBehindPlane(const Plane& plane, const AABB& aabb);
 
 	XMFLOAT4X4 ConstructV1ToV2RotationMatrix(const XMFLOAT4& v1, const XMFLOAT4& v2);
 
 	[[nodiscard]]
 	Utils::AABB ConstructAABB(const std::vector<XMFLOAT4>& vertices);
+
+	[[nodiscard]]
+	std::vector<XMFLOAT4> CreateSphere(float radius, int numSubdivisions = 1);
+
+	bool IsAABBBehindPlane(const Plane& plane, const AABB& aabb);
 
 	[[nodiscard]]
 	bool IsRayIntersectsAABB(const Utils::Ray& ray, const Utils::AABB& aabb, float* t = nullptr);
@@ -300,7 +305,10 @@ namespace Utils
 
 	bool IsAlmostEqual(float a, float b);
 
-	std::vector<XMFLOAT4> CreateSphere(float radius, int numSubdivisions = 1);
+	std::filesystem::path GetAbsolutePathToRootDir();
+	std::filesystem::path GenAbsolutePathToFile(const std::string& relativePath);
+
+	std::string ReadFile(const std::filesystem::path& filePath);
 }
 
 #define PREVENT_SELF_MOVE_ASSIGN if (this == &other) { return *this; }
