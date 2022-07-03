@@ -1452,7 +1452,7 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 	debugObjectsVertices.reserve(lightProbeDebugObjectVertices.size() * debugObjects.size());
 
 	const Renderer& renderer = Renderer::Inst();
-	const std::vector<SurfaceLight>& surfaceLights = renderer.GetStaticSurfaceLights();
+	const std::vector<AreaLight>& areaLights = renderer.GetStaticAreaLights();
 	const std::vector<PointLight>& pointLights = renderer.GetStaticPointLights();
 	const std::vector<SourceStaticObject>& staticObjects = renderer.GetSourceStaticObjects();
 
@@ -1468,7 +1468,7 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 	{
 		std::visit([this, 
 			&debugObjectsVertices,
-			&surfaceLights,
+			&areaLights,
 			&staticObjects,
 			&pointLights,
 			&debugObjectsVertexSizes,
@@ -1504,12 +1504,12 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 
 				if (debugObject.type == DebugObject_LightSource::Type::Area)
 				{
-					const SurfaceLight& light = surfaceLights[debugObject.sourceIndex];
+					const AreaLight& light = areaLights[debugObject.sourceIndex];
 
-					DX_ASSERT(light.surfaceIndex != Const::INVALID_INDEX && 
+					DX_ASSERT(light.staticObjectIndex != Const::INVALID_INDEX && 
 						"Invalid index for surface light mesh");
 
-					const SourceStaticObject& staticObject = staticObjects[light.surfaceIndex];
+					const SourceStaticObject& staticObject = staticObjects[light.staticObjectIndex];
 
 					debugObjectsVertices.insert(debugObjectsVertices.end(),
 						staticObject.vertices.cbegin(),

@@ -28,11 +28,11 @@ namespace
 	}
 }
 
-void SurfaceLight::InitIfValid(SurfaceLight& light)
+void AreaLight::InitIfValid(AreaLight& light)
 {
-	DX_ASSERT(light.surfaceIndex != Const::INVALID_INDEX && "Invalid object index for surface light init");
+	DX_ASSERT(light.staticObjectIndex != Const::INVALID_INDEX && "Invalid object index for surface light init");
 
-	const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[light.surfaceIndex];
+	const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[light.staticObjectIndex];
 
 	const int trianglesNum = object.indices.size() / 3;
 
@@ -80,7 +80,7 @@ void SurfaceLight::InitIfValid(SurfaceLight& light)
 
 // Taken from Q2-Pathtracing CalcReflectivityForPathtracing()
 // basically averaging albedo. 
-XMFLOAT4 SurfaceLight::CalculateReflectivity(const Resource& texture, const std::byte* textureData)
+XMFLOAT4 AreaLight::CalculateReflectivity(const Resource& texture, const std::byte* textureData)
 {
 	// Not sure how relevant this is. Leaving this here just for remainder sake
 	/* The reflectivity is only relevant for wall textures. */
@@ -121,12 +121,12 @@ XMFLOAT4 SurfaceLight::CalculateReflectivity(const Resource& texture, const std:
 	return reflectivity;
 }
 
-XMFLOAT4 SurfaceLight::CalculateRadiance(const SurfaceLight& light)
+XMFLOAT4 AreaLight::CalculateRadiance(const AreaLight& light)
 {
-	DX_ASSERT(light.surfaceIndex != Const::INVALID_INDEX && "Invalid object index in light data");
+	DX_ASSERT(light.staticObjectIndex != Const::INVALID_INDEX && "Invalid object index in light data");
 	DX_ASSERT(light.area != 0.0f && "Invalid are in light data");
 
-	const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[light.surfaceIndex];
+	const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[light.staticObjectIndex];
 	const Resource* lightTexture = ResourceManager::Inst().FindResource(object.textureKey);
 
 	DX_ASSERT(lightTexture != nullptr && "Invalid texture name");
@@ -139,7 +139,7 @@ XMFLOAT4 SurfaceLight::CalculateRadiance(const SurfaceLight& light)
 	return radiance;
 }
 
-float SurfaceLight::GetUniformSamplePDF(const SurfaceLight& light)
+float AreaLight::GetUniformSamplePDF(const AreaLight& light)
 {
 	return 1.0f / light.area;
 }

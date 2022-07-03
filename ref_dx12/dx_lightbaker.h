@@ -46,7 +46,7 @@ struct DiffuseProbe
 {
 	using DiffuseSH_t = SphericalHarmonic9_t<XMFLOAT4>;
 
-	//#TODO this is incoming radiance right?
+	// Stores incoming radiance
 	DiffuseSH_t radianceSh;
 
 	// Contains lines list, that describe rays used for tracing
@@ -83,6 +83,9 @@ enum class BakeFlags
 	SaveRayPath,
 	SaveLightSampling,
 
+	SamplePointLights,
+	SampleAreaLights,
+
 	Count
 };
 
@@ -103,12 +106,17 @@ struct BakingResult
 	std::vector<DiffuseProbe> probeData;
 };
 
+//#TODO
+// 1) Implement albedo texture sampling on object
+// 2) Implement albedo texture sampling on lights
+// 3) Implement bake results saving / loading
 
 class LightBaker
 {
 public:
 	DEFINE_SINGLETON(LightBaker);
 
+	void Init();
 
 	void PreBake();
 	void PostBake();
@@ -142,18 +150,22 @@ private:
 		const Utils::BSPNodeRayIntersectionResult& nodeIntersectionResult,
 		LightSamplePoint* lightSampleDebugInfo) const;
 
-	XMFLOAT4 GatherIradianceFromAreaLights(
+	XMFLOAT4 GatherDirectIrradianceFromPointLights(
 		const XMFLOAT4& intersectionPoint,
 		const XMFLOAT4& intersectionSurfaceNormal,
 		LightSamplePoint* lightSampleDebugInfo) const;
 
-	XMFLOAT4 GatherIradianceFromAreaLight(
+	XMFLOAT4 GatherDirectIradianceFromAreaLights(
 		const XMFLOAT4& intersectionPoint,
 		const XMFLOAT4& intersectionSurfaceNormal,
-		const SurfaceLight& light,
 		LightSamplePoint* lightSampleDebugInfo) const;
 
-	//#TODO passing direction by ref seems silly. Need to pass multiple value
+	XMFLOAT4 GatherDirectIradianceFromAreaLight(
+		const XMFLOAT4& intersectionPoint,
+		const XMFLOAT4& intersectionSurfaceNormal,
+		const AreaLight& light,
+		LightSamplePoint* lightSampleDebugInfo) const;
+
 	ProbePathTraceResult PathTraceFromProbe(const XMFLOAT4& probeCoord, XMFLOAT4& direction);
 
 	std::vector<std::vector<XMFLOAT4>> clusterBakePoints;

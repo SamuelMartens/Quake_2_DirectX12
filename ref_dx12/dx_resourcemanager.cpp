@@ -618,7 +618,7 @@ Resource* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContex
 
 	Resource* createdTex = _CreateResource(createTexArgs);
 
-	createdTex->desc.reflectivity = SurfaceLight::CalculateReflectivity(*createdTex,
+	createdTex->desc.reflectivity = AreaLight::CalculateReflectivity(*createdTex,
 		reinterpret_cast<std::byte*>(image32));
 	
 	if (image != nullptr)

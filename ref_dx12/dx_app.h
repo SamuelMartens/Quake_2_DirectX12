@@ -122,7 +122,7 @@ class Renderer
 	const std::vector<StaticObject>& GetStaticObjects() const;
 	const std::unordered_map<model_t*, DynamicObjectModel>& GetDynamicModels() const;
 	const std::vector<SourceStaticObject>& GetSourceStaticObjects() const;
-	const std::vector<SurfaceLight>& GetStaticSurfaceLights() const;
+	const std::vector<AreaLight>& GetStaticAreaLights() const;
 	const std::vector<PointLight>& GetStaticPointLights() const;
 
 	void Load8To24Table();
@@ -347,7 +347,7 @@ private:
 
 	/* Lights collections */
 	std::vector<PointLight> staticPointLights;
-	std::vector<SurfaceLight> staticSurfaceLights;
+	std::vector<AreaLight> staticAreaLights;
 
 	/* Frames  */
 	std::array<Frame, Settings::FRAMES_NUM> frames;

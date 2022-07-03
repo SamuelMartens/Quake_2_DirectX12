@@ -23,7 +23,7 @@ namespace Settings
 
 	constexpr int		 GPU_RESOURCE_DELETION_THRESHOLD = 16;
 
-	constexpr int		 COMMAND_LISTS_PER_FRAME = 10;
+	constexpr int		 COMMAND_LISTS_PER_FRAME = 20;
 	// Try to avoid to set up any particular number for this, instead change command lists per frame
 	constexpr int		 COMMAND_LISTS_NUM = COMMAND_LISTS_PER_FRAME * FRAMES_NUM;
 
@@ -67,10 +67,11 @@ namespace Settings
 
 
 	/* Light Baker */
+	constexpr float AREA_LIGHTS_MIN_DISTANCE = 1.0f;
 	constexpr float AREA_LIGHTS_MAX_DISTANCE = 1000.0f;
 	constexpr float POINT_LIGHTS_MAX_DISTANCE = 1000.0f;
 
-	constexpr float RUSSIAN_ROULETTE_TERMINATION_PROBABILITY = 0.5f;
+	constexpr float RUSSIAN_ROULETTE_ABSORBTION_PROBABILITY = 0.5f;
 	constexpr int PROBE_SAMPLES_NUM = 6;
 
 	constexpr int GUARANTEED_BOUNCES_NUM = 2;

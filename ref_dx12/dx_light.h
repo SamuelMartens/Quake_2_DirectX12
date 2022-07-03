@@ -20,16 +20,13 @@ struct PointLight
 	std::vector<int> clusters;
 };
 
-//#TODO remove ambiguity created by this by naming here.
-// This one is called surface, like in original Q2 rendering
-// but in engine I call this things StaticObject
-struct SurfaceLight
+struct AreaLight
 {
-	// Surface index in array of static objects (currently belongs to Renderer)
-	// surface == staticObject
+	// Index in array of static objects (currently belongs to Renderer)
+	// Area Light == Static Object 
 	// Be aware, that lighting characteristics are stored in texInfo
 	// that is referenced by this StaticObject
-	int surfaceIndex = Const::INVALID_INDEX;
+	int staticObjectIndex = Const::INVALID_INDEX;
 
 	float area = 0.0f;
 	// Each value is upper bound of PDF for that triangle,
@@ -38,10 +35,10 @@ struct SurfaceLight
 
 	XMFLOAT4 radiance = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-	static void InitIfValid(SurfaceLight& light);
+	static void InitIfValid(AreaLight& light);
 
 	static XMFLOAT4 CalculateReflectivity(const Resource& texture, const std::byte* textureData);
-	static XMFLOAT4 CalculateRadiance(const SurfaceLight& light);
+	static XMFLOAT4 CalculateRadiance(const AreaLight& light);
 
-	static float GetUniformSamplePDF(const SurfaceLight& light);
+	static float GetUniformSamplePDF(const AreaLight& light);
 };
