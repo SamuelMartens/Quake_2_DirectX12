@@ -138,8 +138,3 @@ XMFLOAT4 AreaLight::CalculateRadiance(const AreaLight& light)
 
 	return radiance;
 }
-
-float AreaLight::GetUniformSamplePDF(const AreaLight& light)
-{
-	return 1.0f / light.area;
-}

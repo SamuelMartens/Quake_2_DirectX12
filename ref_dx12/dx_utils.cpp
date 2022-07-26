@@ -989,3 +989,34 @@ std::string Utils::ReadFile(const std::filesystem::path& filePath)
 
 	return buffer.str();
 }
+
+void Utils::WriteFile(const std::filesystem::path& filePath, const std::string& content)
+{
+	std::ofstream file(filePath);
+
+	DX_ASSERT(file.is_open() == true && "Failed write a file");
+
+	file << content;
+}
+
+XMFLOAT4 Utils::BSPNodeRayIntersectionResult::GetNormal(const Utils::BSPNodeRayIntersectionResult& result)
+{
+	const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[result.staticObjIndex];
+
+	const int v0Index = object.indices[result.triangleIndex * 3 + 0];
+	const int v1Index = object.indices[result.triangleIndex * 3 + 1];
+	const int v2Index = object.indices[result.triangleIndex * 3 + 2];
+
+	XMVECTOR sseV0Normal = XMLoadFloat4(&object.normals[v0Index]);
+	XMVECTOR sseV1Normal = XMLoadFloat4(&object.normals[v1Index]);
+	XMVECTOR sseV2Normal = XMLoadFloat4(&object.normals[v2Index]);
+
+	XMVECTOR sseNormal = XMVector3Normalize(sseV0Normal * result.rayTriangleIntersection.u +
+		sseV1Normal * result.rayTriangleIntersection.v +
+		sseV2Normal * result.rayTriangleIntersection.w);
+
+	XMFLOAT4 normal;
+	XMStoreFloat4(&normal, sseNormal);
+
+	return normal;
+}

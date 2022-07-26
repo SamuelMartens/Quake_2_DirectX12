@@ -309,6 +309,7 @@ namespace Utils
 	std::filesystem::path GenAbsolutePathToFile(const std::string& relativePath);
 
 	std::string ReadFile(const std::filesystem::path& filePath);
+	void WriteFile(const std::filesystem::path& filePath, const std::string& content);
 }
 
 #define PREVENT_SELF_MOVE_ASSIGN if (this == &other) { return *this; }

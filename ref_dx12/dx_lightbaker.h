@@ -58,17 +58,16 @@ struct DiffuseProbe
 	std::optional<std::vector<PathLightSampleInfo_t>> lightSamples;
 };
 
-struct ClusterProbeData
-{
-	int startIndex = Const::INVALID_INDEX;
-};
-
+// If changing this enum, don't forget to tweak string representation
 enum class LightBakingMode
 {
 	AllClusters,
-	CurrentPositionCluster
+	CurrentPositionCluster,
+
+	Count
 };
 
+extern const std::array<std::string,static_cast<int>(LightBakingMode::Count)>  LightBakingMode_Str;
 
 struct ProbePathTraceResult
 {
@@ -86,33 +85,47 @@ enum class BakeFlags
 	SamplePointLights,
 	SampleAreaLights,
 
+	SaveToFileAfterBake,
+
 	Count
 };
 
-struct BakingResult
+struct BakingData
 {
-	struct ClusterSize
-	{
-		int startIndex = Const::INVALID_INDEX;
-	};
-
+	// Technically, this is not optional, but if it is not initialized, then 
+	// it should be explicitly not initialized.
 	std::optional<LightBakingMode> bakingMode;
 
 	// If baking mode is CurrentPositionCluster this will store current
 	// baking cluster
 	std::optional<int> bakingCluster;
-	std::optional<std::vector<ClusterSize>> clusterSizes;
+	
+	// Reflects index of the first probe for each cluster 
+	std::vector<int> clusterFirstProbeIndices;
 
-	std::vector<DiffuseProbe> probeData;
+	std::vector<DiffuseProbe> probes;
 };
+
+namespace Parsing
+{
+	struct LightBakingContext
+	{
+		BakingData bakingResult;
+	};
+}
+
 
 //#TODO
 // 1) Implement albedo texture sampling on object
 // 2) Implement albedo texture sampling on lights
-// 3) Implement bake results saving / loading
 
 class LightBaker
 {
+public:
+
+	static std::string BakingModeToStr(LightBakingMode mode);
+	static LightBakingMode StrToBakingMode(const std::string& str);
+
 public:
 	DEFINE_SINGLETON(LightBaker);
 
@@ -128,17 +141,22 @@ public:
 	std::vector<XMFLOAT4> GenerateClusterBakePoints(int clusterIndex) const;
 
 	void BakeJob();
+	void LoadBakingResultsFromFileJob();
+
+	bool IsContainCompleteBakingResult() const;
+
 	int GetTotalProbesNum() const;
 	int GetBakedProbesNum() const;
 
 	LightBakingMode GetBakingMode() const;
 	bool GetBakeFlag(BakeFlags flag) const;
 
-	BakingResult TransferBakingResult();
+	BakingData TransferBakingResult();
 
 	void SetBakingMode(LightBakingMode genMode);
 	void SetBakePosition(const XMFLOAT4& position);
 	void SetBakeFlag(BakeFlags flag, bool value);
+
 
 private:
 
@@ -168,18 +186,20 @@ private:
 
 	ProbePathTraceResult PathTraceFromProbe(const XMFLOAT4& probeCoord, XMFLOAT4& direction);
 
+	void SaveBakingResultsToFile(const BakingData& bakingResult) const;
+	BakingData LoadBakingResultsFromFile() const;
+
 	std::vector<std::vector<XMFLOAT4>> clusterBakePoints;
 	
 	std::atomic<int> currentBakeCluster;
-
 	std::atomic<int> probesBaked;
-	std::vector<ClusterProbeData> clusterProbeData;
+
+	std::atomic<bool> isContainCompleteBakingResult = false;
 
 	std::optional<XMFLOAT4> bakePosition;
 
-	LightBakingMode generationMode = LightBakingMode::CurrentPositionCluster;
 	Utils::Flags<BakeFlags> bakeFlags;
-
-	std::optional<int> bakeCluster;
-	std::vector<DiffuseProbe> probes;
+	
+	// Contains data that will be sent to renderer after bake is over
+	BakingData transferableData;
 }; 

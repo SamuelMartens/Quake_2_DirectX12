@@ -980,6 +980,9 @@ void Renderer::OnStateEnd(State state)
 	case Renderer::State::LightBaking:
 		LightBaker::Inst().PostBake();
 		break;
+	case State::LoadLightBakingFromFile:
+		Renderer::Inst().ConsumeDiffuseIndirectLightingBakingResult(LightBaker::Inst().TransferBakingResult());
+		break;
 	default:
 		break;
 	}
@@ -1010,6 +1013,17 @@ void Renderer::OnStateStart(State state)
 				LightBaker::Inst().BakeJob();
 			}));
 		}
+
+		break;
+	}
+	case Renderer::State::LoadLightBakingFromFile:
+	{
+		DX_ASSERT(LightBaker::Inst().IsContainCompleteBakingResult() == false && "Already contain some results");
+
+		JobSystem::Inst().GetJobQueue().Enqueue(Job([]() 
+		{
+			LightBaker::Inst().LoadBakingResultsFromFileJob();
+		}));
 
 		break;
 	}
@@ -1196,7 +1210,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 
 		debugObjects.reserve(bakePoints.size());
 
-		const BakingResult& bakeResult = lightBakingResult.obj;
+		const BakingData& bakeResult = lightBakingResult.obj;
 
 		const bool hasProbeDataOnGPU =
 			ResourceManager::Inst().FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME) != nullptr;
@@ -1210,8 +1224,6 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 
 			if (hasProbeDataOnGPU)
 			{
-				DX_ASSERT(bakeResult.bakingMode.has_value() == true && "No value for baking mode");
-
 				switch (*bakeResult.bakingMode)
 				{
 				case LightBakingMode::CurrentPositionCluster:
@@ -1226,9 +1238,9 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 				break;
 				case LightBakingMode::AllClusters:
 				{
-					DX_ASSERT(bakeResult.clusterSizes.has_value() == true && "Cluster sizes should have value");
+					DX_ASSERT(bakeResult.clusterFirstProbeIndices.empty() == false && "Cluster sizes should have value");
 
-					object.probeIndex = i + bakeResult.clusterSizes.value()[cameraNode.cluster].startIndex;
+					object.probeIndex = i + bakeResult.clusterFirstProbeIndices[cameraNode.cluster];
 				}
 				break;
 				default:
@@ -1268,24 +1280,24 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 	{
 		std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
 
-		if (lightBakingResult.obj.probeData.empty() == false)
+		if (lightBakingResult.obj.probes.empty() == false)
 		{
 			switch (drawBakeRayPathsMode)
 			{
 			case Renderer::DrawRayPathMode::AllClusterProbes:
 			{
-				for (int probeIndex = 0; probeIndex < lightBakingResult.obj.probeData.size(); ++probeIndex)
+				for (int probeIndex = 0; probeIndex < lightBakingResult.obj.probes.size(); ++probeIndex)
 				{
-					AddProbeDebugRaySegments(debugObjects, lightBakingResult.obj.probeData, probeIndex);
+					AddProbeDebugRaySegments(debugObjects, lightBakingResult.obj.probes, probeIndex);
 				}
 
 				break;
 			}
 			case Renderer::DrawRayPathMode::SingleProbe:
 			{
-				DX_ASSERT(drawBakeRayPathsProbeIndex < lightBakingResult.obj.probeData.size() && "Invalid probe index");
+				DX_ASSERT(drawBakeRayPathsProbeIndex < lightBakingResult.obj.probes.size() && "Invalid probe index");
 
-				AddProbeDebugRaySegments(debugObjects, lightBakingResult.obj.probeData, drawBakeRayPathsProbeIndex);
+				AddProbeDebugRaySegments(debugObjects, lightBakingResult.obj.probes, drawBakeRayPathsProbeIndex);
 
 				break;
 			}
@@ -1300,15 +1312,15 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 	{
 		std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
 
-		if (lightBakingResult.obj.probeData.empty() == false)
+		if (lightBakingResult.obj.probes.empty() == false)
 		{
 			switch (drawPathLightSampleMode_Scale)
 			{
 			case Renderer::DrawPathLightSampleMode_Scale::AllSamples:
 			{
-				for (int probeIndex = 0; probeIndex < lightBakingResult.obj.probeData.size(); ++probeIndex)
+				for (int probeIndex = 0; probeIndex < lightBakingResult.obj.probes.size(); ++probeIndex)
 				{
-					const DiffuseProbe& probe = lightBakingResult.obj.probeData[probeIndex];
+					const DiffuseProbe& probe = lightBakingResult.obj.probes[probeIndex];
 
 					if (probe.lightSamples.has_value() == false)
 					{
@@ -1323,7 +1335,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 						{
 							AddPointLightSampleSegments(
 								debugObjects,
-								lightBakingResult.obj.probeData,
+								lightBakingResult.obj.probes,
 								probeIndex,
 								pathIndex,
 								pointIndex,
@@ -1336,7 +1348,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 			}
 			case Renderer::DrawPathLightSampleMode_Scale::ProbeSamples:
 			{
-				const DiffuseProbe& probe = lightBakingResult.obj.probeData[drawPathLightSamples_ProbeIndex];
+				const DiffuseProbe& probe = lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex];
 
 				if (probe.lightSamples.has_value() == true)
 				{
@@ -1348,7 +1360,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 						{
 							AddPointLightSampleSegments(
 								debugObjects, 
-								lightBakingResult.obj.probeData,
+								lightBakingResult.obj.probes,
 								drawPathLightSamples_ProbeIndex,
 								pathIndex,
 								pointIndex,
@@ -1361,7 +1373,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 			}
 			case Renderer::DrawPathLightSampleMode_Scale::PathSamples:
 			{
-				const DiffuseProbe& probe = lightBakingResult.obj.probeData[drawPathLightSamples_ProbeIndex];
+				const DiffuseProbe& probe = lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex];
 
 				if (probe.lightSamples.has_value() == true)
 				{
@@ -1371,7 +1383,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 					{
 						AddPointLightSampleSegments(
 							debugObjects,
-							lightBakingResult.obj.probeData,
+							lightBakingResult.obj.probes,
 							drawPathLightSamples_ProbeIndex,
 							drawPathLightSamples_PathIndex,
 							pointIndex,
@@ -1383,7 +1395,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 			}
 			case Renderer::DrawPathLightSampleMode_Scale::PointSamples:
 			{
-				const DiffuseProbe& probe = lightBakingResult.obj.probeData[drawPathLightSamples_ProbeIndex];
+				const DiffuseProbe& probe = lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex];
 
 				if (probe.lightSamples.has_value() == true)
 				{
@@ -1391,7 +1403,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 
 					AddPointLightSampleSegments(
 						debugObjects,
-						lightBakingResult.obj.probeData,
+						lightBakingResult.obj.probes,
 						drawPathLightSamples_ProbeIndex,
 						drawPathLightSamples_PathIndex,
 						drawPathLightSamples_PointIndex,
@@ -1522,9 +1534,9 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 
 
 
-				ImGui::Text("Probes num: %d", lightBakingResult.obj.probeData.size());
+				ImGui::Text("Probes num: %d", lightBakingResult.obj.probes.size());
 				ImGui::InputInt("Probe ray index", &drawBakeRayPathsProbeIndex);
-				drawBakeRayPathsProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probeData.size() - 1, drawBakeRayPathsProbeIndex));
+				drawBakeRayPathsProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probes.size() - 1, drawBakeRayPathsProbeIndex));
 
 				ImGui::Checkbox("Show Ray Paths", &drawBakeRayPaths);
 			}
@@ -1560,22 +1572,22 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 					drawPathLightSampleMode_Type = static_cast<DrawPathLightSampleMode_Type>(drawLightSampleMode);
 				}
 
-				ImGui::Text("Probes num: %d", lightBakingResult.obj.probeData.size());
+				ImGui::Text("Probes num: %d", lightBakingResult.obj.probes.size());
 				ImGui::InputInt("Probe index", &drawPathLightSamples_ProbeIndex);
-				drawPathLightSamples_ProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probeData.size() - 1, drawPathLightSamples_ProbeIndex));
+				drawPathLightSamples_ProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probes.size() - 1, drawPathLightSamples_ProbeIndex));
 
-				const bool isLightSamplePathDataExists = lightBakingResult.obj.probeData.empty() == false &&
-					lightBakingResult.obj.probeData[drawPathLightSamples_ProbeIndex].lightSamples.has_value();
+				const bool isLightSamplePathDataExists = lightBakingResult.obj.probes.empty() == false &&
+					lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex].lightSamples.has_value();
 
 				const int lightSamplePathNum = isLightSamplePathDataExists ?
-					lightBakingResult.obj.probeData[drawPathLightSamples_ProbeIndex].lightSamples->size() : 0;
+					lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex].lightSamples->size() : 0;
 
 				ImGui::Text("Paths num: %d", lightSamplePathNum);
 				ImGui::InputInt("Path index", &drawPathLightSamples_PathIndex);
 				drawPathLightSamples_PathIndex = std::max(0, std::min<int>(lightSamplePathNum - 1, drawPathLightSamples_PathIndex));
 
 				const int lightSamplePointsNum = isLightSamplePathDataExists ?
-					lightBakingResult.obj.probeData[drawPathLightSamples_ProbeIndex].lightSamples->at(drawPathLightSamples_PathIndex).size() : 0;
+					lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex].lightSamples->at(drawPathLightSamples_PathIndex).size() : 0;
 
 				ImGui::Text("Sample points num: %d", lightSamplePointsNum);
 				ImGui::InputInt("Sample point index ", &drawPathLightSamples_PointIndex);
@@ -1641,27 +1653,53 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 
 			ImGui::Separator();
 		
-			if (ImGui::Button("Start bake"))
 			{
-				if (lightBaker.GetBakingMode() == LightBakingMode::CurrentPositionCluster)
-				{
-					lightBaker.SetBakePosition(context.frame.camera.position);
-				}
-				else
-				{
-					// Enforce false, because certain flags can only be used for certain modes
-					lightBaker.SetBakeFlag(BakeFlags::SaveRayPath, false);
-					lightBaker.SetBakeFlag(BakeFlags::SaveLightSampling, false);
-				}
+				bool saveToFileAfterBake = lightBaker.GetBakeFlag(BakeFlags::SaveToFileAfterBake);
 
-				RequestStateChange(State::LightBaking);
+				if (ImGui::Checkbox("Save to file after bake", &saveToFileAfterBake))
+				{
+					lightBaker.SetBakeFlag(BakeFlags::SaveToFileAfterBake, saveToFileAfterBake);
+				}
 			}
+
+			ImGui::Separator();
+
+			{
+				if (ImGui::Button("Start bake"))
+				{
+					if (lightBaker.GetBakingMode() == LightBakingMode::CurrentPositionCluster)
+					{
+						lightBaker.SetBakePosition(context.frame.camera.position);
+					}
+					else
+					{
+						// Enforce false, because certain flags can only be used for certain modes
+						lightBaker.SetBakeFlag(BakeFlags::SaveRayPath, false);
+						lightBaker.SetBakeFlag(BakeFlags::SaveLightSampling, false);
+					}
+
+					RequestStateChange(State::LightBaking);
+				}
+			}
+			
+			ImGui::Separator();
+
+			{
+				if (ImGui::Button("Load light baking data from file"))
+				{
+					RequestStateChange(State::LoadLightBakingFromFile);
+				}
+			}
+			
 		}
-		else
+		else if (GetState() == State::LightBaking)
 		{
 			ImGui::Text("Baking progress: %d / %d", lightBaker.GetBakedProbesNum(), lightBaker.GetTotalProbesNum());
 		}
-		
+		else if (GetState() == State::LoadLightBakingFromFile)
+		{
+			ImGui::Text("Loading light baking result from file...");
+		}
 
 		ImGui::End();
 	}
@@ -2004,12 +2042,11 @@ const BSPTree& Renderer::GetBSPTree() const
 	return bspTree;
 }
 
-void Renderer::ConsumeDiffuseIndirectLightingBakingResult(BakingResult&& results)
+void Renderer::ConsumeDiffuseIndirectLightingBakingResult(BakingData&& results)
 {
 	ASSERT_MAIN_THREAD;
 
-	DX_ASSERT(results.bakingMode.has_value() == true && "Invalid baking mode for baking results");
-	DX_ASSERT(results.probeData.empty() == false && "Can't consume empty probe data");
+	DX_ASSERT(results.probes.empty() == false && "Can't consume empty probe data");
 
 	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
 	lightBakingResult.obj = std::move(results);
@@ -2019,7 +2056,7 @@ bool Renderer::TryTransferDiffuseIndirectLightingToGPU(GPUJobContext& context)
 {
 	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
 
-	if (lightBakingResult.obj.probeData.empty() == true)
+	if (lightBakingResult.obj.probes.empty() == true)
 	{
 		return false;
 	}
@@ -2031,12 +2068,12 @@ bool Renderer::TryTransferDiffuseIndirectLightingToGPU(GPUJobContext& context)
 		resMan.DeleteResource(Resource::PROBE_STRUCTURED_BUFFER_NAME);
 	}
 
-	const int probeVectorSize = lightBakingResult.obj.probeData.size() * sizeof(DiffuseProbe::DiffuseSH_t) / sizeof(XMFLOAT4);
+	const int probeVectorSize = lightBakingResult.obj.probes.size() * sizeof(DiffuseProbe::DiffuseSH_t) / sizeof(XMFLOAT4);
 
 	std::vector<XMFLOAT4> probeGPUData;
 	probeGPUData.reserve(probeVectorSize);
 
-	for (const DiffuseProbe& probe : lightBakingResult.obj.probeData)
+	for (const DiffuseProbe& probe : lightBakingResult.obj.probes)
 	{
 		for (const XMFLOAT4& probeCoeff : probe.radianceSh)
 		{
@@ -2068,11 +2105,11 @@ std::vector<std::vector<XMFLOAT4>> Renderer::GenProbePathSegmentsVertices() cons
 	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
 
 	std::vector<std::vector<XMFLOAT4>> vertices;
-	vertices.reserve(lightBakingResult.obj.probeData.size());
+	vertices.reserve(lightBakingResult.obj.probes.size());
 
 	std::vector<XMFLOAT4> singleProbeVertices;
 
-	for (const DiffuseProbe& probe : lightBakingResult.obj.probeData)
+	for (const DiffuseProbe& probe : lightBakingResult.obj.probes)
 	{
 		DX_ASSERT(probe.pathTracingSegments.has_value() && "Can't generate path segment vertices. No source data");
 
@@ -2095,13 +2132,13 @@ std::vector<std::vector<std::vector<std::vector<XMFLOAT4>>>> Renderer::GenLightS
 	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
 
 	std::vector<std::vector<std::vector<std::vector<XMFLOAT4>>>> vertices;
-	vertices.reserve(lightBakingResult.obj.probeData.size());
+	vertices.reserve(lightBakingResult.obj.probes.size());
 
 	std::vector<std::vector<std::vector<XMFLOAT4>>> singleProbeVerts;
 	std::vector<std::vector<XMFLOAT4>> singlePathVert;
 	std::vector<XMFLOAT4> singlePointVert;
 
-	for (const DiffuseProbe& probe : lightBakingResult.obj.probeData)
+	for (const DiffuseProbe& probe : lightBakingResult.obj.probes)
 	{
 		DX_ASSERT(probe.lightSamples.has_value() && "Can't generate debug light segments. No source data");
 
@@ -2478,11 +2515,12 @@ void Renderer::EndFrame()
 {
 	Logs::Log(Logs::Category::Generic, "API: EndFrame");
 
-	if (GetState() == State::LightBaking)
+	if (GetState() == State::LightBaking || 
+		GetState() == State::LoadLightBakingFromFile)
 	{
 		const LightBaker& lightBaker = LightBaker::Inst();
 
-		if (lightBaker.GetBakedProbesNum() == lightBaker.GetTotalProbesNum())
+		if (lightBaker.IsContainCompleteBakingResult())
 		{
 			RequestStateChange(State::Rendering);
 		}

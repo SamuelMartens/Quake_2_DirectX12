@@ -106,14 +106,6 @@ Ident 	        <- T( < [a-zA-Z_][a-zA-Z0-9_]* > )
 RegisterDecl    <- T( 'register' _ '(' RegisterId ')' )
 RegisterId      <- T( [btsu] Int )
 
-# --- In code macro ---
-# I don't actually need this. According to the current plant, there will
-# be no macro definitions after preprocessing, so parser will never see this
-# MacroList    <- T( < (MacroInclude)*  > )
-# MacroInclude <- T( '#include' __ < FileName > EndOfLine )
-# FileName     <- T( < [a-zA-Z][a-zA-Z0-9]* '.' [a-zA-Z][a-zA-Z0-9]* > )
-
-
 # --- Types ---
 Bool    <- _ 'true' _ / _ 'false' _
 Float   <- T( < '-'?[0-9][0-9]* '.' [0-9][0-9]* > )

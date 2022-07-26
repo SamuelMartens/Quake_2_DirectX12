@@ -124,7 +124,7 @@ namespace RootArg
 	int GetSize(const std::vector<Arg_t>& args)
 	{
 		return std::accumulate(args.cbegin(), args.cend(), 0, 
-			[](int& sum, const Arg_t& arg)
+			[](int sum, const Arg_t& arg)
 		{
 			return sum + GetSize(arg);
 		});
@@ -502,7 +502,7 @@ namespace Parsing
 	int GetVertAttrSize(const VertAttr& vertAttr)
 	{
 		return std::accumulate(vertAttr.content.cbegin(), vertAttr.content.cend(),
-			0, [](int& sum, const Parsing::VertAttrField& field)
+			0, [](int sum, const Parsing::VertAttrField& field)
 		{
 			return sum + Parsing::GetParseDataTypeSize(field.type);
 		});

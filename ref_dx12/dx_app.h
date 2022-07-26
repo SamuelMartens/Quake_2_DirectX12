@@ -108,7 +108,7 @@ class Renderer
 	const std::array<unsigned int, 256>& GetTable8To24() const;
 	const BSPTree& GetBSPTree() const;
 
-	void ConsumeDiffuseIndirectLightingBakingResult(BakingResult&& result);
+	void ConsumeDiffuseIndirectLightingBakingResult(BakingData&& result);
 	bool TryTransferDiffuseIndirectLightingToGPU(GPUJobContext& context);
 
 	[[nodiscard]]
@@ -179,7 +179,8 @@ public:
 	enum class State
 	{
 		Rendering,
-		LightBaking
+		LightBaking,
+		LoadLightBakingFromFile
 	};
 
 	// Public because it is already wrapped up in class
@@ -334,7 +335,7 @@ private:
 	ComPtr<ID3D12Fence>	fence;
 
 	// Mutable because of mutex :( 
-	mutable LockObject<BakingResult> lightBakingResult;
+	mutable LockObject<BakingData> lightBakingResult;
 
 	/* Color palettes */
 	std::array<unsigned int, 256> Table8To24;

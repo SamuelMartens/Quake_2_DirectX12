@@ -19,6 +19,7 @@ ref_soft/DebugAxp
 ref_dx12/debug
 ref_dx12/release
 ref_dx12/DebugAxp
+ref_dx12/Data
 
 .vs
 baseq2

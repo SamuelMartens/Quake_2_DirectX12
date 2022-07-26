@@ -56,7 +56,7 @@ namespace
 		}
 		else
 		{
-			assert(*bindFrequency == res->bindFrequency && "All resources in desc table should have the same bind frequency");
+			DX_ASSERT(*bindFrequency == res->bindFrequency && "All resources in desc table should have the same bind frequency");
 		}
 
 		if (scope.has_value() == false)
@@ -65,7 +65,7 @@ namespace
 		}
 		else
 		{
-			assert(*scope == res->scope && "All resources in desc table should have the same scope");
+			DX_ASSERT(*scope == res->scope && "All resources in desc table should have the same scope");
 		}
 	}
 
@@ -98,7 +98,7 @@ namespace
 		// According to HLSL documentation, max alignment go to 16 bytes
 		constexpr int MAX_FIELD_ALIGNMENT = 16;
 
-		assert(constBuffer.content.empty() == false && "Trying to align empty constant buffer");
+		DX_ASSERT(constBuffer.content.empty() == false && "Trying to align empty constant buffer");
 
 		std::vector<int> offsets;
 		offsets.reserve(constBuffer.content.size());
@@ -136,18 +136,18 @@ namespace
 		{
 			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
 
-			assert(false && "Preprocessing error");
+			DX_ASSERT(false && "Preprocessing error");
 		};
 
 		const bool loadGrammarResult = parser.load_grammar(preprocessorGrammar.c_str());
-		assert(loadGrammarResult && "Can't load pass grammar");
+		DX_ASSERT(loadGrammarResult && "Can't load pass grammar");
 
 		// Set up callbacks
 		parser["Instruction"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
 			Parsing::PreprocessorContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PreprocessorContext>&>(ctx);
 
-			assert(parseCtx.currentFile.empty() == false && "Current file for preprocessor parser is empty");
+			DX_ASSERT(parseCtx.currentFile.empty() == false && "Current file for preprocessor parser is empty");
 
 			// So far I have only include instructions
 			auto instruction = peg::any_cast<Parsing::PreprocessorContext::Include>(sv[1]);
@@ -190,11 +190,11 @@ namespace
 		{
 			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
 
-			assert(false && "Pass parsing error");
+			DX_ASSERT(false && "Pass parsing error");
 		};
 
 		const bool loadGrammarResult = parser.load_grammar(passGrammar.c_str());
-		assert(loadGrammarResult && "Can't load pass grammar");
+		DX_ASSERT(loadGrammarResult && "Can't load pass grammar");
 
 		// Set up callbacks
 
@@ -267,8 +267,8 @@ namespace
 			currentPass.viewport.Height = sv[3].type() == typeid(int) ?
 				peg::any_cast<int>(sv[3]) : peg::any_cast<float>(sv[3]) * height;
 
-			assert(currentPass.viewport.TopLeftX < currentPass.viewport.Width  && "Weird viewport X param, are you sure?");
-			assert(currentPass.viewport.TopLeftY < currentPass.viewport.Height  && "Weird viewport Y param, are you sure?");
+			DX_ASSERT(currentPass.viewport.TopLeftX < currentPass.viewport.Width  && "Weird viewport X param, are you sure?");
+			DX_ASSERT(currentPass.viewport.TopLeftY < currentPass.viewport.Height  && "Weird viewport Y param, are you sure?");
 		};
 
 		parser["BlendEnabledSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
@@ -350,7 +350,7 @@ namespace
 				return D3D12_BLEND_INV_SRC_ALPHA;
 				break;
 			default:
-				assert(false && "Invalid blend state");
+				DX_ASSERT(false && "Invalid blend state");
 				break;
 			}
 
@@ -368,7 +368,7 @@ namespace
 			case 2:
 				return std::make_tuple(D3D_PRIMITIVE_TOPOLOGY_LINELIST, D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE);
 			default:
-				assert(false && "Invalid topology state");
+				DX_ASSERT(false && "Invalid topology state");
 				break;
 			}
 
@@ -408,7 +408,7 @@ namespace
 
 		parser["ShaderType"] = [](const peg::SemanticValues& sv)
 		{
-			assert(sv.choice() < PassParametersSource::ShaderType::SIZE && "Error during parsing shader type");
+			DX_ASSERT(sv.choice() < PassParametersSource::ShaderType::SIZE && "Error during parsing shader type");
 
 			return static_cast<PassParametersSource::ShaderType>(sv.choice());
 		};
@@ -435,7 +435,7 @@ namespace
 				if (token.type() == typeid(Parsing::RootParam_ConstBuffView))
 				{
 					Parsing::RootParam_ConstBuffView cbv = peg::any_cast<Parsing::RootParam_ConstBuffView>(token);
-					assert(cbv.num == 1 && "CBV Inline descriptor can't have more that 1 num");
+					DX_ASSERT(cbv.num == 1 && "CBV Inline descriptor can't have more that 1 num");
 
 					rootSig.params.push_back(std::move(cbv));
 				}
@@ -447,17 +447,17 @@ namespace
 				else if (token.type() == typeid(Parsing::RootParam_ShaderResourceView))
 				{
 					Parsing::RootParam_ShaderResourceView srv = peg::any_cast<Parsing::RootParam_ShaderResourceView>(token);
-					assert(srv.num == 1 && "SRV Inline descriptor can't have more that 1 num");
+					DX_ASSERT(srv.num == 1 && "SRV Inline descriptor can't have more that 1 num");
 
 					rootSig.params.push_back(std::move(srv));
 				}
 				else if (token.type() == typeid(Parsing::RootParam_UAView))
 				{
-					assert(false && "UAV inline descriptor is not supported currently");
+					DX_ASSERT(false && "UAV inline descriptor is not supported currently");
 				}
 				else 
 				{
-					assert(false && "Invalid root parameter");
+					DX_ASSERT(false && "Invalid root parameter");
 				};
 			});
 		};
@@ -465,12 +465,12 @@ namespace
 
 		parser["RSigStatSamplerDecl"] = [](const peg::SemanticValues& sv)
 		{
-			assert(false && "Static samplers are not implemented");
+			DX_ASSERT(false && "Static samplers are not implemented");
 		};
 
 		parser["RSigRootConstDecl"] = [](const peg::SemanticValues& sv) 
 		{
-			assert(false && "Root constants are not implemented");
+			DX_ASSERT(false && "Root constants are not implemented");
 		};
 
 		parser["RSigDescTableDecl"] = [](const peg::SemanticValues& sv)
@@ -502,7 +502,7 @@ namespace
 				}
 				else
 				{
-					assert(false && "Unknown type for desc table entity");
+					DX_ASSERT(false && "Unknown type for desc table entity");
 				}
 			});
 
@@ -525,7 +525,7 @@ namespace
 				case Parsing::Option::Visibility:
 					break;
 				default:
-					assert(false && "Invalid root param option in CBV decl");
+					DX_ASSERT(false && "Invalid root param option in CBV decl");
 					break;
 				}
 			}
@@ -552,7 +552,7 @@ namespace
 				case Parsing::Option::Visibility:
 					break;
 				default:
-					assert(false && "Invalid root param option in SRV decl");
+					DX_ASSERT(false && "Invalid root param option in SRV decl");
 					break;
 				}
 			}
@@ -579,7 +579,7 @@ namespace
 				case Parsing::Option::Visibility:
 					break;
 				default:
-					assert(false && "Invalid root param option in UAV decl");
+					DX_ASSERT(false && "Invalid root param option in UAV decl");
 					break;
 				}
 			}
@@ -607,7 +607,7 @@ namespace
 			case 1:
 				return std::make_tuple(Parsing::Option::NumDecl, peg::any_cast<int>(sv[0]));
 			default:
-				assert(false && "Unknown Root signature declaration option");
+				DX_ASSERT(false && "Unknown Root signature declaration option");
 				break;
 			}
 
@@ -719,7 +719,7 @@ namespace
 			}
 			else
 			{
-				assert(false && "Resource callback invalid type. Local scope");
+				DX_ASSERT(false && "Resource callback invalid type. Local scope");
 			}
 
 			Parsing::Resource_t& currentRes = currentPass.resources.back();
@@ -831,7 +831,7 @@ namespace
 			}
 			else
 			{
-				assert(false && "Invalid StructBufferType");
+				DX_ASSERT(false && "Invalid StructBufferType");
 				return Parsing::StructBufferDataType_t("");
 			}
 		};
@@ -919,7 +919,7 @@ namespace
 			}
 			else
 			{
-				assert(false && "MiscDef invalid type");
+				DX_ASSERT(false && "MiscDef invalid type");
 			}
 		};
 
@@ -1016,17 +1016,17 @@ namespace
 	void InitFrameGraphParser(peg::parser& parser)
 	{
 		// Load grammar
-		const std::string frameGraphGrammar = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_FRAMEGRAPH_FILENAME));
+		const std::string grammar = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_FRAMEGRAPH_FILENAME));
 
 		parser.log = [](size_t line, size_t col, const std::string& msg)
 		{
 			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
 
-			assert(false && "FrameGraph parsing error");
+			DX_ASSERT(false && "FrameGraph parsing error");
 		};
 
-		const bool loadGrammarResult = parser.load_grammar(frameGraphGrammar.c_str());
-		assert(loadGrammarResult && "Can't load pass grammar");
+		const bool loadGrammarResult = parser.load_grammar(grammar.c_str());
+		DX_ASSERT(loadGrammarResult && "Can't load FrameGraph grammar");
 
 		parser["RenderStep"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
@@ -1089,7 +1089,7 @@ namespace
 				desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 			}
 
-			assert(sv.size() <= 6 && "ResourceDecl invalid amount of input tokens. Make sure you handled optional attributes");
+			DX_ASSERT(sv.size() <= 6 && "ResourceDecl invalid amount of input tokens. Make sure you handled optional attributes");
 
 			const XMFLOAT4 clearValue = sv.size() == 6 ? peg::any_cast<XMFLOAT4>(sv[5]) : XMFLOAT4{0.0f, 0.0f, 0.0f, 1.0f};
 
@@ -1105,7 +1105,7 @@ namespace
 			case HASH("Buffer"):
 				return D3D12_RESOURCE_DIMENSION_BUFFER;
 			default:
-				assert(false && "Unknown value of ResourceDeclType");
+				DX_ASSERT(false && "Unknown value of ResourceDeclType");
 			}
 
 			return D3D12_RESOURCE_DIMENSION_BUFFER;
@@ -1131,7 +1131,7 @@ namespace
 			case HASH("R8G8B8A8_UNORM"):
 				return DXGI_FORMAT_R8G8B8A8_UNORM;
 			default:
-				assert(false && "Invalid value of ResourceDeclFormat");
+				DX_ASSERT(false && "Invalid value of ResourceDeclFormat");
 				break;
 			}
 
@@ -1162,7 +1162,7 @@ namespace
 					flags |= D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
 					break;
 				default:
-					assert(false && "Unknown flag in resource declaration");
+					DX_ASSERT(false && "Unknown flag in resource declaration");
 					break;
 				}
 			}
@@ -1174,7 +1174,7 @@ namespace
 		{
 			XMFLOAT4 clearValue{0.0f, 0.0f, 0.0f, 1.0f};
 
-			assert((sv.size() == 1 || sv.size() == 4) && "Internal resource clear value is invalid");
+			DX_ASSERT((sv.size() == 1 || sv.size() == 4) && "Internal resource clear value is invalid");
 
 			for (int i = 0; i < sv.size(); ++i)
 			{
@@ -1221,7 +1221,7 @@ namespace
 				pass.passLocalRootArgs.push_back(std::move(arg));
 				break;
 			default:
-				assert(false && "Undefined bind frequency handling in add root arg pass. Local");
+				DX_ASSERT(false && "Undefined bind frequency handling in add root arg pass. Local");
 				break;
 			}
 		}
@@ -1256,7 +1256,7 @@ namespace
 				}
 				else
 				{
-					assert(RootArg::GetBindIndex(arg) == RootArg::GetBindIndex(passesGlobalRes[resIndex]) &&
+					DX_ASSERT(RootArg::GetBindIndex(arg) == RootArg::GetBindIndex(passesGlobalRes[resIndex]) &&
 					"Global pass resources must have same bind indexes. Seems like different passes, place them differently.");
 
 					pass.passGlobalRootArgsIndices.push_back(resIndex);
@@ -1264,13 +1264,13 @@ namespace
 			}
 			break;
 			default:
-				assert(false && "Undefined bind frequency handling in add root arg pass. Global");
+				DX_ASSERT(false && "Undefined bind frequency handling in add root arg pass. Global");
 				break;
 			}
 		}
 		break;
 		default:
-			assert(false && "Can't add root arg, no scope");
+			DX_ASSERT(false && "Can't add root arg, no scope");
 			break;
 		}
 	}
@@ -1308,7 +1308,7 @@ void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
 			updateFrequency, scope, std::move(arg));
 		break;
 	default:
-		assert(false && "Unknown pass input for adding root argument");
+		DX_ASSERT(false && "Unknown pass input for adding root argument");
 		break;
 	}
 }
@@ -1343,7 +1343,7 @@ void FrameGraphBuilder::ValidateResources(const std::vector<PassParametersSource
 				});
 
 				// There should be no collision in local scope
-				assert(count == 1 && "Name collision inside pass resource declaration");
+				DX_ASSERT(count == 1 && "Name collision inside pass resource declaration");
 			}
 
 			// Global pass collision check
@@ -1365,7 +1365,7 @@ void FrameGraphBuilder::ValidateResources(const std::vector<PassParametersSource
 					{
 						// Make sure content is equal. If yes, then this is just the same resource,
 						// if no then we have name collision
-						assert(Parsing::IsEqual(*resIt, currentRes) && "Global resource name collision is found");
+						DX_ASSERT(Parsing::IsEqual(*resIt, currentRes) && "Global resource name collision is found");
 					}
 					else
 					{
@@ -1375,7 +1375,7 @@ void FrameGraphBuilder::ValidateResources(const std::vector<PassParametersSource
 				}
 				else
 				{
-					assert(resIt == perPassGlobalResources.cend() && "Global resource name collision is found");
+					DX_ASSERT(resIt == perPassGlobalResources.cend() && "Global resource name collision is found");
 				}
 				
 			}
@@ -1403,7 +1403,7 @@ void FrameGraphBuilder::ValidateResources(const std::vector<PassParametersSource
 						{
 							// Make sure content is equal. If yes, then this is just the same resource,
 							// if no then we have name collision
-							assert(Parsing::IsEqual(*resIt, currentRes) && "Global resource name collision is found");
+							DX_ASSERT(Parsing::IsEqual(*resIt, currentRes) && "Global resource name collision is found");
 						}
 						else
 						{
@@ -1413,7 +1413,7 @@ void FrameGraphBuilder::ValidateResources(const std::vector<PassParametersSource
 					}
 					else
 					{
-						assert(resIt == objTypeGlobalResource.cend() && "Global resource name collision is found");
+						DX_ASSERT(resIt == objTypeGlobalResource.cend() && "Global resource name collision is found");
 					}
 					
 				}
@@ -1432,7 +1432,7 @@ void FrameGraphBuilder::ValidateResources(const std::vector<PassParametersSource
 
 
 						// No need to add anything, this case was handled above
-						assert(resIt == objTypeGlobalResource.cend() && "Global resource name collision is found");
+						DX_ASSERT(resIt == objTypeGlobalResource.cend() && "Global resource name collision is found");
 					}
 				}
 
@@ -1447,7 +1447,7 @@ void FrameGraphBuilder::ValidateResources(const std::vector<PassParametersSource
 
 void FrameGraphBuilder::AttachSpecialPostPreCallbacks(std::vector<PassTask>& passTasks) const
 {
-	assert(passTasks.empty() == false && "AttachPostPreCallbacks failed. No pass tasks");
+	DX_ASSERT(passTasks.empty() == false && "AttachPostPreCallbacks failed. No pass tasks");
 
 	for (PassTask& passTask : passTasks)
 	{
@@ -1507,7 +1507,7 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 										return *miscDefName == Parsing::GetMiscDefName(miscDef);
 									});
 
-									assert(dataTypeStructIt != pass.miscDefs.cend() && "Structured buffer data type is not found");
+									DX_ASSERT(dataTypeStructIt != pass.miscDefs.cend() && "Structured buffer data type is not found");
 
 									shaderDefsToInclude += Parsing::GetMiscDefRawView(*dataTypeStructIt);
 								}
@@ -1532,7 +1532,7 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 
 			}, &pass.resources, &pass.vertAttr, &pass.functions);
 
-			assert(result == true && "Some external shader resource was not found");
+			DX_ASSERT(result == true && "Some external shader resource was not found");
 
 			shaderDefsToInclude += ";";
 		}
@@ -1613,7 +1613,7 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 					return paramSource.name == passName;
 				});
 
-				assert(passParamIt != source.passesParametersSources.end() && "Pass source described in framegraph is not found");
+				DX_ASSERT(passParamIt != source.passesParametersSources.end() && "Pass source described in framegraph is not found");
 
 				// Ugly hack to save data before they will be moved
 				std::vector<PassParametersSource::FixedFunction_t> prePassFuncs = passParamIt->prePassFuncs;
@@ -1655,7 +1655,7 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 				}
 				break;
 				default:
-					assert(false && "Pass with undefined input is detected");
+					DX_ASSERT(false && "Pass with undefined input is detected");
 					break;
 				}
 
@@ -1729,9 +1729,9 @@ std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std:
 	{
 		const std::string& resourceName = internalResourcesName.emplace_back(resourceDecl.name);
 
-		assert(resourceManager.FindResource(resourceName) == nullptr && "Trying create internal texture that already exists");
+		DX_ASSERT(resourceManager.FindResource(resourceName) == nullptr && "Trying create internal texture that already exists");
 		
-		assert(resourceDecl.desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && 
+		DX_ASSERT(resourceDecl.desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && 
 			"Only 2D textures are implemented as frame graph internal res");
 
 		ResourceDesc desc;
@@ -1764,7 +1764,7 @@ std::vector<ResourceProxy> FrameGraphBuilder::CreateFrameGraphTextureProxies(con
 	{
 		Resource* texture = resMan.FindResource(textureName);
 
-		assert(texture != nullptr && "Failed to create texture proxy. No such texture is found");
+		DX_ASSERT(texture != nullptr && "Failed to create texture proxy. No such texture is found");
 
 		ResourceProxy& newProxy = proxies.emplace_back(ResourceProxy{ *texture->buffer.Get() });
 		newProxy.hashedName = HASH(texture->name.c_str());
@@ -1856,7 +1856,7 @@ std::string FrameGraphBuilder::LoadFrameGraphFile() const
 		}
 	}
 
-	assert(false && "Material file was not found");
+	DX_ASSERT(false && "Material file was not found");
 
 	return std::string();
 }
@@ -1929,7 +1929,7 @@ bool FrameGraphBuilder::IsSourceChanged()
 			FILE_NOTIFY_CHANGE_DIR_NAME |
 			FILE_NOTIFY_CHANGE_LAST_WRITE);
 
-		assert(sourceWatchHandle != INVALID_HANDLE_VALUE && "Failed to init source watch handle");
+		DX_ASSERT(sourceWatchHandle != INVALID_HANDLE_VALUE && "Failed to init source watch handle");
 
 		return true;
 	}
@@ -1937,13 +1937,13 @@ bool FrameGraphBuilder::IsSourceChanged()
 	// Time out value for wait is 0, so the function will return immediately and no actual wait happens
 	const DWORD waitStatus = WaitForSingleObject(sourceWatchHandle, 0);
 
-	assert(waitStatus == WAIT_OBJECT_0 || waitStatus == WAIT_TIMEOUT && "IsSourceChange failed. Wait function returned unexpected result");
+	DX_ASSERT(waitStatus == WAIT_OBJECT_0 || waitStatus == WAIT_TIMEOUT && "IsSourceChange failed. Wait function returned unexpected result");
 
 	if (waitStatus == WAIT_OBJECT_0)
 	{
 		// Object was signaled, set up next wait
 		BOOL res = FindNextChangeNotification(sourceWatchHandle);
-		assert(res == TRUE && "Failed to set up next change notification, for source watch");
+		DX_ASSERT(res == TRUE && "Failed to set up next change notification, for source watch");
 
 		return true;
 	}
@@ -1979,7 +1979,7 @@ void FrameGraphBuilder::PreprocessPassFiles(std::unordered_map<std::string, std:
 			processedFile += Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::FRAMEGRAPH_DIR + "/" + include.name));
 		}
 
-		assert(currentPos < currentFile.size() && "PreprocessPassFile, something wrong with current pos");
+		DX_ASSERT(currentPos < currentFile.size() && "PreprocessPassFile, something wrong with current pos");
 
 		// Include last piece of the file
 		if (currentPos + 1 != currentFile.size())
@@ -1995,9 +1995,9 @@ std::vector<D3D12_INPUT_ELEMENT_DESC> FrameGraphBuilder::GenerateInputLayout(con
 {
 	const Parsing::VertAttr& vertAttr = *GetPassInputVertAttr(pass);
 
-	assert(GetPassInputVertAttr(pass) != nullptr && "Can't generate input layout, no input vert attr is found");
+	DX_ASSERT(GetPassInputVertAttr(pass) != nullptr && "Can't generate input layout, no input vert attr is found");
 
-	assert((pass.vertAttrSlots.empty() || pass.vertAttrSlots.size() == vertAttr.content.size())
+	DX_ASSERT((pass.vertAttrSlots.empty() || pass.vertAttrSlots.size() == vertAttr.content.size())
 		&& "Invalid vert attr slots num, for input layout generation");
 
 	std::array<unsigned int, 16> inputSlotOffset;
@@ -2047,7 +2047,7 @@ const Parsing::VertAttr* FrameGraphBuilder::GetPassInputVertAttr(const PassParam
 	const auto attrIt = std::find_if(pass.vertAttr.cbegin(), pass.vertAttr.cend(),
 		[inputName](const Parsing::VertAttr& attr) { return inputName == attr.name; });
 
-	assert(attrIt != pass.vertAttr.cend() && "Can't find input vert attribute");
+	DX_ASSERT(attrIt != pass.vertAttr.cend() && "Can't find input vert attribute");
 
 	return &(*attrIt);
 }
@@ -2056,7 +2056,7 @@ ComPtr<ID3D12RootSignature> FrameGraphBuilder::GenerateRootSignature(const PassP
 {
 	Logs::Logf(Logs::Category::Parser, "GenerateRootSignature, start, pass: %s", pass.name.c_str());
 
-	assert(shaders.empty() == false && "Can't generate root signature with not shaders");
+	DX_ASSERT(shaders.empty() == false && "Can't generate root signature with not shaders");
 
 	ComPtr<ID3D12RootSignature> rootSig;
 
@@ -2074,7 +2074,7 @@ ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const
 {
 	Logs::Logf(Logs::Category::Parser, "GeneratePipelineStateObject, start, pass %s", passSource.name.c_str());
 
-	assert(passSource.input.has_value() == true && "Can't generate pipeline state object. Pass type is undefined ");
+	DX_ASSERT(passSource.input.has_value() == true && "Can't generate pipeline state object. Pass type is undefined ");
 
 	switch (*passSource.input)
 	{
@@ -2109,7 +2109,7 @@ ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const
 				psoDesc.PS = shaderByteCode;
 				break;
 			default:
-				assert(false && "Can't generate pipeline state object. Invalid shader type");
+				DX_ASSERT(false && "Can't generate pipeline state object. Invalid shader type");
 				break;
 			}
 		}
@@ -2138,7 +2138,7 @@ ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const
 			return shader.first == PassParametersSource::Cs;
 		});
 
-		assert(shaderIt != shaders.end() && "Can't generate compute pipeline state object, shader is not found");
+		DX_ASSERT(shaderIt != shaders.end() && "Can't generate compute pipeline state object, shader is not found");
 
 		psoDesc.CS = {
 				reinterpret_cast<BYTE*>(shaderIt->second->GetBufferPointer()),
@@ -2154,7 +2154,7 @@ ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const
 		return pipelineState;
 	}
 	default:
-		assert(false && "Can't generate pipeline state object, unknown type");
+		DX_ASSERT(false && "Can't generate pipeline state object, unknown type");
 		break;
 	}
 
@@ -2180,8 +2180,8 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 				const Parsing::Resource_ConstBuff* res =
 					FindResourceOfTypeAndRegId<Parsing::Resource_ConstBuff>(passResources, rootParam.registerId);
 
-				assert(rootParam.num == 1 && "Inline const buffer view should always have numDescriptors 1");
-				assert(res->bind.has_value() == false && "Internal bind for inline const buffer view is not implemented");
+				DX_ASSERT(rootParam.num == 1 && "Inline const buffer view should always have numDescriptors 1");
+				DX_ASSERT(res->bind.has_value() == false && "Internal bind for inline const buffer view is not implemented");
 
 				AddRootArg(pass,
 					frameGraph,
@@ -2200,7 +2200,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 				const Parsing::Resource_RWTexture* res =
 					FindResourceOfTypeAndRegId<Parsing::Resource_RWTexture>(passResources, rootParam.registerId);
 
-				assert(rootParam.num == 1 && "Inline UAV should always have numDescriptors 1");
+				DX_ASSERT(rootParam.num == 1 && "Inline UAV should always have numDescriptors 1");
 
 				AddRootArg(pass,
 					frameGraph,
@@ -2238,7 +2238,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 
 								SetScopeAndBindFrequency(bindFrequency, scope, res);
 								
-								assert(res->bind.has_value() == false && "Internal bind for const buffer view is not implemented");
+								DX_ASSERT(res->bind.has_value() == false && "Internal bind for const buffer view is not implemented");
 
 								descTableArgument.content.emplace_back(RootArg::DescTableEntity_ConstBufferView{
 									HASH(res->name.c_str()),
@@ -2289,7 +2289,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 
 								SetScopeAndBindFrequency(bindFrequency, scope, res);
 
-								assert(res->bind.has_value() == false && "Internal bind for sampler view is not implemented");
+								DX_ASSERT(res->bind.has_value() == false && "Internal bind for sampler view is not implemented");
 
 								descTableArgument.content.emplace_back(RootArg::DescTableEntity_Sampler{
 									HASH(res->name.c_str())
@@ -2326,11 +2326,11 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 				const Parsing::Resource_StructuredBuffer* res =
 					FindResourceOfTypeAndRegId<Parsing::Resource_StructuredBuffer>(passResources, rootParam.registerId);
 
-				assert(FindResourceOfTypeAndRegId<Parsing::Resource_Texture>(passResources, rootParam.registerId) == nullptr &&
+				DX_ASSERT(FindResourceOfTypeAndRegId<Parsing::Resource_Texture>(passResources, rootParam.registerId) == nullptr &&
 					"Inline SRV descriptor cannot correspond to Texture");
 
-				assert(rootParam.num == 1 && "Inline SRV should always have numDescriptors 1");
-				assert(res->bind.has_value() == false && "Internal bind for inline SRV is not implemented");
+				DX_ASSERT(rootParam.num == 1 && "Inline SRV should always have numDescriptors 1");
+				DX_ASSERT(res->bind.has_value() == false && "Internal bind for inline SRV is not implemented");
 
 				AddRootArg(pass,
 					frameGraph,

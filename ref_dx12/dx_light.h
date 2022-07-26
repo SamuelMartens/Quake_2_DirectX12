@@ -39,6 +39,4 @@ struct AreaLight
 
 	static XMFLOAT4 CalculateReflectivity(const Resource& texture, const std::byte* textureData);
 	static XMFLOAT4 CalculateRadiance(const AreaLight& light);
-
-	static float GetUniformSamplePDF(const AreaLight& light);
 };

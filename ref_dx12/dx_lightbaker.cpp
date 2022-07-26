@@ -1,6 +1,7 @@
 #include "dx_lightbaker.h"
 
 #include <random>
+#include <sstream>
 #define _USE_MATH_DEFINES
 
 #include "dx_app.h"
@@ -13,6 +14,13 @@
 #undef max
 #endif
 
+#include "Lib/peglib.h"
+
+const std::array<std::string,static_cast<int>(LightBakingMode::Count)> LightBakingMode_Str = 
+{
+	"AllCluster",
+	"CurrentPositionCluster"
+};
 
 namespace
 {
@@ -156,63 +164,242 @@ namespace
 		constexpr float albedo = 0.5;
 		return albedo / M_PI;
 	}
+
+	void InitLightBakingResultParser(peg::parser& parser)
+	{
+		// Load grammar
+		const std::string grammar = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_LIGHT_BAKING_RESULT_FILENAME));
+
+		parser.log = [](size_t line, size_t col, const std::string& msg)
+		{
+			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
+
+			DX_ASSERT(false && "Light baking result parsing error");
+		};
+
+		const bool loadGrammarResult = parser.load_grammar(grammar.c_str());
+		DX_ASSERT(loadGrammarResult && "Can't load Light Baking grammar");
+
+		parser["LightBakingData"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		{
+			Parsing::LightBakingContext& parseCtx = *peg::any_cast<Parsing::LightBakingContext*>(ctx);
+			BakingData& bakingRes = parseCtx.bakingResult;
+
+			bakingRes.bakingMode = peg::any_cast<LightBakingMode>(sv[0]);
+
+			if (bakingRes.bakingMode == LightBakingMode::AllClusters)
+			{
+				bakingRes.clusterFirstProbeIndices = peg::any_cast<std::vector<int>>(sv[1]);
+			}
+			else if (bakingRes.bakingMode == LightBakingMode::CurrentPositionCluster)
+			{
+				bakingRes.bakingCluster = peg::any_cast<int>(sv[1]);
+			}
+			else
+			{
+				DX_ASSERT(false && "Undefined bake mode");
+			}
+
+			bakingRes.probes = peg::any_cast<std::vector<DiffuseProbe>>(sv[2]);
+		};
+
+		// --- Baking Mode
+		parser["BakingModeSection"] = [](const peg::SemanticValues& sv) 
+		{
+			return LightBaker::StrToBakingMode(peg::any_cast<std::string>(sv[0]));
+		};
+
+		// --- Cluster Data
+		parser["BakingCluster"] = [](const peg::SemanticValues& sv)
+		{
+			return peg::any_cast<int>(sv[0]);
+		};
+
+		parser["ClusterFirstProbeIndices"] = [](const peg::SemanticValues& sv)
+		{
+			const int sizesCount = peg::any_cast<int>(sv[0]);
+			
+			DX_ASSERT(sv.size() - 1 == sizesCount && "Invalid sizes token number");
+
+			std::vector<int> clusterFirstProbeIndices;
+			clusterFirstProbeIndices.reserve(sizesCount);
+
+			// i is init to 1, because sv[0] is sizes count
+			for (int i = 1; i < sv.size(); ++i)
+			{
+				clusterFirstProbeIndices.push_back(peg::any_cast<int>(sv[i]));
+			}
+
+			DX_ASSERT(clusterFirstProbeIndices.size() == sizesCount);
+
+			return clusterFirstProbeIndices;
+		};
+
+		// --- Probe Data
+		parser["ProbeSection"] = [](const peg::SemanticValues& sv) 
+		{
+			const int probesCount = peg::any_cast<int>(sv[0]);
+
+			DX_ASSERT(sv.size() - 1 == probesCount && "Probe count doesn't match amount of probes");
+
+			std::vector<DiffuseProbe> probes;
+			probes.reserve(probesCount);
+
+			// i is init to 1, because sv[0] is probe count
+			for (int i = 1; i < sv.size(); ++i)
+			{
+				auto [probeIndex, probe] = peg::any_cast<std::tuple<int, DiffuseProbe>>(sv[i]);
+
+				DX_ASSERT(probeIndex == probes.size() && "Invalid probe Index");
+
+				probes.push_back(std::move(probe));
+			}
+
+			DX_ASSERT(probesCount == probes.size());
+
+			return probes;
+		};
+
+		parser["Probe"] = [](const peg::SemanticValues& sv)
+		{
+			const int probeIndex = peg::any_cast<int>(sv[0]);
+
+			DiffuseProbe probe;
+
+			DX_ASSERT(probe.radianceSh.size() == sv.size() - 1 && "Invalid number of coefficients for probe data");
+
+			// i is init to 1, because sv[0] is probe index
+			for (int i = 1; i < sv.size(); ++i)
+			{
+				probe.radianceSh[i - 1] = peg::any_cast<XMFLOAT4>(sv[i]);
+			}
+
+			return std::make_tuple(probeIndex, probe);
+		};
+
+		// --- Types
+		parser["Float3"] = [](const peg::SemanticValues& sv)
+		{
+			return XMFLOAT4
+			(
+				peg::any_cast<float>(sv[0]),
+				peg::any_cast<float>(sv[1]),
+				peg::any_cast<float>(sv[2]),
+				0.0f
+			);
+		};
+
+		parser["Float"] = [](const peg::SemanticValues& sv)
+		{
+			return stof(sv.token());
+		};
+
+		parser["Int"] = [](const peg::SemanticValues& sv)
+		{
+			return stoi(sv.token());
+		};
+
+		parser["Word"] = [](const peg::SemanticValues& sv)
+		{
+			return std::string(sv.token());
+		};
+	}
+}
+
+std::string LightBaker::BakingModeToStr(LightBakingMode mode)
+{
+	DX_ASSERT(static_cast<int>(mode) < LightBakingMode_Str.size() && "Invalid Light Baking mode");
+
+	return LightBakingMode_Str[static_cast<int>(mode)];
+}
+
+LightBakingMode LightBaker::StrToBakingMode(const std::string& str)
+{
+	int bakingMode = Const::INVALID_INDEX;
+
+	for (int i = 0; i < LightBakingMode_Str.size(); ++i)
+	{
+		if (str == LightBakingMode_Str[i])
+		{
+			bakingMode = i;
+			break;
+		}
+	}
+
+	DX_ASSERT(bakingMode != Const::INVALID_INDEX && "Can't convert string to baking mode");
+	DX_ASSERT(bakingMode < static_cast<int> (LightBakingMode::Count) && "Invalid light baking mode");
+
+	return static_cast<LightBakingMode>(bakingMode);
 }
 
 void LightBaker::Init()
 {
 	SetBakeFlag(BakeFlags::SamplePointLights, true);
 	SetBakeFlag(BakeFlags::SampleAreaLights, true);
+
+	SetBakingMode(LightBakingMode::CurrentPositionCluster);
 }
 
 void LightBaker::PreBake()
 {
 	ASSERT_MAIN_THREAD;
 
-	DX_ASSERT(clusterProbeData.empty() == true && "Cluster probe data should be empty before bake");
+	DX_ASSERT(transferableData.clusterFirstProbeIndices.empty() == true && "Cluster probe data should be empty before bake");
 	DX_ASSERT(clusterBakePoints.empty() == true && "Cluster bake points should be empty before bake");
 	DX_ASSERT(probesBaked == 0 && "Amount of baked probes was not reset");
-	DX_ASSERT(probes.empty() == true && "Probes were baked, but not consumed");
-	DX_ASSERT(generationMode != LightBakingMode::AllClusters || bakeFlags[BakeFlags::SaveRayPath] == false &&
+	DX_ASSERT(transferableData.probes.empty() == true && "Probes were baked, but not consumed");
+	DX_ASSERT(transferableData.bakingMode.has_value() == true && "Baking mode is not set");
+	DX_ASSERT(transferableData.bakingMode != LightBakingMode::AllClusters || bakeFlags[BakeFlags::SaveRayPath] == false &&
 	"Can't save ray path if baking for all clusters");
 
 	currentBakeCluster = 0;
 	clusterBakePoints = GenerateClustersBakePoints();
-	clusterProbeData.resize(clusterBakePoints.size());
+	transferableData.clusterFirstProbeIndices.resize(clusterBakePoints.size());
 
 	int totalProbes = 0;
 
 	for (int i = 0; i < clusterBakePoints.size(); ++i)
 	{
-		clusterProbeData[i].startIndex = totalProbes;
+		transferableData.clusterFirstProbeIndices[i] = totalProbes;
 
 		totalProbes += clusterBakePoints[i].size();
 	}
 
-	probes.resize(totalProbes);
+	transferableData.probes.resize(totalProbes);
 }
 
 void LightBaker::PostBake()
 {
 	ASSERT_MAIN_THREAD;
 	
-	DX_ASSERT(probes.empty() == false && "Baking is finished, but no probes were generated");
+	DX_ASSERT(transferableData.probes.empty() == false && "Baking is finished, but no probes were generated");
 
-	Renderer::Inst().ConsumeDiffuseIndirectLightingBakingResult(TransferBakingResult());
+	BakingData bakingResult = TransferBakingResult();
+
+	if (GetBakeFlag(BakeFlags::SaveToFileAfterBake) == true)
+	{
+		SaveBakingResultsToFile(bakingResult);
+	}
+
+	Renderer::Inst().ConsumeDiffuseIndirectLightingBakingResult(std::move(bakingResult));
 
 	probesBaked = 0;
-	clusterProbeData.clear();
 	clusterBakePoints.clear();
+
+	SetBakeFlag(BakeFlags::SaveToFileAfterBake, false);
 }
 
 std::vector<std::vector<XMFLOAT4>> LightBaker::GenerateClustersBakePoints()
 {
 	std::vector<std::vector<XMFLOAT4>> bakePoints;
 
-	switch (generationMode)
+	DX_ASSERT(transferableData.bakingMode.has_value() == true && "Baking mode is not set");
+
+	switch (*transferableData.bakingMode)
 	{
 	case LightBakingMode::AllClusters:
 	{
-		bakeCluster = std::nullopt;
+		transferableData.bakingCluster = std::nullopt;
 
 		std::set<int> clustersSet = Renderer::Inst().GetBSPTree().GetClustersSet();
 
@@ -242,7 +429,7 @@ std::vector<std::vector<XMFLOAT4>> LightBaker::GenerateClustersBakePoints()
 
 		DX_ASSERT(cameraNode.cluster != Const::INVALID_INDEX && "Camera node invalid index");
 
-		bakeCluster = cameraNode.cluster;
+		transferableData.bakingCluster = cameraNode.cluster;
 
 		bakePoints.resize(cameraNode.cluster + 1);
 		bakePoints[cameraNode.cluster] = GenerateClusterBakePoints(cameraNode.cluster);
@@ -320,7 +507,7 @@ void LightBaker::BakeJob()
 		}
 
 		const std::vector<XMFLOAT4>& bakePoints = clusterBakePoints[currentCluster];
-		const int clusterProbeStartIndex = clusterProbeData[currentCluster].startIndex;
+		const int clusterProbeStartIndex = transferableData.clusterFirstProbeIndices[currentCluster];
 
 		DX_ASSERT(clusterProbeStartIndex != Const::INVALID_INDEX && "Invalid cluster probe start index");
 
@@ -328,7 +515,7 @@ void LightBaker::BakeJob()
 		{
 			const XMFLOAT4& bakePoint = bakePoints[bakePointIndex];
 			
-			DiffuseProbe& probe = probes[clusterProbeStartIndex + bakePointIndex];
+			DiffuseProbe& probe = transferableData.probes[clusterProbeStartIndex + bakePointIndex];
 
 			SphericalHarmonic9_t<XMFLOAT4>& totalShProjection = probe.radianceSh;
 			ZeroMemory(totalShProjection.data(), sizeof(XMFLOAT4) * totalShProjection.size());	
@@ -384,11 +571,25 @@ void LightBaker::BakeJob()
 			probesBaked.fetch_add(1);
 		}
 	}
+
+	isContainCompleteBakingResult = GetTotalProbesNum() == GetBakedProbesNum();
+}
+
+void LightBaker::LoadBakingResultsFromFileJob()
+{
+	transferableData = LoadBakingResultsFromFile();
+
+	isContainCompleteBakingResult.store(true);
+}
+
+bool LightBaker::IsContainCompleteBakingResult() const
+{
+	return isContainCompleteBakingResult.load();
 }
 
 int LightBaker::GetTotalProbesNum() const
 {
-	return probes.size();
+	return transferableData.probes.size();
 }
 
 int LightBaker::GetBakedProbesNum() const
@@ -399,7 +600,9 @@ int LightBaker::GetBakedProbesNum() const
 
 LightBakingMode LightBaker::GetBakingMode() const
 {
-	return generationMode;
+	DX_ASSERT(transferableData.bakingMode.has_value() == true && "Baking mode is not set");
+
+	return *transferableData.bakingMode;
 }
 
 bool LightBaker::GetBakeFlag(BakeFlags flag) const
@@ -407,36 +610,23 @@ bool LightBaker::GetBakeFlag(BakeFlags flag) const
 	return bakeFlags[flag];
 }
 
-BakingResult LightBaker::TransferBakingResult()
+BakingData LightBaker::TransferBakingResult()
 {
-	BakingResult result;
+	isContainCompleteBakingResult.store(false);
 
-	result.probeData = std::move(probes);
-	result.bakingMode = generationMode;
-	result.bakingCluster = bakeCluster;
+	// I want to be able to reset some data inside transferData after transfer
+	// but if just return it, I can't do it. So that's why this local variable 
+	// is introduced.
+	BakingData resultToTransfer = std::move(transferableData);
 
-	if (generationMode == LightBakingMode::AllClusters)
-	{
-		std::vector<BakingResult::ClusterSize> clusterSizes;
-		clusterSizes.reserve(clusterProbeData.size());
+	transferableData.bakingCluster.reset();
 
-		for (int i = 0; i < clusterProbeData.size(); ++i)
-		{
-			clusterSizes.push_back(BakingResult::ClusterSize{
-				clusterProbeData[i].startIndex});
-		}
-
-		result.clusterSizes = clusterSizes;
-	}
-
-	bakeCluster = std::nullopt;
-
-	return result;
+	return resultToTransfer;
 }
 
 void LightBaker::SetBakingMode(LightBakingMode genMode)
 {
-	generationMode = genMode;
+	transferableData.bakingMode = genMode;
 }
 
 void LightBaker::SetBakePosition(const XMFLOAT4& position)
@@ -788,7 +978,6 @@ XMFLOAT4 LightBaker::GatherDirectIradianceFromAreaLight(const XMFLOAT4& intersec
 			distanceFalloff * intersectionToSampleAndNormalDot;
 
 		sseRadianceSum = sseRadianceSum + sseSampleRadiance;
-			
 
 #if (ENABLE_VALIDATION)
 		{
@@ -814,7 +1003,9 @@ XMFLOAT4 LightBaker::GatherDirectIradianceFromAreaLight(const XMFLOAT4& intersec
 	}
 
 	// Now do Monte Carlo integration
-	const XMVECTOR sseIradiance = sseRadianceSum / ( AreaLight::GetUniformSamplePDF(light) * Settings::AREA_LIGHTS_SAMPLES_NUM );
+	// Actual probability is p of each triangle multiplied by uniform PDF of each light area triangle sample,
+	// but after few manipulation the result is exactly that
+	const XMVECTOR sseIradiance = sseRadianceSum * light.area / Settings::AREA_LIGHTS_SAMPLES_NUM;
 
 	XMFLOAT4 iradiance;
 	XMStoreFloat4(&iradiance, sseIradiance);
@@ -976,24 +1167,77 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 	return result;
 }
 
-XMFLOAT4 Utils::BSPNodeRayIntersectionResult::GetNormal(const Utils::BSPNodeRayIntersectionResult& result)
+void LightBaker::SaveBakingResultsToFile(const BakingData& bakingResult) const
 {
-	const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[result.staticObjIndex];
+	std::stringstream bakingResultStream;
 
-	const int v0Index = object.indices[result.triangleIndex * 3 + 0];
-	const int v1Index = object.indices[result.triangleIndex * 3 + 1];
-	const int v2Index = object.indices[result.triangleIndex * 3 + 2];
+	// Baking mode
+	DX_ASSERT(transferableData.bakingMode.has_value() == true && "Baking mode is not set");
+	bakingResultStream << "BakingMode " << LightBaker::BakingModeToStr(*bakingResult.bakingMode);
 
-	XMVECTOR sseV0Normal = XMLoadFloat4(&object.normals[v0Index]);
-	XMVECTOR sseV1Normal = XMLoadFloat4(&object.normals[v1Index]);
-	XMVECTOR sseV2Normal = XMLoadFloat4(&object.normals[v2Index]);
+	// Baking cluster
+	if (bakingResult.bakingMode == LightBakingMode::CurrentPositionCluster)
+	{
+		DX_ASSERT(bakingResult.bakingCluster.has_value() &&
+			"If baking mode is current cluster, there should be a value for baking cluster");
 
-	XMVECTOR sseNormal = XMVector3Normalize(sseV0Normal * result.rayTriangleIntersection.u +
-		sseV1Normal * result.rayTriangleIntersection.v +
-		sseV2Normal * result.rayTriangleIntersection.w);
+		bakingResultStream << "\n" << "BakingCluster " << *bakingResult.bakingCluster;
+	}
 
-	XMFLOAT4 normal;
-	XMStoreFloat4(&normal, sseNormal);
+	// Cluster sizes
+	if (bakingResult.bakingMode == LightBakingMode::AllClusters)
+	{
+		DX_ASSERT(bakingResult.clusterFirstProbeIndices.empty() == false &&
+			"If baking mode is all clusters, cluster first probe indices are expected ");
 
-	return normal;
+		bakingResultStream << "\n" << "ClusterFirstProbeIndices " << bakingResult.clusterFirstProbeIndices.size();
+
+		for (const int& firstProbeIndex : bakingResult.clusterFirstProbeIndices)
+		{
+			bakingResultStream << "\n" << firstProbeIndex;
+		}
+	}
+
+	// Probe Data
+	bakingResultStream << std::fixed << std::setprecision(9);
+
+	bakingResultStream << "\n" << "ProbeData " << bakingResult.probes.size();
+	for (int i = 0; i < bakingResult.probes.size(); ++i)
+	{
+		const DiffuseProbe& probe = bakingResult.probes[i];
+
+
+		bakingResultStream << "\n" << "Probe " << i;
+		
+		for (const XMFLOAT4& coef : probe.radianceSh)
+		{
+			bakingResultStream << "\n" << coef.x << ", " << coef.y << ", " << coef.z;
+		}
+	}
+
+	bakingResultStream << std::defaultfloat;
+	
+	Utils::WriteFile(
+		Utils::GenAbsolutePathToFile(Settings::DATA_DIR + "/" + Settings::LIGHT_BAKING_DATA_FILENAME),
+		bakingResultStream.str());
+}
+
+BakingData LightBaker::LoadBakingResultsFromFile() const
+{
+	peg::parser parser;
+
+	InitLightBakingResultParser(parser);
+
+	const std::string dataFileContent = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::DATA_DIR + "/" + Settings::LIGHT_BAKING_DATA_FILENAME));
+
+	Parsing::LightBakingContext context;
+	peg::any ctx = &context;
+
+	Logs::Log(Logs::Category::Parser, "Parse light baking result, start");
+
+	parser.parse(dataFileContent.c_str(), ctx);
+
+	Logs::Log(Logs::Category::Parser, "Parse light baking result, end");
+
+	return context.bakingResult;
 }
