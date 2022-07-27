@@ -397,4 +397,6 @@ private:
 	DrawPathLightSampleMode_Type drawPathLightSampleMode_Type = DrawPathLightSampleMode_Type::All;
 
 	bool drawLightPathSamples = false;
+
+	std::string frameGraphBuildMessage;
 };

@@ -683,19 +683,32 @@ void Renderer::RebuildFrameGraph()
 
 	FlushAllFrames();
 
-	// Delete old framegraph
-	for (int i = 0; i < frames.size(); ++i)
+	std::unique_ptr<FrameGraph> newFrameGraph = nullptr;
+
+	try
 	{
-		frames[i].frameGraph.reset(nullptr);
+		FrameGraphBuilder::Inst().BuildFrameGraph(newFrameGraph);
+	}
+	catch (Utils::Exception e)
+	{
+		frameGraphBuildMessage = "Frame Graph Build Failed!";
+
+		newFrameGraph.reset(nullptr);
 	}
 
-	FrameGraphBuilder::Inst().BuildFrameGraph(frames[0].frameGraph);
-
-	// Frame graph has changed new frame graph is stored in the first frame,
-	// populate this change to other frames
-	for (int i = 1; i < frames.size(); ++i)
+	// If we successfully compiled new framegraph replace old one
+	if (newFrameGraph != nullptr)
 	{
-		frames[i].frameGraph = std::make_unique<FrameGraph>(FrameGraph(*frames[0].frameGraph));
+		// Delete old framegraph
+		for (int i = 0; i < frames.size(); ++i)
+		{
+			frames[i].frameGraph.reset(nullptr);
+		}
+
+		for (int i = 0; i < frames.size(); ++i)
+		{
+			frames[i].frameGraph = std::make_unique<FrameGraph>(FrameGraph(*newFrameGraph));
+		}
 	}
 }
 
@@ -1499,209 +1512,228 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 	ImGui::NewFrame();
 
 	{
-		ImGui::Begin("Debug GUI");
-
-		if (GetState() == State::Rendering)
 		{
+			ImGui::Begin("Debug GUI");
+
+			if (GetState() == State::Rendering)
 			{
-				ImGui::Text(" Debug geometry ");
-
-				ImGui::Checkbox("Light Probes", &drawLightProbesDebugGeometry);
-
-				ImGui::Checkbox("Light Sources", &drawLightSourcesDebugGeometry);
-
-				if (drawLightSourcesDebugGeometry == true)
 				{
-					ImGui::SameLine();
-					ImGui::Checkbox("Point Light Source Radius", &drawPointLightSourcesRadius);
-				}
-			}
+					ImGui::Text(" Debug geometry ");
 
-			ImGui::Separator();
-			
-			{
-				ImGui::Text("Path segments display settings");
+					ImGui::Checkbox("Light Probes", &drawLightProbesDebugGeometry);
 
-				{
-					int drawRayMode = static_cast<int>(drawBakeRayPathsMode);
+					ImGui::Checkbox("Light Sources", &drawLightSourcesDebugGeometry);
 
-					ImGui::RadioButton("Single probe", &drawRayMode, static_cast<int>(DrawRayPathMode::SingleProbe));
-					ImGui::SameLine();
-					ImGui::RadioButton("All probes", &drawRayMode, static_cast<int>(DrawRayPathMode::AllClusterProbes));
-
-					drawBakeRayPathsMode = static_cast<DrawRayPathMode>(drawRayMode);
-				}
-
-
-
-				ImGui::Text("Probes num: %d", lightBakingResult.obj.probes.size());
-				ImGui::InputInt("Probe ray index", &drawBakeRayPathsProbeIndex);
-				drawBakeRayPathsProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probes.size() - 1, drawBakeRayPathsProbeIndex));
-
-				ImGui::Checkbox("Show Ray Paths", &drawBakeRayPaths);
-			}
-
-			ImGui::Separator();
-
-			{
-				ImGui::Text("Light sampling display settings");
-
-				{
-					int drawLightSamplesMode = static_cast<int>(drawPathLightSampleMode_Scale);
-
-					ImGui::RadioButton("Single Probe", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::ProbeSamples));
-					ImGui::SameLine();
-					ImGui::RadioButton("Single Path", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::PathSamples));
-					ImGui::SameLine();
-					ImGui::RadioButton("Single Point", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::PointSamples));
-					ImGui::SameLine();
-					ImGui::RadioButton("All Samples", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::AllSamples));
-
-					drawPathLightSampleMode_Scale = static_cast<DrawPathLightSampleMode_Scale>(drawLightSamplesMode);
-				}
-
-				{
-					int drawLightSampleMode = static_cast<int>(drawPathLightSampleMode_Type);
-
-					ImGui::RadioButton("Point", &drawLightSampleMode, static_cast<int>(DrawPathLightSampleMode_Type::Point));
-					ImGui::SameLine();
-					ImGui::RadioButton("Area", &drawLightSampleMode, static_cast<int>(DrawPathLightSampleMode_Type::Area));
-					ImGui::SameLine();
-					ImGui::RadioButton("All", &drawLightSampleMode, static_cast<int>(DrawPathLightSampleMode_Type::All));
-
-					drawPathLightSampleMode_Type = static_cast<DrawPathLightSampleMode_Type>(drawLightSampleMode);
-				}
-
-				ImGui::Text("Probes num: %d", lightBakingResult.obj.probes.size());
-				ImGui::InputInt("Probe index", &drawPathLightSamples_ProbeIndex);
-				drawPathLightSamples_ProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probes.size() - 1, drawPathLightSamples_ProbeIndex));
-
-				const bool isLightSamplePathDataExists = lightBakingResult.obj.probes.empty() == false &&
-					lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex].lightSamples.has_value();
-
-				const int lightSamplePathNum = isLightSamplePathDataExists ?
-					lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex].lightSamples->size() : 0;
-
-				ImGui::Text("Paths num: %d", lightSamplePathNum);
-				ImGui::InputInt("Path index", &drawPathLightSamples_PathIndex);
-				drawPathLightSamples_PathIndex = std::max(0, std::min<int>(lightSamplePathNum - 1, drawPathLightSamples_PathIndex));
-
-				const int lightSamplePointsNum = isLightSamplePathDataExists ?
-					lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex].lightSamples->at(drawPathLightSamples_PathIndex).size() : 0;
-
-				ImGui::Text("Sample points num: %d", lightSamplePointsNum);
-				ImGui::InputInt("Sample point index ", &drawPathLightSamples_PointIndex);
-				drawPathLightSamples_PointIndex = std::max(0, std::min<int>(lightSamplePointsNum - 1, drawPathLightSamples_PointIndex));
-
-				ImGui::Checkbox("Show Light Sample Rays", &drawLightPathSamples);
-
-			}
-
-			ImGui::Separator();
-
-			{
-				
-				ImGui::Text("Bake Options");
-
-				ImGui::Text("Only use this option if baking for camera cluster");
-
-				bool saveBakeRayPaths = lightBaker.GetBakeFlag(BakeFlags::SaveRayPath);
-
-				if (ImGui::Checkbox("Save Bake Ray Paths", &saveBakeRayPaths))
-				{
-					lightBaker.SetBakeFlag(BakeFlags::SaveRayPath, saveBakeRayPaths);
-				}
-
-				bool saveLightSamples = lightBaker.GetBakeFlag(BakeFlags::SaveLightSampling);
-
-				if (ImGui::Checkbox("Save Light Samples", &saveLightSamples))
-				{
-					lightBaker.SetBakeFlag(BakeFlags::SaveLightSampling, saveLightSamples);
-				}
-
-				{
-					int bakeMode = static_cast<int>(lightBaker.GetBakingMode());
-
-					ImGui::RadioButton("Camera cluster", &bakeMode, static_cast<int>(LightBakingMode::CurrentPositionCluster));
-					ImGui::SameLine();
-					ImGui::RadioButton("All clusters", &bakeMode, static_cast<int>(LightBakingMode::AllClusters));
-					lightBaker.SetBakingMode(static_cast<LightBakingMode>(bakeMode));
-				}
-			}
-
-			ImGui::Separator();
-
-			{
-				ImGui::Text("Light Sampling settings");
-
-				bool samplePointLights = lightBaker.GetBakeFlag(BakeFlags::SamplePointLights);
-
-				if (ImGui::Checkbox("Sample Point Lights", &samplePointLights))
-				{
-					lightBaker.SetBakeFlag(BakeFlags::SamplePointLights, samplePointLights);
-				}
-
-				ImGui::SameLine();
-
-				bool sampleAreaLights = lightBaker.GetBakeFlag(BakeFlags::SampleAreaLights);
-
-				if (ImGui::Checkbox("Sample Area Lights", &sampleAreaLights))
-				{
-					lightBaker.SetBakeFlag(BakeFlags::SampleAreaLights, sampleAreaLights);
-				}
-			}
-
-			ImGui::Separator();
-		
-			{
-				bool saveToFileAfterBake = lightBaker.GetBakeFlag(BakeFlags::SaveToFileAfterBake);
-
-				if (ImGui::Checkbox("Save to file after bake", &saveToFileAfterBake))
-				{
-					lightBaker.SetBakeFlag(BakeFlags::SaveToFileAfterBake, saveToFileAfterBake);
-				}
-			}
-
-			ImGui::Separator();
-
-			{
-				if (ImGui::Button("Start bake"))
-				{
-					if (lightBaker.GetBakingMode() == LightBakingMode::CurrentPositionCluster)
+					if (drawLightSourcesDebugGeometry == true)
 					{
-						lightBaker.SetBakePosition(context.frame.camera.position);
+						ImGui::SameLine();
+						ImGui::Checkbox("Point Light Source Radius", &drawPointLightSourcesRadius);
 					}
-					else
+				}
+
+				ImGui::Separator();
+
+				{
+					ImGui::Text("Path segments display settings");
+
 					{
-						// Enforce false, because certain flags can only be used for certain modes
-						lightBaker.SetBakeFlag(BakeFlags::SaveRayPath, false);
-						lightBaker.SetBakeFlag(BakeFlags::SaveLightSampling, false);
+						int drawRayMode = static_cast<int>(drawBakeRayPathsMode);
+
+						ImGui::RadioButton("Single probe", &drawRayMode, static_cast<int>(DrawRayPathMode::SingleProbe));
+						ImGui::SameLine();
+						ImGui::RadioButton("All probes", &drawRayMode, static_cast<int>(DrawRayPathMode::AllClusterProbes));
+
+						drawBakeRayPathsMode = static_cast<DrawRayPathMode>(drawRayMode);
 					}
 
-					RequestStateChange(State::LightBaking);
-				}
-			}
-			
-			ImGui::Separator();
 
-			{
-				if (ImGui::Button("Load light baking data from file"))
+
+					ImGui::Text("Probes num: %d", lightBakingResult.obj.probes.size());
+					ImGui::InputInt("Probe ray index", &drawBakeRayPathsProbeIndex);
+					drawBakeRayPathsProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probes.size() - 1, drawBakeRayPathsProbeIndex));
+
+					ImGui::Checkbox("Show Ray Paths", &drawBakeRayPaths);
+				}
+
+				ImGui::Separator();
+
 				{
-					RequestStateChange(State::LoadLightBakingFromFile);
+					ImGui::Text("Light sampling display settings");
+
+					{
+						int drawLightSamplesMode = static_cast<int>(drawPathLightSampleMode_Scale);
+
+						ImGui::RadioButton("Single Probe", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::ProbeSamples));
+						ImGui::SameLine();
+						ImGui::RadioButton("Single Path", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::PathSamples));
+						ImGui::SameLine();
+						ImGui::RadioButton("Single Point", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::PointSamples));
+						ImGui::SameLine();
+						ImGui::RadioButton("All Samples", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::AllSamples));
+
+						drawPathLightSampleMode_Scale = static_cast<DrawPathLightSampleMode_Scale>(drawLightSamplesMode);
+					}
+
+					{
+						int drawLightSampleMode = static_cast<int>(drawPathLightSampleMode_Type);
+
+						ImGui::RadioButton("Point", &drawLightSampleMode, static_cast<int>(DrawPathLightSampleMode_Type::Point));
+						ImGui::SameLine();
+						ImGui::RadioButton("Area", &drawLightSampleMode, static_cast<int>(DrawPathLightSampleMode_Type::Area));
+						ImGui::SameLine();
+						ImGui::RadioButton("All", &drawLightSampleMode, static_cast<int>(DrawPathLightSampleMode_Type::All));
+
+						drawPathLightSampleMode_Type = static_cast<DrawPathLightSampleMode_Type>(drawLightSampleMode);
+					}
+
+					ImGui::Text("Probes num: %d", lightBakingResult.obj.probes.size());
+					ImGui::InputInt("Probe index", &drawPathLightSamples_ProbeIndex);
+					drawPathLightSamples_ProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probes.size() - 1, drawPathLightSamples_ProbeIndex));
+
+					const bool isLightSamplePathDataExists = lightBakingResult.obj.probes.empty() == false &&
+						lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex].lightSamples.has_value();
+
+					const int lightSamplePathNum = isLightSamplePathDataExists ?
+						lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex].lightSamples->size() : 0;
+
+					ImGui::Text("Paths num: %d", lightSamplePathNum);
+					ImGui::InputInt("Path index", &drawPathLightSamples_PathIndex);
+					drawPathLightSamples_PathIndex = std::max(0, std::min<int>(lightSamplePathNum - 1, drawPathLightSamples_PathIndex));
+
+					const int lightSamplePointsNum = isLightSamplePathDataExists ?
+						lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex].lightSamples->at(drawPathLightSamples_PathIndex).size() : 0;
+
+					ImGui::Text("Sample points num: %d", lightSamplePointsNum);
+					ImGui::InputInt("Sample point index ", &drawPathLightSamples_PointIndex);
+					drawPathLightSamples_PointIndex = std::max(0, std::min<int>(lightSamplePointsNum - 1, drawPathLightSamples_PointIndex));
+
+					ImGui::Checkbox("Show Light Sample Rays", &drawLightPathSamples);
+
 				}
+
+				ImGui::Separator();
+
+				{
+
+					ImGui::Text("Bake Options");
+
+					ImGui::Text("Only use this option if baking for camera cluster");
+
+					bool saveBakeRayPaths = lightBaker.GetBakeFlag(BakeFlags::SaveRayPath);
+
+					if (ImGui::Checkbox("Save Bake Ray Paths", &saveBakeRayPaths))
+					{
+						lightBaker.SetBakeFlag(BakeFlags::SaveRayPath, saveBakeRayPaths);
+					}
+
+					bool saveLightSamples = lightBaker.GetBakeFlag(BakeFlags::SaveLightSampling);
+
+					if (ImGui::Checkbox("Save Light Samples", &saveLightSamples))
+					{
+						lightBaker.SetBakeFlag(BakeFlags::SaveLightSampling, saveLightSamples);
+					}
+
+					{
+						int bakeMode = static_cast<int>(lightBaker.GetBakingMode());
+
+						ImGui::RadioButton("Camera cluster", &bakeMode, static_cast<int>(LightBakingMode::CurrentPositionCluster));
+						ImGui::SameLine();
+						ImGui::RadioButton("All clusters", &bakeMode, static_cast<int>(LightBakingMode::AllClusters));
+						lightBaker.SetBakingMode(static_cast<LightBakingMode>(bakeMode));
+					}
+				}
+
+				ImGui::Separator();
+
+				{
+					ImGui::Text("Light Sampling settings");
+
+					bool samplePointLights = lightBaker.GetBakeFlag(BakeFlags::SamplePointLights);
+
+					if (ImGui::Checkbox("Sample Point Lights", &samplePointLights))
+					{
+						lightBaker.SetBakeFlag(BakeFlags::SamplePointLights, samplePointLights);
+					}
+
+					ImGui::SameLine();
+
+					bool sampleAreaLights = lightBaker.GetBakeFlag(BakeFlags::SampleAreaLights);
+
+					if (ImGui::Checkbox("Sample Area Lights", &sampleAreaLights))
+					{
+						lightBaker.SetBakeFlag(BakeFlags::SampleAreaLights, sampleAreaLights);
+					}
+				}
+
+				ImGui::Separator();
+
+				{
+					bool saveToFileAfterBake = lightBaker.GetBakeFlag(BakeFlags::SaveToFileAfterBake);
+
+					if (ImGui::Checkbox("Save to file after bake", &saveToFileAfterBake))
+					{
+						lightBaker.SetBakeFlag(BakeFlags::SaveToFileAfterBake, saveToFileAfterBake);
+					}
+				}
+
+				ImGui::Separator();
+
+				{
+					if (ImGui::Button("Start bake"))
+					{
+						if (lightBaker.GetBakingMode() == LightBakingMode::CurrentPositionCluster)
+						{
+							lightBaker.SetBakePosition(context.frame.camera.position);
+						}
+						else
+						{
+							// Enforce false, because certain flags can only be used for certain modes
+							lightBaker.SetBakeFlag(BakeFlags::SaveRayPath, false);
+							lightBaker.SetBakeFlag(BakeFlags::SaveLightSampling, false);
+						}
+
+						RequestStateChange(State::LightBaking);
+					}
+				}
+
+				ImGui::Separator();
+
+				{
+					if (ImGui::Button("Load light baking data from file"))
+					{
+						RequestStateChange(State::LoadLightBakingFromFile);
+					}
+				}
+
 			}
-			
-		}
-		else if (GetState() == State::LightBaking)
-		{
-			ImGui::Text("Baking progress: %d / %d", lightBaker.GetBakedProbesNum(), lightBaker.GetTotalProbesNum());
-		}
-		else if (GetState() == State::LoadLightBakingFromFile)
-		{
-			ImGui::Text("Loading light baking result from file...");
+			else if (GetState() == State::LightBaking)
+			{
+				ImGui::Text("Baking progress: %d / %d", lightBaker.GetBakedProbesNum(), lightBaker.GetTotalProbesNum());
+			}
+			else if (GetState() == State::LoadLightBakingFromFile)
+			{
+				ImGui::Text("Loading light baking result from file...");
+			}
+
+			ImGui::End();
 		}
 
-		ImGui::End();
+		{
+			if (frameGraphBuildMessage.empty() == false)
+			{
+				ImGui::Begin("Frame Graph Build Res");
+
+				ImGui::Text(frameGraphBuildMessage.c_str());
+
+				if (ImGui::Button("Close"))
+				{
+					frameGraphBuildMessage.clear();
+				}
+
+				ImGui::End();
+			}
+		}
+
 	}
 	
 	ImGui::Render();

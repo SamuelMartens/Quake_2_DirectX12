@@ -190,7 +190,7 @@ namespace
 		{
 			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
 
-			DX_ASSERT(false && "Pass parsing error");
+			ThrowIfFalse(false);
 		};
 
 		const bool loadGrammarResult = parser.load_grammar(passGrammar.c_str());

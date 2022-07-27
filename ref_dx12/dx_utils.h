@@ -10,6 +10,7 @@
 #include <functional>
 #include <bitset>
 #include <filesystem>
+#include <optional>
 #include <DirectXMath.h>
 
 #include "dx_shaderdefinitions.h"
@@ -114,8 +115,8 @@ namespace Utils
 	public:
 
 		Exception() = default;
-		Exception(HRESULT hResult, const std::string& errorFuncName, const std::string& errorFileName,
-			int errorLineNumber) :
+		Exception(const std::string& errorFuncName, const std::string& errorFileName,
+			int errorLineNumber, std::optional<HRESULT> hResult) :
 			functionName(errorFuncName),
 			fileName(errorFileName),
 			lineNumber(errorLineNumber),
@@ -124,11 +125,16 @@ namespace Utils
 
 		std::string ToString() const
 		{
-			_com_error err(errorCode);
-			std::string msg = err.ErrorMessage();
+			std::string msg;
+
+			if (errorCode.has_value() == true)
+			{
+				_com_error err(*errorCode);
+				msg = err.ErrorMessage();
+			}
 
 			std::ostringstream stringStream;
-			stringStream << "DX FAILURE: File " << fileName << " in function"
+			stringStream << "DX EXCEPTION: File " << fileName << " in function"
 				<< functionName << " line " << lineNumber << " with Error: " << msg << std::endl;
 
 			return stringStream.str();
@@ -141,8 +147,9 @@ namespace Utils
 
 			return buff;
 		}
+		// Needed if we handle D3D API failure
+		std::optional<HRESULT> errorCode;
 
-		HRESULT errorCode = S_OK;
 		std::string functionName;
 		std::string fileName;
 		int lineNumber;
@@ -321,9 +328,22 @@ namespace Utils
 	HRESULT hr__ = (func); \
 	if (FAILED(hr__)) \
 	{ \
-		Utils::Exception except(hr__, #func, __FILE__, __LINE__); \
+		Utils::Exception except(#func, __FILE__, __LINE__, hr__); \
 		Utils::VSCon_Printf("%s", except.what()); \
 		throw except;\
 	} \
 }
+#endif
+
+#ifndef ThrowIfFalse
+#define ThrowIfFalse(val) \
+{ \
+	if ((val) == false) \
+	{ \
+		Utils::Exception except(__func__, __FILE__, __LINE__, std::nullopt); \
+		Utils::VSCon_Printf("%s", except.what()); \
+		throw except;\
+	} \
+}
+
 #endif
