@@ -858,7 +858,7 @@ void Pass_Static::Draw(GPUJobContext& context)
 	}
 
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
-	vertexBufferView.StrideInBytes = sizeof(ShDef::Vert::PosTexCoord);
+	vertexBufferView.StrideInBytes = sizeof(ShDef::Vert::StaticObjVert_t);
 
 	D3D12_INDEX_BUFFER_VIEW indexBufferView;
 	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
@@ -1512,10 +1512,10 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 					const SourceStaticObject& staticObject = staticObjects[light.staticObjectIndex];
 
 					debugObjectsVertices.insert(debugObjectsVertices.end(),
-						staticObject.vertices.cbegin(),
-						staticObject.vertices.cend());
+						staticObject.verticesPos.cbegin(),
+						staticObject.verticesPos.cend());
 
-					debugObjectsVertexSizes.push_back(staticObject.vertices.size() * perVertexMemorySize);
+					debugObjectsVertexSizes.push_back(staticObject.verticesPos.size() * perVertexMemorySize);
 				}
 
 				if (debugObject.type == DebugObject_LightSource::Type::Point)

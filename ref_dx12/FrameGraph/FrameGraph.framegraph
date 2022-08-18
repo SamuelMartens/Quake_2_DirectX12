@@ -1,3 +1,15 @@
+Resources
+{
+	GBuffer_Normals
+	[
+		Type : Texture2D
+		Dimensions : 1024, 768
+		Format : R32G32_FLOAT
+		Flags : ALLOW_RENDER_TARGET, ALLOW_UNORDERED_ACCESS
+	]
+	
+}
+
 Steps
 {
     UI

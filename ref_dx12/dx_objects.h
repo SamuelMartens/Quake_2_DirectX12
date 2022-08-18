@@ -27,7 +27,7 @@ public:
 
 	Utils::AABB aabb;
 
-	std::vector<XMFLOAT4> vertices;
+	std::vector<XMFLOAT4> verticesPos;
 	std::vector<XMFLOAT4> normals;
 
 	std::vector<int> indices;
@@ -54,11 +54,9 @@ public:
 	std::string textureKey;
 	
 	BufferHandler vertices = Const::INVALID_BUFFER_HANDLER;
-	BufferHandler normals = Const::INVALID_BUFFER_HANDLER;
 	BufferHandler indices = Const::INVALID_BUFFER_HANDLER;
 
 	int verticesSizeInBytes = Const::INVALID_SIZE;
-	int normalsSizeInBytes = Const::INVALID_SIZE;
 	int indicesSizeInBytes = Const::INVALID_SIZE;
 };
 

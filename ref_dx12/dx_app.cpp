@@ -1898,8 +1898,8 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 
 void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJobContext& context)
 {
-	// Fill up vertex buffer
-	std::vector<ShDef::Vert::PosTexCoord> vertices;
+	// Generate vertices
+	std::vector<ShDef::Vert::StaticObjVert_t> vertices;
 	for (const glpoly_t* poly = surf.polys; poly != nullptr; poly = poly->chain)
 	{
 		constexpr int vertexsize = 7;
@@ -1908,7 +1908,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 		const float* glVert = poly->verts[0];
 		for (int i = 0; i < poly->numverts; ++i, glVert += vertexsize)
 		{
-			ShDef::Vert::PosTexCoord dxVert;
+			ShDef::Vert::StaticObjVert_t dxVert;
 			dxVert.position = { glVert[0], glVert[1], glVert[2], 1.0f };
 			dxVert.texCoord = { glVert[3], glVert[4] };
 
@@ -1917,6 +1917,30 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	}
 
 	DX_ASSERT(vertices.empty() == false && "Static object cannot be created from empty vertices");
+
+	// Generate indices
+	std::vector<uint32_t> indices;
+	indices = Utils::GetIndicesListForTrianglelistFromPolygonPrimitive(vertices.size());
+
+	// Generate normals
+	std::vector<XMFLOAT4> vertPos;
+	vertPos.reserve(vertices.size());
+
+	std::transform(vertices.cbegin(), vertices.cend(), std::back_inserter(vertPos),
+		[](const ShDef::Vert::StaticObjVert_t& vert)
+	{
+		return vert.position;
+	});
+
+
+	std::vector<XMFLOAT4> normals = Utils::GenerateNormals(vertPos, indices);
+
+	DX_ASSERT(normals.size() == vertices.size() && "Vertex size should match generated normals");
+
+	for (int i = 0; i < vertices.size(); ++i)
+	{
+		vertices[i].normal = normals[i];
+	}
 
 	StaticObject& obj = staticObjects.emplace_back(StaticObject());
 
@@ -1935,7 +1959,8 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	// Set the texture name
 	obj.textureKey = surf.texinfo->image->name;
 
-	obj.verticesSizeInBytes = sizeof(ShDef::Vert::PosTexCoord) * vertices.size();
+	// Fill up vertex buffer
+	obj.verticesSizeInBytes = sizeof(ShDef::Vert::StaticObjVert_t) * vertices.size();
 	obj.vertices = defaultMemory.Allocate(obj.verticesSizeInBytes);
 
 	FArg::UpdateDefaultHeapBuff updateBuffArg;
@@ -1948,13 +1973,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 
 	ResourceManager::Inst().UpdateDefaultHeapBuff(updateBuffArg);
 
-	static uint64_t allocSize = 0;
-	uint64_t size = sizeof(ShDef::Vert::PosTexCoord) * vertices.size();
-
 	// Fill up index buffer
-	std::vector<uint32_t> indices;
-	indices = Utils::GetIndicesListForTrianglelistFromPolygonPrimitive(vertices.size());
-
 	obj.indicesSizeInBytes = sizeof(uint32_t) * indices.size();
 	obj.indices = defaultMemory.Allocate(obj.indicesSizeInBytes);
 
@@ -1967,36 +1986,11 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 
 	ResourceManager::Inst().UpdateDefaultHeapBuff(updateBuffArg);
 
-	// Generate normals
-	std::vector<XMFLOAT4> vertPos;
-	vertPos.reserve(vertices.size());
-
-	std::transform(vertices.cbegin(), vertices.cend(), std::back_inserter(vertPos), 
-		[](const ShDef::Vert::PosTexCoord& vert)
-	{
-		return vert.position;
-	});
-
-
-	std::vector<XMFLOAT4> normals = Utils::GenerateNormals(vertPos, indices);
-
-	obj.normalsSizeInBytes = sizeof(XMFLOAT4) * normals.size();
-	obj.normals = defaultMemory.Allocate(obj.normalsSizeInBytes);
-
-	updateBuffArg.buffer = defaultMemory.GetGpuBuffer();
-	updateBuffArg.offset = defaultMemory.GetOffset(obj.normals);
-	updateBuffArg.byteSize = obj.normalsSizeInBytes;
-	updateBuffArg.data = normals.data();
-	updateBuffArg.alignment = 0;
-	updateBuffArg.context = &context;
-
-	ResourceManager::Inst().UpdateDefaultHeapBuff(updateBuffArg);
-
 	// Handle source static objects
 	SourceStaticObject sourceObject;
 
 	sourceObject.textureKey = obj.textureKey;
-	sourceObject.vertices = std::move(vertPos);
+	sourceObject.verticesPos = std::move(vertPos);
 	sourceObject.normals = std::move(normals);
 	
 	std::transform(indices.cbegin(), indices.cend(), std::back_inserter(sourceObject.indices),
@@ -2005,7 +1999,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 		return index;
 	});
 
-	sourceObject.aabb = Utils::ConstructAABB(sourceObject.vertices);
+	sourceObject.aabb = Utils::ConstructAABB(sourceObject.verticesPos);
 
 	sourceStaticObjects.push_back(std::move(sourceObject));
 }

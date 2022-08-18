@@ -1130,6 +1130,8 @@ namespace
 				return DXGI_FORMAT_UNKNOWN;
 			case HASH("R8G8B8A8_UNORM"):
 				return DXGI_FORMAT_R8G8B8A8_UNORM;
+			case HASH("R32G32_FLOAT"):
+				return DXGI_FORMAT_R32G32_FLOAT;
 			default:
 				DX_ASSERT(false && "Invalid value of ResourceDeclFormat");
 				break;
@@ -1314,7 +1316,7 @@ void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
 }
 
 
-void FrameGraphBuilder::ValidateResources(const std::vector<PassParametersSource>& passesParametersSources) const
+void FrameGraphBuilder::ValidatePassResources(const std::vector<PassParametersSource>& passesParametersSources) const
 {
 #ifdef _DEBUG
 
@@ -1578,7 +1580,17 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 
 void FrameGraphBuilder::BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph)
 {
-	outFrameGraph = std::make_unique<FrameGraph>(CompileFrameGraph(GenerateFrameGraphSource()));
+	FrameGraphSource source = GenerateFrameGraphSource();
+
+	std::vector<FrameGraphSource::FrameGraphResourceDecl> internalResourceDecl = std::move(source.resourceDeclarations);
+
+	// Non intrusive operation
+	outFrameGraph = std::make_unique<FrameGraph>(CompileFrameGraph(std::move(source)));
+
+	// NOTE: Creates resources, so defacto influences global state
+	// You cannot fail here!
+	outFrameGraph->internalTextureNames = std::make_shared<std::vector<std::string>>(CreateFrameGraphResources(source.resourceDeclarations));
+	outFrameGraph->internalTextureProxy = CreateFrameGraphTextureProxies(*outFrameGraph->internalTextureNames);
 }
 
 FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
@@ -1587,11 +1599,8 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 
 	FrameGraph frameGraph;
 
-	ValidateResources(source.passesParametersSources);
-
-	frameGraph.internalTextureNames = std::make_shared<std::vector<std::string>>(CreateFrameGraphResources(source.resourceDeclarations));
-	frameGraph.internalTextureProxy = CreateFrameGraphTextureProxies(*frameGraph.internalTextureNames);
-
+	ValidatePassResources(source.passesParametersSources);
+	
 	std::vector<PassTask::Callback_t> pendingCallbacks;
 
 	// Add passes to frame graph in proper order
@@ -1728,9 +1737,14 @@ std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std:
 	for (const FrameGraphSource::FrameGraphResourceDecl& resourceDecl : resourceDecls)
 	{
 		const std::string& resourceName = internalResourcesName.emplace_back(resourceDecl.name);
-
-		DX_ASSERT(resourceManager.FindResource(resourceName) == nullptr && "Trying create internal texture that already exists");
 		
+		// If we regenerating frame graph during runtime, we need to get rid of internal 
+		// resources from previous version. 
+		if (resourceManager.FindResource(resourceName) != nullptr)
+		{
+			resourceManager.DeleteResource(resourceName.c_str());
+		}
+
 		DX_ASSERT(resourceDecl.desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && 
 			"Only 2D textures are implemented as frame graph internal res");
 

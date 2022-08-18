@@ -914,9 +914,9 @@ XMFLOAT4 LightBaker::GatherDirectIradianceFromAreaLight(const XMFLOAT4& intersec
 		const int V1Ind = lightMesh.indices[triangleIndex * 3 + 1];
 		const int V2Ind = lightMesh.indices[triangleIndex * 3 + 2];
 
-		const XMVECTOR sseV0 = XMLoadFloat4(&lightMesh.vertices[V0Ind]);
-		const XMVECTOR sseV1 = XMLoadFloat4(&lightMesh.vertices[V1Ind]);
-		const XMVECTOR sseV2 = XMLoadFloat4(&lightMesh.vertices[V2Ind]);
+		const XMVECTOR sseV0 = XMLoadFloat4(&lightMesh.verticesPos[V0Ind]);
+		const XMVECTOR sseV1 = XMLoadFloat4(&lightMesh.verticesPos[V1Ind]);
+		const XMVECTOR sseV2 = XMLoadFloat4(&lightMesh.verticesPos[V2Ind]);
 
 		XMVECTOR sseLightSamplePoint = sseV0 * u + sseV1 * v + sseV2 * w;
 		

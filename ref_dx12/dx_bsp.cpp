@@ -198,9 +198,9 @@ bool BSPTree::IsPointVisibleFromOtherPoint(const XMFLOAT4& p0, const XMFLOAT4& p
 
 			for (int triangleIndex = 0; triangleIndex < object.indices.size() / 3; ++triangleIndex)
 			{
-				const XMFLOAT4& v0 = object.vertices[object.indices[triangleIndex * 3 + 0]];
-				const XMFLOAT4& v1 = object.vertices[object.indices[triangleIndex * 3 + 1]];
-				const XMFLOAT4& v2 = object.vertices[object.indices[triangleIndex * 3 + 2]];
+				const XMFLOAT4& v0 = object.verticesPos[object.indices[triangleIndex * 3 + 0]];
+				const XMFLOAT4& v1 = object.verticesPos[object.indices[triangleIndex * 3 + 1]];
+				const XMFLOAT4& v2 = object.verticesPos[object.indices[triangleIndex * 3 + 2]];
 
 				Utils::RayTriangleIntersectionResult rayTriangleResult;
 

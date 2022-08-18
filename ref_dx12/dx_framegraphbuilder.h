@@ -163,7 +163,7 @@ private:
 		Parsing::ResourceBindFrequency updateFrequency, Parsing::ResourceScope scope, RootArg::Arg_t&& arg);
 
 	/* Utils */
-	void ValidateResources(const std::vector<PassParametersSource>& passesParametersSources) const;
+	void ValidatePassResources(const std::vector<PassParametersSource>& passesParametersSources) const;
 	void AttachSpecialPostPreCallbacks(std::vector<PassTask>& passTasks) const;
 
 	HANDLE sourceWatchHandle = INVALID_HANDLE_VALUE;

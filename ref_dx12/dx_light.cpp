@@ -46,9 +46,9 @@ void AreaLight::InitIfValid(AreaLight& light)
 		const int V1Ind = object.indices[triangleInd * 3 + 1];
 		const int V2Ind = object.indices[triangleInd * 3 + 2];
 
-		XMVECTOR sseV0 = XMLoadFloat4(&object.vertices[V0Ind]);
-		XMVECTOR sseV1 = XMLoadFloat4(&object.vertices[V1Ind]);
-		XMVECTOR sseV2 = XMLoadFloat4(&object.vertices[V2Ind]);
+		XMVECTOR sseV0 = XMLoadFloat4(&object.verticesPos[V0Ind]);
+		XMVECTOR sseV1 = XMLoadFloat4(&object.verticesPos[V1Ind]);
+		XMVECTOR sseV2 = XMLoadFloat4(&object.verticesPos[V2Ind]);
 
 		triangleAreas[triangleInd] = XMVectorGetX(XMVector3Length(XMVector3Cross(sseV1 - sseV0, sseV2 - sseV0)) / 2);
 	}

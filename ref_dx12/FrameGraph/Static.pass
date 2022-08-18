@@ -26,6 +26,7 @@ DescriptorTable(Sampler(s0))
 struct VertexIn
 {
 	float4 Pos : POSITION;
+	float4 Normal : NORMAL; 
 	float2 Tex : TEXCOORD;
 }
 
@@ -33,6 +34,7 @@ struct VertexIn
 struct VertexOut
 {
 	float4 Pos : SV_POSITION;
+	float4 Normal: NORMAL;
 	float2 Tex : TEXCOORD;
 }
 
@@ -70,6 +72,7 @@ VertexOut main(VertexIn vIn)
 	// Funny enought, by default matrices are packed as column major.
 	vOut.Pos = mul(gViewProj, vIn.Pos);
 
+	vOut.Normal = vIn.Normal;
 	vOut.Tex = vIn.Tex;
 
 	return vOut;
@@ -83,6 +86,8 @@ float4 main(VertexOut vOut) : SV_Target
 {
 	float4 color = gDiffuseMap.Sample(gSamLinearWrap, vOut.Tex);
     
+	color =  vOut.Normal * 0.5 + 0.5;
+	
     if (color.a == 0)
     {
         discard;

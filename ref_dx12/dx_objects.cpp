@@ -26,17 +26,11 @@ StaticObject& StaticObject::StaticObject::operator=(StaticObject&& other)
 	verticesSizeInBytes = other.verticesSizeInBytes;
 	other.verticesSizeInBytes = Const::INVALID_SIZE;
 
-	normalsSizeInBytes = other.normalsSizeInBytes;
-	other.normalsSizeInBytes = Const::INVALID_SIZE;
-
 	indicesSizeInBytes = other.indicesSizeInBytes;
 	other.indicesSizeInBytes = Const::INVALID_SIZE;
 
 	vertices = other.vertices;
 	other.vertices = Const::INVALID_BUFFER_HANDLER;
-
-	normals = other.normals;
-	other.normals = Const::INVALID_BUFFER_HANDLER;
 
 	indices = other.indices;
 	other.indices = Const::INVALID_BUFFER_HANDLER;
@@ -49,11 +43,6 @@ StaticObject::~StaticObject()
 	if (vertices != Const::INVALID_BUFFER_HANDLER)
 	{
 		Renderer::Inst().DeleteDefaultMemoryBuffer(vertices);
-	}
-
-	if (normals != Const::INVALID_BUFFER_HANDLER)
-	{
-		Renderer::Inst().DeleteDefaultMemoryBuffer(normals);
 	}
 
 	if (indices != Const::INVALID_BUFFER_HANDLER)

@@ -23,7 +23,7 @@ namespace Settings
 
 	constexpr int		 GPU_RESOURCE_DELETION_THRESHOLD = 16;
 
-	constexpr int		 COMMAND_LISTS_PER_FRAME = 20;
+	constexpr int		 COMMAND_LISTS_PER_FRAME = 21;
 	// Try to avoid to set up any particular number for this, instead change command lists per frame
 	constexpr int		 COMMAND_LISTS_NUM = COMMAND_LISTS_PER_FRAME * FRAMES_NUM;
 

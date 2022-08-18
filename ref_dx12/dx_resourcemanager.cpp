@@ -96,7 +96,7 @@ ComPtr<ID3D12Resource> ResourceManager::CreateUploadHeapBuffer(UINT64 byteSize) 
 
 void ResourceManager::UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const
 {
-	assert(args.buffer != nullptr &&
+	DX_ASSERT(args.buffer != nullptr &&
 		args.alignment != -1 &&
 		args.byteSize != Const::INVALID_SIZE &&
 		args.data != nullptr &&
@@ -119,7 +119,7 @@ void ResourceManager::UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) con
 
 void ResourceManager::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
 {
-	assert(args.buffer != nullptr &&
+	DX_ASSERT(args.buffer != nullptr &&
 		args.alignment != -1 &&
 		args.byteSize != Const::INVALID_SIZE &&
 		args.data != nullptr &&
@@ -169,7 +169,7 @@ void ResourceManager::UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args)
 
 void ResourceManager::ZeroMemoryUploadHeapBuff(FArg::ZeroUploadHeapBuff& args)
 {
-	assert(args.buffer != nullptr && 
+	DX_ASSERT(args.buffer != nullptr && 
 		args.byteSize != Const::INVALID_SIZE &&
 		args.offset != Const::INVALID_OFFSET && "Uninitialized arguments in zero upload buff");
 
@@ -197,7 +197,7 @@ void ResourceManager::VerifyZeroUploadHeapBuff(FArg::VerifyZeroUploadHeapBuff& a
 
 	ThrowIfFailed(args.buffer->Map(0, &mappedRange, reinterpret_cast<void**>(&mappedMemory)));
 
-	assert(memcmp(mappedMemory + args.offset, v.data(), args.byteSize) == 0 && "VerifyZeroUploadHeapBuff failed.");
+	DX_ASSERT(memcmp(mappedMemory + args.offset, v.data(), args.byteSize) == 0 && "VerifyZeroUploadHeapBuff failed.");
 
 	args.buffer->Unmap(0, &mappedRange);
 }
@@ -206,8 +206,8 @@ Resource* ResourceManager::CreateStructuredBuffer(FArg::CreateStructuredBuffer& 
 {
 	std::scoped_lock<std::mutex> lock(resources.mutex);
 
-	assert(args.desc->dimension == D3D12_RESOURCE_DIMENSION_BUFFER && "Invalid buffer dimension during resource creation");
-	assert(args.desc->format == DXGI_FORMAT_UNKNOWN && "Invalid structured buffer format");
+	DX_ASSERT(args.desc->dimension == D3D12_RESOURCE_DIMENSION_BUFFER && "Invalid buffer dimension during resource creation");
+	DX_ASSERT(args.desc->format == DXGI_FORMAT_UNKNOWN && "Invalid structured buffer format");
 
 	FArg::CreateResource resCreationArgs;
 	resCreationArgs.desc = args.desc;
@@ -220,7 +220,7 @@ Resource* ResourceManager::CreateStructuredBuffer(FArg::CreateStructuredBuffer& 
 
 void ResourceManager::RequestResourceDeletion(ComPtr<ID3D12Resource> resourceToDelete)
 {
-	assert(resourceToDelete != nullptr && "Can't request deletion of empty resource");
+	DX_ASSERT(resourceToDelete != nullptr && "Can't request deletion of empty resource");
 
 	std::scoped_lock<std::mutex> lock(resourcesToDelete.mutex);
 
@@ -326,7 +326,7 @@ Resource* ResourceManager::CreateTextureFromData(FArg::CreateResource& args)
 {
 	std::scoped_lock<std::mutex> lock(resources.mutex);
 
-	assert(args.desc->dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && "Invalid texture dimension during resource creation");
+	DX_ASSERT(args.desc->dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && "Invalid texture dimension during resource creation");
 
 	return _CreateResource(args);
 }
@@ -369,13 +369,13 @@ void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
 				createTexArgs.name = name.c_str();
 				createTexArgs.context = &context;
 
-				assert(createTexArgs.desc->dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && "Invalid texture dimension during resource creation");
+				DX_ASSERT(createTexArgs.desc->dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && "Invalid texture dimension during resource creation");
 
 				_CreateResource(createTexArgs);
 			}
 			else
 			{
-				static_assert(false, "Invalid class in Deferred Tex creation");
+				static_DX_ASSERT(false, "Invalid class in Deferred Tex creation");
 			}
 		}
 		, tr);
@@ -390,7 +390,7 @@ void ResourceManager::GetDrawTextureFullname(const char* name, char* dest, int d
 	}
 	else
 	{
-		assert(destSize >= strlen(name) + 1);
+		DX_ASSERT(destSize >= strlen(name) + 1);
 		strcpy(dest, name + 1);
 	}
 }
@@ -399,7 +399,7 @@ void ResourceManager::UpdateResource(Resource& res, const std::byte* data, GPUJo
 {
 	Logs::Logf(Logs::Category::Resource, "Update Resource with name %s", res.name.c_str());
 
-	assert((res.desc.dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
+	DX_ASSERT((res.desc.dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
 			res.desc.dimension == D3D12_RESOURCE_DIMENSION_BUFFER) &&
 		"UpdateResource received invalid resource type");
 
@@ -491,7 +491,7 @@ void ResourceManager::DeleteResource(const char* name)
 
 	auto resIt = resources.obj.find(name);
 
-	assert(resIt != resources.obj.end() && "Trying to delete resource that doesn't exist");
+	DX_ASSERT(resIt != resources.obj.end() && "Trying to delete resource that doesn't exist");
 	// This will eventually result in call to RequestResourceDeletion	
 	resources.obj.erase(resIt);
 }
@@ -500,7 +500,7 @@ Resource* ResourceManager::_CreateResource(FArg::CreateResource& args)
 {
 	Logs::Logf(Logs::Category::Resource, "Create resource %s", args.name);
 
-	assert(args.desc->dimension != D3D12_RESOURCE_DIMENSION_UNKNOWN && "Invalid texture dimension during resource creation");
+	DX_ASSERT(args.desc->dimension != D3D12_RESOURCE_DIMENSION_UNKNOWN && "Invalid texture dimension during resource creation");
 
 	Resource res;
 
@@ -557,13 +557,13 @@ Resource* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContex
 	}
 	else
 	{
-		assert(false && "Invalid texture file extension");
+		DX_ASSERT(false && "Invalid texture file extension");
 		return nullptr;
 	}
 
 	if (image == nullptr)
 	{
-		assert(false && "Failed to create texture from file");
+		DX_ASSERT(false && "Failed to create texture from file");
 		return nullptr;
 	}
 
@@ -681,7 +681,7 @@ ComPtr<ID3D12Resource> ResourceManager::_CreateGpuResource(FArg::_CreateGpuResou
 
 	if (args.raw != nullptr)
 	{
-		assert(args.context != nullptr && "If texture is initialized on creation GPU Context is required");
+		DX_ASSERT(args.context != nullptr && "If texture is initialized on creation GPU Context is required");
 
 		CommandList& commandList = *args.context->commandList;
 
