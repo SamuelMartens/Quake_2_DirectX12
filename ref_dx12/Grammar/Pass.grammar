@@ -20,7 +20,7 @@ ShaderTypeDecl      <- T( 'Type' _ ':' _ < ShaderType > )
 ShaderType			<- _'VS' _ / _ 'GS' _ / _ 'PS' _ / _ 'CS' _
 
 # --- State ---
-ColorTargetSt   	<- T( 'ColorTarget' _ ':' < Ident > )
+ColorTargetSt   	<- T( 'ColorTarget' _ ':' < Ident ( Comma Ident )* > )
 DepthTargetSt   	<- T( 'DepthTarget' _ ':' < Ident > )
 ViewportSt      	<- T( 'Viewport' _ ':' < (Float / Int) (~Comma (Float / Int)){3} > )
 BlendEnabledSt  	<- T( 'BlendEnabled' _ ':' < Bool > )

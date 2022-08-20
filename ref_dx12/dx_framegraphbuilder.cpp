@@ -236,7 +236,15 @@ namespace
 		parser["ColorTargetSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
-			parseCtx.passSources.back().colorTargetName = peg::any_cast<std::string>(sv[0]);
+
+			std::vector<std::string>& colorTargetNames = parseCtx.passSources.back().colorTargetNames;
+
+			colorTargetNames.reserve(sv.size());
+
+			for (int i = 0; i < sv.size(); ++i) 
+			{
+				colorTargetNames.push_back(peg::any_cast<std::string>(sv[i]));
+			}
 		};
 
 		parser["DepthTargetSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
@@ -2374,9 +2382,15 @@ PassParameters FrameGraphBuilder::CompilePassParameters(PassParametersSource&& p
 	passParam.threadGroups = passSource.threadGroups;
 	passParam.name = passSource.name;
 	passParam.primitiveTopology = passSource.primitiveTopology;
-	passParam.colorTargetName = passSource.colorTargetName;
-	passParam.depthTargetName = passSource.depthTargetName;
 	passParam.viewport = passSource.viewport;
+	passParam.depthRenderTarget = { passSource.depthTargetName, Const::INVALID_INDEX };
+
+	passParam.colorRenderTargets.reserve(passSource.colorTargetNames.size());
+
+	for (int i = 0; i < passSource.colorTargetNames.size(); ++i)
+	{
+		passParam.colorRenderTargets.push_back({ std::move(passSource.colorTargetNames[i]), Const::INVALID_INDEX });
+	}
 
 	if (const Parsing::VertAttr* inputVertAttr = GetPassInputVertAttr(passSource))
 	{
@@ -2404,26 +2418,12 @@ std::vector<PassTask::Callback_t> FrameGraphBuilder::CompilePassCallbacks(const 
 
 			if constexpr (std::is_same_v<T, PassParametersSource::FixedFunctionClearColor>)
 			{
-				if (passParams.colorTargetName == PassParameters::BACK_BUFFER_NAME)
-				{
-					callbacks.push_back(std::bind(PassUtils::ClearColorBackBufferCallback, fixedFunction.color, std::placeholders::_1, std::placeholders::_2));
-				}
-				else
-				{
-					callbacks.push_back(std::bind(PassUtils::ClearColorCallback, fixedFunction.color, std::placeholders::_1, std::placeholders::_2));
-				}
+				callbacks.push_back(std::bind(PassUtils::ClearColorCallback, fixedFunction.color, std::placeholders::_1, std::placeholders::_2));
 			}
 
 			if constexpr (std::is_same_v<T, PassParametersSource::FixedFunctionClearDepth>)
 			{
-				if (passParams.depthTargetName == PassParameters::BACK_BUFFER_NAME)
-				{
-					callbacks.push_back(std::bind(PassUtils::ClearDepthBackBufferCallback, fixedFunction.value, std::placeholders::_1, std::placeholders::_2));
-				}
-				else
-				{
-					callbacks.push_back(std::bind(PassUtils::ClearDeptCallback, fixedFunction.value, std::placeholders::_1,  std::placeholders::_2));
-				}
+				callbacks.push_back(std::bind(PassUtils::ClearDeptCallback, fixedFunction.value, std::placeholders::_1,  std::placeholders::_2));
 			}
 
 		}, fixedFunction);

@@ -458,7 +458,7 @@ public:
 	std::string name;
 	std::vector<ShaderSource> shaders;
 
-	std::string colorTargetName;
+	std::vector<std::string> colorTargetNames;
 	std::string depthTargetName;
 
 	D3D12_VIEWPORT viewport = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
@@ -487,6 +487,14 @@ class PassParameters
 {
 public:
 
+	struct RenderTarget
+	{
+		std::string name;
+		int viewIndex = Const::INVALID_INDEX;
+	};
+
+public:
+
 	static const std::string BACK_BUFFER_NAME;
 
 	PassParameters() = default;
@@ -510,11 +518,9 @@ public:
 
 	std::string name;
 
-	std::string colorTargetName;
-	std::string depthTargetName;
+	std::vector<RenderTarget> colorRenderTargets;
 
-	int colorTargetViewIndex = Const::INVALID_INDEX;
-	int depthTargetViewIndex = Const::INVALID_INDEX;
+	RenderTarget depthRenderTarget;
 
 	D3D12_VIEWPORT viewport = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
 

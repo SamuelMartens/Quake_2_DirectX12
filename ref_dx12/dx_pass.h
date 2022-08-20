@@ -367,21 +367,6 @@ public:
 	static void ReleaseColorDepthRenderTargetViews(PassParameters& passParams);
 
 	template<typename T>
-	static const std::string_view GetPassRenderTargetName(const T& pass)
-	{
-		return pass.passParameters.colorTargetName;
-	}
-
-	template<>
-	static const std::string_view GetPassRenderTargetName<Pass_t>(const Pass_t& pass)
-	{
-		return std::visit([](auto&& pass)
-		{
-			return GetPassRenderTargetName(pass);
-		}, pass);
-	}
-
-	template<typename T>
 	static std::string_view GetPassName(const T& pass)
 	{
 		return pass.passParameters.name;
@@ -411,10 +396,8 @@ public:
 		}, pass);
 	}
 
-	static void ClearColorBackBufferCallback(XMFLOAT4 color, GPUJobContext& context, const Pass_t* pass);
 	static void ClearColorCallback(XMFLOAT4 color, GPUJobContext& context, const Pass_t* pass);
 
-	static void ClearDepthBackBufferCallback(float value, GPUJobContext& context, const Pass_t* pass);
 	static void ClearDeptCallback(float value, GPUJobContext& context, const Pass_t* pass);
 
 	static void InternalTextureProxiesToInterPassStateCallback(GPUJobContext& context, const Pass_t* pass);

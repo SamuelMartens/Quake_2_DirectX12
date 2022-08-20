@@ -398,19 +398,27 @@ namespace
 
 		Renderer& renderer = Renderer::Inst();
 
-		const int colorRenderTargetViewIndex = params.colorTargetName == PassParameters::BACK_BUFFER_NAME ?
-			frame.colorBufferAndView->viewIndex :
-			params.colorTargetViewIndex;
+		std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> colorRenderTargetViews;
+		colorRenderTargetViews.reserve(params.colorRenderTargets.size());
 
-		D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = renderer.GetRtvHandleCPU(colorRenderTargetViewIndex);
+		for (const PassParameters::RenderTarget& renderTarget : params.colorRenderTargets)
+		{
+			const int colorRenderTargetViewIndex = renderTarget.name == PassParameters::BACK_BUFFER_NAME ?
+				frame.colorBufferAndView->viewIndex :
+				renderTarget.viewIndex;
 
-		const int depthRenderTargetViewIndex = params.depthTargetName == PassParameters::BACK_BUFFER_NAME ?
+			D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = renderer.GetRtvHandleCPU(colorRenderTargetViewIndex);
+
+			colorRenderTargetViews.push_back(colorRenderTargetView);
+		}
+
+		const int depthRenderTargetViewIndex = params.depthRenderTarget.name == PassParameters::BACK_BUFFER_NAME ?
 			frame.depthBufferViewIndex :
-			params.depthTargetViewIndex;
+			params.depthRenderTarget.viewIndex;
 
 		D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = renderer.GetDsvHandleCPU(depthRenderTargetViewIndex);
 
-		commandList->OMSetRenderTargets(1, &colorRenderTargetView, true, &depthRenderTargetView);
+		commandList->OMSetRenderTargets(colorRenderTargetViews.size(), colorRenderTargetViews.data(), false, &depthRenderTargetView);
 
 		ID3D12DescriptorHeap* descriptorHeaps[] = { renderer.GetCbvSrvHeap(), renderer.GetSamplerHeap() };
 		commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
@@ -1734,23 +1742,23 @@ void PassTask::Execute(GPUJobContext& context)
 
 void PassUtils::AllocateColorDepthRenderTargetViews(PassParameters& passParams)
 {
-	passParams.colorTargetViewIndex =
-		PassUtils::AllocateRenderTargetView(passParams.colorTargetName, *Renderer::Inst().rtvHeapAllocator);
+	for (PassParameters::RenderTarget& colorRenderTarget : passParams.colorRenderTargets)
+	{
+		colorRenderTarget.viewIndex = PassUtils::AllocateRenderTargetView(colorRenderTarget.name, *Renderer::Inst().rtvHeapAllocator);
+	}
 
-	passParams.depthTargetViewIndex =
-		PassUtils::AllocateRenderTargetView(passParams.depthTargetName, *Renderer::Inst().dsvHeapAllocator);
+	passParams.depthRenderTarget.viewIndex = 
+		PassUtils::AllocateRenderTargetView(passParams.depthRenderTarget.name, *Renderer::Inst().dsvHeapAllocator);
 }
 
 void PassUtils::ReleaseColorDepthRenderTargetViews(PassParameters& passParams)
 {
-	PassUtils::ReleaseRenderTargetView(passParams.colorTargetName, passParams.colorTargetViewIndex, *Renderer::Inst().rtvHeapAllocator);
-	PassUtils::ReleaseRenderTargetView(passParams.depthTargetName, passParams.depthTargetViewIndex, *Renderer::Inst().dsvHeapAllocator);
-}
+	for (PassParameters::RenderTarget& colorRenderTarget : passParams.colorRenderTargets)
+	{
+		PassUtils::ReleaseRenderTargetView(colorRenderTarget.name, colorRenderTarget.viewIndex, *Renderer::Inst().rtvHeapAllocator);
+	}
 
-void PassUtils::ClearColorBackBufferCallback(XMFLOAT4 color, GPUJobContext& context, const Pass_t* pass)
-{
-	D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = Renderer::Inst().GetRtvHandleCPU(context.frame.colorBufferAndView->viewIndex);
-	context.commandList->GetGPUList()->ClearRenderTargetView(colorRenderTargetView, &color.x, 0, nullptr);
+	PassUtils::ReleaseRenderTargetView(passParams.depthRenderTarget.name, passParams.depthRenderTarget.viewIndex, *Renderer::Inst().dsvHeapAllocator);
 }
 
 void PassUtils::ClearColorCallback(XMFLOAT4 color, GPUJobContext& context, const Pass_t* pass)
@@ -1759,23 +1767,17 @@ void PassUtils::ClearColorCallback(XMFLOAT4 color, GPUJobContext& context, const
 
 	const PassParameters& params = GetPassParameters(*pass);
 
-	DX_ASSERT(params.colorTargetViewIndex != Const::INVALID_INDEX && "ClearColorCallback invalid index");
+	for (const PassParameters::RenderTarget& renderTarget : params.colorRenderTargets)
+	{
+		const int viewIndex = renderTarget.name == PassParameters::BACK_BUFFER_NAME ? 
+			context.frame.colorBufferAndView->viewIndex :
+			renderTarget.viewIndex;
 
-	D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = Renderer::Inst().GetRtvHandleCPU(params.colorTargetViewIndex);
-	context.commandList->GetGPUList()->ClearRenderTargetView(colorRenderTargetView, &color.x, 0, nullptr);
-}
+		DX_ASSERT(viewIndex != Const::INVALID_INDEX && "ClearColorCallback invalid index");
 
-void PassUtils::ClearDepthBackBufferCallback(float value, GPUJobContext& context, const Pass_t* pass)
-{
-	D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = Renderer::Inst().GetDsvHandleCPU(context.frame.depthBufferViewIndex);
-	context.commandList->GetGPUList()->ClearDepthStencilView(
-		depthRenderTargetView,
-		D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
-		value,
-		0,
-		0,
-		nullptr);
-
+		D3D12_CPU_DESCRIPTOR_HANDLE colorRenderTargetView = Renderer::Inst().GetRtvHandleCPU(viewIndex);
+		context.commandList->GetGPUList()->ClearRenderTargetView(colorRenderTargetView, &color.x, 0, nullptr);
+	}
 }
 
 void PassUtils::ClearDeptCallback(float value, GPUJobContext& context, const Pass_t* pass)
@@ -1784,9 +1786,13 @@ void PassUtils::ClearDeptCallback(float value, GPUJobContext& context, const Pas
 
 	const PassParameters& params = GetPassParameters(*pass);
 
-	DX_ASSERT(params.depthTargetViewIndex != Const::INVALID_INDEX && "ClearDeptCallback invalid index");
+	const int depthTargetViewIndex = params.depthRenderTarget.name == PassParameters::BACK_BUFFER_NAME ?
+		context.frame.depthBufferViewIndex :
+		params.depthRenderTarget.viewIndex;
 
-	D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = Renderer::Inst().GetDsvHandleCPU(params.depthTargetViewIndex);
+	DX_ASSERT(depthTargetViewIndex != Const::INVALID_INDEX && "ClearDeptCallback invalid index");
+
+	D3D12_CPU_DESCRIPTOR_HANDLE depthRenderTargetView = Renderer::Inst().GetDsvHandleCPU(depthTargetViewIndex);
 	context.commandList->GetGPUList()->ClearDepthStencilView(
 		depthRenderTargetView,
 		D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
@@ -1814,12 +1820,15 @@ void PassUtils::RenderTargetToRenderStateCallback(GPUJobContext& context, const 
 
 	const PassParameters& params = GetPassParameters(*pass);
 
-	ResourceProxy::FindAndTranslateTo(
-		params.colorTargetName,
-		context.internalTextureProxies,
-		D3D12_RESOURCE_STATE_RENDER_TARGET,
-		context.commandList->GetGPUList()
-	);
+	for (const PassParameters::RenderTarget& renderTarget : params.colorRenderTargets)
+	{
+		ResourceProxy::FindAndTranslateTo(
+			renderTarget.name,
+			context.internalTextureProxies,
+			D3D12_RESOURCE_STATE_RENDER_TARGET,
+			context.commandList->GetGPUList()
+		);
+	}
 }
 
 void PassUtils::CopyTextureCallback(const std::string sourceName, const std::string destinationName, GPUJobContext& context, const Pass_t* pass)
