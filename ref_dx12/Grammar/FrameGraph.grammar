@@ -10,7 +10,7 @@ FixedFunctionCopy       <-  T( 'Copy' _ '(' Ident Comma Ident ')' )
 
 # --- Resource Declaration ---
 
-ResourceDecls       <- T('Resources' _ '{' _ ResourceDecl* '}')
+ResourceDecls       <- T('Resources' _ '{' _  ResourceDecl ( Comma ResourceDecl)* '}')
 ResourceDecl        <- T(Ident '[' ResourceDeclType ResourceDeclDimen ResourceDeclFormat ResourceDeclFlags ResourceDeclClearVal? ']')
 
 ResourceDeclType        <- T( 'Type' _ ':' _ Ident ) 

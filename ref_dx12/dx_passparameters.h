@@ -459,6 +459,8 @@ public:
 	std::vector<ShaderSource> shaders;
 
 	std::vector<std::string> colorTargetNames;
+	std::vector<DXGI_FORMAT> colorTargetFormats;
+
 	std::string depthTargetName;
 
 	D3D12_VIEWPORT viewport = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
@@ -495,7 +497,10 @@ public:
 
 public:
 
-	static const std::string BACK_BUFFER_NAME;
+	// I need this as constexpr, that's why cannot use std::string
+	// I also need this as c string. So can't use string_vew either
+	// This leave me not a lot of options
+	static constexpr const char* const BACK_BUFFER_NAME = "BACK_BUFFER";
 
 	PassParameters() = default;
 

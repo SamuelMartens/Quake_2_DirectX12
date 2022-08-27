@@ -684,10 +684,11 @@ void Renderer::RebuildFrameGraph()
 	FlushAllFrames();
 
 	std::unique_ptr<FrameGraph> newFrameGraph = nullptr;
+	std::vector<FrameGraphSource::FrameGraphResourceDecl> internalResourceDecl;
 
 	try
 	{
-		FrameGraphBuilder::Inst().BuildFrameGraph(newFrameGraph);
+		FrameGraphBuilder::Inst().BuildFrameGraph(newFrameGraph, internalResourceDecl);
 	}
 	catch (Utils::Exception e)
 	{
@@ -704,6 +705,12 @@ void Renderer::RebuildFrameGraph()
 		{
 			frames[i].frameGraph.reset(nullptr);
 		}
+
+		// Now create new frame graph resources. It is important to do after deletion of the old
+		// frame graph, because otherwise while destroyed old frame graph might delete new ones resources,
+		// if they have the same name
+
+		FrameGraphBuilder::Inst().HandleFrameGraphResourceCreation(internalResourceDecl, *newFrameGraph);
 
 		for (int i = 0; i < frames.size(); ++i)
 		{

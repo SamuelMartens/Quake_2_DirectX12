@@ -89,11 +89,6 @@ namespace Parsing
 		std::string currentFile;
 	};
 
-	struct PassParametersContext
-	{
-		std::vector<PassParametersSource> passSources;
-	};
-
 	struct FrameGraphSourceContext
 	{
 		std::vector<FrameGraphSource::Step_t> steps;
@@ -101,6 +96,12 @@ namespace Parsing
 		std::vector<FrameGraphSource::FrameGraphResourceDecl> resources;
 	};
 
+	struct PassParametersContext
+	{
+		std::vector<PassParametersSource> passSources;
+
+		const Parsing::FrameGraphSourceContext* frameGraphContext = nullptr;
+	};
 }
 
 class FrameGraphBuilder
@@ -113,21 +114,25 @@ public:
 
 
 	bool IsSourceChanged();
-	void BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph);
+	void BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph, std::vector<FrameGraphSource::FrameGraphResourceDecl>& internalResourceDecl);
+
+	void HandleFrameGraphResourceCreation(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls,
+		FrameGraph& frameGraph) const;
 
 private:
 
 	/* FrameGraph generation */
 	FrameGraphSource GenerateFrameGraphSource() const;
 
+	[[nodiscard]]
+	FrameGraph CompileFrameGraph(FrameGraphSource&& source) const;
+
+	/* Internal resources */
 	std::vector<std::string> CreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls) const;
 	std::vector<ResourceProxy> CreateFrameGraphTextureProxies(const std::vector<std::string>& internalTextureList) const;
 
-	[[nodiscard]]
-	FrameGraph CompileFrameGraph(FrameGraphSource&& source) const;
-	
 	/* Pass Parameters */
-	std::vector<PassParametersSource> GeneratePassesParameterSources() const;
+	std::vector<PassParametersSource> GeneratePassesParameterSources(const Parsing::FrameGraphSourceContext& frameGraphContext) const;
 	void PostprocessPassesParameterSources(std::vector<PassParametersSource>& parameters) const;
 	PassParameters CompilePassParameters(PassParametersSource&& passSource, FrameGraph& frameGraph) const;
 	std::vector<PassTask::Callback_t> CompilePassCallbacks(const std::vector<PassParametersSource::FixedFunction_t>& fixedFunctions, const PassParameters& passParams) const;
@@ -138,7 +143,9 @@ private:
 	
 	std::shared_ptr<Parsing::PreprocessorContext> ParsePreprocessPassFiles(const std::unordered_map<std::string, std::string>& passFiles) const;
 
-	std::shared_ptr<Parsing::PassParametersContext> ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles) const;
+	std::shared_ptr<Parsing::PassParametersContext> ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles,
+		const Parsing::FrameGraphSourceContext& frameGraphContext) const;
+
 	std::shared_ptr<Parsing::FrameGraphSourceContext> ParseFrameGraphFile(const std::string& materialFileContent) const;
 
 	void PreprocessPassFiles(std::unordered_map<std::string, std::string>& passFiles, Parsing::PreprocessorContext& context) const;

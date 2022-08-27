@@ -6,7 +6,7 @@ PassVertAttr: VertexIn
 
 State
 {
-ColorTarget  : BACK_BUFFER
+ColorTarget  : GBuffer_Albedo, GBuffer_Normals
 DepthTarget  : BACK_BUFFER
 Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
@@ -38,7 +38,11 @@ struct VertexOut
 	float2 Tex : TEXCOORD;
 }
 
-
+struct PixelOut
+{
+	float4 Albedo : SV_Target0;
+	float2 Normal : SV_Target1;
+}
 
 // Resources 
 
@@ -80,19 +84,22 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : PS 
-External : gDiffuseMap, gSamLinearWrap, VertexOut
+External : gDiffuseMap, gSamLinearWrap, VertexOut, PixelOut
 <[
-float4 main(VertexOut vOut) : SV_Target
+PixelOut main(VertexOut vOut) : SV_Target
 {
 	float4 color = gDiffuseMap.Sample(gSamLinearWrap, vOut.Tex);
     
-	color =  vOut.Normal * 0.5 + 0.5;
-	
-    if (color.a == 0)
+	if (color.a == 0)
     {
         discard;
     }
-    
-    return color;
+	
+	PixelOut output;
+	
+	output.Albedo = color;
+	output.Normal =  vOut.Normal.xy;
+	
+    return output;
 }
 ]>

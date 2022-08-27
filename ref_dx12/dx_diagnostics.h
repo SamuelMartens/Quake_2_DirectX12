@@ -8,13 +8,15 @@
 #include <atomic>
 #include <string_view>
 
+#include "dx_assert.h"
+
 namespace Diagnostics
 {
-#ifdef _DEBUG
+#ifdef ENABLE_VALIDATION
 	constexpr bool ENABLE_DX_RESOURCE_NAMING = true;
 #else
 	constexpr bool ENABLE_DX_RESOURCE_NAMING = false;
-#endif // _DEBUG
+#endif // ENABLE_VALIDATION
 
 	/*
 		PIX doesn't work for x32 applications so does its event library. So here I am
@@ -52,7 +54,7 @@ namespace Logs
 		"Generic",
 		"Synchronization",
 		"FrameSubmission",
-		"Textures",
+		"Resource",
 		"Job",
 		"Parser"
 	};

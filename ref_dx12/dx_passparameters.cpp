@@ -5,8 +5,6 @@
 #include "dx_app.h"
 #include "dx_framegraphbuilder.h"
 
-const std::string PassParameters::BACK_BUFFER_NAME = "BACK_BUFFER";
-
 namespace RootArg
 {
 	void AttachConstBufferToArgs(std::vector<Arg_t>& rootArgs, int offset, BufferHandler gpuHandler)

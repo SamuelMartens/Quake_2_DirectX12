@@ -64,7 +64,7 @@ namespace Logs
 		false,	// Generic,
 		false,	// Synchronization,
 		false,	// FrameSubmission,
-		false,	// Textures, 
+		true,	// Resource, 
 		false,	// Job
 		true,	// Parser
 	};

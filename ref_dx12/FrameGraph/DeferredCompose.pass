@@ -14,20 +14,20 @@ RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 DescriptorTable(SRV(t0, numDescriptors = 1), UAV(u0, numDescriptors = 1))
 }
 
-[Global, PerPass, Bind: GBuffer_Normals]
-Texture2D GBuffer_Normals : register(t0)
+[Global, PerPass, Bind: GBuffer_Albedo]
+Texture2D GBuffer_Albedo : register(t0)
 
-[Global, PerPass, Bind: GBuffer_Normals]
+[Global, PerPass]
 RWTexture2D<float4> BACK_BUFFER : register(u0)
 
 Type : CS
-External : GBuffer_Normals, BACK_BUFFER
+External : GBuffer_Albedo, BACK_BUFFER
 <[
 
 [numthreads(32, 32, 1)]
 void main(int3 dispatchThreadID : SV_DispatchThreadID)
 {
-	//BACK_BUFFER[dispatchThreadID.xy] = float4(GBuffer_Normals[dispatchThreadID.xy].xxx, 1.0f);
+	BACK_BUFFER[dispatchThreadID.xy] = float4(GBuffer_Albedo[dispatchThreadID.xy].xyz, 1.0f);
 }
 
 ]>

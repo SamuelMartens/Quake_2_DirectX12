@@ -825,7 +825,7 @@ void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>&
 				D3D12_RESOURCE_STATE_PRESENT
 			});
 
-		backBufferProxy.hashedName = HASH(PassParameters::BACK_BUFFER_NAME.c_str());
+		backBufferProxy.hashedName = HASH(PassParameters::BACK_BUFFER_NAME);
 	}
 
 	for (int i = 1; i < jobContexts.size(); ++i)
@@ -837,7 +837,7 @@ void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>&
 				*context.frame.colorBufferAndView->buffer.Get()
 			});
 
-		backBufferProxy.hashedName = HASH(PassParameters::BACK_BUFFER_NAME.c_str());
+		backBufferProxy.hashedName = HASH(PassParameters::BACK_BUFFER_NAME);
 	}
 }
 

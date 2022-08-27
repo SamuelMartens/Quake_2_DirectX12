@@ -5,6 +5,8 @@
 #include <d3dcompiler.h>
 #include <d3d12.h>
 
+#include "dx_assert.h"
+
 namespace Settings
 {
 	constexpr int		 FRAMES_NUM = 3;
@@ -18,7 +20,7 @@ namespace Settings
 
 	constexpr int		 FRAME_STREAMING_CBV_SRV_DESCRIPTOR_HEAP_SIZE = 16 * 1024;
 	constexpr int		 CBV_SRV_DESCRIPTOR_HEAP_SIZE = 32 * 1024;
-	constexpr int		 RTV_DTV_DESCRIPTOR_HEAP_SIZE = 16;
+	constexpr int		 RTV_DTV_DESCRIPTOR_HEAP_SIZE = 64;
 	constexpr int		 SAMPLER_DESCRIPTOR_HEAP_SIZE = 16;
 
 	constexpr int		 GPU_RESOURCE_DELETION_THRESHOLD = 16;
@@ -62,7 +64,7 @@ namespace Settings
 	extern const std::string	DATA_DIR;
 	extern const std::string	LIGHT_BAKING_DATA_FILENAME;
 
-#ifdef _DEBUG
+#ifdef ENABLE_VALIDATION
 	constexpr UINT		SHADER_COMPILATION_FLAGS = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #else
 	constexpr UINT		SHADER_COMPILATION_FLAGS = 0;

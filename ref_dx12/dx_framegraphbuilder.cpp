@@ -238,12 +238,48 @@ namespace
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 
 			std::vector<std::string>& colorTargetNames = parseCtx.passSources.back().colorTargetNames;
+			std::vector<DXGI_FORMAT>& colorTargetFormats = parseCtx.passSources.back().colorTargetFormats;
 
 			colorTargetNames.reserve(sv.size());
+			colorTargetFormats.reserve(sv.size());
 
+			// Fill up names
 			for (int i = 0; i < sv.size(); ++i) 
 			{
 				colorTargetNames.push_back(peg::any_cast<std::string>(sv[i]));
+			}
+
+			// Fill up formats
+			for (const std::string& targetName : colorTargetNames)
+			{
+				if (targetName == PassParameters::BACK_BUFFER_NAME)
+				{
+					// Is back buffer?
+					colorTargetFormats.push_back(Settings::BACK_BUFFER_FORMAT);
+				}
+				else if (Resource* resource = ResourceManager::Inst().FindResource(targetName))
+				{
+					// Is one of existing resource?
+					colorTargetFormats.push_back(resource->desc.format);
+				}
+				else
+				{
+					// Is internal resource?
+					DX_ASSERT(parseCtx.frameGraphContext != nullptr);
+
+					const std::vector<FrameGraphSource::FrameGraphResourceDecl>& internalResourceDecl = parseCtx.frameGraphContext->resources;
+
+					const auto resourceDeclIt = std::find_if(internalResourceDecl.cbegin(), internalResourceDecl.cend(), 
+						[&targetName](const FrameGraphSource::FrameGraphResourceDecl& decl) 
+					{
+						return decl.name == targetName;
+					});
+
+					// This is last branch, so if we fail here we can't find resource at all.
+					DX_ASSERT(resourceDeclIt != internalResourceDecl.cend() && "Can't find required render target resource");
+					
+					colorTargetFormats.push_back(resourceDeclIt->desc.Format);
+				}
 			}
 		};
 
@@ -1586,19 +1622,18 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 	return passCompiledShaders;
 }
 
-void FrameGraphBuilder::BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph)
+void FrameGraphBuilder::BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph, std::vector<FrameGraphSource::FrameGraphResourceDecl>& internalResourceDecl)
 {
 	FrameGraphSource source = GenerateFrameGraphSource();
 
-	std::vector<FrameGraphSource::FrameGraphResourceDecl> internalResourceDecl = std::move(source.resourceDeclarations);
+	internalResourceDecl = std::move(source.resourceDeclarations);
+	outFrameGraph = std::make_unique<FrameGraph>(CompileFrameGraph(std::move(source)));	
+}
 
-	// Non intrusive operation
-	outFrameGraph = std::make_unique<FrameGraph>(CompileFrameGraph(std::move(source)));
-
-	// NOTE: Creates resources, so defacto influences global state
-	// You cannot fail here!
-	outFrameGraph->internalTextureNames = std::make_shared<std::vector<std::string>>(CreateFrameGraphResources(source.resourceDeclarations));
-	outFrameGraph->internalTextureProxy = CreateFrameGraphTextureProxies(*outFrameGraph->internalTextureNames);
+void FrameGraphBuilder::HandleFrameGraphResourceCreation(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls, FrameGraph& frameGraph) const
+{
+	frameGraph.internalTextureNames = std::make_shared<std::vector<std::string>>(CreateFrameGraphResources(resourceDecls));
+	frameGraph.internalTextureProxy = CreateFrameGraphTextureProxies(*frameGraph.internalTextureNames);
 }
 
 FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
@@ -1725,9 +1760,9 @@ FrameGraphSource FrameGraphBuilder::GenerateFrameGraphSource() const
 {
 	FrameGraphSource frameGraphSource;
 
-	frameGraphSource.passesParametersSources = GeneratePassesParameterSources();
-
 	std::shared_ptr<Parsing::FrameGraphSourceContext> parseCtx = ParseFrameGraphFile(LoadFrameGraphFile());
+
+	frameGraphSource.passesParametersSources = GeneratePassesParameterSources(*parseCtx);
 
 	frameGraphSource.steps = std::move(parseCtx->steps);
 	frameGraphSource.resourceDeclarations = std::move(parseCtx->resources);
@@ -1746,12 +1781,7 @@ std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std:
 	{
 		const std::string& resourceName = internalResourcesName.emplace_back(resourceDecl.name);
 		
-		// If we regenerating frame graph during runtime, we need to get rid of internal 
-		// resources from previous version. 
-		if (resourceManager.FindResource(resourceName) != nullptr)
-		{
-			resourceManager.DeleteResource(resourceName.c_str());
-		}
+		DX_ASSERT(resourceManager.FindResource(resourceName) == nullptr && "This framegraph resource already exists");
 
 		DX_ASSERT(resourceDecl.desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && 
 			"Only 2D textures are implemented as frame graph internal res");
@@ -1795,7 +1825,7 @@ std::vector<ResourceProxy> FrameGraphBuilder::CreateFrameGraphTextureProxies(con
 	return proxies;
 }
 
-std::vector<PassParametersSource> FrameGraphBuilder::GeneratePassesParameterSources() const
+std::vector<PassParametersSource> FrameGraphBuilder::GeneratePassesParameterSources(const Parsing::FrameGraphSourceContext& frameGraphContext) const
 {
 	std::unordered_map<std::string, std::string> passSourceFiles = LoadPassFiles();
 	
@@ -1805,7 +1835,7 @@ std::vector<PassParametersSource> FrameGraphBuilder::GeneratePassesParameterSour
 	// critical to either implement some kind of validation or actually made #include to work in nested manner
 	PreprocessPassFiles(passSourceFiles, *preprocessCtx);
 
-	std::shared_ptr<Parsing::PassParametersContext> parseCtx = ParsePassFiles(passSourceFiles);
+	std::shared_ptr<Parsing::PassParametersContext> parseCtx = ParsePassFiles(passSourceFiles, frameGraphContext);
 
 	std::vector<PassParametersSource> passesParametersSources;
 
@@ -1905,12 +1935,14 @@ std::shared_ptr<Parsing::PreprocessorContext> FrameGraphBuilder::ParsePreprocess
 	return context;
 }
 
-std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles) const
+std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles, 
+	const Parsing::FrameGraphSourceContext& frameGraphContext) const
 {
 	peg::parser parser;
 	InitPassParser(parser);
 
 	std::shared_ptr<Parsing::PassParametersContext> context = std::make_shared<Parsing::PassParametersContext>();
+	context->frameGraphContext = &frameGraphContext;
 
 	for (const auto& passFile : passFiles)
 	{
@@ -2107,6 +2139,14 @@ ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const
 	case Parsing::PassInputType::Debug:
 	{
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = passSource.rasterPsoDesc;
+
+		// Set up render targets
+		psoDesc.NumRenderTargets = passSource.colorTargetNames.size();
+		
+		for (int i = 0; i < passSource.colorTargetFormats.size(); ++i)
+		{
+			psoDesc.RTVFormats[i] = passSource.colorTargetFormats[i];
+		}
 
 		// Set up root sig
 		psoDesc.pRootSignature = rootSig.Get();
