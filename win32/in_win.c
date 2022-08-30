@@ -428,8 +428,14 @@ void IN_Frame (void)
 		return;
 	}
 
+	//#SWITCH deactivate mouse on console
+	if (cls.key_dest == key_console)
+	{
+		IN_DeactivateMouse ();
+		return;
+	}
+
 	if ( !cl.refresh_prepped
-		|| cls.key_dest == key_console
 		|| cls.key_dest == key_menu)
 	{
 		// temporarily deactivate if in fullscreen
