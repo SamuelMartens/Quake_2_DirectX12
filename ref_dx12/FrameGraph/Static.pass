@@ -6,7 +6,7 @@ PassVertAttr: VertexIn
 
 State
 {
-ColorTarget  : GBuffer_Albedo, GBuffer_Normals
+ColorTarget  : GBuffer_Position, GBuffer_Albedo, GBuffer_Normals
 DepthTarget  : BACK_BUFFER
 Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
@@ -35,13 +35,15 @@ struct VertexOut
 {
 	float4 Pos : SV_POSITION;
 	float4 Normal: NORMAL;
+	float4 WorldPos : POSITION;
 	float2 Tex : TEXCOORD;
 }
 
 struct PixelOut
 {
-	float4 Albedo : SV_Target0;
-	float2 Normal : SV_Target1;
+	float4 Position :	SV_Target0;
+	float4 Albedo :		SV_Target1;
+	float2 Normal :		SV_Target2;
 }
 
 // Resources 
@@ -77,6 +79,7 @@ VertexOut main(VertexIn vIn)
 	vOut.Pos = mul(gViewProj, vIn.Pos);
 
 	vOut.Normal = vIn.Normal;
+	vOut.WorldPos = vIn.Pos;
 	vOut.Tex = vIn.Tex;
 
 	return vOut;
@@ -99,6 +102,7 @@ PixelOut main(VertexOut vOut) : SV_Target
 	
 	output.Albedo = color;
 	output.Normal =  vOut.Normal.xy;
+	output.Position = vOut.WorldPos;
 	
     return output;
 }

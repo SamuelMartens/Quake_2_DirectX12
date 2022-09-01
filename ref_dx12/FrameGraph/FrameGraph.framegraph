@@ -6,6 +6,16 @@ Resources
 		Dimensions : 1024, 768
 		Format : R32G32_FLOAT
 		Flags : ALLOW_RENDER_TARGET, ALLOW_UNORDERED_ACCESS
+		ClearValue : 0.0, 0.0, 0.0, 1.0
+	],
+	
+	GBuffer_Position
+	[
+		Type : Texture2D
+		Dimensions : 1024, 768
+		Format : R32G32B32A32_FLOAT
+		Flags : ALLOW_RENDER_TARGET, ALLOW_UNORDERED_ACCESS
+		ClearValue : 0.0, 0.0, 0.0, 1.0
 	],
 	
 	GBuffer_Albedo
@@ -14,16 +24,24 @@ Resources
 		Dimensions : 1024, 768
 		Format : R8G8B8A8_UNORM
 		Flags : ALLOW_RENDER_TARGET, ALLOW_UNORDERED_ACCESS
-	]
+	],
 	
+	ComposeBuffer
+	[
+		Type : Texture2D
+		Dimensions : 1024, 768
+		Format : R8G8B8A8_UNORM
+		Flags : ALLOW_UNORDERED_ACCESS
+	]
 }
 
 Steps
 {
     UI
-    Static 
-	//Copy(GBuffer_Albedo, BACK_BUFFER)
-    Dynamic
+    Static
+	DeferredCompose
+	Copy(ComposeBuffer, BACK_BUFFER)
+    //Dynamic
     Particles
 	Debug
 	Debug_LightSources

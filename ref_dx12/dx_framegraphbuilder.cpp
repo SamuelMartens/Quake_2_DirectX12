@@ -1135,7 +1135,11 @@ namespace
 
 			DX_ASSERT(sv.size() <= 6 && "ResourceDecl invalid amount of input tokens. Make sure you handled optional attributes");
 
-			const XMFLOAT4 clearValue = sv.size() == 6 ? peg::any_cast<XMFLOAT4>(sv[5]) : XMFLOAT4{0.0f, 0.0f, 0.0f, 1.0f};
+			std::optional<XMFLOAT4> clearValue;
+			if (sv.size() == 6)
+			{
+				clearValue = peg::any_cast<XMFLOAT4>(sv[5]);
+			}
 
 			return FrameGraphSource::FrameGraphResourceDecl{ peg::any_cast<std::string>(sv[0]), desc, clearValue };
 		};
@@ -1176,6 +1180,10 @@ namespace
 				return DXGI_FORMAT_R8G8B8A8_UNORM;
 			case HASH("R32G32_FLOAT"):
 				return DXGI_FORMAT_R32G32_FLOAT;
+			case HASH("R32G32B32_FLOAT"):
+				return DXGI_FORMAT_R32G32B32_FLOAT;
+			case HASH("R32G32B32A32_FLOAT"):
+				return DXGI_FORMAT_R32G32B32A32_FLOAT;
 			default:
 				DX_ASSERT(false && "Invalid value of ResourceDeclFormat");
 				break;
@@ -1798,7 +1806,7 @@ std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std:
 		createTexArgs.desc = &desc;
 		createTexArgs.name = resourceName.c_str();
 		createTexArgs.context = nullptr;
-		createTexArgs.clearValue = &resourceDecl.clearValue;
+		createTexArgs.clearValue = resourceDecl.clearValue.has_value() ? &resourceDecl.clearValue.value() : nullptr;
 
 		resourceManager.CreateTextureFromData(createTexArgs);
 	}

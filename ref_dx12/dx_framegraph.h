@@ -32,7 +32,7 @@ public:
 	{
 		std::string name;
 		D3D12_RESOURCE_DESC desc;
-		XMFLOAT4 clearValue = { 0.0f, 0.0f, 0.0f, 1.0f };
+		std::optional<XMFLOAT4> clearValue;
 	};
 
 
