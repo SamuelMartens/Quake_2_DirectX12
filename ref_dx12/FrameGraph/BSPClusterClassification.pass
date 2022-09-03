@@ -1,0 +1,51 @@
+PassProperties
+{
+PassInput : PostProcess
+PassThreadGroups: 32, 24, 1
+}
+
+State
+{
+}
+
+RootSignature
+{
+RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
+DescriptorTable(SRV(t0, numDescriptors = 2),
+CBV(b0), 
+UAV(u0, numDescriptors = 1))
+}
+
+// Structs
+struct AABB
+{
+	float4 Min;
+	float4 Max;
+}
+
+[Global, PerPass, Bind: GBuffer_Position]
+Texture2D GBuffer_Position : register(t0)
+
+[Local, PerPass]
+StructuredBuffer<AABB> ClusterAABBs : register(t1)
+
+[Local, PerPass]
+cbuffer cbClusterAABBParameters 
+{
+	int ClusterAABBsSize;
+}
+
+[Local, PerPass, Bind: ClusterClassification]
+RWTexture2D<int> ClusterClassification : register(u0)
+
+Type : CS
+External : GBuffer_Position, ClusterAABBs, cbClusterAABBParameters
+<[
+
+[numthreads(32, 32, 1)]
+void main(int3 dispatchThreadID : SV_DispatchThreadID)
+{
+
+}
+
+]>

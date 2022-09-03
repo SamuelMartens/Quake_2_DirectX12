@@ -32,6 +32,14 @@ Resources
 		Dimensions : 1024, 768
 		Format : R8G8B8A8_UNORM
 		Flags : ALLOW_UNORDERED_ACCESS
+	],
+	
+	ClusterClassification
+	[
+		Type : Texture2D
+		Dimensions : 1024, 768
+		Format : R16_UINT
+		Flags : ALLOW_UNORDERED_ACCESS
 	]
 }
 
@@ -39,8 +47,8 @@ Steps
 {
     UI
     Static
-	DeferredCompose
-	Copy(ComposeBuffer, BACK_BUFFER)
+	//DeferredCompose
+	//Copy(ComposeBuffer, BACK_BUFFER)
     //Dynamic
     Particles
 	Debug

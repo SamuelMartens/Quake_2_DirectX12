@@ -486,13 +486,52 @@ namespace RenderCallbacks
 	template<typename pT, typename bT>
 	void RegisterLocalPass(unsigned int passName, unsigned int paramName, pT& pass, bT& bindPoint, RegisterLocalPassContext& ctx)
 	{
+		switch (passName)
+		{
+		case HASH("BSPClusterClassification"):
+		{
+			switch (passName)
+			{
+			case HASH("ClusterAABBs"):
+			{
+				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
 
+				DO_IF_SAME_DECAYED_TYPE(bT, int,
+					Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
+			}
+			break;
+			default:
+				break;
+			}
+		}
+		break;
+		default:
+			break;
+		}
 	}
 
 	template<typename pT, typename bT>
 	void UpdateLocalPass(unsigned int passName, unsigned int paramName, pT& pass, bT& bindPoint, UpdateLocalPassContext& ctx)
 	{
-
+		switch (passName)
+		{
+		case HASH("BSPClusterClassification"):
+		{
+			switch (passName)
+			{
+			case HASH("ClusterAABBs"):
+			{
+				
+			}
+			break;
+			default:
+				break;
+			}
+		}
+		break;
+		default:
+			break;
+		}
 	}
 
 	template<typename oT, typename bT>

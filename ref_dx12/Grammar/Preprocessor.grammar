@@ -1,7 +1,8 @@
 File <- (Instruction / Code)*
 
 Instruction <- T( DefStart IncludeInstr)
-Code        <- T( !DefStart ( !EndOfLine . )*)
+Code        <- T( !DefStart ( !EndOfCode . )* EndOfCode )
+EndOfCode   <- T( ( _ ']>' _ ) / EndOfLine  )
 
 # --- Instructions ---
 IncludeInstr <- T( 'include' _ '"' < Word '.' Word > '"' )

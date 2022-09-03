@@ -132,7 +132,7 @@ namespace
 		// Load grammar
 		const std::string preprocessorGrammar = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_PREPROCESSOR_FILENAME));
 
-		parser.log = [](size_t line, size_t col, const std::string& msg)
+		parser.log = [](size_t line, size_t col, const std::string& msg, const std::string& rule)
 		{
 			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
 
@@ -143,14 +143,14 @@ namespace
 		DX_ASSERT(loadGrammarResult && "Can't load pass grammar");
 
 		// Set up callbacks
-		parser["Instruction"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["Instruction"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PreprocessorContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PreprocessorContext>&>(ctx);
 
 			DX_ASSERT(parseCtx.currentFile.empty() == false && "Current file for preprocessor parser is empty");
 
 			// So far I have only include instructions
-			auto instruction = peg::any_cast<Parsing::PreprocessorContext::Include>(sv[1]);
+			auto instruction = std::any_cast<Parsing::PreprocessorContext::Include>(sv[1]);
 
 			// Account for start definition symbol, so correct position and length
 			instruction.len += 1;
@@ -162,22 +162,22 @@ namespace
 
 		parser["IncludeInstr"] = [](const peg::SemanticValues& sv)
 		{
-			std::string includeFilename = peg::any_cast<std::string>(sv[0]) + "." + peg::any_cast<std::string>(sv[1]);
+			std::string includeFilename = std::any_cast<std::string>(sv[0]) + "." + std::any_cast<std::string>(sv[1]);
 
 			return Parsing::PreprocessorContext::Include
 			{
 				std::move(includeFilename),
-				std::distance(sv.ss, sv.c_str()),
+				std::distance(sv.ss, sv.sv().data()),
 				// NOTE: include length also contains trailing new line symbols,
 				// so preprocessed file might be not exactly what you expect (some symbols might be lost)
-				static_cast<int>(sv.length())
+				static_cast<int>(sv.sv().size())
 			};
 
 		};
 
 		parser["Word"] = [](const peg::SemanticValues& sv)
 		{
-			return sv.token();
+			return sv.token_to_string();
 		};
 	}
 
@@ -186,7 +186,7 @@ namespace
 		// Load grammar
 		const std::string passGrammar = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_PASS_FILENAME));
 
-		parser.log = [](size_t line, size_t col, const std::string& msg)
+		parser.log = [](size_t line, size_t col, const std::string& msg, const std::string& rule)
 		{
 			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
 
@@ -199,25 +199,25 @@ namespace
 		// Set up callbacks
 
 		// --- Top level pass tokens
-		parser["PassInputIdent"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["PassInputIdent"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			parseCtx.passSources.back().input = static_cast<Parsing::PassInputType>(sv.choice());
 		};
 
-		parser["PassVertAttr"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["PassVertAttr"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
-			parseCtx.passSources.back().inputVertAttr = peg::any_cast<std::string>(sv[0]);
+			parseCtx.passSources.back().inputVertAttr = std::any_cast<std::string>(sv[0]);
 		};
 
-		parser["PassVertAttrSlots"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["PassVertAttrSlots"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			parseCtx.passSources.back().vertAttrSlots = std::move(std::any_cast<std::vector<std::tuple<unsigned int, int>>>(sv[0]));
 		};
 
-		parser["PassThreadGroups"] = [](const peg::SemanticValues& sv, peg::any& ctx) 
+		parser["PassThreadGroups"] = [](const peg::SemanticValues& sv, std::any& ctx) 
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass =  parseCtx.passSources.back();
@@ -233,7 +233,7 @@ namespace
 		};
 
 		// --- State
-		parser["ColorTargetSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["ColorTargetSt"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 
@@ -246,7 +246,7 @@ namespace
 			// Fill up names
 			for (int i = 0; i < sv.size(); ++i) 
 			{
-				colorTargetNames.push_back(peg::any_cast<std::string>(sv[i]));
+				colorTargetNames.push_back(std::any_cast<std::string>(sv[i]));
 			}
 
 			// Fill up formats
@@ -283,13 +283,13 @@ namespace
 			}
 		};
 
-		parser["DepthTargetSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["DepthTargetSt"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
-			parseCtx.passSources.back().depthTargetName = peg::any_cast<std::string>(sv[0]);
+			parseCtx.passSources.back().depthTargetName = std::any_cast<std::string>(sv[0]);
 		};
 
-		parser["ViewportSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["ViewportSt"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
@@ -300,87 +300,87 @@ namespace
 			Renderer::Inst().GetDrawAreaSize(&width, &height);
 
 			currentPass.viewport.TopLeftX = sv[0].type() == typeid(int) ?
-				peg::any_cast<int>(sv[0]) : peg::any_cast<float>(sv[0]) * width;
+				std::any_cast<int>(sv[0]) : std::any_cast<float>(sv[0]) * width;
 
 			currentPass.viewport.TopLeftY = sv[1].type() == typeid(int) ?
-				peg::any_cast<int>(sv[1]) : peg::any_cast<float>(sv[1]) * height;
+				std::any_cast<int>(sv[1]) : std::any_cast<float>(sv[1]) * height;
 
 			currentPass.viewport.Width = sv[2].type() == typeid(int) ?
-				peg::any_cast<int>(sv[2]) : peg::any_cast<float>(sv[2]) * width;
+				std::any_cast<int>(sv[2]) : std::any_cast<float>(sv[2]) * width;
 
 			currentPass.viewport.Height = sv[3].type() == typeid(int) ?
-				peg::any_cast<int>(sv[3]) : peg::any_cast<float>(sv[3]) * height;
+				std::any_cast<int>(sv[3]) : std::any_cast<float>(sv[3]) * height;
 
 			DX_ASSERT(currentPass.viewport.TopLeftX < currentPass.viewport.Width  && "Weird viewport X param, are you sure?");
 			DX_ASSERT(currentPass.viewport.TopLeftY < currentPass.viewport.Height  && "Weird viewport Y param, are you sure?");
 		};
 
-		parser["BlendEnabledSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["BlendEnabledSt"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.rasterPsoDesc.BlendState.RenderTarget[0].BlendEnable = peg::any_cast<bool>(sv[0]);
+			currentPass.rasterPsoDesc.BlendState.RenderTarget[0].BlendEnable = std::any_cast<bool>(sv[0]);
 		};
 
-		parser["SrcBlendSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["SrcBlendSt"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.rasterPsoDesc.BlendState.RenderTarget[0].SrcBlend = peg::any_cast<D3D12_BLEND>(sv[0]);
+			currentPass.rasterPsoDesc.BlendState.RenderTarget[0].SrcBlend = std::any_cast<D3D12_BLEND>(sv[0]);
 		};
 
-		parser["DestBlendSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["DestBlendSt"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.rasterPsoDesc.BlendState.RenderTarget[0].DestBlend = peg::any_cast<D3D12_BLEND>(sv[0]);
+			currentPass.rasterPsoDesc.BlendState.RenderTarget[0].DestBlend = std::any_cast<D3D12_BLEND>(sv[0]);
 		};
 
-		parser["TopologySt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["TopologySt"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			auto topology = peg::any_cast<std::tuple<D3D_PRIMITIVE_TOPOLOGY, D3D12_PRIMITIVE_TOPOLOGY_TYPE>>(sv[0]);
+			auto topology = std::any_cast<std::tuple<D3D_PRIMITIVE_TOPOLOGY, D3D12_PRIMITIVE_TOPOLOGY_TYPE>>(sv[0]);
 
 			currentPass.primitiveTopology = std::get<D3D_PRIMITIVE_TOPOLOGY>(topology);
 			currentPass.rasterPsoDesc.PrimitiveTopologyType = std::get<D3D12_PRIMITIVE_TOPOLOGY_TYPE>(topology);
 		};
 
-		parser["DepthWriteMaskSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["DepthWriteMaskSt"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.rasterPsoDesc.DepthStencilState.DepthWriteMask = peg::any_cast<bool>(sv[0]) ?
+			currentPass.rasterPsoDesc.DepthStencilState.DepthWriteMask = std::any_cast<bool>(sv[0]) ?
 				D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
 		};
 
-		parser["DepthBiasSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["DepthBiasSt"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.rasterPsoDesc.RasterizerState.DepthBias = peg::any_cast<int>(sv[0]);
+			currentPass.rasterPsoDesc.RasterizerState.DepthBias = std::any_cast<int>(sv[0]);
 		};
 
-		parser["DepthBiasSlopeSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["DepthBiasSlopeSt"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.rasterPsoDesc.RasterizerState.SlopeScaledDepthBias = peg::any_cast<float>(sv[0]);
+			currentPass.rasterPsoDesc.RasterizerState.SlopeScaledDepthBias = std::any_cast<float>(sv[0]);
 		};
 
-		parser["DepthBiasClampSt"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["DepthBiasClampSt"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
-			currentPass.rasterPsoDesc.RasterizerState.DepthBiasClamp = peg::any_cast<float>(sv[0]);
+			currentPass.rasterPsoDesc.RasterizerState.DepthBiasClamp = std::any_cast<float>(sv[0]);
 		};
 
 		parser["BlendStValues"] = [](const peg::SemanticValues& sv)
@@ -427,7 +427,7 @@ namespace
 
 			for (int i = 0; i < sv.size(); ++i)
 			{
-				externalList.push_back(peg::any_cast<std::string>(sv[i]));
+				externalList.push_back(std::any_cast<std::string>(sv[i]));
 			}
 
 			return externalList;
@@ -435,19 +435,19 @@ namespace
 
 		parser["ShaderSource"] = [](const peg::SemanticValues& sv)
 		{
-			return sv.token();
+			return sv.token_to_string();
 		};
 
-		parser["Shader"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["Shader"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
 
 			PassParametersSource::ShaderSource& shaderSource = currentPass.shaders.emplace_back(PassParametersSource::ShaderSource());
 
-			shaderSource.type = peg::any_cast<PassParametersSource::ShaderType>(sv[0]);
-			shaderSource.externals = std::move(peg::any_cast<std::vector<std::string>>(sv[1]));
-			shaderSource.source = std::move(peg::any_cast<std::string>(sv[2]));
+			shaderSource.type = std::any_cast<PassParametersSource::ShaderType>(sv[0]);
+			shaderSource.externals = std::move(std::any_cast<std::vector<std::string>>(sv[1]));
+			shaderSource.source = std::move(std::any_cast<std::string>(sv[2]));
 		};
 
 		parser["ShaderType"] = [](const peg::SemanticValues& sv)
@@ -459,38 +459,38 @@ namespace
 
 		parser["ShaderTypeDecl"] = [](const peg::SemanticValues& sv)
 		{
-			return peg::any_cast<PassParametersSource::ShaderType>(sv[0]);
+			return std::any_cast<PassParametersSource::ShaderType>(sv[0]);
 		};
 
 		// --- Root Signature
-		parser["RSig"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["RSig"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			Parsing::RootSignature& rootSig = *parseCtx.passSources.back().rootSignature;
 
-			rootSig.rawView = sv.token();
+			rootSig.rawView = sv.token_to_string();
 			// Later root signature is inserted into shader source code. It must be in one line
 			// otherwise shader wouldn't compile
 			rootSig.rawView.erase(std::remove(rootSig.rawView.begin(), rootSig.rawView.end(), '\n'), rootSig.rawView.end());
 
 			std::for_each(sv.begin() + 1, sv.end(),
-				[&rootSig](const peg::any& token) 
+				[&rootSig](const std::any& token) 
 			{
 				if (token.type() == typeid(Parsing::RootParam_ConstBuffView))
 				{
-					Parsing::RootParam_ConstBuffView cbv = peg::any_cast<Parsing::RootParam_ConstBuffView>(token);
+					Parsing::RootParam_ConstBuffView cbv = std::any_cast<Parsing::RootParam_ConstBuffView>(token);
 					DX_ASSERT(cbv.num == 1 && "CBV Inline descriptor can't have more that 1 num");
 
 					rootSig.params.push_back(std::move(cbv));
 				}
 				else if (token.type() == typeid(Parsing::RootParam_DescTable))
 				{
-					Parsing::RootParam_DescTable descTable = peg::any_cast<Parsing::RootParam_DescTable>(token);
+					Parsing::RootParam_DescTable descTable = std::any_cast<Parsing::RootParam_DescTable>(token);
 					rootSig.params.push_back(std::move(descTable));
 				}
 				else if (token.type() == typeid(Parsing::RootParam_ShaderResourceView))
 				{
-					Parsing::RootParam_ShaderResourceView srv = peg::any_cast<Parsing::RootParam_ShaderResourceView>(token);
+					Parsing::RootParam_ShaderResourceView srv = std::any_cast<Parsing::RootParam_ShaderResourceView>(token);
 					DX_ASSERT(srv.num == 1 && "SRV Inline descriptor can't have more that 1 num");
 
 					rootSig.params.push_back(std::move(srv));
@@ -522,23 +522,23 @@ namespace
 			Parsing::RootParam_DescTable descTable;
 
 			std::for_each(sv.begin(), sv.end(),
-				[&descTable](const peg::any& token)
+				[&descTable](const std::any& token)
 			{
 				if (token.type() == typeid(Parsing::RootParam_ShaderResourceView))
 				{
-					descTable.entities.push_back(peg::any_cast<Parsing::RootParam_ShaderResourceView>(token));
+					descTable.entities.push_back(std::any_cast<Parsing::RootParam_ShaderResourceView>(token));
 				}
 				else if (token.type() == typeid(Parsing::RootParam_ConstBuffView))
 				{
-					descTable.entities.push_back(peg::any_cast<Parsing::RootParam_ConstBuffView>(token));
+					descTable.entities.push_back(std::any_cast<Parsing::RootParam_ConstBuffView>(token));
 				}
 				else if (token.type() == typeid(Parsing::RootParam_SamplerView))
 				{
-					descTable.entities.push_back(peg::any_cast<Parsing::RootParam_SamplerView>(token));
+					descTable.entities.push_back(std::any_cast<Parsing::RootParam_SamplerView>(token));
 				}
 				else if (token.type() == typeid(Parsing::RootParam_UAView))
 				{
-					descTable.entities.push_back(peg::any_cast<Parsing::RootParam_UAView>(token));
+					descTable.entities.push_back(std::any_cast<Parsing::RootParam_UAView>(token));
 				}
 				else if (token.type() == typeid(std::tuple<Parsing::Option, int>))
 				{
@@ -559,7 +559,7 @@ namespace
 
 			for (int i = 1 ; i < sv.size(); ++i)
 			{
-				auto option = peg::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
+				auto option = std::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
 
 				switch (std::get<Parsing::Option>(option))
 				{
@@ -575,7 +575,7 @@ namespace
 			}
 
 			return Parsing::RootParam_ConstBuffView{
-				peg::any_cast<int>(sv[0]),
+				std::any_cast<int>(sv[0]),
 				num
 			};
 		};
@@ -586,7 +586,7 @@ namespace
 
 			for (int i = 1; i < sv.size(); ++i)
 			{
-				auto option = peg::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
+				auto option = std::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
 
 				switch (std::get<Parsing::Option>(option))
 				{
@@ -602,7 +602,7 @@ namespace
 			}
 
 			return Parsing::RootParam_ShaderResourceView{
-				peg::any_cast<int>(sv[0]),
+				std::any_cast<int>(sv[0]),
 				num
 			};
 		};
@@ -613,7 +613,7 @@ namespace
 
 			for (int i = 1; i < sv.size(); ++i)
 			{
-				auto option = peg::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
+				auto option = std::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
 
 				switch (std::get<Parsing::Option>(option))
 				{
@@ -629,7 +629,7 @@ namespace
 			}
 
 			return Parsing::RootParam_UAView{
-				peg::any_cast<int>(sv[0]),
+				std::any_cast<int>(sv[0]),
 				num
 			};
 		};
@@ -637,8 +637,8 @@ namespace
 		parser["RSigDescTableSampler"] = [](const peg::SemanticValues& sv)
 		{
 			return Parsing::RootParam_SamplerView{
-				peg::any_cast<int>(sv[0]),
-				sv.size() == 1 ? 1 :  peg::any_cast<int>(sv[1])
+				std::any_cast<int>(sv[0]),
+				sv.size() == 1 ? 1 :  std::any_cast<int>(sv[1])
 			};
 		};
 
@@ -649,7 +649,7 @@ namespace
 			case 0:
 				return std::make_tuple(Parsing::Option::Visibility, 0);
 			case 1:
-				return std::make_tuple(Parsing::Option::NumDecl, peg::any_cast<int>(sv[0]));
+				return std::make_tuple(Parsing::Option::NumDecl, std::any_cast<int>(sv[0]));
 			default:
 				DX_ASSERT(false && "Unknown Root signature declaration option");
 				break;
@@ -660,42 +660,42 @@ namespace
 
 		parser["RSDescNumDecl"] = [](const peg::SemanticValues& sv)
 		{
-			return peg::any_cast<int>(sv[0]);
+			return std::any_cast<int>(sv[0]);
 		};
 
 		// --- PrePostPass
-		parser["PrePass"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["PrePass"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			std::vector<PassParametersSource::FixedFunction_t>& prePass = parseCtx.passSources.back().prePassFuncs;
 
 			for (int i = 0; i < sv.size(); ++i)
 			{
-				prePass.push_back(peg::any_cast<PassParametersSource::FixedFunction_t>(sv[i]));
+				prePass.push_back(std::any_cast<PassParametersSource::FixedFunction_t>(sv[i]));
 			}
 		};
 
-		parser["PostPass"] = [](const peg::SemanticValues& sv, peg::any& ctx) 
+		parser["PostPass"] = [](const peg::SemanticValues& sv, std::any& ctx) 
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			std::vector<PassParametersSource::FixedFunction_t>& postPass = parseCtx.passSources.back().postPassFuncs;
 
 			for (int i = 0; i < sv.size(); ++i)
 			{
-				postPass.push_back(peg::any_cast<PassParametersSource::FixedFunction_t>(sv[i]));
+				postPass.push_back(std::any_cast<PassParametersSource::FixedFunction_t>(sv[i]));
 			}
 		};
 
 		parser["FixedFunction"] = [](const peg::SemanticValues& sv)
 		{
-			return peg::any_cast<PassParametersSource::FixedFunction_t>(sv[0]);
+			return std::any_cast<PassParametersSource::FixedFunction_t>(sv[0]);
 		};
 
 		parser["FixedFunctionClearColor"] = [](const peg::SemanticValues& sv)
 		{
 			return PassParametersSource::FixedFunction_t{
 				PassParametersSource::FixedFunctionClearColor{
-					peg::any_cast<XMFLOAT4>(sv[0]),
+					std::any_cast<XMFLOAT4>(sv[0]),
 			} };
 		};
 
@@ -703,37 +703,37 @@ namespace
 		{
 			return PassParametersSource::FixedFunction_t{
 				PassParametersSource::FixedFunctionClearDepth{
-					peg::any_cast<float>(sv[0]),
+					std::any_cast<float>(sv[0]),
 			} };
 		};
 
 
 		// --- ShaderDefs
-		parser["Function"] = [](const peg::SemanticValues& sv, peg::any& ctx) 
+		parser["Function"] = [](const peg::SemanticValues& sv, std::any& ctx) 
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 
 			parseCtx.passSources.back().functions.emplace_back(Parsing::Function{
-				peg::any_cast<std::string>(sv[1]),
-				sv.str()
+				std::any_cast<std::string>(sv[1]),
+				std::string(sv.sv())
 				});
 		};
 
-		parser["VertAttr"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["VertAttr"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			
 			parseCtx.passSources.back().vertAttr.emplace_back(Parsing::VertAttr{
-				peg::any_cast<std::string>(sv[0]),
-				std::move(peg::any_cast<std::vector<Parsing::VertAttrField>>(sv[1])),
-				sv.str()
+				std::any_cast<std::string>(sv[0]),
+				std::move(std::any_cast<std::vector<Parsing::VertAttrField>>(sv[1])),
+				std::string(sv.sv())
 				});
 		};
 
-		parser["Resource"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["Resource"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			auto resourceAttr =
-				peg::any_cast<std::tuple<
+				std::any_cast<std::tuple<
 				Parsing::ResourceScope,
 				Parsing::ResourceBindFrequency,
 				std::optional<std::string>>>(sv[0]);
@@ -783,71 +783,71 @@ namespace
 		parser["StructuredBuff"] = [](const peg::SemanticValues& sv) 
 		{
 			return Parsing::Resource_StructuredBuffer{
-				peg::any_cast<std::string>(sv[1]),
+				std::any_cast<std::string>(sv[1]),
 				std::nullopt,
 				std::nullopt,
 				std::nullopt,
-				peg::any_cast<int>(sv[2]),
-				sv.str(),
-				peg::any_cast<Parsing::StructBufferDataType_t>(sv[0])
+				std::any_cast<int>(sv[2]),
+				std::string(sv.sv()),
+				std::any_cast<Parsing::StructBufferDataType_t>(sv[0])
 			};
 		};
 
 		parser["ConstBuff"] = [](const peg::SemanticValues& sv)
 		{
 			return Parsing::Resource_ConstBuff{
-				peg::any_cast<std::string>(sv[0]),
+				std::any_cast<std::string>(sv[0]),
 				std::nullopt,
 				std::nullopt,
 				std::nullopt,
-				peg::any_cast<int>(sv[1]),
-				sv.str(),
-				peg::any_cast<std::vector<RootArg::ConstBuffField>>(sv[2])};
+				std::any_cast<int>(sv[1]),
+				std::string(sv.sv()),
+				std::any_cast<std::vector<RootArg::ConstBuffField>>(sv[2])};
 		};
 
 		parser["Texture"] = [](const peg::SemanticValues& sv)
 		{
 			return Parsing::Resource_Texture{
-				peg::any_cast<std::string>(sv[0]),
+				std::any_cast<std::string>(sv[0]),
 				std::nullopt,
 				std::nullopt,
 				std::nullopt,
-				peg::any_cast<int>(sv[1]),
-				sv.str()};
+				std::any_cast<int>(sv[1]),
+				std::string(sv.sv())};
 		};
 
 		parser["RWTexture"] = [](const peg::SemanticValues& sv)
 		{
 			return Parsing::Resource_RWTexture{
-				peg::any_cast<std::string>(sv[1]),
+				std::any_cast<std::string>(sv[1]),
 				std::nullopt,
 				std::nullopt,
 				std::nullopt,
-				peg::any_cast<int>(sv[2]),
-				sv.str() };
+				std::any_cast<int>(sv[2]),
+				std::string(sv.sv()) };
 		};
 
 		parser["Sampler"] = [](const peg::SemanticValues& sv)
 		{
 			return Parsing::Resource_Sampler{
-				peg::any_cast<std::string>(sv[0]),
+				std::any_cast<std::string>(sv[0]),
 				std::nullopt,
 				std::nullopt,
 				std::nullopt,
-				peg::any_cast<int>(sv[1]),
-				sv.str()};
+				std::any_cast<int>(sv[1]),
+				std::string(sv.sv())};
 		};
 
 		parser["ResourceAttr"] = [](const peg::SemanticValues& sv)
 		{
 			auto attr = std::make_tuple(
-				peg::any_cast<Parsing::ResourceScope>(sv[0]),
-				peg::any_cast<Parsing::ResourceBindFrequency>(sv[1]),
+				std::any_cast<Parsing::ResourceScope>(sv[0]),
+				std::any_cast<Parsing::ResourceBindFrequency>(sv[1]),
 				std::optional<std::string>(std::nullopt));
 
 			if (sv.size() > 2)
 			{
-				std::get<2>(attr) = peg::any_cast<std::string>(sv[2]);
+				std::get<2>(attr) = std::any_cast<std::string>(sv[2]);
 			}
 
 			return attr;
@@ -885,9 +885,9 @@ namespace
 			std::vector<RootArg::ConstBuffField> constBufferContent;
 
 			std::transform(sv.begin(), sv.end(), std::back_inserter(constBufferContent),
-				[](const peg::any& token)
+				[](const std::any& token)
 			{
-				const std::tuple<Parsing::DataType, std::string>& dataField = peg::any_cast<std::tuple<Parsing::DataType, std::string>>(token);
+				const std::tuple<Parsing::DataType, std::string>& dataField = std::any_cast<std::tuple<Parsing::DataType, std::string>>(token);
 
 				return RootArg::ConstBuffField{
 					Parsing::GetParseDataTypeSize(std::get<Parsing::DataType>(dataField)),
@@ -905,7 +905,7 @@ namespace
 
 		parser["ConstBuffField"] = [](const peg::SemanticValues& sv)
 		{
-			return std::make_tuple(peg::any_cast<Parsing::DataType>(sv[0]), peg::any_cast<std::string>(sv[1]));
+			return std::make_tuple(std::any_cast<Parsing::DataType>(sv[0]), std::any_cast<std::string>(sv[1]));
 		};
 
 		parser["VertAttrContent"] = [](const peg::SemanticValues& sv)
@@ -913,19 +913,19 @@ namespace
 			std::vector<Parsing::VertAttrField> content;
 
 			std::transform(sv.begin(), sv.end(), std::back_inserter(content),
-				[](const peg::any& field) { return std::any_cast<Parsing::VertAttrField>(field); });
+				[](const std::any& field) { return std::any_cast<Parsing::VertAttrField>(field); });
 
 			return content;
 		};
 
 		parser["VertAttrField"] = [](const peg::SemanticValues& sv) 
 		{
-			std::string name = peg::any_cast<std::string>(sv[1]);
+			std::string name = std::any_cast<std::string>(sv[1]);
 			std::tuple<std::string, unsigned int> semanticInfo = 
-				peg::any_cast<std::tuple<std::string, unsigned int>>(sv[2]);
+				std::any_cast<std::tuple<std::string, unsigned int>>(sv[2]);
 
 			return Parsing::VertAttrField{
-				peg::any_cast<Parsing::DataType>(sv[0]),
+				std::any_cast<Parsing::DataType>(sv[0]),
 				HASH(name.c_str()),
 				std::get<std::string>(semanticInfo),
 				std::get<unsigned int>(semanticInfo),
@@ -939,7 +939,7 @@ namespace
 
 			for (int i = 0; i < sv.size(); ++i)
 			{
-				result.push_back(peg::any_cast<std::tuple<unsigned int, int>>(sv[i]));
+				result.push_back(std::any_cast<std::tuple<unsigned int, int>>(sv[i]));
 			}
 
 			return result;
@@ -947,12 +947,12 @@ namespace
 
 		parser["VertAttrFieldSlot"] = [](const peg::SemanticValues& sv) 
 		{
-			return std::make_tuple(HASH(peg::any_cast<std::string>(sv[0]).c_str()), peg::any_cast<int>(sv[1]));
+			return std::make_tuple(HASH(std::any_cast<std::string>(sv[0]).c_str()), std::any_cast<int>(sv[1]));
 		};
 
 		// --- Misc Defs
 
-		parser["MiscDef"] = [](const peg::SemanticValues& sv, peg::any& ctx) 
+		parser["MiscDef"] = [](const peg::SemanticValues& sv, std::any& ctx) 
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
 			PassParametersSource& currentPass = parseCtx.passSources.back();
@@ -970,9 +970,9 @@ namespace
 		parser["Struct"] = [](const peg::SemanticValues& sv)
 		{
 			return Parsing::MiscDef_Struct{
-				peg::any_cast<std::string>(sv[0]),
-				peg::any_cast<std::vector<Parsing::StructField>>(sv[1]),
-				sv.str()
+				std::any_cast<std::string>(sv[0]),
+				std::any_cast<std::vector<Parsing::StructField>>(sv[1]),
+				std::string(sv.sv())
 			};
 		};
 
@@ -981,17 +981,17 @@ namespace
 			std::vector<Parsing::StructField> content;
 
 			std::transform(sv.begin(), sv.end(), std::back_inserter(content),
-				[](const peg::any& field) { return std::any_cast<Parsing::StructField>(field); });
+				[](const std::any& field) { return std::any_cast<Parsing::StructField>(field); });
 
 			return content;
 		};
 
 		parser["StructField"] = [](const peg::SemanticValues& sv) 
 		{
-			std::string name = peg::any_cast<std::string>(sv[1]);
+			std::string name = std::any_cast<std::string>(sv[1]);
 
 			return Parsing::StructField{
-				peg::any_cast<Parsing::DataType>(sv[0]),
+				std::any_cast<Parsing::DataType>(sv[0]),
 				HASH(name.c_str()),
 				std::move(name)
 			};
@@ -1004,24 +1004,24 @@ namespace
 
 		parser["ResourceFieldSemantic"] = [](const peg::SemanticValues& sv)
 		{
-			return std::make_tuple(peg::any_cast<std::string>(sv[0]), 
-				sv.size() > 1 ? static_cast<unsigned int>(peg::any_cast<int>(sv[1])) : 0);
+			return std::make_tuple(std::any_cast<std::string>(sv[0]), 
+				sv.size() > 1 ? static_cast<unsigned int>(std::any_cast<int>(sv[1])) : 0);
 		};
 
 		// --- Tokens
 		parser["Ident"] = [](const peg::SemanticValues& sv)
 		{
-			return sv.token();
+			return sv.token_to_string();
 		};
 
 		parser["RegisterDecl"] = [](const peg::SemanticValues& sv)
 		{
-			return peg::any_cast<int>(sv[0]);
+			return std::any_cast<int>(sv[0]);
 		};
 
 		parser["RegisterId"] = [](const peg::SemanticValues& sv) 
 		{
-			return peg::any_cast<int>(sv[0]);
+			return std::any_cast<int>(sv[0]);
 		};
 
 		// -- Types
@@ -1032,27 +1032,27 @@ namespace
 
 		parser["Float"] = [](const peg::SemanticValues& sv)
 		{
-			return stof(sv.token());
+			return stof(sv.token_to_string());
 		};
 
 		parser["Int"] = [](const peg::SemanticValues& sv)
 		{
-			return stoi(sv.token());
+			return stoi(sv.token_to_string());
 		};
 
 		parser["Word"] = [](const peg::SemanticValues& sv)
 		{
-			return sv.token();
+			return sv.token_to_string();
 		};
 
 		parser["Float4"] = [](const peg::SemanticValues& sv)
 		{
 			return XMFLOAT4
 			{
-				peg::any_cast<float>(sv[0]),
-				peg::any_cast<float>(sv[1]),
-				peg::any_cast<float>(sv[2]),
-				peg::any_cast<float>(sv[3]),
+				std::any_cast<float>(sv[0]),
+				std::any_cast<float>(sv[1]),
+				std::any_cast<float>(sv[2]),
+				std::any_cast<float>(sv[3]),
 			};
 		};
 	};
@@ -1062,7 +1062,7 @@ namespace
 		// Load grammar
 		const std::string grammar = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_FRAMEGRAPH_FILENAME));
 
-		parser.log = [](size_t line, size_t col, const std::string& msg)
+		parser.log = [](size_t line, size_t col, const std::string& msg, const std::string& rule)
 		{
 			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
 
@@ -1072,47 +1072,47 @@ namespace
 		const bool loadGrammarResult = parser.load_grammar(grammar.c_str());
 		DX_ASSERT(loadGrammarResult && "Can't load FrameGraph grammar");
 
-		parser["RenderStep"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["RenderStep"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::FrameGraphSourceContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::FrameGraphSourceContext>&>(ctx);
 			
 			std::for_each(sv.begin(), sv.end(),
-				[&parseCtx](const peg::any& pass) 
+				[&parseCtx](const std::any& pass) 
 			{
-				parseCtx.steps.push_back(peg::any_cast<FrameGraphSource::Step_t>(pass));
+				parseCtx.steps.push_back(std::any_cast<FrameGraphSource::Step_t>(pass));
 			});
 		};
 
 		parser["Pass"] = [](const peg::SemanticValues& sv)
 		{
 			return FrameGraphSource::Step_t{ 
-				FrameGraphSource::Pass{ peg::any_cast<std::string>(sv[0]) } };
+				FrameGraphSource::Pass{ std::any_cast<std::string>(sv[0]) } };
 		};
 
 		parser["FixedFunctionCopy"] = [](const peg::SemanticValues& sv)
 		{
 			return FrameGraphSource::Step_t{
 				FrameGraphSource::FixedFunctionCopy{
-					peg::any_cast<std::string>(sv[0]),
-					peg::any_cast<std::string>(sv[1])
+					std::any_cast<std::string>(sv[0]),
+					std::any_cast<std::string>(sv[1])
 			} };
 		};
 
 		// --- Resource Declaration
-		parser["ResourceDecls"] = [](const peg::SemanticValues& sv, peg::any& ctx) 
+		parser["ResourceDecls"] = [](const peg::SemanticValues& sv, std::any& ctx) 
 		{
 			Parsing::FrameGraphSourceContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::FrameGraphSourceContext>&>(ctx);
 
 			std::for_each(sv.begin(), sv.end(),
-				[&parseCtx](const peg::any& resource)
+				[&parseCtx](const std::any& resource)
 			{
-				parseCtx.resources.push_back(std::move(peg::any_cast<FrameGraphSource::FrameGraphResourceDecl>(resource)));
+				parseCtx.resources.push_back(std::move(std::any_cast<FrameGraphSource::FrameGraphResourceDecl>(resource)));
 			});
 		};
 
 		parser["ResourceDecl"] = [](const peg::SemanticValues& sv)
 		{
-			auto dimensions = peg::any_cast<std::array<int,3>>(sv[2]);
+			auto dimensions = std::any_cast<std::array<int,3>>(sv[2]);
 
 			D3D12_RESOURCE_DESC desc = {};
 			desc.MipLevels = 1;
@@ -1124,9 +1124,9 @@ namespace
 			desc.Height = dimensions[1];
 			desc.DepthOrArraySize = dimensions[2];
 			
-			desc.Dimension = peg::any_cast<D3D12_RESOURCE_DIMENSION>(sv[1]);
-			desc.Format = peg::any_cast<DXGI_FORMAT>(sv[3]);
-			desc.Flags = peg::any_cast<D3D12_RESOURCE_FLAGS>(sv[4]);
+			desc.Dimension = std::any_cast<D3D12_RESOURCE_DIMENSION>(sv[1]);
+			desc.Format = std::any_cast<DXGI_FORMAT>(sv[3]);
+			desc.Flags = std::any_cast<D3D12_RESOURCE_FLAGS>(sv[4]);
 			
 			if (desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) 
 			{
@@ -1138,15 +1138,15 @@ namespace
 			std::optional<XMFLOAT4> clearValue;
 			if (sv.size() == 6)
 			{
-				clearValue = peg::any_cast<XMFLOAT4>(sv[5]);
+				clearValue = std::any_cast<XMFLOAT4>(sv[5]);
 			}
 
-			return FrameGraphSource::FrameGraphResourceDecl{ peg::any_cast<std::string>(sv[0]), desc, clearValue };
+			return FrameGraphSource::FrameGraphResourceDecl{ std::any_cast<std::string>(sv[0]), desc, clearValue };
 		};
 
 		parser["ResourceDeclType"] = [](const peg::SemanticValues& sv) 
 		{
-			switch (HASH(peg::any_cast<std::string>(sv[0]).c_str())) 
+			switch (HASH(std::any_cast<std::string>(sv[0]).c_str())) 
 			{
 			case HASH("Texture2D"):
 				return D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -1163,16 +1163,16 @@ namespace
 		{
 			std::array<int, 3> dimensions;
 
-			dimensions[0] = peg::any_cast<int>(sv[0]);
-			dimensions[1] = sv.size() > 1 ? peg::any_cast<int>(sv[1]) : 1;
-			dimensions[2] = sv.size() > 2 ? peg::any_cast<int>(sv[2]) : 1;
+			dimensions[0] = std::any_cast<int>(sv[0]);
+			dimensions[1] = sv.size() > 1 ? std::any_cast<int>(sv[1]) : 1;
+			dimensions[2] = sv.size() > 2 ? std::any_cast<int>(sv[2]) : 1;
 
 			return dimensions;
 		};
 
 		parser["ResourceDeclFormat"] = [](const peg::SemanticValues& sv) 
 		{
-			switch (HASH(peg::any_cast<std::string>(sv[0]).c_str()))
+			switch (HASH(std::any_cast<std::string>(sv[0]).c_str()))
 			{
 			case HASH("Unknown"):
 				return DXGI_FORMAT_UNKNOWN;
@@ -1184,6 +1184,8 @@ namespace
 				return DXGI_FORMAT_R32G32B32_FLOAT;
 			case HASH("R32G32B32A32_FLOAT"):
 				return DXGI_FORMAT_R32G32B32A32_FLOAT;
+			case HASH("R16_UINT"):
+				return DXGI_FORMAT_R16_UINT;
 			default:
 				DX_ASSERT(false && "Invalid value of ResourceDeclFormat");
 				break;
@@ -1198,7 +1200,7 @@ namespace
 
 			for (int i = 0; i < sv.size(); ++i)
 			{
-				switch (HASH(peg::any_cast<std::string>(sv[i]).c_str()))
+				switch (HASH(std::any_cast<std::string>(sv[i]).c_str()))
 				{
 				case HASH("NONE"):
 					flags |= D3D12_RESOURCE_FLAG_NONE;
@@ -1232,7 +1234,7 @@ namespace
 
 			for (int i = 0; i < sv.size(); ++i)
 			{
-				(&clearValue.x)[i] = peg::any_cast<float>(sv[i]);
+				(&clearValue.x)[i] = std::any_cast<float>(sv[i]);
 			}
 
 			return clearValue;
@@ -1242,18 +1244,18 @@ namespace
 		// --- Tokens
 		parser["Ident"] = [](const peg::SemanticValues& sv)
 		{
-			return sv.token();
+			return sv.token_to_string();
 		};
 
 		// --- Types
 		parser["Int"] = [](const peg::SemanticValues& sv)
 		{
-			return stoi(sv.token());
+			return stoi(sv.token_to_string());
 		};
 
 		parser["Float"] = [](const peg::SemanticValues& sv)
 		{
-			return stof(sv.token());
+			return stof(sv.token_to_string());
 		};
 
 	};
@@ -1935,7 +1937,7 @@ std::shared_ptr<Parsing::PreprocessorContext> FrameGraphBuilder::ParsePreprocess
 
 		Logs::Logf(Logs::Category::Parser, "Preprocess pass file, start: %s", passFile.first.c_str());
 
-		peg::any ctx = context;
+		std::any ctx = context;
 
 		parser.parse(passFile.second.c_str(), ctx);
 	}
@@ -1958,7 +1960,7 @@ std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFile
 
 		Logs::Logf(Logs::Category::Parser, "Parse pass file, start: %s", context->passSources.back().name.c_str());
 
-		peg::any ctx = context;
+		std::any ctx = context;
 
 		parser.parse(passFile.second.c_str(), ctx);
 	}
@@ -1972,7 +1974,7 @@ std::shared_ptr<Parsing::FrameGraphSourceContext> FrameGraphBuilder::ParseFrameG
 	InitFrameGraphParser(parser);
 
 	std::shared_ptr<Parsing::FrameGraphSourceContext> context = std::make_shared<Parsing::FrameGraphSourceContext>();
-	peg::any ctx = context;
+	std::any ctx = context;
 
 	Logs::Log(Logs::Category::Parser, "Parse frame graph file, start");
 

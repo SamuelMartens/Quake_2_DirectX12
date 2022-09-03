@@ -170,7 +170,7 @@ namespace
 		// Load grammar
 		const std::string grammar = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_LIGHT_BAKING_RESULT_FILENAME));
 
-		parser.log = [](size_t line, size_t col, const std::string& msg)
+		parser.log = [](size_t line, size_t col, const std::string& msg, const std::string& rule)
 		{
 			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
 
@@ -180,44 +180,44 @@ namespace
 		const bool loadGrammarResult = parser.load_grammar(grammar.c_str());
 		DX_ASSERT(loadGrammarResult && "Can't load Light Baking grammar");
 
-		parser["LightBakingData"] = [](const peg::SemanticValues& sv, peg::any& ctx)
+		parser["LightBakingData"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
-			Parsing::LightBakingContext& parseCtx = *peg::any_cast<Parsing::LightBakingContext*>(ctx);
+			Parsing::LightBakingContext& parseCtx = *std::any_cast<Parsing::LightBakingContext*>(ctx);
 			BakingData& bakingRes = parseCtx.bakingResult;
 
-			bakingRes.bakingMode = peg::any_cast<LightBakingMode>(sv[0]);
+			bakingRes.bakingMode = std::any_cast<LightBakingMode>(sv[0]);
 
 			if (bakingRes.bakingMode == LightBakingMode::AllClusters)
 			{
-				bakingRes.clusterFirstProbeIndices = peg::any_cast<std::vector<int>>(sv[1]);
+				bakingRes.clusterFirstProbeIndices = std::any_cast<std::vector<int>>(sv[1]);
 			}
 			else if (bakingRes.bakingMode == LightBakingMode::CurrentPositionCluster)
 			{
-				bakingRes.bakingCluster = peg::any_cast<int>(sv[1]);
+				bakingRes.bakingCluster = std::any_cast<int>(sv[1]);
 			}
 			else
 			{
 				DX_ASSERT(false && "Undefined bake mode");
 			}
 
-			bakingRes.probes = peg::any_cast<std::vector<DiffuseProbe>>(sv[2]);
+			bakingRes.probes = std::any_cast<std::vector<DiffuseProbe>>(sv[2]);
 		};
 
 		// --- Baking Mode
 		parser["BakingModeSection"] = [](const peg::SemanticValues& sv) 
 		{
-			return LightBaker::StrToBakingMode(peg::any_cast<std::string>(sv[0]));
+			return LightBaker::StrToBakingMode(std::any_cast<std::string>(sv[0]));
 		};
 
 		// --- Cluster Data
 		parser["BakingCluster"] = [](const peg::SemanticValues& sv)
 		{
-			return peg::any_cast<int>(sv[0]);
+			return std::any_cast<int>(sv[0]);
 		};
 
 		parser["ClusterFirstProbeIndices"] = [](const peg::SemanticValues& sv)
 		{
-			const int sizesCount = peg::any_cast<int>(sv[0]);
+			const int sizesCount = std::any_cast<int>(sv[0]);
 			
 			DX_ASSERT(sv.size() - 1 == sizesCount && "Invalid sizes token number");
 
@@ -227,7 +227,7 @@ namespace
 			// i is init to 1, because sv[0] is sizes count
 			for (int i = 1; i < sv.size(); ++i)
 			{
-				clusterFirstProbeIndices.push_back(peg::any_cast<int>(sv[i]));
+				clusterFirstProbeIndices.push_back(std::any_cast<int>(sv[i]));
 			}
 
 			DX_ASSERT(clusterFirstProbeIndices.size() == sizesCount);
@@ -238,7 +238,7 @@ namespace
 		// --- Probe Data
 		parser["ProbeSection"] = [](const peg::SemanticValues& sv) 
 		{
-			const int probesCount = peg::any_cast<int>(sv[0]);
+			const int probesCount = std::any_cast<int>(sv[0]);
 
 			DX_ASSERT(sv.size() - 1 == probesCount && "Probe count doesn't match amount of probes");
 
@@ -248,7 +248,7 @@ namespace
 			// i is init to 1, because sv[0] is probe count
 			for (int i = 1; i < sv.size(); ++i)
 			{
-				auto [probeIndex, probe] = peg::any_cast<std::tuple<int, DiffuseProbe>>(sv[i]);
+				auto [probeIndex, probe] = std::any_cast<std::tuple<int, DiffuseProbe>>(sv[i]);
 
 				DX_ASSERT(probeIndex == probes.size() && "Invalid probe Index");
 
@@ -262,7 +262,7 @@ namespace
 
 		parser["Probe"] = [](const peg::SemanticValues& sv)
 		{
-			const int probeIndex = peg::any_cast<int>(sv[0]);
+			const int probeIndex = std::any_cast<int>(sv[0]);
 
 			DiffuseProbe probe;
 
@@ -271,7 +271,7 @@ namespace
 			// i is init to 1, because sv[0] is probe index
 			for (int i = 1; i < sv.size(); ++i)
 			{
-				probe.radianceSh[i - 1] = peg::any_cast<XMFLOAT4>(sv[i]);
+				probe.radianceSh[i - 1] = std::any_cast<XMFLOAT4>(sv[i]);
 			}
 
 			return std::make_tuple(probeIndex, probe);
@@ -282,26 +282,26 @@ namespace
 		{
 			return XMFLOAT4
 			(
-				peg::any_cast<float>(sv[0]),
-				peg::any_cast<float>(sv[1]),
-				peg::any_cast<float>(sv[2]),
+				std::any_cast<float>(sv[0]),
+				std::any_cast<float>(sv[1]),
+				std::any_cast<float>(sv[2]),
 				0.0f
 			);
 		};
 
 		parser["Float"] = [](const peg::SemanticValues& sv)
 		{
-			return stof(sv.token());
+			return stof(sv.token_to_string());
 		};
 
 		parser["Int"] = [](const peg::SemanticValues& sv)
 		{
-			return stoi(sv.token());
+			return stoi(sv.token_to_string());
 		};
 
 		parser["Word"] = [](const peg::SemanticValues& sv)
 		{
-			return std::string(sv.token());
+			return sv.token_to_string();
 		};
 	}
 }
@@ -1231,7 +1231,7 @@ BakingData LightBaker::LoadBakingResultsFromFile() const
 	const std::string dataFileContent = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::DATA_DIR + "/" + Settings::LIGHT_BAKING_DATA_FILENAME));
 
 	Parsing::LightBakingContext context;
-	peg::any ctx = &context;
+	std::any ctx = &context;
 
 	Logs::Log(Logs::Category::Parser, "Parse light baking result, start");
 
