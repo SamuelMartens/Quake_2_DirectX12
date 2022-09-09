@@ -567,22 +567,10 @@ void FrameGraph::Init(GPUJobContext& context)
 		((perObjectGlobalMemorySize[index++] = RootArg::GetSize(objResTemplate)), ...);
 	}, objGlobalResTemplate);
 
-	// Pass global
-	RegisterGlobaPasslRes(context);
-
-	// Pass local
-	for (PassTask& passTask : passTasks)
-	{
-		std::visit([&context](auto&& pass) 
-		{
-			pass.Init();
-			pass.RegisterPassResources(context);
-
-		}, passTask.pass);
-	}
+	RegisterPassResources(context);
 
 	// Register static objects
-	RegisterObjects(Renderer::Inst().GetStaticObjects(), context);
+	RegisterStaticObjects(Renderer::Inst().GetStaticObjects(), context);
 }
 
 void FrameGraph::BindPassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const
@@ -601,7 +589,7 @@ void FrameGraph::BindComputePassGlobalRes(const std::vector<int>& resIndices, Co
 	}
 }
 
-void FrameGraph::RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& context)
+void FrameGraph::RegisterStaticObjects(const std::vector<StaticObject>& objects, GPUJobContext& context)
 {
 	if (objects.empty() == true)
 	{
@@ -643,6 +631,23 @@ void FrameGraph::RegisterObjects(const std::vector<StaticObject>& objects, GPUJo
 			{
 				pass.RegisterObjects(objects, context);
 			}
+
+		}, passTask.pass);
+	}
+}
+
+void FrameGraph::RegisterPassResources(GPUJobContext& context)
+{
+	// Pass global
+	RegisterGlobaPasslRes(context);
+
+	// Pass local
+	for (PassTask& passTask : passTasks)
+	{
+		std::visit([&context](auto&& pass)
+		{
+			pass.Init();
+			pass.RegisterPassResources(context);
 
 		}, passTask.pass);
 	}

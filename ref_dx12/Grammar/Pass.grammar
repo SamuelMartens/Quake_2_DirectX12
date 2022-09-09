@@ -73,7 +73,7 @@ VertAttr            <- T( 'struct' < Ident '{' VertAttrContent '}' > )
 Resource            <- T(  ResourceAttr ( ConstBuff / Texture / Sampler / RWTexture / StructuredBuff ) )
 StructuredBuff      <- T( 'StructuredBuffer' < _ '<' StructBufferType '>' Ident ':' RegisterDecl > )
 ConstBuff           <- T( 'cbuffer' < Ident ':' RegisterDecl  '{' ConstBuffContent '}' > )
-Texture             <- T( 'Texture2D' < Ident ':' RegisterDecl > )
+Texture             <- T( 'Texture2D' ( _ '<' DataType '>')? < Ident ':' RegisterDecl > )
 RWTexture           <- T( 'RWTexture2D' _ '<' DataType '>' Ident ':' RegisterDecl ) 
 Sampler             <- T( 'SamplerState' < Ident ':' RegisterDecl > )
 ResourceAttr        <- T( '[' < ResourceScope Comma ResourceUpdate ( Comma ResourceBind)?> ']' )
@@ -98,7 +98,7 @@ Struct              <- T( 'struct' < Ident '{' StructContent '}' > )
 StructContent       <- T( StructField* )
 StructField         <- T( DataType Ident ';' )
 
-DataType       <- _ 'float4x4' _ / _ 'float4' _ / _ 'float2' _ / _ 'int' _
+DataType       <- _ 'float4x4' _ / _ 'float4' _ / _ 'float2' _ / _ 'float' / _ 'int' _
 ResourceFieldSemantic   <- T( Word Int? )
 
 # --- Tokens ---

@@ -18,7 +18,7 @@ namespace RootArg
 
 				if constexpr (std::is_same_v<T, RootArg::RootConstant>)
 				{
-					assert(false && "Root constant is not implemented");
+					DX_ASSERT(false && "Root constant is not implemented");
 				}
 
 				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
@@ -42,7 +42,7 @@ namespace RootArg
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
 							{
-								assert(false && "Desc table view is probably not implemented! Make sure it is");
+								DX_ASSERT(false && "Desc table view is probably not implemented! Make sure it is");
 								//#TODO make view allocation
 								descTableEntitiy.gpuMem.handler = gpuHandler;
 								descTableEntitiy.gpuMem.offset = offset;
@@ -99,12 +99,12 @@ namespace RootArg
 			}
 			else if constexpr (std::is_same_v<T, StructuredBufferView>)
 			{
-				assert(false && "Size for Structured buffers are not implemented");
+				DX_ASSERT(false && "Size for Structured buffers are not implemented");
 				return 0;
 			}
 			else
 			{
-				assert(false && "RootArgGetSize, not implemented type");
+				DX_ASSERT(false && "RootArgGetSize, not implemented type");
 				return 0;
 			}
 
@@ -200,11 +200,11 @@ namespace RootArg
 			auto& uploadMemory =
 				MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
-			assert(rootArg.bindIndex != Const::INVALID_INDEX && "Can't bind RootArg, invalid index");
+			DX_ASSERT(rootArg.bindIndex != Const::INVALID_INDEX && "Can't bind RootArg, invalid index");
 
 			if constexpr (std::is_same_v<T, RootConstant>)
 			{
-				assert(false && "Root constants are not implemented");
+				DX_ASSERT(false && "Root constants are not implemented");
 			}
 			else if constexpr (std::is_same_v<T, ConstBuffView>)
 			{
@@ -216,15 +216,15 @@ namespace RootArg
 			}
 			else if constexpr (std::is_same_v<T, StructuredBufferView>)
 			{
-				assert(rootArg.buffer != nullptr && "Invalid buffer. Can't bind root arg");
+				DX_ASSERT(rootArg.buffer != nullptr && "Invalid buffer. Can't bind root arg");
 
 				commandList.GetGPUList()->SetGraphicsRootShaderResourceView(rootArg.bindIndex,
 					rootArg.buffer->buffer->GetGPUVirtualAddress());
 			}
 			else if constexpr (std::is_same_v<T, DescTable>)
 			{
-				assert(rootArg.content.empty() == false && "Trying to bind empty desc table");
-				assert(rootArg.viewIndex != Const::INVALID_INDEX && "Invalid view index. Can't bind root arg");
+				DX_ASSERT(rootArg.content.empty() == false && "Trying to bind empty desc table");
+				DX_ASSERT(rootArg.viewIndex != Const::INVALID_INDEX && "Invalid view index. Can't bind root arg");
 
 				std::visit([&commandList, &renderer, &rootArg](auto&& descTableEntity)
 				{
@@ -258,11 +258,11 @@ namespace RootArg
 			auto& uploadMemory =
 				MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
-			assert(rootArg.bindIndex != Const::INVALID_INDEX && "Can't bind RootArg, invalid index");
+			DX_ASSERT(rootArg.bindIndex != Const::INVALID_INDEX && "Can't bind RootArg, invalid index");
 
 			if constexpr (std::is_same_v<T, RootConstant>)
 			{
-				assert(false && "Root constants are not implemented");
+				DX_ASSERT(false && "Root constants are not implemented");
 			}
 			else if constexpr (std::is_same_v<T, ConstBuffView>)
 			{
@@ -280,15 +280,15 @@ namespace RootArg
 			}
 			else if constexpr (std::is_same_v<T, StructuredBufferView>)
 			{
-				assert(rootArg.buffer != nullptr && "Invalid buffer. Can't bind root arg");
+				DX_ASSERT(rootArg.buffer != nullptr && "Invalid buffer. Can't bind root arg");
 
 				commandList.GetGPUList()->SetComputeRootShaderResourceView(rootArg.bindIndex, 
 					rootArg.buffer->buffer->GetGPUVirtualAddress());
 			}
 			else if constexpr (std::is_same_v<T, DescTable>)
 			{
-				assert(rootArg.content.empty() == false && "Trying to bind empty desc table");
-				assert(rootArg.viewIndex != Const::INVALID_INDEX && "Invalid view index. Can't bind root arg");
+				DX_ASSERT(rootArg.content.empty() == false && "Trying to bind empty desc table");
+				DX_ASSERT(rootArg.viewIndex != Const::INVALID_INDEX && "Invalid view index. Can't bind root arg");
 
 				std::visit([&commandList, &renderer, &rootArg](auto&& descTableEntity)
 				{
@@ -323,7 +323,7 @@ namespace RootArg
 
 	DescTable& DescTable::operator=(const DescTable& other)
 	{
-		assert(viewIndex == Const::INVALID_INDEX && "Trying to copy non empty root arg. Is this intended?");
+		DX_ASSERT(viewIndex == Const::INVALID_INDEX && "Trying to copy non empty root arg. Is this intended?");
 
 		bindIndex = other.bindIndex;
 		content = other.content;
@@ -366,10 +366,12 @@ namespace Parsing
 			return sizeof(XMFLOAT4);
 		case DataType::Float2:
 			return sizeof(XMFLOAT2);
+		case DataType::Float:
+			return sizeof(float);
 		case DataType::Int:
 			return sizeof(int32_t);
 		default:
-			assert(false && "Can't get parse data type size, invalid type");
+			DX_ASSERT(false && "Can't get parse data type size, invalid type");
 			break;
 		}
 
@@ -381,17 +383,19 @@ namespace Parsing
 		switch (type)
 		{
 		case DataType::Float4x4:
-			assert(false && "Parse data type, can't use Float4x4 for DXGI format");
+			DX_ASSERT(false && "Parse data type, can't use Float4x4 for DXGI format");
 			return DXGI_FORMAT_R32G32B32A32_FLOAT;
 		case DataType::Float4:
 			return DXGI_FORMAT_R32G32B32A32_FLOAT;
 		case DataType::Float2:
 			return DXGI_FORMAT_R32G32_FLOAT;
+		case DataType::Float:
+			return DXGI_FORMAT_R32G32_FLOAT;
 		case DataType::Int:
-			assert(false && "Parse data type, can't use Int for DXGI format");
+			DX_ASSERT(false && "Parse data type, can't use Int for DXGI format");
 			return DXGI_FORMAT_R32G32B32A32_FLOAT;
 		default:
-			assert(false && "Parse data type, unknown type");
+			DX_ASSERT(false && "Parse data type, unknown type");
 			break;
 		}
 
@@ -541,7 +545,7 @@ std::string PassParametersSource::ShaderTypeToStr(ShaderType type)
 	case ShaderType::Cs:
 		return "Cs";
 	default:
-		assert(false && "Undefined shader type");
+		DX_ASSERT(false && "Undefined shader type");
 		break;
 	}
 
@@ -561,7 +565,7 @@ void PassParameters::AddGlobalPerObjectRootArgIndex(std::vector<int>& perObjGlob
 	}
 	else
 	{
-		assert(RootArg::GetBindIndex(arg) == RootArg::GetBindIndex(perObjGlobalResTemplate[resTemplateIndex]) &&
+		DX_ASSERT(RootArg::GetBindIndex(arg) == RootArg::GetBindIndex(perObjGlobalResTemplate[resTemplateIndex]) &&
 			"Global per object resources must have same bind indexes. Seems like different passes, place them differently.");
 
 		perObjGlobalRootArgsIndicesTemplate.push_back(resTemplateIndex);

@@ -11,8 +11,8 @@ State
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-DescriptorTable(SRV(t0, numDescriptors = 2),
 CBV(b0), 
+DescriptorTable(SRV(t0, numDescriptors = 2),
 UAV(u0, numDescriptors = 1))
 }
 
@@ -23,14 +23,14 @@ struct AABB
 	float4 Max;
 }
 
-[Global, PerPass, Bind: GBuffer_Position]
+[Local, PerPass, Bind: GBuffer_Position]
 Texture2D GBuffer_Position : register(t0)
 
 [Local, PerPass]
 StructuredBuffer<AABB> ClusterAABBs : register(t1)
 
 [Local, PerPass]
-cbuffer cbClusterAABBParameters 
+cbuffer cbClusterAABBParameters : register(b0)
 {
 	int ClusterAABBsSize;
 }
@@ -39,13 +39,44 @@ cbuffer cbClusterAABBParameters
 RWTexture2D<int> ClusterClassification : register(u0)
 
 Type : CS
-External : GBuffer_Position, ClusterAABBs, cbClusterAABBParameters
+External : GBuffer_Position, AABB, ClusterAABBs, cbClusterAABBParameters, ClusterClassification
 <[
 
 [numthreads(32, 32, 1)]
 void main(int3 dispatchThreadID : SV_DispatchThreadID)
 {
+	if (ClusterAABBsSize == 0)
+	{
+		return;
+	}
 
+	int clusterIndex = -1;
+	
+	float3 pixelPosition = GBuffer_Position.Load(dispatchThreadID.xyz).xyz;
+	
+	// Iterate over each AABB
+	for (int i = 0; i < ClusterAABBsSize; ++i)
+	{
+		AABB clusterAABB = ClusterAABBs.Load(i);
+		
+		float3 diagonal = normalize(clusterAABB.Max.xyz - clusterAABB.Min.xyz);
+		
+		// Extend a bit to avoid floating point errors during testing
+		const float epsilon = 0.005f;
+		clusterAABB.Min.xyz = clusterAABB.Min.xyz - diagonal * epsilon;
+		clusterAABB.Max.xyz = clusterAABB.Max.xyz + diagonal * epsilon;
+		
+		
+		// If inside AABB
+		if (all(pixelPosition >= clusterAABB.Min.xyz) &&
+			all(pixelPosition <= clusterAABB.Max.xyz))
+		{
+			clusterIndex = i;
+			break;
+		}
+	}
+	
+	ClusterClassification[dispatchThreadID.xy] = clusterIndex; 
 }
 
 ]>

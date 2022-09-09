@@ -286,6 +286,7 @@ namespace Parsing
 		Float4x4,
 		Float4,
 		Float2,
+		Float,
 		Int
 	};
 

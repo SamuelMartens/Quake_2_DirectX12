@@ -109,8 +109,10 @@ public:
 
 
 	/* Persistent objects registration */
-	void RegisterObjects(const std::vector<StaticObject>& objects, GPUJobContext& context);
+	void RegisterStaticObjects(const std::vector<StaticObject>& objects, GPUJobContext& context);
 	
+	void RegisterPassResources(GPUJobContext& context);
+
 	void UpdateGlobalResources(GPUJobContext& context);
 	void ReleasePerFrameResources(Frame& frame);
 

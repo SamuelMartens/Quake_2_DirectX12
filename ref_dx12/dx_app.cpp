@@ -1138,7 +1138,7 @@ void Renderer::RegisterObjectsAtFrameGraphs()
 		GPUJobContext regContext = CreateContext(GetMainThreadFrame());
 
 		regContext.commandList->Open();
-		regContext.frame.frameGraph->RegisterObjects(staticObjects, regContext);
+		regContext.frame.frameGraph->RegisterStaticObjects(staticObjects, regContext);
 		regContext.commandList->Close();
 
 		CloseFrame(regContext.frame);

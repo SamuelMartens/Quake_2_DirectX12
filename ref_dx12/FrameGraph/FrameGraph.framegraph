@@ -38,7 +38,7 @@ Resources
 	[
 		Type : Texture2D
 		Dimensions : 1024, 768
-		Format : R16_UINT
+		Format : R16_SINT
 		Flags : ALLOW_UNORDERED_ACCESS
 	]
 }
@@ -47,8 +47,9 @@ Steps
 {
     UI
     Static
-	//DeferredCompose
-	//Copy(ComposeBuffer, BACK_BUFFER)
+	BSPClusterClassification
+	DeferredCompose
+	Copy(ComposeBuffer, BACK_BUFFER)
     //Dynamic
     Particles
 	Debug

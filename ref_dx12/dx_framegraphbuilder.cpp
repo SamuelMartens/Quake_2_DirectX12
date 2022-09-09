@@ -807,12 +807,14 @@ namespace
 
 		parser["Texture"] = [](const peg::SemanticValues& sv)
 		{
+			const int tokenSize = sv.size();
+
 			return Parsing::Resource_Texture{
-				std::any_cast<std::string>(sv[0]),
+				std::any_cast<std::string>(sv[tokenSize - 2]),
 				std::nullopt,
 				std::nullopt,
 				std::nullopt,
-				std::any_cast<int>(sv[1]),
+				std::any_cast<int>(sv[tokenSize - 1]),
 				std::string(sv.sv())};
 		};
 
@@ -1186,6 +1188,10 @@ namespace
 				return DXGI_FORMAT_R32G32B32A32_FLOAT;
 			case HASH("R16_UINT"):
 				return DXGI_FORMAT_R16_UINT;
+			case HASH("R16_FLOAT"):
+				return DXGI_FORMAT_R16_FLOAT;
+			case HASH("R16_SINT"):
+				return DXGI_FORMAT_R16_SINT;
 			default:
 				DX_ASSERT(false && "Invalid value of ResourceDeclFormat");
 				break;
@@ -1538,6 +1544,7 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 			// Find resource and stub it into shader source
 
 			// Holy C++ magic
+			// What is it calls this function on a few containers listed below 
 			bool result = std::invoke([&shaderDefsToInclude, &externalDefName, &pass](auto... shaderDefs) 
 			{
 				int shaderDefsToIncludeOldSize = shaderDefsToInclude.size();
@@ -1551,25 +1558,14 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 					{
 						if (externalDefName == Parsing::GetResourceName(def))
 						{
-							// For structured buffers shader will also need definition of data type that is used
-							if (const Parsing::Resource_StructuredBuffer* structBuff = 
-								std::get_if<Parsing::Resource_StructuredBuffer>(&def))
-							{
-								if (const std::string* miscDefName = std::get_if<std::string>(&structBuff->dataType))
-								{
-									auto dataTypeStructIt = std::find_if(pass.miscDefs.cbegin(), pass.miscDefs.cend(),
-										[&miscDefName](const Parsing::MiscDef_t& miscDef)
-									{
-										return *miscDefName == Parsing::GetMiscDefName(miscDef);
-									});
-
-									DX_ASSERT(dataTypeStructIt != pass.miscDefs.cend() && "Structured buffer data type is not found");
-
-									shaderDefsToInclude += Parsing::GetMiscDefRawView(*dataTypeStructIt);
-								}
-							}
-
 							shaderDefsToInclude += Parsing::GetResourceRawView(def);
+						}
+					}
+					else if constexpr (std::is_same_v<T, Parsing::MiscDef_t>)
+					{
+						if (Parsing::GetMiscDefName(def) == externalDefName)
+						{
+							shaderDefsToInclude += Parsing::GetMiscDefRawView(def);
 						}
 					}
 					else
@@ -1586,7 +1582,8 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 				// If the size of the string to include changed, then we found something
 				return shaderDefsToIncludeOldSize != shaderDefsToInclude.size();
 
-			}, &pass.resources, &pass.vertAttr, &pass.functions);
+			}, // This is containers that this function is invoked on
+				&pass.resources, &pass.vertAttr, &pass.functions, &pass.miscDefs);
 
 			DX_ASSERT(result == true && "Some external shader resource was not found");
 
