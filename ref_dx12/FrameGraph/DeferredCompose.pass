@@ -34,7 +34,22 @@ Type : CS
 External : GBuffer_Albedo, ComposeBuffer, GBuffer_Normals, GBuffer_Position, ClusterClassification
 <[
 
+float4 VisualizeClusterId(int id)
+{
+	float4 color = float4(0.0f, 0.0f, 0.0f, 1.0f);
+	
+	color.x =  (0xF & id) / 16.0f;
+	color.y = (0xF & (id >> 4)) / 16.0f;
+	color.z = (0xF & (id >> 8)) / 16.0f;
+	color.w = 1.0f;
+	
+	return color;
+}
 
+//#DEBUG
+// Important part here is this [numthread] maybe it is confusing main somehow?
+// I did this conclusion after comparing source of this shader to other
+//END
 [numthreads(32, 32, 1)]
 void main(int3 dispatchThreadID : SV_DispatchThreadID)
 {
@@ -59,10 +74,9 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 		
 		ComposeBuffer[dispatchThreadID.xy] = color; 
 	}
-	
-	
-	
 }
+
+
 
 ]>
 

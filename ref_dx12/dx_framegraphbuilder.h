@@ -107,8 +107,16 @@ namespace Parsing
 class FrameGraphBuilder
 {
 public:
+	
+	struct CompiledShaderData
+	{
+		std::optional<PassParametersSource::ShaderType> type;
 
-	using PassCompiledShaders_t = std::vector<std::pair<PassParametersSource::ShaderType, ComPtr<ID3DBlob>>>;
+		ComPtr<ID3DBlob> shaderBlob;
+		// Root signature needs to be in separate blob because I specify it inside pass file, and if I just include it threre, sometimes
+		// it behaves very funky. This way it is much safer
+		ComPtr<ID3DBlob> rootSigBlob;
+	};
 
 	DEFINE_SINGLETON(FrameGraphBuilder);
 
@@ -151,17 +159,17 @@ private:
 	void PreprocessPassFiles(std::unordered_map<std::string, std::string>& passFiles, Parsing::PreprocessorContext& context) const;
 
 	/* Shaders */
-	PassCompiledShaders_t CompileShaders(const PassParametersSource& pass) const;
+	std::vector<FrameGraphBuilder::CompiledShaderData> CompileShaders(const PassParametersSource& pass) const;
 	
 	/* Input layout */
 	std::vector<D3D12_INPUT_ELEMENT_DESC> GenerateInputLayout(const PassParametersSource& pass) const;
 	const Parsing::VertAttr* GetPassInputVertAttr(const PassParametersSource& pass) const;
 
 	/* State objects processing */
-	ComPtr<ID3D12RootSignature> GenerateRootSignature(const PassParametersSource& pass, const PassCompiledShaders_t& shaders) const;
+	ComPtr<ID3D12RootSignature> GenerateRootSignature(const PassParametersSource& pass, const std::vector<CompiledShaderData>& shaders) const;
 	ComPtr<ID3D12PipelineState>	GeneratePipelineStateObject(
 		const PassParametersSource& passSource,
-		PassCompiledShaders_t& shaders,
+		std::vector<CompiledShaderData>& shaders,
 		ComPtr<ID3D12RootSignature>& rootSig) const;
 
 	/* Root arguments */

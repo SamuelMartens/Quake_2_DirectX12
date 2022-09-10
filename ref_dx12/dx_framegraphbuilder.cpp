@@ -1530,9 +1530,9 @@ void FrameGraphBuilder::AttachSpecialPostPreCallbacks(std::vector<PassTask>& pas
 	passTasks.back().postPassCallbacks.push_back(PassUtils::BackBufferToPresentStateCallback);
 }
 
-FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const PassParametersSource& pass) const
+std::vector<FrameGraphBuilder::CompiledShaderData> FrameGraphBuilder::CompileShaders(const PassParametersSource& pass) const
 {
-	PassCompiledShaders_t passCompiledShaders;
+	std::vector<FrameGraphBuilder::CompiledShaderData> passCompiledShaders;
 
 	for (const PassParametersSource::ShaderSource& shader : pass.shaders)
 	{
@@ -1592,11 +1592,12 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 
 		std::string sourceCode =
 			shaderDefsToInclude +
-			"[RootSignature( \" " + pass.rootSignature->rawView + " \" )]" +
 			shader.source;
 
 		// Got final shader source, now compile
-		ComPtr<ID3DBlob>& shaderBlob = passCompiledShaders.emplace_back(std::make_pair(shader.type, ComPtr<ID3DBlob>())).second;
+		CompiledShaderData& compiledShader = passCompiledShaders.emplace_back(CompiledShaderData());
+		compiledShader.type = shader.type;
+
 		ComPtr<ID3DBlob> errors;
 
 		const std::string strShaderType = PassParametersSource::ShaderTypeToStr(shader.type);
@@ -1613,13 +1614,40 @@ FrameGraphBuilder::PassCompiledShaders_t FrameGraphBuilder::CompileShaders(const
 			(Utils::StrToLower(strShaderType) + Settings::SHADER_FEATURE_LEVEL).c_str(),
 			Settings::SHADER_COMPILATION_FLAGS,
 			0,
-			&shaderBlob,
+			&compiledShader.shaderBlob,
 			&errors
 		);
 
 		if (errors != nullptr)
 		{
 			Logs::Logf(Logs::Category::Parser, "Shader compilation error: %s",
+				reinterpret_cast<char*>(errors->GetBufferPointer()));
+		}
+
+		ThrowIfFailed(hr);
+
+		// Root signature is compiled in separate blob, it should be defined as #define in order for 
+		// D3DCompile to accept it 
+		const std::string rootSigDefine = "ROOT_SIGNATURE";
+		std::string rawRootSig = "#define" + rootSigDefine + " \" " + pass.rootSignature->rawView + " \" ";
+
+		hr = D3DCompile(
+			rawRootSig.c_str(),
+			rawRootSig.size(),
+			("RootSignature_" + pass.name).c_str(),
+			nullptr,
+			nullptr,
+			rootSigDefine.c_str(),
+			"rootsig_1_1",
+			0,
+			0,
+			&compiledShader.rootSigBlob,
+			&errors
+		);
+
+		if (errors != nullptr)
+		{
+			Logs::Logf(Logs::Category::Parser, "Root signature compilation error: %s",
 				reinterpret_cast<char*>(errors->GetBufferPointer()));
 		}
 
@@ -2113,7 +2141,7 @@ const Parsing::VertAttr* FrameGraphBuilder::GetPassInputVertAttr(const PassParam
 	return &(*attrIt);
 }
 
-ComPtr<ID3D12RootSignature> FrameGraphBuilder::GenerateRootSignature(const PassParametersSource& pass, const PassCompiledShaders_t& shaders) const
+ComPtr<ID3D12RootSignature> FrameGraphBuilder::GenerateRootSignature(const PassParametersSource& pass, const std::vector<FrameGraphBuilder::CompiledShaderData>& shaders) const
 {
 	Logs::Logf(Logs::Category::Parser, "GenerateRootSignature, start, pass: %s", pass.name.c_str());
 
@@ -2121,9 +2149,9 @@ ComPtr<ID3D12RootSignature> FrameGraphBuilder::GenerateRootSignature(const PassP
 
 	ComPtr<ID3D12RootSignature> rootSig;
 
-	const ComPtr<ID3DBlob>& shaderBlob = shaders.front().second;
+	const ComPtr<ID3DBlob>& rootSigBlob = shaders.front().rootSigBlob;
 
-	ThrowIfFailed(Infr::Inst().GetDevice()->CreateRootSignature(0, shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize(),
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateRootSignature(0, rootSigBlob->GetBufferPointer(), rootSigBlob->GetBufferSize(),
 		IID_PPV_ARGS(rootSig.GetAddressOf())));
 
 	Diagnostics::SetResourceName(rootSig.Get(), std::string("Root sig, pass: ") + pass.name);
@@ -2131,7 +2159,7 @@ ComPtr<ID3D12RootSignature> FrameGraphBuilder::GenerateRootSignature(const PassP
 	return rootSig;
 }
 
-ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const PassParametersSource& passSource, PassCompiledShaders_t& shaders, ComPtr<ID3D12RootSignature>& rootSig) const
+ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const PassParametersSource& passSource, std::vector<FrameGraphBuilder::CompiledShaderData>& shaders, ComPtr<ID3D12RootSignature>& rootSig) const
 {
 	Logs::Logf(Logs::Category::Parser, "GeneratePipelineStateObject, start, pass %s", passSource.name.c_str());
 
@@ -2159,14 +2187,16 @@ ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const
 		psoDesc.pRootSignature = rootSig.Get();
 
 		// Set up shaders
-		for (const std::pair<PassParametersSource::ShaderType, ComPtr<ID3DBlob>>& shader : shaders)
+		for (const CompiledShaderData& shader : shaders)
 		{
+			DX_ASSERT(shader.type.has_value() == true);
+
 			D3D12_SHADER_BYTECODE shaderByteCode = {
-				reinterpret_cast<BYTE*>(shader.second->GetBufferPointer()),
-				shader.second->GetBufferSize()
+				reinterpret_cast<BYTE*>(shader.shaderBlob->GetBufferPointer()),
+				shader.shaderBlob->GetBufferSize()
 			};
 
-			switch (shader.first)
+			switch (*shader.type)
 			{
 			case PassParametersSource::Vs:
 				psoDesc.VS = shaderByteCode;
@@ -2202,16 +2232,16 @@ ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const
 		// Set up root sig
 		psoDesc.pRootSignature = rootSig.Get();
 
-		auto shaderIt = std::find_if(shaders.begin(), shaders.end(), [](const std::pair<PassParametersSource::ShaderType, ComPtr<ID3DBlob>>& shader)
+		auto shaderIt = std::find_if(shaders.begin(), shaders.end(), [](const CompiledShaderData& shader)
 		{
-			return shader.first == PassParametersSource::Cs;
+			return *shader.type == PassParametersSource::Cs;
 		});
 
 		DX_ASSERT(shaderIt != shaders.end() && "Can't generate compute pipeline state object, shader is not found");
 
 		psoDesc.CS = {
-				reinterpret_cast<BYTE*>(shaderIt->second->GetBufferPointer()),
-				shaderIt->second->GetBufferSize()
+				reinterpret_cast<BYTE*>(shaderIt->shaderBlob->GetBufferPointer()),
+				shaderIt->shaderBlob->GetBufferSize()
 		};
 
 		ComPtr<ID3D12PipelineState> pipelineState;
@@ -2444,7 +2474,7 @@ PassParameters FrameGraphBuilder::CompilePassParameters(PassParametersSource&& p
 		passParam.vertAttr = *inputVertAttr;
 	}
 
-	PassCompiledShaders_t compiledShaders = CompileShaders(passSource);
+	std::vector<FrameGraphBuilder::CompiledShaderData> compiledShaders = CompileShaders(passSource);
 	passParam.rootSingature = GenerateRootSignature(passSource, compiledShaders);
 	passParam.pipelineState = GeneratePipelineStateObject(passSource, compiledShaders, passParam.rootSingature);
 
