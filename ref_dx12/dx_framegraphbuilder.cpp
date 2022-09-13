@@ -15,6 +15,8 @@
 #include "Lib/peglib.h"
 #include "dx_app.h"
 
+#include <limits>
+
 namespace
 {
 
@@ -127,17 +129,33 @@ namespace
 		constBuffer.content.back().size = Utils::Align(alignedOffset, maxAlignment) - offsets.back();
 	}
 
+	template<typename T, int ComponentsNum>
+	std::vector<std::byte> CreateInitBuffer(const int elementsNum, const T* initValue)
+	{
+		std::vector<std::byte> initBuffer(elementsNum * sizeof(T) * ComponentsNum);
+
+		for (int i = 0; i < elementsNum; ++i)
+		{
+			for (int j = 0; j < ComponentsNum; ++j)
+			{
+				reinterpret_cast<T*>(initBuffer.data())[i * ComponentsNum + j] = initValue[j];
+			}
+		}
+
+		return initBuffer;
+	}
+
 	void InitPreprocessorParser(peg::parser& parser)
 	{
 		// Load grammar
 		const std::string preprocessorGrammar = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_PREPROCESSOR_FILENAME));
 
-		parser.log = [](size_t line, size_t col, const std::string& msg, const std::string& rule)
+		parser.set_logger([](size_t line, size_t col, const std::string& msg)
 		{
 			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
 
 			DX_ASSERT(false && "Preprocessing error");
-		};
+		});
 
 		const bool loadGrammarResult = parser.load_grammar(preprocessorGrammar.c_str());
 		DX_ASSERT(loadGrammarResult && "Can't load pass grammar");
@@ -186,12 +204,12 @@ namespace
 		// Load grammar
 		const std::string passGrammar = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_PASS_FILENAME));
 
-		parser.log = [](size_t line, size_t col, const std::string& msg, const std::string& rule)
+		parser.set_logger([](size_t line, size_t col, const std::string& msg)
 		{
 			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
 
 			ThrowIfFalse(false);
-		};
+		});
 
 		const bool loadGrammarResult = parser.load_grammar(passGrammar.c_str());
 		DX_ASSERT(loadGrammarResult && "Can't load pass grammar");
@@ -252,7 +270,7 @@ namespace
 			// Fill up formats
 			for (const std::string& targetName : colorTargetNames)
 			{
-				if (targetName == PassParameters::BACK_BUFFER_NAME)
+				if (targetName == PassParameters::COLOR_BACK_BUFFER_NAME)
 				{
 					// Is back buffer?
 					colorTargetFormats.push_back(Settings::BACK_BUFFER_FORMAT);
@@ -1064,12 +1082,12 @@ namespace
 		// Load grammar
 		const std::string grammar = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_FRAMEGRAPH_FILENAME));
 
-		parser.log = [](size_t line, size_t col, const std::string& msg, const std::string& rule)
+		parser.set_logger([](size_t line, size_t col, const std::string& msg)
 		{
 			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
 
 			DX_ASSERT(false && "FrameGraph parsing error");
-		};
+		});
 
 		const bool loadGrammarResult = parser.load_grammar(grammar.c_str());
 		DX_ASSERT(loadGrammarResult && "Can't load FrameGraph grammar");
@@ -1135,15 +1153,16 @@ namespace
 				desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 			}
 
-			DX_ASSERT(sv.size() <= 6 && "ResourceDecl invalid amount of input tokens. Make sure you handled optional attributes");
+			std::optional<XMFLOAT4> clearValue = std::any_cast<std::optional<XMFLOAT4>>(sv[5]);
+			std::optional<XMFLOAT4> initValue = std::any_cast<std::optional<XMFLOAT4>>(sv[6]);
 
-			std::optional<XMFLOAT4> clearValue;
-			if (sv.size() == 6)
-			{
-				clearValue = std::any_cast<XMFLOAT4>(sv[5]);
-			}
 
-			return FrameGraphSource::FrameGraphResourceDecl{ std::any_cast<std::string>(sv[0]), desc, clearValue };
+			return FrameGraphSource::FrameGraphResourceDecl{ 
+				std::any_cast<std::string>(sv[0]),
+				desc,
+				clearValue,
+				initValue
+			};
 		};
 
 		parser["ResourceDeclType"] = [](const peg::SemanticValues& sv) 
@@ -1176,7 +1195,7 @@ namespace
 		{
 			switch (HASH(std::any_cast<std::string>(sv[0]).c_str()))
 			{
-			case HASH("Unknown"):
+			case HASH("UNKNOWN"):
 				return DXGI_FORMAT_UNKNOWN;
 			case HASH("R8G8B8A8_UNORM"):
 				return DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -1192,6 +1211,8 @@ namespace
 				return DXGI_FORMAT_R16_FLOAT;
 			case HASH("R16_SINT"):
 				return DXGI_FORMAT_R16_SINT;
+			case HASH("D24_UNORM_S8_UINT"):
+				return DXGI_FORMAT_D24_UNORM_S8_UINT;
 			default:
 				DX_ASSERT(false && "Invalid value of ResourceDeclFormat");
 				break;
@@ -1234,17 +1255,37 @@ namespace
 
 		parser["ResourceDeclClearVal"] = [](const peg::SemanticValues& sv)
 		{
-			XMFLOAT4 clearValue{0.0f, 0.0f, 0.0f, 1.0f};
+			std::optional<XMFLOAT4> clearValue;
 
-			DX_ASSERT((sv.size() == 1 || sv.size() == 4) && "Internal resource clear value is invalid");
-
-			for (int i = 0; i < sv.size(); ++i)
+			if (sv.empty() == true)
 			{
-				(&clearValue.x)[i] = std::any_cast<float>(sv[i]);
+				return clearValue;
+			}
+
+
+			if (sv[0].type() == typeid(XMFLOAT4))
+			{
+				clearValue = std::any_cast<XMFLOAT4>(sv[0]);
 			}
 
 			return clearValue;
+		};
 
+		parser["ResourceDeclInitVal"] = [](const peg::SemanticValues& sv)
+		{
+			std::optional<XMFLOAT4> initValue;
+
+			if (sv.empty() == true)
+			{
+				return initValue;
+			}
+
+			if (sv[0].type() == typeid(XMFLOAT4))
+			{
+				initValue = std::any_cast<XMFLOAT4>(sv[0]);
+			}
+
+			return initValue;
 		};
 
 		// --- Tokens
@@ -1264,6 +1305,16 @@ namespace
 			return stof(sv.token_to_string());
 		};
 
+		parser["Float4"] = [](const peg::SemanticValues& sv)
+		{
+			return XMFLOAT4
+			{
+				std::any_cast<float>(sv[0]),
+				std::any_cast<float>(sv[1]),
+				std::any_cast<float>(sv[2]),
+				std::any_cast<float>(sv[3]),
+			};
+		};
 	};
 
 	template<Parsing::PassInputType INPUT_TYPE>
@@ -1378,7 +1429,7 @@ void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
 
 void FrameGraphBuilder::ValidatePassResources(const std::vector<PassParametersSource>& passesParametersSources) const
 {
-#ifdef _DEBUG
+#ifdef ENABLE_VALIDATION
 
 	// Per object resources are a bit special. From logical point of view it is totally fine if
 	// global per object resources will collide if they are related to different types of objects,
@@ -1517,8 +1568,9 @@ void FrameGraphBuilder::AttachSpecialPostPreCallbacks(std::vector<PassTask>& pas
 		if (PassUtils::GetPassInputType(passTask.pass) != Parsing::PassInputType::PostProcess)
 		{
 			passTask.prePassCallbacks.insert(
-				passTask.prePassCallbacks.begin(),
-				std::bind(PassUtils::RenderTargetToRenderStateCallback, std::placeholders::_1, std::placeholders::_2)
+				passTask.prePassCallbacks.end(),
+				{ std::bind(PassUtils::RenderTargetToRenderStateCallback, std::placeholders::_1, std::placeholders::_2),
+					std::bind(PassUtils::DepthTargetToRenderStateCallback, std::placeholders::_1, std::placeholders::_2)}
 			);
 		}
 
@@ -1629,7 +1681,7 @@ std::vector<FrameGraphBuilder::CompiledShaderData> FrameGraphBuilder::CompileSha
 		// Root signature is compiled in separate blob, it should be defined as #define in order for 
 		// D3DCompile to accept it 
 		const std::string rootSigDefine = "ROOT_SIGNATURE";
-		std::string rawRootSig = "#define" + rootSigDefine + " \" " + pass.rootSignature->rawView + " \" ";
+		std::string rawRootSig = "#define " + rootSigDefine + " \" " + pass.rootSignature->rawView + " \" ";
 
 		hr = D3DCompile(
 			rawRootSig.c_str(),
@@ -1665,10 +1717,9 @@ void FrameGraphBuilder::BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGra
 	outFrameGraph = std::make_unique<FrameGraph>(CompileFrameGraph(std::move(source)));	
 }
 
-void FrameGraphBuilder::HandleFrameGraphResourceCreation(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls, FrameGraph& frameGraph) const
+void FrameGraphBuilder::CreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls, FrameGraph& frameGraph) const
 {
 	frameGraph.internalTextureNames = std::make_shared<std::vector<std::string>>(CreateFrameGraphResources(resourceDecls));
-	frameGraph.internalTextureProxy = CreateFrameGraphTextureProxies(*frameGraph.internalTextureNames);
 }
 
 FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
@@ -1752,10 +1803,12 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 
 				if (pendingCallbacks.empty() == false)
 				{
-					currentPassTask.postPassCallbacks.insert(
+					currentPassTask.prePassCallbacks.insert(
+						currentPassTask.prePassCallbacks.end(),
 						pendingCallbacks.begin(),
-						pendingCallbacks.end(),
-						currentPassTask.postPassCallbacks.end());
+						pendingCallbacks.end());
+
+					pendingCallbacks.clear();
 				}
 
 				// Set up pass parameters
@@ -1808,6 +1861,7 @@ FrameGraphSource FrameGraphBuilder::GenerateFrameGraphSource() const
 std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls) const
 {
 	ResourceManager& resourceManager = ResourceManager::Inst();
+	Frame& frame = Renderer::Inst().GetMainThreadFrame();
 
 	std::vector<std::string> internalResourcesName;
 	internalResourcesName.reserve(resourceDecls.size());
@@ -1828,14 +1882,73 @@ std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std:
 		desc.flags = resourceDecl.desc.Flags;
 		desc.dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 
-		FArg::CreateResource createTexArgs;
+		FArg::CreateTextureFromDataDeferred createTexArgs;
 		createTexArgs.data = nullptr;
 		createTexArgs.desc = &desc;
 		createTexArgs.name = resourceName.c_str();
-		createTexArgs.context = nullptr;
+		createTexArgs.frame = &frame;
 		createTexArgs.clearValue = resourceDecl.clearValue.has_value() ? &resourceDecl.clearValue.value() : nullptr;
 
-		resourceManager.CreateTextureFromData(createTexArgs);
+		std::vector<std::byte> initBuffer;
+		if (resourceDecl.initValue.has_value() == true)
+		{
+			const int elementsNum = desc.width * desc.height;
+
+			// We need to init this resource. Create temp buffer and populate it with whatever
+			switch (desc.format)
+			{
+			case DXGI_FORMAT_R32G32B32A32_FLOAT:
+			{
+				initBuffer = CreateInitBuffer<float, 4>(elementsNum, &resourceDecl.initValue->x);
+			}
+			break;
+			case DXGI_FORMAT_R8G8B8A8_UNORM:
+			{
+				constexpr int componentsNum = 4;
+
+				constexpr uint8_t maxVal = std::numeric_limits<uint8_t>::max();
+
+				DX_ASSERT(resourceDecl.initValue->x >= 0.0f && resourceDecl.initValue->x <= 1.0f && "Normalized value is not in range");
+				DX_ASSERT(resourceDecl.initValue->y >= 0.0f && resourceDecl.initValue->y <= 1.0f && "Normalized value is not in range");
+				DX_ASSERT(resourceDecl.initValue->z >= 0.0f && resourceDecl.initValue->z <= 1.0f && "Normalized value is not in range");
+				DX_ASSERT(resourceDecl.initValue->w >= 0.0f && resourceDecl.initValue->w <= 1.0f && "Normalized value is not in range");
+
+				uint8_t initValue[componentsNum] = {
+					static_cast<uint8_t>(maxVal * resourceDecl.initValue->x),
+					static_cast<uint8_t>(maxVal * resourceDecl.initValue->y),
+					static_cast<uint8_t>(maxVal * resourceDecl.initValue->z),
+					static_cast<uint8_t>(maxVal * resourceDecl.initValue->w)
+				};
+
+				initBuffer = CreateInitBuffer<uint8_t, componentsNum>(elementsNum, initValue);
+			}
+			break;
+			case DXGI_FORMAT_D24_UNORM_S8_UINT: 
+			{
+				constexpr int componentsNum = 1;
+
+				// Get max for 24 unsigned integer
+				constexpr uint32_t u24maxVal = std::numeric_limits<uint32_t>::max() & (0xFFFFFF);
+
+				DX_ASSERT(resourceDecl.initValue->x >= 0.0f && resourceDecl.initValue->x <= 1.0f && "Normalized value is not in range");
+
+				const uint32_t u24Val = static_cast<uint32_t>(resourceDecl.initValue->x * u24maxVal);
+				const uint8_t u8Val = static_cast<uint8_t>(resourceDecl.initValue->y);
+
+				uint32_t initValue[componentsNum] = { (u24Val << 8) | u8Val };
+
+				initBuffer = CreateInitBuffer<uint32_t, componentsNum>(elementsNum, initValue);
+			}
+			break;
+			default:
+				DX_ASSERT(false && "Invalid init format, probably not implemented yet");
+				break;
+			}
+
+			createTexArgs.data = initBuffer.data();
+		}
+
+		resourceManager.CreateTextureFromDataDeferred(createTexArgs);
 	}
 
 	return internalResourcesName;

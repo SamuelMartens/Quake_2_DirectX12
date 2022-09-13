@@ -58,6 +58,7 @@ namespace FArg
 		const ResourceDesc* desc = nullptr;
 		const char* name = nullptr;
 		Frame* frame = nullptr;
+		const XMFLOAT4* clearValue = nullptr;
 	};
 
 	struct _CreateGpuResource

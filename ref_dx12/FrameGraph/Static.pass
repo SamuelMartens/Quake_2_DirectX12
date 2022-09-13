@@ -7,7 +7,7 @@ PassVertAttr: VertexIn
 State
 {
 ColorTarget  : GBuffer_Position, GBuffer_Albedo, GBuffer_Normals
-DepthTarget  : BACK_BUFFER
+DepthTarget  : DEPTH_BACK_BUFFER
 Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
 Topology	 : Triangle

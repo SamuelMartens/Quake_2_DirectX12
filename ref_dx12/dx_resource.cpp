@@ -37,14 +37,16 @@ Resource::~Resource()
 	}
 }
 
-int Resource::BPPFromFormat(DXGI_FORMAT format)
+int Resource::BytesPerPixelFromFormat(DXGI_FORMAT format)
 {
 	switch (format)
 	{
 	case DXGI_FORMAT_R8G8B8A8_UNORM:
-		return 32;
+		return 4;
 	case DXGI_FORMAT_R8_UNORM:
-		return 8;
+		return 1;
+	case DXGI_FORMAT_D24_UNORM_S8_UINT:
+		return 4;
 	default:
 		DX_ASSERT(false && "Unknown format for BPPFromFormat");
 		break;
@@ -53,14 +55,14 @@ int Resource::BPPFromFormat(DXGI_FORMAT format)
 	return 0;
 }
 
-int Resource::GetBPP(const ResourceDesc& desc)
+int Resource::GetBytesPerPixel(const ResourceDesc& desc)
 {
 	switch (desc.dimension)
 	{
 	case D3D12_RESOURCE_DIMENSION_BUFFER:
 		return 8;
 	case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
-		return BPPFromFormat(desc.format);
+		return BytesPerPixelFromFormat(desc.format);
 	default:
 		DX_ASSERT(false && "Unknown resource dimension");
 		break;

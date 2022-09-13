@@ -312,10 +312,21 @@ Resource* ResourceManager::CreateTextureFromDataDeferred(FArg::CreateTextureFrom
 	Resource* result = &resources.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
 
 	TexCreationRequest_FromData texRequest(*result);
-	const int texSize = tex.desc.width * tex.desc.height;
 	
-	texRequest.data.resize(texSize);
-	memcpy(texRequest.data.data(), args.data, texSize);
+	
+	if (args.data != nullptr)
+	{
+		// In bytes
+		const int texSize = tex.desc.width * tex.desc.height * Resource::GetBytesPerPixel(tex.desc);
+
+		texRequest.data.resize(texSize);
+		memcpy(texRequest.data.data(), args.data, texSize);
+	}
+
+	if (args.clearValue != nullptr)
+	{
+		texRequest.clearValue = *args.clearValue;
+	}
 
 	args.frame->texCreationRequests.push_back(std::move(texRequest));
 
@@ -350,24 +361,14 @@ void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
 			}
 			else if constexpr (std::is_same_v<T, TexCreationRequest_FromData>)
 			{
-				// Get tex actual color
-				const int textureSize = texRequest.texture.desc.width * texRequest.texture.desc.height;
-				std::vector<unsigned int> texture(textureSize, 0);
-
-				const auto& rawPalette = Renderer::Inst().GetRawPalette();
-
-				for (int i = 0; i < textureSize; ++i)
-				{
-					texture[i] = rawPalette[std::to_integer<int>(texRequest.data[i])];
-				}
-
 				std::string name = texRequest.texture.name;
 
 				FArg::CreateResource createTexArgs;
-				createTexArgs.data = reinterpret_cast<std::byte*>(texture.data());
+				createTexArgs.data = texRequest.data.empty() == true ? nullptr : texRequest.data.data();
 				createTexArgs.desc = &texRequest.texture.desc;
 				createTexArgs.name = name.c_str();
 				createTexArgs.context = &context;
+				createTexArgs.clearValue = texRequest.clearValue.has_value() ? &texRequest.clearValue.value() : nullptr;
 
 				DX_ASSERT(createTexArgs.desc->dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && "Invalid texture dimension during resource creation");
 
@@ -375,7 +376,7 @@ void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
 			}
 			else
 			{
-				static_DX_ASSERT(false, "Invalid class in Deferred Tex creation");
+				static_assert(false, "Invalid class in Deferred Tex creation");
 			}
 		}
 		, tr);
@@ -415,8 +416,7 @@ void ResourceManager::UpdateResource(Resource& res, const std::byte* data, GPUJo
 
 	D3D12_SUBRESOURCE_DATA resourceData = {};
 	resourceData.pData = data;
-	// Divide by 8 cause bpp is bits per pixel, not bytes
-	resourceData.RowPitch = res.desc.width * Resource::GetBPP(res.desc) / 8;
+	resourceData.RowPitch = res.desc.width * Resource::GetBytesPerPixel(res.desc);
 	// Not SlicePitch but texture size in our case
 	resourceData.SlicePitch = resourceData.RowPitch * res.desc.height;
 
@@ -696,8 +696,7 @@ ComPtr<ID3D12Resource> ResourceManager::_CreateGpuResource(FArg::_CreateGpuResou
 		D3D12_SUBRESOURCE_DATA resourceData = {};
 		resourceData.pData = args.raw;
 		
-		// Divide by 8 cause bpp is bits per pixel, not bytes
-		resourceData.RowPitch = args.desc->width * Resource::GetBPP(*args.desc) / 8;
+		resourceData.RowPitch = args.desc->width * Resource::GetBytesPerPixel(*args.desc);
 		
 		// Not SlicePitch but texture size in our case
 		resourceData.SlicePitch = resourceData.RowPitch * args.desc->height;

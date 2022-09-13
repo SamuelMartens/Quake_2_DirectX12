@@ -2,6 +2,7 @@
 
 #include "dx_jobmultithreading.h"
 #include "dx_rendercallbacks.h"
+#include "dx_framegraphbuilder.h"
 
 namespace
 {
@@ -820,8 +821,22 @@ void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>&
 		jobContext.internalTextureProxies = GetTextureProxy();
 	}
 
-	// Deal with back buffer
+	// Deal with depth back buffer
+	for (int i = 0; i < jobContexts.size(); ++i)
 	{
+		GPUJobContext& context = jobContexts[i];
+
+		ResourceProxy& backBufferProxy = context.internalTextureProxies.emplace_back(ResourceProxy
+			{
+				*context.frame.depthStencilBuffer.Get()
+			});
+
+		backBufferProxy.hashedName = HASH(PassParameters::DEPTH_BACK_BUFFER_NAME);
+	}
+
+	// Deal with color back buffer
+	{
+		// Note, that first job context is special because we start not from default state, but from D3D12_RESOURCE_STATE_PRESENT
 		GPUJobContext& firstContext = jobContexts.front();
 
 		ResourceProxy& backBufferProxy = firstContext.internalTextureProxies.emplace_back(ResourceProxy
@@ -830,7 +845,7 @@ void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>&
 				D3D12_RESOURCE_STATE_PRESENT
 			});
 
-		backBufferProxy.hashedName = HASH(PassParameters::BACK_BUFFER_NAME);
+		backBufferProxy.hashedName = HASH(PassParameters::COLOR_BACK_BUFFER_NAME);
 	}
 
 	for (int i = 1; i < jobContexts.size(); ++i)
@@ -842,8 +857,22 @@ void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>&
 				*context.frame.colorBufferAndView->buffer.Get()
 			});
 
-		backBufferProxy.hashedName = HASH(PassParameters::BACK_BUFFER_NAME);
+		backBufferProxy.hashedName = HASH(PassParameters::COLOR_BACK_BUFFER_NAME);
 	}
+}
+
+bool FrameGraph::IsTextureProxiesCreationRequired() const
+{
+	return internalTextureNames != nullptr &&
+		internalTextureNames->size() != internalTextureProxy.size();
+}
+
+void FrameGraph::CreateTextureProxies()
+{
+	DX_ASSERT(internalTextureNames != nullptr);
+	DX_ASSERT(internalTextureProxy.empty() == true && "Internal texture proxy mush be clean at this stage");
+
+	internalTextureProxy = FrameGraphBuilder::Inst().CreateFrameGraphTextureProxies(*internalTextureNames);
 }
 
 void FrameGraph::RegisterGlobalObjectsResUI(GPUJobContext& context)

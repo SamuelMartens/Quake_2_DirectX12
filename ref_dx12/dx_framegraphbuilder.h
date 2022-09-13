@@ -124,8 +124,8 @@ public:
 	bool IsSourceChanged();
 	void BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph, std::vector<FrameGraphSource::FrameGraphResourceDecl>& internalResourceDecl);
 
-	void HandleFrameGraphResourceCreation(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls,
-		FrameGraph& frameGraph) const;
+	void CreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls, FrameGraph& frameGraph) const;
+	std::vector<ResourceProxy> CreateFrameGraphTextureProxies(const std::vector<std::string>& internalTextureList) const;
 
 private:
 
@@ -137,7 +137,7 @@ private:
 
 	/* Internal resources */
 	std::vector<std::string> CreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls) const;
-	std::vector<ResourceProxy> CreateFrameGraphTextureProxies(const std::vector<std::string>& internalTextureList) const;
+	
 
 	/* Pass Parameters */
 	std::vector<PassParametersSource> GeneratePassesParameterSources(const Parsing::FrameGraphSourceContext& frameGraphContext) const;

@@ -134,7 +134,8 @@ class Renderer
 	void CreateDepthStencilBuffer(ComPtr<ID3D12Resource>& buffer);
 	int  GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType) const;
 
-	void RebuildFrameGraph();
+	std::unique_ptr<FrameGraph> RebuildFrameGraph(std::vector<FrameGraphSource::FrameGraphResourceDecl>& internalResourceDecl);
+	void ReplaceFrameGraphAndCreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl> internalResourceDecl, std::unique_ptr<FrameGraph>& newFrameGraph);
 
 	ID3D12DescriptorHeap* GetRtvHeap();
 	ID3D12DescriptorHeap* GetDsvHeap();
@@ -217,6 +218,10 @@ public:
 	void RequestStateChange(State state);
 	State GetState() const;
 
+	/* Frame */
+	// Main thread will get some free frame, and execute everything that can't be done as a job.
+	Frame& GetMainThreadFrame();
+
 private:
 
 	/* Initialize win32 specific stuff */
@@ -290,8 +295,6 @@ private:
 	void ReleaseFrameResources(Frame& frame);
 
 	/* Frame ownership */
-	// Main thread will get some free frame, and execute everything that can't be done as a job.
-	Frame& GetMainThreadFrame();
 	void AcquireMainThreadFrame();
 	void DetachMainThreadFrame();
 

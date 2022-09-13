@@ -677,14 +677,13 @@ int Renderer::GetDescriptorSize(D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType) c
 	return Infr::Inst().GetDevice()->GetDescriptorHandleIncrementSize(descriptorHeapType);
 }
 
-void Renderer::RebuildFrameGraph()
+std::unique_ptr<FrameGraph> Renderer::RebuildFrameGraph(std::vector<FrameGraphSource::FrameGraphResourceDecl>& internalResourceDecl)
 {
 	Logs::Log(Logs::Category::Parser, "RebuildFrameGraph");
 
 	FlushAllFrames();
 
 	std::unique_ptr<FrameGraph> newFrameGraph = nullptr;
-	std::vector<FrameGraphSource::FrameGraphResourceDecl> internalResourceDecl;
 
 	try
 	{
@@ -697,25 +696,28 @@ void Renderer::RebuildFrameGraph()
 		newFrameGraph.reset(nullptr);
 	}
 
-	// If we successfully compiled new framegraph replace old one
-	if (newFrameGraph != nullptr)
+	return newFrameGraph;
+}
+
+void Renderer::ReplaceFrameGraphAndCreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl> internalResourceDecl, std::unique_ptr<FrameGraph>& newFrameGraph)
+{
+	DX_ASSERT(newFrameGraph != nullptr);
+
+	// Delete old framegraph
+	for (int i = 0; i < frames.size(); ++i)
 	{
-		// Delete old framegraph
-		for (int i = 0; i < frames.size(); ++i)
-		{
-			frames[i].frameGraph.reset(nullptr);
-		}
+		frames[i].frameGraph.reset(nullptr);
+	}
 
-		// Now create new frame graph resources. It is important to do after deletion of the old
-		// frame graph, because otherwise while destroyed old frame graph might delete new ones resources,
-		// if they have the same name
+	// Now create new frame graph resources. It is important to do after deletion of the old
+	// frame graph, because otherwise while destroyed old frame graph might delete new ones resources,
+	// if they have the same name
 
-		FrameGraphBuilder::Inst().HandleFrameGraphResourceCreation(internalResourceDecl, *newFrameGraph);
+	FrameGraphBuilder::Inst().CreateFrameGraphResources(internalResourceDecl, *newFrameGraph);
 
-		for (int i = 0; i < frames.size(); ++i)
-		{
-			frames[i].frameGraph = std::make_unique<FrameGraph>(FrameGraph(*newFrameGraph));
-		}
+	for (int i = 0; i < frames.size(); ++i)
+	{
+		frames[i].frameGraph = std::make_unique<FrameGraph>(FrameGraph(*newFrameGraph));
 	}
 }
 
@@ -2465,8 +2467,18 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 		desc.format = DXGI_FORMAT_R8G8B8A8_UNORM;
 		desc.dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 
+		// Get tex actual color
+		const int textureSize = desc.width * desc.height;
+		std::vector<unsigned int> texture(textureSize, 0);
+
+		const auto& rawPalette = Renderer::Inst().GetRawPalette();
+		for (int i = 0; i < textureSize; ++i)
+		{
+			texture[i] = rawPalette[std::to_integer<int>(data[i])];
+		}
+
 		FArg::CreateTextureFromDataDeferred createTexArgs;
-		createTexArgs.data = data;
+		createTexArgs.data = reinterpret_cast<std::byte*>(texture.data());
 		createTexArgs.desc = &desc;
 		createTexArgs.name = Resource::RAW_TEXTURE_NAME;
 		createTexArgs.frame = &GetMainThreadFrame();
@@ -2520,9 +2532,11 @@ void Renderer::BeginFrame()
 
 	// Frame graph processing
 
+	std::vector<FrameGraphSource::FrameGraphResourceDecl> internalResourceDecl;
+	std::unique_ptr<FrameGraph> newFrameGraph = nullptr;
 	if (FrameGraphBuilder::Inst().IsSourceChanged() == true)
 	{
-		RebuildFrameGraph();
+		newFrameGraph = RebuildFrameGraph(internalResourceDecl);
 	}
 
 	// State switch 
@@ -2534,8 +2548,14 @@ void Renderer::BeginFrame()
 
 	// Start work on the current frame
 	AcquireMainThreadFrame();
-	Frame& frame = GetMainThreadFrame();
 
+	// If we successfully compiled new framegraph replace old one
+	if (newFrameGraph != nullptr)
+	{
+		ReplaceFrameGraphAndCreateFrameGraphResources(internalResourceDecl, newFrameGraph);
+	}
+
+	Frame& frame = GetMainThreadFrame();
 	frame.colorBufferAndView = &GetNextSwapChainBufferAndView();
 	frame.scissorRect = scissorRect;
 
@@ -2574,6 +2594,11 @@ void Renderer::EndFrame()
 
 	// Some preparations
 	PreRenderSetUpFrame(frame);
+
+	if (frame.frameGraph->IsTextureProxiesCreationRequired())
+	{
+		frame.frameGraph->CreateTextureProxies();
+	}
 
 	frame.frameGraph->Execute(frame);
 }

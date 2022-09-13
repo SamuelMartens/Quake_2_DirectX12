@@ -32,7 +32,9 @@ public:
 	{
 		std::string name;
 		D3D12_RESOURCE_DESC desc;
+
 		std::optional<XMFLOAT4> clearValue;
+		std::optional<XMFLOAT4> initValue;
 	};
 
 
@@ -118,8 +120,12 @@ public:
 
 	/* Utils */
 	BufferHandler GetParticlesVertexMemory() const;
+
+	/* Texture Proxies */
 	std::vector<ResourceProxy> GetTextureProxy() const;
 	void AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>& jobContexts) const;
+	bool IsTextureProxiesCreationRequired() const;
+	void CreateTextureProxies();
 
 private:
 

@@ -57,9 +57,8 @@ public:
 
 	~Resource();
 	
-	// bits per pixel from format
-	static int BPPFromFormat(DXGI_FORMAT format);
-	static int GetBPP(const ResourceDesc& desc);
+	static int BytesPerPixelFromFormat(DXGI_FORMAT format);
+	static int GetBytesPerPixel(const ResourceDesc& desc);
 
 public:
 
@@ -87,6 +86,8 @@ struct TexCreationRequest_FromData
 	{}
 
 	Resource& texture;
+	std::optional<XMFLOAT4> clearValue;
+
 	std::vector<std::byte> data;
 };
 

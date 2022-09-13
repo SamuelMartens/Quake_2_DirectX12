@@ -6,8 +6,8 @@ PassVertAttr: VertexIn
 
 State
 {
-ColorTarget  : BACK_BUFFER
-DepthTarget  : BACK_BUFFER
+ColorTarget  : COLOR_BACK_BUFFER
+DepthTarget  : DEPTH_BACK_BUFFER
 Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
 Topology	 : Line

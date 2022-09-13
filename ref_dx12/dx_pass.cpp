@@ -403,7 +403,7 @@ namespace
 
 		for (const PassParameters::RenderTarget& renderTarget : params.colorRenderTargets)
 		{
-			const int colorRenderTargetViewIndex = renderTarget.name == PassParameters::BACK_BUFFER_NAME ?
+			const int colorRenderTargetViewIndex = renderTarget.name == PassParameters::COLOR_BACK_BUFFER_NAME ?
 				frame.colorBufferAndView->viewIndex :
 				renderTarget.viewIndex;
 
@@ -412,7 +412,7 @@ namespace
 			colorRenderTargetViews.push_back(colorRenderTargetView);
 		}
 
-		const int depthRenderTargetViewIndex = params.depthRenderTarget.name == PassParameters::BACK_BUFFER_NAME ?
+		const int depthRenderTargetViewIndex = params.depthRenderTarget.name == PassParameters::DEPTH_BACK_BUFFER_NAME ?
 			frame.depthBufferViewIndex :
 			params.depthRenderTarget.viewIndex;
 
@@ -1766,10 +1766,24 @@ void PassUtils::ClearColorCallback(XMFLOAT4 color, GPUJobContext& context, const
 	DX_ASSERT(pass != nullptr && "Pass value is nullptr");
 
 	const PassParameters& params = GetPassParameters(*pass);
+	std::vector<ResourceProxy>& proxies = context.internalTextureProxies;
 
 	for (const PassParameters::RenderTarget& renderTarget : params.colorRenderTargets)
 	{
-		const int viewIndex = renderTarget.name == PassParameters::BACK_BUFFER_NAME ? 
+		// Transition to state
+		const unsigned int renderTargetHashedName = HASH(renderTarget.name.c_str());
+
+		auto renderTargetProxyIt = std::find_if(proxies.begin(), proxies.end(), [renderTargetHashedName]
+		(const ResourceProxy& proxy)
+		{
+			return proxy.hashedName == renderTargetHashedName;
+		});
+
+		DX_ASSERT(renderTargetProxyIt != proxies.end() && "ClearRenderTargetCallback failed. Can't find source proxy");
+		renderTargetProxyIt->TransitionTo(D3D12_RESOURCE_STATE_RENDER_TARGET, context.commandList->GetGPUList());
+
+		// Make Clear() call
+		const int viewIndex = renderTarget.name == PassParameters::COLOR_BACK_BUFFER_NAME ? 
 			context.frame.colorBufferAndView->viewIndex :
 			renderTarget.viewIndex;
 
@@ -1785,8 +1799,22 @@ void PassUtils::ClearDeptCallback(float value, GPUJobContext& context, const Pas
 	DX_ASSERT(pass != nullptr && "Pass value is nullptr");
 
 	const PassParameters& params = GetPassParameters(*pass);
+	std::vector<ResourceProxy>& proxies = context.internalTextureProxies;
 
-	const int depthTargetViewIndex = params.depthRenderTarget.name == PassParameters::BACK_BUFFER_NAME ?
+	// Transition to state
+	const unsigned int depthTargetHashedName = HASH(params.depthRenderTarget.name.c_str());
+
+	auto depthTargetProxyIt = std::find_if(proxies.begin(), proxies.end(), [depthTargetHashedName]
+	(const ResourceProxy& proxy)
+	{
+		return proxy.hashedName == depthTargetHashedName;
+	});
+
+	DX_ASSERT(depthTargetProxyIt != proxies.end() && "ClearDepthTargetCallback failed. Can't find source proxy");
+	depthTargetProxyIt->TransitionTo(D3D12_RESOURCE_STATE_DEPTH_WRITE, context.commandList->GetGPUList());
+
+	// Make Clear() call
+	const int depthTargetViewIndex = params.depthRenderTarget.name == PassParameters::DEPTH_BACK_BUFFER_NAME ?
 		context.frame.depthBufferViewIndex :
 		params.depthRenderTarget.viewIndex;
 
@@ -1831,11 +1859,25 @@ void PassUtils::RenderTargetToRenderStateCallback(GPUJobContext& context, const 
 	}
 }
 
+void PassUtils::DepthTargetToRenderStateCallback(GPUJobContext& context, const Pass_t* pass)
+{
+	DX_ASSERT(pass != nullptr && "Pass value is nullptr");
+
+	const PassParameters& params = GetPassParameters(*pass);
+
+	ResourceProxy::FindAndTranslateTo(
+		params.depthRenderTarget.name,
+		context.internalTextureProxies,
+		D3D12_RESOURCE_STATE_DEPTH_WRITE,
+		context.commandList->GetGPUList()
+	);
+}
+
 void PassUtils::CopyTextureCallback(const std::string sourceName, const std::string destinationName, GPUJobContext& context, const Pass_t* pass)
 {
 	std::vector<ResourceProxy>& proxies = context.internalTextureProxies;
 
-	unsigned int sourceHashedName = HASH(sourceName.c_str());
+	const unsigned int sourceHashedName = HASH(sourceName.c_str());
 
 	auto sourceProxyIt = std::find_if(proxies.begin(), proxies.end(), [sourceHashedName]
 	(const ResourceProxy& proxy)
@@ -1847,7 +1889,7 @@ void PassUtils::CopyTextureCallback(const std::string sourceName, const std::str
 	sourceProxyIt->TransitionTo(D3D12_RESOURCE_STATE_COPY_SOURCE, context.commandList->GetGPUList());
 
 
-	unsigned int destinationHashedName = HASH(destinationName.c_str());
+	const unsigned int destinationHashedName = HASH(destinationName.c_str());
 
 	auto destinationProxyIt = std::find_if(proxies.begin(), proxies.end(), [destinationHashedName]
 	(const ResourceProxy& proxy)
@@ -1865,7 +1907,7 @@ void PassUtils::CopyTextureCallback(const std::string sourceName, const std::str
 void PassUtils::BackBufferToPresentStateCallback(GPUJobContext& context, const Pass_t* pass)
 {
 	ResourceProxy::FindAndTranslateTo(
-		PassParameters::BACK_BUFFER_NAME,
+		PassParameters::COLOR_BACK_BUFFER_NAME,
 		context.internalTextureProxies,
 		D3D12_RESOURCE_STATE_PRESENT,
 		context.commandList->GetGPUList()

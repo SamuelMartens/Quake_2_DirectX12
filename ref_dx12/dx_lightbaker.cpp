@@ -170,12 +170,12 @@ namespace
 		// Load grammar
 		const std::string grammar = Utils::ReadFile(Utils::GenAbsolutePathToFile(Settings::GRAMMAR_DIR + "/" + Settings::GRAMMAR_LIGHT_BAKING_RESULT_FILENAME));
 
-		parser.log = [](size_t line, size_t col, const std::string& msg, const std::string& rule)
+		parser.set_logger([](size_t line, size_t col, const std::string& msg)
 		{
 			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
 
 			DX_ASSERT(false && "Light baking result parsing error");
-		};
+		});
 
 		const bool loadGrammarResult = parser.load_grammar(grammar.c_str());
 		DX_ASSERT(loadGrammarResult && "Can't load Light Baking grammar");

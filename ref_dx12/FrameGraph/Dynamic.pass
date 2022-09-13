@@ -7,8 +7,8 @@ PassSlotLayout: [Pos0 : 0, Pos1 : 1, Tex : 2]
 
 State
 {
-ColorTarget  : BACK_BUFFER
-DepthTarget  : BACK_BUFFER
+ColorTarget  : COLOR_BACK_BUFFER
+DepthTarget  : DEPTH_BACK_BUFFER
 Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
 Topology	 : Triangle

@@ -501,7 +501,8 @@ public:
 	// I need this as constexpr, that's why cannot use std::string
 	// I also need this as c string. So can't use string_vew either
 	// This leave me not a lot of options
-	static constexpr const char* const BACK_BUFFER_NAME = "BACK_BUFFER";
+	static constexpr const char* const COLOR_BACK_BUFFER_NAME = "COLOR_BACK_BUFFER";
+	static constexpr const char* const DEPTH_BACK_BUFFER_NAME = "DEPTH_BACK_BUFFER";
 
 	PassParameters() = default;
 

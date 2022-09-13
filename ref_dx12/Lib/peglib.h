@@ -666,7 +666,7 @@ struct ErrorInfo {
   const char *message_pos = nullptr;
   std::string message;
   std::string label;
-  mutable const char *last_output_pos = nullptr; // TODO: protect...
+  const char *last_output_pos = nullptr;
   bool keep_previous_token = false;
 
   void clear() {
@@ -683,7 +683,7 @@ struct ErrorInfo {
     expected_tokens.emplace_back(error_literal, error_rule);
   }
 
-  void output_log(const Log &log, const char *s, size_t n) const;
+  void output_log(const Log &log, const char *s, size_t n);
 
 private:
   int cast_char(char c) const { return static_cast<unsigned char>(c); }
@@ -923,12 +923,12 @@ public:
 
   // Line info
   std::pair<size_t, size_t> line_info(const char *cur) const {
-    if (source_line_index.empty()) {
+    std::call_once(source_line_index_init_, [this]() {
       for (size_t pos = 0; pos < l; pos++) {
         if (s[pos] == '\n') { source_line_index.push_back(pos); }
       }
       source_line_index.push_back(l);
-    }
+    });
 
     auto pos = static_cast<size_t>(std::distance(s, cur));
 
@@ -944,7 +944,8 @@ public:
   size_t next_trace_id = 0;
   std::vector<size_t> trace_ids;
   bool ignore_trace_state = false;
-  mutable std::vector<size_t> source_line_index; // TODO: protect...
+  mutable std::once_flag source_line_index_init_;
+  mutable std::vector<size_t> source_line_index;
 };
 
 /*
@@ -1411,7 +1412,8 @@ public:
 
   std::shared_ptr<Ope> ope_;
   Definition *outer_;
-  mutable std::string trace_name_; // TODO: protect...
+  mutable std::once_flag trace_name_init_;
+  mutable std::string trace_name_;
 
   friend class Definition;
 };
@@ -2328,6 +2330,7 @@ public:
 
   std::string name;
   const char *s_ = nullptr;
+  std::pair<size_t, size_t> line_ = {1, 1};
 
   std::function<bool(const SemanticValues &vs, const std::any &dt,
                      std::string &msg)>
@@ -2483,17 +2486,15 @@ inline size_t parse_literal(const char *s, size_t n, SemanticValues &vs,
   }
 
   // Skip whiltespace
-  if (!c.in_token_boundary_count) {
-    if (c.whitespaceOpe) {
-      auto save_ignore_trace_state = c.ignore_trace_state;
-      c.ignore_trace_state = !c.verbose_trace;
-      auto se =
-          scope_exit([&]() { c.ignore_trace_state = save_ignore_trace_state; });
+  if (!c.in_token_boundary_count && c.whitespaceOpe) {
+    auto save_ignore_trace_state = c.ignore_trace_state;
+    c.ignore_trace_state = !c.verbose_trace;
+    auto se =
+        scope_exit([&]() { c.ignore_trace_state = save_ignore_trace_state; });
 
-      auto len = c.whitespaceOpe->parse(s + i, n - i, vs, c, dt);
-      if (fail(len)) { return len; }
-      i += len;
-    }
+    auto len = c.whitespaceOpe->parse(s + i, n - i, vs, c, dt);
+    if (fail(len)) { return len; }
+    i += len;
   }
 
   return i;
@@ -2504,8 +2505,7 @@ inline std::pair<size_t, size_t> SemanticValues::line_info() const {
   return c_->line_info(sv_.data());
 }
 
-inline void ErrorInfo::output_log(const Log &log, const char *s,
-                                  size_t n) const {
+inline void ErrorInfo::output_log(const Log &log, const char *s, size_t n) {
   if (message_pos) {
     if (message_pos > last_output_pos) {
       last_output_pos = message_pos;
@@ -2558,6 +2558,7 @@ inline void ErrorInfo::output_log(const Log &log, const char *s,
               msg += "'";
             } else {
               msg += "<" + error_rule->name + ">";
+              if (label.empty()) { label = error_rule->name; }
             }
             first_item = false;
           }
@@ -2638,12 +2639,50 @@ inline size_t Ope::parse(const char *s, size_t n, SemanticValues &vs,
 }
 
 inline size_t Dictionary::parse_core(const char *s, size_t n,
-                                     SemanticValues & /*vs*/, Context &c,
-                                     std::any & /*dt*/) const {
-  auto len = trie_.match(s, n);
-  if (len > 0) { return len; }
-  c.set_error_pos(s);
-  return static_cast<size_t>(-1);
+                                     SemanticValues &vs, Context &c,
+                                     std::any &dt) const {
+  auto i = trie_.match(s, n);
+  if (i == 0) {
+    c.set_error_pos(s);
+    return static_cast<size_t>(-1);
+  }
+
+  // Word check
+  if (c.wordOpe) {
+    auto save_ignore_trace_state = c.ignore_trace_state;
+    c.ignore_trace_state = !c.verbose_trace;
+    auto se =
+        scope_exit([&]() { c.ignore_trace_state = save_ignore_trace_state; });
+
+    {
+      SemanticValues dummy_vs;
+      Context dummy_c(nullptr, c.s, c.l, 0, nullptr, nullptr, false, nullptr,
+                      nullptr, nullptr, false, nullptr);
+      std::any dummy_dt;
+
+      NotPredicate ope(c.wordOpe);
+      auto len = ope.parse(s + i, n - i, dummy_vs, dummy_c, dummy_dt);
+      if (fail(len)) {
+        c.set_error_pos(s);
+        return len;
+      }
+      i += len;
+    }
+  }
+
+  // Skip whiltespace
+  if (!c.in_token_boundary_count && c.whitespaceOpe) {
+    auto save_ignore_trace_state = c.ignore_trace_state;
+    c.ignore_trace_state = !c.verbose_trace;
+    auto se =
+        scope_exit([&]() { c.ignore_trace_state = save_ignore_trace_state; });
+
+    auto len = c.whitespaceOpe->parse(s + i, n - i, vs, c, dt);
+    if (fail(len)) { return len; }
+    i += len;
+  }
+
+  return i;
 }
 
 inline size_t LiteralString::parse_core(const char *s, size_t n,
@@ -2732,7 +2771,7 @@ inline size_t Holder::parse_core(const char *s, size_t n, SemanticValues &vs,
       }
 
       if (success(len)) {
-        a_val = reduce(chvs, dt);
+        if (!c.recovered) { a_val = reduce(chvs, dt); }
       } else {
         if (c.log && !msg.empty() && c.error_info.message_pos < s) {
           c.error_info.message_pos = s;
@@ -2773,7 +2812,8 @@ inline std::any Holder::reduce(SemanticValues &vs, std::any &dt) const {
 inline const std::string &Holder::name() const { return outer_->name; }
 
 inline const std::string &Holder::trace_name() const {
-  if (trace_name_.empty()) { trace_name_ = "[" + outer_->name + "]"; }
+  std::call_once(trace_name_init_,
+                 [this]() { trace_name_ = "[" + outer_->name + "]"; });
   return trace_name_;
 }
 
@@ -2937,17 +2977,15 @@ inline size_t Recovery::parse_core(const char *s, size_t n,
   // Custom error message
   if (c.log) {
     auto label = dynamic_cast<Reference *>(rule.args_[0].get());
-    if (label) {
-      if (!label->rule_->error_message.empty()) {
-        c.error_info.message_pos = s;
-        c.error_info.message = label->rule_->error_message;
-        c.error_info.label = label->rule_->name;
-      }
+    if (label && !label->rule_->error_message.empty()) {
+      c.error_info.message_pos = s;
+      c.error_info.message = label->rule_->error_message;
+      c.error_info.label = label->rule_->name;
     }
   }
 
   // Recovery
-  size_t len = static_cast<size_t>(-1);
+  auto len = static_cast<size_t>(-1);
   {
     auto save_log = c.log;
     c.log = nullptr;
@@ -3481,13 +3519,14 @@ private:
         rule <= ope;
         rule.name = name;
         rule.s_ = vs.sv().data();
+        rule.line_ = line_info(vs.ss, rule.s_);
         rule.ignoreSemanticValue = ignore;
         rule.is_macro = is_macro;
         rule.params = params;
 
         if (data.start.empty()) {
-          data.start = name;
-          data.start_pos = vs.sv().data();
+          data.start = rule.name;
+          data.start_pos = rule.s_;
         }
       } else {
         data.duplicates_of_definition.emplace_back(name, vs.sv().data());
@@ -4442,8 +4481,8 @@ public:
   operator bool() { return grammar_ != nullptr; }
 
   bool load_grammar(const char *s, size_t n, const Rules &rules) {
-    grammar_ =
-        ParserGenerator::parse(s, n, rules, start_, enablePackratParsing_, log);
+    grammar_ = ParserGenerator::parse(s, n, rules, start_,
+                                      enablePackratParsing_, log_);
     return grammar_ != nullptr;
   }
 
@@ -4462,7 +4501,8 @@ public:
   bool parse_n(const char *s, size_t n, const char *path = nullptr) const {
     if (grammar_ != nullptr) {
       const auto &rule = (*grammar_)[start_];
-      return post_process(s, n, rule.parse(s, n, path, log));
+      auto result = rule.parse(s, n, path, log_);
+      return post_process(s, n, result);
     }
     return false;
   }
@@ -4471,7 +4511,8 @@ public:
                const char *path = nullptr) const {
     if (grammar_ != nullptr) {
       const auto &rule = (*grammar_)[start_];
-      return post_process(s, n, rule.parse(s, n, dt, path, log));
+      auto result = rule.parse(s, n, dt, path, log_);
+      return post_process(s, n, result);
     }
     return false;
   }
@@ -4481,7 +4522,8 @@ public:
                const char *path = nullptr) const {
     if (grammar_ != nullptr) {
       const auto &rule = (*grammar_)[start_];
-      return post_process(s, n, rule.parse_and_get_value(s, n, val, path, log));
+      auto result = rule.parse_and_get_value(s, n, val, path, log_);
+      return post_process(s, n, result);
     }
     return false;
   }
@@ -4492,7 +4534,7 @@ public:
     if (grammar_ != nullptr) {
       const auto &rule = (*grammar_)[start_];
       return post_process(s, n,
-                          rule.parse_and_get_value(s, n, dt, val, path, log));
+                          rule.parse_and_get_value(s, n, dt, val, path, log_));
     }
     return false;
   }
@@ -4546,13 +4588,7 @@ public:
 
   const Definition &operator[](const char *s) const { return (*grammar_)[s]; }
 
-  std::vector<std::string> get_rule_names() const {
-    std::vector<std::string> rules;
-    for (auto &[name, _] : *grammar_) {
-      rules.push_back(name);
-    }
-    return rules;
-  }
+  const Grammar &get_grammar() const { return *grammar_; }
 
   void disable_eoi_check() {
     if (grammar_ != nullptr) {
@@ -4608,12 +4644,18 @@ public:
     return AstOptimizer(opt_mode, get_no_ast_opt_rules()).optimize(ast);
   }
 
-  Log log;
+  void set_logger(Log log) { log_ = log; }
+
+  void set_logger(
+      std::function<void(size_t line, size_t col, const std::string &msg)>
+          log) {
+    log_ = [log](size_t line, size_t col, const std::string &msg,
+                 const std::string & /*rule*/) { log(line, col, msg); };
+  }
 
 private:
-  bool post_process(const char *s, size_t n,
-                    const Definition::Result &r) const {
-    if (log && !r.ret) { r.error_info.output_log(log, s, n); }
+  bool post_process(const char *s, size_t n, Definition::Result &r) const {
+    if (log_ && !r.ret) { r.error_info.output_log(log_, s, n); }
     return r.ret && !r.recovered;
   }
 
@@ -4628,6 +4670,7 @@ private:
   std::shared_ptr<Grammar> grammar_;
   std::string start_;
   bool enablePackratParsing_ = false;
+  Log log_;
 };
 
 /*-----------------------------------------------------------------------------

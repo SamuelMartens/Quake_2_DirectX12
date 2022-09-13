@@ -334,7 +334,7 @@ public:
 	{
 		DX_ASSERT(renderTargetName.empty() == false && "AllocateRenderTargetView failed. Invalid render target name");
 
-		if (renderTargetName == PassParameters::BACK_BUFFER_NAME)
+		if (renderTargetName == PassParameters::COLOR_BACK_BUFFER_NAME || renderTargetName == PassParameters::DEPTH_BACK_BUFFER_NAME)
 		{
 			return Const::INVALID_INDEX;
 		}
@@ -351,7 +351,7 @@ public:
 	template<typename T>
 	static void ReleaseRenderTargetView(std::string_view renderTargetName, int& renderTargetIndex, T& descriptorHeapAllocator)
 	{
-		if (renderTargetName == PassParameters::BACK_BUFFER_NAME)
+		if (renderTargetName == PassParameters::COLOR_BACK_BUFFER_NAME || renderTargetName == PassParameters::DEPTH_BACK_BUFFER_NAME)
 		{
 			DX_ASSERT(renderTargetIndex == Const::INVALID_INDEX && "Render target view index should be clean if it is back buffer");
 			return;
@@ -402,6 +402,7 @@ public:
 
 	static void InternalTextureProxiesToInterPassStateCallback(GPUJobContext& context, const Pass_t* pass);
 	static void RenderTargetToRenderStateCallback(GPUJobContext& context, const Pass_t* pass);
+	static void DepthTargetToRenderStateCallback(GPUJobContext& context, const Pass_t* pass);
 
 	static void CopyTextureCallback(const std::string sourceName, const std::string destinationName, GPUJobContext& context, const Pass_t* pass);
 	static void BackBufferToPresentStateCallback(GPUJobContext& context, const Pass_t* pass);

@@ -7,6 +7,7 @@ Resources
 		Format : R32G32_FLOAT
 		Flags : ALLOW_RENDER_TARGET, ALLOW_UNORDERED_ACCESS
 		ClearValue : 0.0, 0.0, 0.0, 1.0
+		InitValue: NONE
 	],
 	
 	GBuffer_Position
@@ -16,6 +17,7 @@ Resources
 		Format : R32G32B32A32_FLOAT
 		Flags : ALLOW_RENDER_TARGET, ALLOW_UNORDERED_ACCESS
 		ClearValue : 0.0, 0.0, 0.0, 1.0
+		InitValue: NONE
 	],
 	
 	GBuffer_Albedo
@@ -24,6 +26,8 @@ Resources
 		Dimensions : 1024, 768
 		Format : R8G8B8A8_UNORM
 		Flags : ALLOW_RENDER_TARGET, ALLOW_UNORDERED_ACCESS
+		ClearValue : NONE
+		InitValue : NONE
 	],
 	
 	ComposeBuffer
@@ -32,6 +36,8 @@ Resources
 		Dimensions : 1024, 768
 		Format : R8G8B8A8_UNORM
 		Flags : ALLOW_UNORDERED_ACCESS
+		ClearValue : NONE
+		InitValue : NONE
 	],
 	
 	ClusterClassification
@@ -40,18 +46,44 @@ Resources
 		Dimensions : 1024, 768
 		Format : R16_SINT
 		Flags : ALLOW_UNORDERED_ACCESS
+		ClearValue : NONE
+		InitValue : NONE
+	],
+	
+	ColorBackBufferClearBuffer
+	[
+		Type : Texture2D
+		Dimensions : 1024, 768
+		Format : R8G8B8A8_UNORM
+		Flags : NONE
+		ClearValue : NONE
+		InitValue : 0.0, 0.5, 0.0, 1.0
+	],
+	
+	DepthBackBufferClearBuffer
+	[
+		Type : Texture2D
+		Dimensions : 1024, 768
+		Format : D24_UNORM_S8_UINT
+		Flags : NONE
+		ClearValue : NONE
+		InitValue : 1.0, 0.0, 0.0, 0.0
 	]
 }
 
 Steps
 {
-    UI
+	// Cleat color buffer
+	Copy(ColorBackBufferClearBuffer, COLOR_BACK_BUFFER)
+	// Clear depth buffer
+	Copy(DepthBackBufferClearBuffer, DEPTH_BACK_BUFFER)
     Static
 	BSPClusterClassification
 	DeferredCompose
-	Copy(ComposeBuffer, BACK_BUFFER)
-    //Dynamic
+	Copy(ComposeBuffer, COLOR_BACK_BUFFER)
+    Dynamic
     Particles
+	UI
 	Debug
 	Debug_LightSources
 	Debug_PathSegments

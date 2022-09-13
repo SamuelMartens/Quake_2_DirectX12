@@ -6,8 +6,8 @@ PassVertAttr: VertexIn
 
 State
 {
-ColorTarget  : BACK_BUFFER
-DepthTarget  : BACK_BUFFER
+ColorTarget  : COLOR_BACK_BUFFER
+DepthTarget  : DEPTH_BACK_BUFFER
 Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
 Topology	 : Triangle
@@ -20,12 +20,6 @@ DescriptorTable(SRV(t0, numDescriptors = 1)),
 DescriptorTable(SRV(t1, numDescriptors = 2)),
 DescriptorTable(Sampler(s0)),
 CBV(b0)
-}
-
-PrePass
-{
-ClearColor(0.0, 0.0, 0.0, 1.0)
-ClearDepth(1.0)
 }
 
 // Attributes
