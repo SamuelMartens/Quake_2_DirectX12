@@ -21,6 +21,11 @@ DescriptorTable(SRV(t0, numDescriptors = 1)),
 DescriptorTable(Sampler(s0))
 }
 
+PrePass
+{
+	ClearDepth(1.0)
+}
+
 // Attributes
 
 struct VertexIn

@@ -1935,7 +1935,7 @@ std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std:
 				const uint32_t u24Val = static_cast<uint32_t>(resourceDecl.initValue->x * u24maxVal);
 				const uint8_t u8Val = static_cast<uint8_t>(resourceDecl.initValue->y);
 
-				uint32_t initValue[componentsNum] = { (u24Val << 8) | u8Val };
+				uint32_t initValue[componentsNum] = { u24Val | (u8Val << 24) };
 
 				initBuffer = CreateInitBuffer<uint32_t, componentsNum>(elementsNum, initValue);
 			}
