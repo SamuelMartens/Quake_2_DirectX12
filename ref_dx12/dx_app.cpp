@@ -1,6 +1,6 @@
 #include "dx_app.h"
 
-
+#include <numeric>
 
 #include "Lib/imgui/backends/imgui_impl_dx12.h"
 #include "Lib/imgui/backends/imgui_impl_win32.h"
@@ -2077,6 +2077,11 @@ const BSPTree& Renderer::GetBSPTree() const
 	return bspTree;
 }
 
+int Renderer::GetCurrentFrameIndex() const
+{
+	return currentFrameIndex;
+}
+
 void Renderer::ConsumeDiffuseIndirectLightingBakingResult(BakingData&& results)
 {
 	ASSERT_MAIN_THREAD;
@@ -2203,6 +2208,120 @@ std::vector<std::vector<std::vector<std::vector<XMFLOAT4>>>> Renderer::GenLightS
 	}
 
 	return vertices;
+}
+
+std::vector<ClusterProbeGridInfo> Renderer::GenBakeClusterProbeGridInfo() const
+{
+	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
+
+	const BakingData& bakeData = lightBakingResult.obj;
+
+	if (bakeData.probes.empty() == true)
+	{
+		return {};
+	}
+
+	std::vector<ClusterProbeGridInfo> probeGridInfoArray;
+	probeGridInfoArray.reserve(bakeData.clusterFirstProbeIndices.size());
+
+	DX_ASSERT(bakeData.clusterFirstProbeIndices.size() == bakeData.clusterProbeGridSizes.size() &&
+		"Cluster First probe indices should be the same size as cluster grid probe sizes");
+
+	DX_ASSERT(bakeData.bakingMode.has_value() == true);
+
+	switch (*bakeData.bakingMode)
+	{
+	case LightBakingMode::AllClusters:
+	{
+		for (int i = 0; i < bakeData.clusterFirstProbeIndices.size(); ++i)
+		{
+			ClusterProbeGridInfo probeGridInfo;
+			probeGridInfo.SizeX = bakeData.clusterProbeGridSizes[i].x;
+			probeGridInfo.SizeY = bakeData.clusterProbeGridSizes[i].y;
+			probeGridInfo.SizeZ = bakeData.clusterProbeGridSizes[i].z;
+
+			probeGridInfo.StartIndex = bakeData.clusterFirstProbeIndices[i];
+
+			probeGridInfoArray.push_back(probeGridInfo);
+		}
+	}
+	break;
+	case LightBakingMode::CurrentPositionCluster: 
+	{
+		// Get clusters num
+		const int clustersNum = Renderer::Inst().GetBSPTree().GetClustersSet().size();
+
+		// We have data only for one cluster. So fill out everything as empty.
+		probeGridInfoArray.resize(clustersNum);
+
+		DX_ASSERT(bakeData.bakingCluster.has_value() == true);
+
+		// Now write data only for one cluster, which should be in the end
+		ClusterProbeGridInfo& clusterWithData = probeGridInfoArray[*bakeData.bakingCluster];
+		clusterWithData.SizeX = bakeData.clusterProbeGridSizes[*bakeData.bakingCluster].x;
+		clusterWithData.SizeY = bakeData.clusterProbeGridSizes[*bakeData.bakingCluster].y;
+		clusterWithData.SizeZ = bakeData.clusterProbeGridSizes[*bakeData.bakingCluster].z;
+
+		clusterWithData.StartIndex = bakeData.clusterFirstProbeIndices[*bakeData.bakingCluster];
+	};
+	default:
+		DX_ASSERT(false);
+		break;
+	}
+
+	return probeGridInfoArray;
+}
+
+std::vector<XMFLOAT4> Renderer::GenBakeProbePositions() const
+{
+	// This entire function should follow the same logic as packing probe SH data. i.e. order should be the same
+	
+	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
+
+	const BakingData& bakeData = lightBakingResult.obj;
+
+	if (bakeData.probes.empty() == true)
+	{
+		return {};
+	}
+
+	std::vector<XMFLOAT4> probePositions;
+
+	DX_ASSERT(bakeData.bakingMode.has_value() == true);
+
+	switch (*bakeData.bakingMode)
+	{
+	case LightBakingMode::AllClusters:
+	{
+		std::vector<std::vector<XMFLOAT4>> bakePointPosition = LightBaker::Inst().GenerateClustersBakePoints();
+
+		const int totalBakePointsNum = std::accumulate(bakePointPosition.cbegin(), bakePointPosition.cend(), 0, 
+			[](int sum, const std::vector<XMFLOAT4>& clusterBakePoints) 
+		{
+			return sum + clusterBakePoints.size();
+		});
+
+		probePositions.reserve(totalBakePointsNum);
+
+		for (const std::vector<XMFLOAT4>& clusterBakePoint : bakePointPosition)
+		{
+			std::copy(clusterBakePoint.cbegin(), clusterBakePoint.cend(), std::back_inserter(probePositions));
+		}
+	}
+	break;
+	case LightBakingMode::CurrentPositionCluster:
+	{
+		DX_ASSERT(bakeData.bakingCluster.has_value() == true);
+
+		probePositions = LightBaker::Inst().GenerateClusterBakePoints(*bakeData.bakingCluster);
+	}
+	break;
+	default:
+		DX_ASSERT(false);
+		break;
+	}
+
+	return probePositions;
 }
 
 const std::array<unsigned int, 256>& Renderer::GetRawPalette() const

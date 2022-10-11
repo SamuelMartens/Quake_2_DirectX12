@@ -11,8 +11,9 @@ State
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-CBV(b0), 
-DescriptorTable(SRV(t0, numDescriptors = 2),
+CBV(b0),
+DescriptorTable(SRV(t1, numDescriptors = 1)),
+DescriptorTable(SRV(t0, numDescriptors = 1),
 UAV(u0, numDescriptors = 1))
 }
 
@@ -23,17 +24,20 @@ struct AABB
 	float4 Max;
 }
 
-[Local, PerPass, Bind: GBuffer_Position]
-Texture2D GBuffer_Position : register(t0)
-
-[Local, PerPass]
-StructuredBuffer<AABB> ClusterAABBs : register(t1)
-
-[Local, PerPass]
+[Global, PerPass]
 cbuffer cbClusterAABBParameters : register(b0)
 {
 	int ClusterAABBsSize;
 }
+
+// --- Global ---
+[Global, PerPass]
+StructuredBuffer<AABB> ClusterAABBs : register(t1)
+
+// --- Local ---
+
+[Local, PerPass, Bind: GBuffer_Position]
+Texture2D GBuffer_Position : register(t0)
 
 [Local, PerPass, Bind: ClusterClassification]
 RWTexture2D<int> ClusterClassification : register(u0)

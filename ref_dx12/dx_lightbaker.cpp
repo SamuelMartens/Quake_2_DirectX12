@@ -140,6 +140,7 @@ namespace
 
 	float GetCosineWeightedSamplePDF(float cosTheta)
 	{
+		// cosTheta == n * l
 		return cosTheta / M_PI;
 	}
 
@@ -235,6 +236,26 @@ namespace
 			return clusterFirstProbeIndices;
 		};
 
+		parser["ClusterGridSizes"] = [](const peg::SemanticValues& sv)
+		{
+			const int sizesCount = std::any_cast<int>(sv[0]);
+
+			DX_ASSERT(sv.size() - 1 == sizesCount && "Invalid sizes token number");
+
+			std::vector<XMINT3> clusterGridSizes;
+			clusterGridSizes.reserve(sizesCount);
+
+			// i is init to 1, because sv[0] is sizes count
+			for (int i = 1; i < sv.size(); ++i)
+			{
+				clusterGridSizes.push_back(std::any_cast<XMINT3>(sv[i]));
+			}
+
+			DX_ASSERT(clusterGridSizes.size() == sizesCount);
+
+			return clusterGridSizes;
+		};
+
 		// --- Probe Data
 		parser["ProbeSection"] = [](const peg::SemanticValues& sv) 
 		{
@@ -294,6 +315,16 @@ namespace
 			return stof(sv.token_to_string());
 		};
 
+		parser["Int3"] = [](const peg::SemanticValues& sv)
+		{
+			return XMINT3
+			(
+				std::any_cast<int>(sv[0]),
+				std::any_cast<int>(sv[1]),
+				std::any_cast<int>(sv[2])
+			);
+		};
+
 		parser["Int"] = [](const peg::SemanticValues& sv)
 		{
 			return stoi(sv.token_to_string());
@@ -345,6 +376,7 @@ void LightBaker::PreBake()
 	ASSERT_MAIN_THREAD;
 
 	DX_ASSERT(transferableData.clusterFirstProbeIndices.empty() == true && "Cluster probe data should be empty before bake");
+	DX_ASSERT(transferableData.clusterProbeGridSizes.empty() == true && "Cluster probe grid data should be empty before bake");
 	DX_ASSERT(clusterBakePoints.empty() == true && "Cluster bake points should be empty before bake");
 	DX_ASSERT(probesBaked == 0 && "Amount of baked probes was not reset");
 	DX_ASSERT(transferableData.probes.empty() == true && "Probes were baked, but not consumed");
@@ -355,14 +387,22 @@ void LightBaker::PreBake()
 	currentBakeCluster = 0;
 	clusterBakePoints = GenerateClustersBakePoints();
 	transferableData.clusterFirstProbeIndices.resize(clusterBakePoints.size());
+	transferableData.clusterProbeGridSizes.resize(clusterBakePoints.size());
 
 	int totalProbes = 0;
 
 	for (int i = 0; i < clusterBakePoints.size(); ++i)
 	{
-		transferableData.clusterFirstProbeIndices[i] = totalProbes;
+		// Only fill data for non empty clusters
+		if (clusterBakePoints[i].empty() == false)
+		{
+			// Fill up first probe data
+			transferableData.clusterFirstProbeIndices[i] = totalProbes;
+			totalProbes += clusterBakePoints[i].size();
 
-		totalProbes += clusterBakePoints[i].size();
+			// Fill up cluster grid data
+			transferableData.clusterProbeGridSizes[i] = GenerateClusterGridSize(i);
+		}
 	}
 
 	transferableData.probes.resize(totalProbes);
@@ -445,8 +485,6 @@ std::vector<std::vector<XMFLOAT4>> LightBaker::GenerateClustersBakePoints()
 
 std::vector<XMFLOAT4> LightBaker::GenerateClusterBakePoints(int clusterIndex) const
 {
-	constexpr float bakePointsInterval = 50.0f;
-
 	Utils::AABB clusterAABB = Renderer::Inst().GetBSPTree().GetClusterAABB(clusterIndex);
 	
 	constexpr XMFLOAT4 epsilonVec = XMFLOAT4(
@@ -457,34 +495,28 @@ std::vector<XMFLOAT4> LightBaker::GenerateClusterBakePoints(int clusterIndex) co
 	XMVECTOR sseEpsilonVec = XMLoadFloat4(&epsilonVec);
 
 	// Because of floating point math errors sometimes bake points would be slightly behind
-	// actual meshes, so reduce AABB we use to generate bake points a little bir
+	// actual meshes, so reduce AABB we use to generate bake points a little bit
 	XMStoreFloat4(&clusterAABB.minVert, 
 		XMLoadFloat4(&clusterAABB.minVert) + sseEpsilonVec);
 
 	XMStoreFloat4(&clusterAABB.maxVert,
 		XMLoadFloat4(&clusterAABB.maxVert) - sseEpsilonVec);
 
-	
-	// Amount of bake points along X axis
-	const int xAxisNum = std::ceil((clusterAABB.maxVert.x - clusterAABB.minVert.x) / bakePointsInterval);
-	// Amount of bake points along Y axis
-	const int yAxisNum = std::ceil((clusterAABB.maxVert.y - clusterAABB.minVert.y) / bakePointsInterval);
-	// Amount of bake points along X axis
-	const int zAxisNum = std::ceil((clusterAABB.maxVert.z - clusterAABB.minVert.z) / bakePointsInterval);
+	const XMINT3 clusterGridSize = GenerateClusterGridSize(clusterIndex);
 
 	std::vector<XMFLOAT4> bakePoints;
-	bakePoints.reserve(xAxisNum * yAxisNum * zAxisNum);
+	bakePoints.reserve(clusterGridSize.x * clusterGridSize.y * clusterGridSize.z);
 
-	for (int xIteration = 0; xIteration < xAxisNum; ++xIteration)
+	for (int xIteration = 0; xIteration < clusterGridSize.x; ++xIteration)
 	{
-		for (int yIteration = 0; yIteration < yAxisNum; ++yIteration)
+		for (int yIteration = 0; yIteration < clusterGridSize.y; ++yIteration)
 		{
-			for (int zIteration = 0; zIteration < zAxisNum; ++zIteration)
+			for (int zIteration = 0; zIteration < clusterGridSize.z; ++zIteration)
 			{
 				bakePoints.push_back({
-					std::min(clusterAABB.minVert.x + bakePointsInterval * xIteration, clusterAABB.maxVert.x),
-					std::min(clusterAABB.minVert.y + bakePointsInterval * yIteration, clusterAABB.maxVert.y),
-					std::min(clusterAABB.minVert.z + bakePointsInterval * zIteration, clusterAABB.maxVert.z),
+					std::min(clusterAABB.minVert.x + Settings::CLUSTER_PROBE_GRID_INTERVAL * xIteration, clusterAABB.maxVert.x),
+					std::min(clusterAABB.minVert.y + Settings::CLUSTER_PROBE_GRID_INTERVAL * yIteration, clusterAABB.maxVert.y),
+					std::min(clusterAABB.minVert.z + Settings::CLUSTER_PROBE_GRID_INTERVAL * zIteration, clusterAABB.maxVert.z),
 					1.0f
 					});
 			}
@@ -492,6 +524,37 @@ std::vector<XMFLOAT4> LightBaker::GenerateClusterBakePoints(int clusterIndex) co
 	}
 
 	return bakePoints;
+}
+
+//#DEBUG sizes that I generate during this is saved to a file. This is stupid I can regenerate those during runtime
+XMINT3 LightBaker::GenerateClusterGridSize(int clusterIndex) const
+{
+	Utils::AABB clusterAABB = Renderer::Inst().GetBSPTree().GetClusterAABB(clusterIndex);
+
+	constexpr XMFLOAT4 epsilonVec = XMFLOAT4(
+		Settings::PATH_TRACING_EPSILON,
+		Settings::PATH_TRACING_EPSILON,
+		Settings::PATH_TRACING_EPSILON, 0.0f);
+
+	XMVECTOR sseEpsilonVec = XMLoadFloat4(&epsilonVec);
+
+	// Because of floating point math errors sometimes bake points would be slightly behind
+	// actual meshes, so reduce AABB we use to generate bake points a little bir
+	XMStoreFloat4(&clusterAABB.minVert,
+		XMLoadFloat4(&clusterAABB.minVert) + sseEpsilonVec);
+
+	XMStoreFloat4(&clusterAABB.maxVert,
+		XMLoadFloat4(&clusterAABB.maxVert) - sseEpsilonVec);
+
+
+	// Amount of bake points along X axis
+	const int xAxisNum = std::ceil((clusterAABB.maxVert.x - clusterAABB.minVert.x) / Settings::CLUSTER_PROBE_GRID_INTERVAL);
+	// Amount of bake points along Y axis
+	const int yAxisNum = std::ceil((clusterAABB.maxVert.y - clusterAABB.minVert.y) / Settings::CLUSTER_PROBE_GRID_INTERVAL);
+	// Amount of bake points along X axis
+	const int zAxisNum = std::ceil((clusterAABB.maxVert.z - clusterAABB.minVert.z) / Settings::CLUSTER_PROBE_GRID_INTERVAL);
+	
+	return { xAxisNum, yAxisNum, zAxisNum };
 }
 
 void LightBaker::BakeJob()
@@ -1197,6 +1260,19 @@ void LightBaker::SaveBakingResultsToFile(const BakingData& bakingResult) const
 			bakingResultStream << "\n" << firstProbeIndex;
 		}
 	}
+
+	DX_ASSERT(bakingResult.clusterProbeGridSizes.empty() == false &&
+		"Cluster probe grid can't be false");
+
+	bakingResultStream << "\n" << "ClusterGridSizes " << bakingResult.clusterProbeGridSizes.size();
+
+	for (const XMINT3& sizes : bakingResult.clusterProbeGridSizes)
+	{
+		bakingResultStream << "\n" << sizes.x << ", " << sizes.y << ", " << sizes.z;
+	}
+
+	// Cluster Grid Sizes
+
 
 	// Probe Data
 	bakingResultStream << std::fixed << std::setprecision(9);

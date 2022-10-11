@@ -369,6 +369,14 @@ namespace RenderCallbacks
 		{
 		}
 		break;
+		case HASH("ClusterAABBs"):
+		{
+		}
+		break;
+		case HASH("ClusterAABBsSize"):
+		{
+		}
+		break;
 		default:
 			break;
 		}
@@ -476,6 +484,165 @@ namespace RenderCallbacks
 			}
 		}
 		break;
+		case HASH("ClusterAABBs"):
+		{
+			// Should be the same as case above
+			const std::string clusterAABBResourceName = "ClusterAABBs";
+
+			ResourceManager& resMan = ResourceManager::Inst();
+
+			// Check if this resource already exists
+			if (resMan.FindResource(clusterAABBResourceName) == nullptr)
+			{
+				const BSPTree& bspTree = Renderer::Inst().GetBSPTree();
+				const std::set<int> clusterSet = bspTree.GetClustersSet();
+
+				// Check if we already have BSP loaded
+				if (clusterSet.empty() == false)
+				{
+					std::vector<Utils::AABB> clusterAABB(clusterSet.size());
+
+					std::transform(clusterSet.cbegin(), clusterSet.cend(), clusterAABB.begin(),
+						[&bspTree](const int clusterIndex)
+					{
+						return bspTree.GetClusterAABB(clusterIndex);
+					});
+
+					ResourceDesc desc;
+					desc.width = clusterAABB.size() * sizeof(Utils::AABB);
+					desc.height = 1;
+					desc.format = DXGI_FORMAT_UNKNOWN;
+					desc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+					desc.flags = D3D12_RESOURCE_FLAG_NONE;
+
+					FArg::CreateStructuredBuffer args;
+					args.context = &ctx.jobContext;
+					args.desc = &desc;
+					args.data = reinterpret_cast<std::byte*>(clusterAABB.data());
+					args.name = clusterAABBResourceName.c_str();
+
+					resMan.CreateStructuredBuffer(args);
+				}
+			}
+
+			if (Resource* clusterAABBBuffer = resMan.FindResource(clusterAABBResourceName))
+			{
+				ViewDescription_t defaultSrvDesc{
+					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(clusterAABBBuffer, sizeof(Utils::AABB)) };
+
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, clusterAABBBuffer->buffer.Get(), &defaultSrvDesc));
+			}
+			else
+			{
+				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
+
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
+			}
+
+		}
+		break;
+		case HASH("ClusterAABBsSize"):
+		{
+			const BSPTree& bspTree = Renderer::Inst().GetBSPTree();
+			const std::set<int> clusterSet = bspTree.GetClustersSet();
+
+			int& clusterAAABsSize = reinterpret_cast<int&>(bindPoint);
+			clusterAAABsSize = clusterSet.size();
+		}
+		break;
+		//#DEBUG I think when I regenerate data, resource like this one are not updated.
+		// They created only once when stuff appears. This needs to be fixed. This also 
+		// happens for ClusterAABB and etc (GO THROUGH PROBE RESOURCE AND SEE WHAT IS UP)
+		case HASH("ClusterProbeGridInfoBuffer"):
+		{
+			// Should be the same as case above
+			const std::string clusterProbeGridInfoResourceName = "ClusterProbeGridInfo";
+
+			ResourceManager& resMan = ResourceManager::Inst();
+
+			if (resMan.FindResource(clusterProbeGridInfoResourceName) == nullptr)
+			{
+				std::vector<ClusterProbeGridInfo> probeGridInfo = Renderer::Inst().GenBakeClusterProbeGridInfo();
+
+				if (probeGridInfo.empty() == false)
+				{
+					ResourceDesc desc;
+					desc.width = probeGridInfo.size() * sizeof(ClusterProbeGridInfo);
+					desc.height = 1;
+					desc.format = DXGI_FORMAT_UNKNOWN;
+					desc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+					desc.flags = D3D12_RESOURCE_FLAG_NONE;
+
+					FArg::CreateStructuredBuffer args;
+					args.context = &ctx.jobContext;
+					args.desc = &desc;
+					args.data = reinterpret_cast<std::byte*>(probeGridInfo.data());
+					args.name = clusterProbeGridInfoResourceName.c_str();
+
+					resMan.CreateStructuredBuffer(args);
+				}
+			}
+
+			if (Resource* clusterProbeGridInfoBuffer = resMan.FindResource(clusterProbeGridInfoResourceName))
+			{
+				ViewDescription_t defaultSrvDesc{
+					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(clusterProbeGridInfoBuffer, sizeof(ClusterProbeGridInfo)) };
+
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, clusterProbeGridInfoBuffer->buffer.Get(), &defaultSrvDesc));
+			}
+			else
+			{
+				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
+
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
+			}
+		}
+		break;
+		case HASH("ProbePositions"):
+		{
+			// Should be the same as case above
+			const std::string probePositionsResourceName = "ClusterProbeGridInfo";
+
+			ResourceManager& resMan = ResourceManager::Inst();
+
+			if (resMan.FindResource(probePositionsResourceName) == nullptr)
+			{
+				std::vector<XMFLOAT4> probePositions = Renderer::Inst().GenBakeProbePositions();
+
+				if (probePositions.empty() == false)
+				{
+					ResourceDesc desc;
+					desc.width = probePositions.size() * sizeof(XMFLOAT4);
+					desc.height = 1;
+					desc.format = DXGI_FORMAT_UNKNOWN;
+					desc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+					desc.flags = D3D12_RESOURCE_FLAG_NONE;
+
+					FArg::CreateStructuredBuffer args;
+					args.context = &ctx.jobContext;
+					args.desc = &desc;
+					args.data = reinterpret_cast<std::byte*>(probePositions.data());
+					args.name = probePositionsResourceName.c_str();
+
+					resMan.CreateStructuredBuffer(args);
+				}
+			}
+
+			if (Resource* probePositionsBuffer = resMan.FindResource(probePositionsResourceName))
+			{
+				ViewDescription_t defaultSrvDesc{
+					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(probePositionsBuffer, sizeof(XMFLOAT4)) };
+
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, probePositionsBuffer->buffer.Get(), &defaultSrvDesc));
+			}
+			else
+			{
+				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
+
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
+			}
+		}
+		break;
 		default:
 			break;
 		}
@@ -490,16 +657,6 @@ namespace RenderCallbacks
 		{
 		case HASH("BSPClusterClassification"):
 		{
-			switch (paramName)
-			{
-			case HASH("ClusterAABBs"):
-			{
-
-			}
-			break;
-			default:
-				break;
-			}
 		}
 		break;
 		default:
@@ -514,72 +671,31 @@ namespace RenderCallbacks
 		{
 		case HASH("BSPClusterClassification"):
 		{
+		}
+		break;
+		case HASH("SampleIndirect"):
+		{
 			switch (paramName)
 			{
-			case HASH("ClusterAABBs"):
+			case HASH("FrameRandSeed"):
 			{
-				// Should be the same as case above
-				const std::string clusterAABBResourceName = "ClusterAABBs";
-
-				ResourceManager& resMan = ResourceManager::Inst();
-
-				// Check if this resource already exists
-				if (resMan.FindResource(clusterAABBResourceName) == nullptr)
-				{
-					const BSPTree& bspTree = Renderer::Inst().GetBSPTree();
-					const std::set<int> clusterSet = bspTree.GetClustersSet();
-
-					// Check if we already have BSP loaded
-					if (clusterSet.empty() == false)
-					{
-						std::vector<Utils::AABB> clusterAABB(clusterSet.size());
-
-						std::transform(clusterSet.cbegin(), clusterSet.cend(), clusterAABB.begin(),
-							[&bspTree](const int clusterIndex) 
-						{
-							return bspTree.GetClusterAABB(clusterIndex);
-						});
-
-						ResourceDesc desc;
-						desc.width = clusterAABB.size() * sizeof(Utils::AABB);
-						desc.height = 1;
-						desc.format = DXGI_FORMAT_UNKNOWN;
-						desc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-						desc.flags = D3D12_RESOURCE_FLAG_NONE;
-
-						FArg::CreateStructuredBuffer args;
-						args.context = &ctx.jobContext;
-						args.desc = &desc;
-						args.data = reinterpret_cast<std::byte*>(clusterAABB.data());
-						args.name =  clusterAABBResourceName.c_str();
-
-						resMan.CreateStructuredBuffer(args);
-					}
-				}
-				
-				if (Resource* clusterAABBBuffer = resMan.FindResource(clusterAABBResourceName))
-				{
-					ViewDescription_t defaultSrvDesc{
-						DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(clusterAABBBuffer, sizeof(Utils::AABB)) };
-
-					DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, clusterAABBBuffer->buffer.Get(), &defaultSrvDesc));
-				}
-				else
-				{
-					ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
-
-					DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
-				}
-
+				int& frameRandSeed = reinterpret_cast<int&>(bindPoint);
+				frameRandSeed = Renderer::Inst().GetCurrentFrameIndex();
 			}
 			break;
-			case HASH("ClusterAABBsSize"):
+			case HASH("ProbeDataExist"):
 			{
-				const BSPTree& bspTree = Renderer::Inst().GetBSPTree();
-				const std::set<int> clusterSet = bspTree.GetClustersSet();
+				//#DEBUG quick hack. Fix this
+				const std::string clusterProbeGridInfoResourceName = "ClusterProbeGridInfo";
 
-				int& clusterAAABsSize = reinterpret_cast<int&>(bindPoint);
-				clusterAAABsSize = clusterSet.size();
+				int& dataExist = reinterpret_cast<int&>(bindPoint);
+				dataExist = ResourceManager::Inst().FindResource(clusterProbeGridInfoResourceName) == nullptr ? 0 : 1;
+			}
+			break;
+			case HASH("ProbeGridInterval"):
+			{
+				float& probeGridInterval = reinterpret_cast<float&>(bindPoint);
+				probeGridInterval = Settings::CLUSTER_PROBE_GRID_INTERVAL;
 			}
 			break;
 			default:

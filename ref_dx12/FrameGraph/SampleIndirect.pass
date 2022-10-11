@@ -1,0 +1,321 @@
+PassProperties
+{
+PassInput : PostProcess
+PassThreadGroups: 32, 24, 1
+}
+
+State
+{
+}
+
+RootSignature
+{
+RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
+CBV(b0),
+DescriptorTable(SRV(t0, numDescriptors = 4)), 
+DescriptorTable(SRV(t4, numDescriptors = 4), UAV(u0, numDescriptors = 1))
+}
+
+// Structs
+struct AABB
+{
+	float4 Min;
+	float4 Max;
+}
+
+struct ClusterProbeGridInfo
+{
+	int SizeX;
+	int SizeY;
+	int SizeZ;
+	// If INVALID_INDEX then empty
+	int StartIndex;
+}
+
+[Local, PerPass]
+cbuffer cbSampleIndirect : register(b0)
+{
+	int ProbeDataExist;
+	int FrameRandSeed;
+	float ProbeGridInterval;
+}
+
+// --- Global ---
+
+[Global, PerPass]
+StructuredBuffer<float4> sbDiffuseProbes : register(t0)
+
+[Global, PerPass]
+StructuredBuffer<AABB> ClusterAABBs : register(t1)
+
+[Global, PerPass]
+StructuredBuffer<ClusterProbeGridInfo> ClusterProbeGridInfoBuffer : register(t2)
+
+[Global, PerPass]
+StructuredBuffer<float4> ProbePositions : register(t3)
+
+// --- Local ---
+
+[Local, PerPass, Bind: ClusterClassification]
+Texture2D<int> ClusterClassification : register(t4)
+
+[Local, PerPass, Bind: GBuffer_Position]
+Texture2D GBuffer_Position : register(t5)
+
+[Local, PerPass, Bind: GBuffer_Normals]
+Texture2D GBuffer_Normals : register(t6)
+
+[Local, PerPass, Bind: GBuffer_Albedo]
+Texture2D GBuffer_Albedo : register (t7)
+
+[Local, PerPass, Bind: IndirectLightBuffer]
+RWTexture2D<float4> IndirectLightBuffer : register(u0)
+
+Type : CS
+External: cbSampleIndirect, sbDiffuseProbes, AABB, ClusterProbeGridInfo, ClusterAABBs, 
+	ClusterProbeGridInfoBuffer,  ClusterClassification, GBuffer_Position, GBuffer_Normals, GBuffer_Albedo, IndirectLightBuffer
+<[
+
+@include "Constants.passh"
+@include "SHUtils.passh"
+
+#define CUBE_VERTS_NUM 8
+#define SAMPLES_NUM 20
+#define M_PI		3.14159265358979323846
+#define EPSILON		0.00001f	
+
+uint NextRandomSample(uint seed)
+{
+	// Linear congruential generator
+	// Use coefficients from C++11's minstd_rand
+	const uint modulus = 2147483647;
+	const uint multiplier = 48271;
+	const uint increment = 0;
+	
+	return (multiplier * seed + increment) % modulus;
+}
+
+// Expects seed from 0.0f to 1.0f
+float NextRandomNormalizedSample(float seed)
+{
+	const uint maxUintVal = ~0;
+	
+	return NextRandomSample((uint)(seed * maxUintVal)) / ((float)maxUintVal);
+}
+
+float2 GenerateConcentricDiskSample(float normalizedSample1, float normalizedSample2)
+{
+	const float sample1 = 2.0f * normalizedSample1 - 1.0f;
+	const float sample2 = 2.0f * normalizedSample2 - 1.0f;
+	
+	if (sample1 == 0.0f && sample2 == 0.0f)
+	{
+		return float2(0.0f, 0.0f);
+	}
+	
+	float theta = 0.0f;
+	float radius = 0.0f;
+	
+	if (abs(sample1) > abs(sample2))
+	{
+		radius = sample1;
+		theta = M_PI * sample2 / (sample1 * 4.0f);
+	}
+	else
+	{
+		radius = sample2;
+		theta = M_PI / 2.0f - M_PI * sample1 / ( sample2 * 4.0f );
+	}
+	
+	return float2(radius * cos(theta), radius * sin(theta));
+}
+
+float4x4 ConstructV1ToV2RotationMatrix(float4 v1, float4 v2)
+{
+	float4 rotAxis = float4(cross(v1.xyz, v2.xyz).xyz, 0.0f);
+	
+	float rotSin = length(rotAxis);
+	float rotCos = dot(v1, v2);
+	
+	float4x4 rotMatrix = 
+	{
+		1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, 1.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f
+	};
+	
+	if (abs(rotSin) < EPSILON)
+	{
+		if (rotCos < 0.0)
+		{
+			rotMatrix = -1.0f * rotMatrix;
+			rotMatrix[3][3] = 1.0f;
+			
+		}
+	}
+	else
+	{
+		rotAxis = normalize(rotAxis);
+		
+		rotMatrix[0] = float4(0.0f, -rotAxis.z, rotAxis.y, 0.0f);
+		rotMatrix[1] = float4(rotAxis.z, 0.0f, -rotAxis.x, 0.0f);
+		rotMatrix[2] = float4(-rotAxis.y, rotAxis.x, 0.0f, 0.0f);
+	}
+	
+	return rotMatrix;
+}
+
+float3 GenerateCosineWeightedSample(float normalizedSample1, float normalizedSample2)
+{
+	const float2 diskSample = GenerateConcentricDiskSample(normalizedSample1, normalizedSample2);
+	
+	float3 cosineSample = float3(diskSample.xy, 0.0f);
+	cosineSample.z = sqrt(max(0.0f, 1.0f - cosineSample.x * cosineSample.x - cosineSample.y * cosineSample.y));
+	
+	return cosineSample;
+}
+
+int GetProbeArrayIndex(int4 gridCoord, int4 gridSize)
+{
+	return gridCoord.x * (gridSize.x * gridSize.y) + gridCoord.y * gridSize.y + gridCoord.z;
+}
+
+void GetProbeCubeIndices(float4 position, int clusterIndex, out int4 minProbeCubeInd, out int4 maxProbeCubeInd)
+{
+	AABB clusterAABB = ClusterAABBs.Load(clusterIndex);
+	ClusterProbeGridInfo gridInfo = ClusterProbeGridInfoBuffer.Load(clusterIndex);
+	
+	int4 gridSize = int4(gridInfo.SizeX, gridInfo.SizeY, gridInfo.SizeY, 0);
+	int4 zeroInd = int4(0, 0, 0, 0);
+	
+	minProbeCubeInd = clamp(floor((position - clusterAABB.Min) / ProbeGridInterval),
+		zeroInd, gridSize);
+	
+	// Just grab next max point in the grid
+	maxProbeCubeInd = clamp(minProbeCubeInd + int4(1, 1, 1, 0),
+		zeroInd, gridSize);
+}
+
+float3 GetProbeCubeInterpolationValues(float4 position, int clusterIndex)
+{
+	AABB clusterAABB = ClusterAABBs.Load(clusterIndex);
+	
+	return frac((position.xyz - clusterAABB.Min.xyz) / ProbeGridInterval);
+}
+
+[numthreads(32, 32, 1)]
+void main(int3 dispatchThreadID : SV_DispatchThreadID)
+{
+	if (ProbeDataExist == 0)
+	{
+		return;
+	}
+
+	const uint maxUintVal = ~0;
+	const int clusterIndex = ClusterClassification.Load(int3(dispatchThreadID.xy, 0));
+	
+	if (clusterIndex == INVALID_INDEX)
+	{
+		return;
+	}
+	
+	ClusterProbeGridInfo gridInfo = ClusterProbeGridInfoBuffer.Load(clusterIndex);
+	
+	const float4 position = GBuffer_Position.Load(int3(dispatchThreadID.xy, 0));
+	const float4 normal = GBuffer_Normals.Load(int3(dispatchThreadID.xy, 0));
+	
+	float4x4 tangentTransform = ConstructV1ToV2RotationMatrix(float4(0.0f, 0.0f, 1.0f, 0.0f), normal);
+	
+	int4 probeCubeMin = int4(0, 0, 0, 0);
+	int4 probeCubeMax = int4(0, 0, 0, 0);
+	
+	// Find probe quad
+	GetProbeCubeIndices(position, clusterIndex, probeCubeMin, probeCubeMax);
+	
+	// Random seed
+	//#DEBUG I might just make seed global variable
+	float normalizedSeed = float(uint(dispatchThreadID.x * dispatchThreadID.y * FrameRandSeed)) / maxUintVal;
+	
+	// Init probe cube samples
+	float4 probeCubeVerticesSamples[CUBE_VERTS_NUM];
+	
+	for (int i = 0; i < CUBE_VERTS_NUM; ++i)
+	{
+		probeCubeVerticesSamples[i] = float4(0.0f, 0.0f, 0.0f, 0.0f);
+	}
+	
+	// Gather probe cube samples 
+	for (int sampleInd = 0; sampleInd < SAMPLES_NUM; ++sampleInd)
+	{
+		for (int xInd = 0; xInd < 2; ++xInd)
+		{
+			for (int yInd = 0; yInd < 2; ++yInd)
+			{
+				for (int zInd = 0; zInd < 2; ++zInd)
+				{
+					float normSample1 = NextRandomNormalizedSample(normalizedSeed);
+					normalizedSeed = normSample1;
+					
+					float normSample2 = NextRandomNormalizedSample(normalizedSeed);
+					normalizedSeed = normSample2;
+					
+					float4 sampleDir = float4(GenerateCosineWeightedSample(normSample1, normSample2).xyz, 1.0f);
+					sampleDir = mul(tangentTransform, sampleDir);
+					
+					int4 gridCoord = int4(
+						min(probeCubeMin.x + xInd, probeCubeMax.x),
+						min(probeCubeMin.y + yInd, probeCubeMax.y),
+						min(probeCubeMin.z + zInd, probeCubeMax.z),
+						0
+					);
+					//#DEBUG do I have any coverage when data is not there? Check everything in this shader, so it does behave well on invalid data
+					const int probeArrayIndex = gridInfo.StartIndex + 
+						GetProbeArrayIndex(gridCoord, int4(gridInfo.SizeX, gridInfo.SizeY, gridInfo.SizeZ, 0));
+						
+					const int probeCubeVertArrayIndex = GetProbeArrayIndex(int4(xInd, yInd, zInd, 0), int4(2, 2, 2, 0));
+					
+					probeCubeVerticesSamples[probeCubeVertArrayIndex] += ReconstructRadianceFromSH(sampleDir, probeArrayIndex);
+				}
+			}
+		}
+	}
+	
+	// Do trilinear interpolation
+	float3 interpolationWages = GetProbeCubeInterpolationValues(position, clusterIndex);
+	
+	// 1) Interpolate along X
+	float4 interpolationAlongX[4];
+	
+	for(int yInd = 0; yInd < 2; ++yInd)
+	{
+		for (int zInd = 0; zInd < 2; ++zInd)
+		{
+			float4 sample1 = probeCubeVerticesSamples[GetProbeArrayIndex(int4(0, yInd, zInd, 0), int4(2, 2, 2, 0))];
+			float4 sample2 = probeCubeVerticesSamples[GetProbeArrayIndex(int4(1, yInd, zInd, 0), int4(2, 2, 2, 0))];
+		
+			interpolationAlongX[yInd * 2 + zInd] = lerp(sample1, sample2, interpolationWages.x);
+		}
+	}
+	
+	// 2) Interpolate along Y
+	float4 interpolationAlongY[2];
+	for (int zInd = 0; zInd < 2; ++zInd)
+	{
+		float4 sample1 = interpolationAlongX[GetProbeArrayIndex(int4(0, 0, zInd, 0), int4(0, 2, 2, 0))];
+		float4 sample2 = interpolationAlongX[GetProbeArrayIndex(int4(0, 1, zInd, 0), int4(0, 2, 2, 0))];
+		
+		interpolationAlongY[zInd] = lerp(sample1, sample2, interpolationWages.y);
+	}
+	
+	// 3) Interpolate along Z
+	float4 interpolationAlongZ = lerp(interpolationAlongY[0], interpolationAlongY[1], interpolationWages.z);
+	
+	
+	// Monte Carlo factor
+	float4 finalResult = interpolationAlongZ / SAMPLES_NUM * GBuffer_Albedo.Load(int3(dispatchThreadID.xy, 0));
+	
+	IndirectLightBuffer[dispatchThreadID.xy] = finalResult;
+}
+
+]>

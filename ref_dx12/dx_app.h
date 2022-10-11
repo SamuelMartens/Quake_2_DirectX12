@@ -54,7 +54,6 @@ namespace FArg
 	};
 };
 
-
 //#TODO 
 // 2) Make your wrappers as exclusive owners of some resource, and operate with smart pointers instead to avoid mess
 //    during resource management.(This requires rewrite some stuff like Textures or buffers)
@@ -107,6 +106,7 @@ class Renderer
 	const std::array<unsigned int, 256>& GetRawPalette() const;
 	const std::array<unsigned int, 256>& GetTable8To24() const;
 	const BSPTree& GetBSPTree() const;
+	int GetCurrentFrameIndex() const;
 
 	void ConsumeDiffuseIndirectLightingBakingResult(BakingData&& result);
 	bool TryTransferDiffuseIndirectLightingToGPU(GPUJobContext& context);
@@ -117,6 +117,12 @@ class Renderer
 	// Vector of probes of paths of samples (and each has a set of vertices)
 	[[nodiscard]]
 	std::vector<std::vector<std::vector<std::vector<XMFLOAT4>>>> GenLightSampleVertices() const;
+
+	[[nodiscard]]
+	std::vector<ClusterProbeGridInfo> GenBakeClusterProbeGridInfo() const;
+
+	[[nodiscard]]
+	std::vector<XMFLOAT4> GenBakeProbePositions() const;
 
 	/* Objects data */
 	const std::vector<StaticObject>& GetStaticObjects() const;

@@ -90,6 +90,15 @@ enum class BakeFlags
 	Count
 };
 
+// Should match definition in SampleIndirect.pass
+struct ClusterProbeGridInfo
+{
+	int32_t SizeX = Const::INVALID_SIZE;
+	int32_t SizeY = Const::INVALID_SIZE;
+	int32_t SizeZ = Const::INVALID_SIZE;
+	int32_t StartIndex = Const::INVALID_INDEX;
+};
+
 struct BakingData
 {
 	// Technically, this is not optional, but if it is not initialized, then 
@@ -100,6 +109,9 @@ struct BakingData
 	// baking cluster
 	std::optional<int> bakingCluster;
 	
+	// Size of probe grid for each cluster
+	std::vector<XMINT3> clusterProbeGridSizes;
+
 	// Reflects index of the first probe for each cluster 
 	std::vector<int> clusterFirstProbeIndices;
 
@@ -139,6 +151,8 @@ public:
 
 	[[nodiscard]]
 	std::vector<XMFLOAT4> GenerateClusterBakePoints(int clusterIndex) const;
+
+	XMINT3 GenerateClusterGridSize(int clusterIndex) const;
 
 	void BakeJob();
 	void LoadBakingResultsFromFileJob();

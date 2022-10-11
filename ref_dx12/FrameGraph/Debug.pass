@@ -101,41 +101,9 @@ External : VertexOut, sbDiffuseProbes, cbPerObject_Global, cbPerObject_Local
 
 @include "Debug.passh"
 @include "Constants.passh"
+@include "SHUtils.passh"
 
 
-#define SH_VECTOR_SIZE 9
-
-float4 ReconstructRadianceFromSf(float4 dir)
-{
-	float shCoeff[SH_VECTOR_SIZE];
-	
-	// Band 0
-	shCoeff[0] = 0.282095f;
-
-	// Band 1
-	shCoeff[1] = -0.488603f * dir.y;
-	shCoeff[2] = 0.488603f * dir.z;
-	shCoeff[3] = -0.488603f * dir.x;
-
-	// Band 2
-	shCoeff[4] = 1.092548f * dir.x * dir.y;
-	shCoeff[5] = -1.092548f * dir.y * dir.z;
-	shCoeff[6] = 0.315392f * (3.0f * dir.z * dir.z - 1.0f);
-	shCoeff[7] = -1.092548f * dir.x * dir.z;
-	shCoeff[8] = 0.546274f * (dir.x * dir.x - dir.y * dir.y);
-	
-	float4 rad = float4(0.0, 0.0, 0.0, 0.0);
-	
-	
-	for (int i = 0; i < SH_VECTOR_SIZE; ++i)
-	{
-		const int shProbeCoeffIndex = gProbeIndex * SH_VECTOR_SIZE + i;
-		
-		rad += sbDiffuseProbes[shProbeCoeffIndex] * shCoeff[i];
-	}
-	
-	return rad;
-}
 
 float4 main(VertexOut vOut) : SV_Target
 {
@@ -152,7 +120,7 @@ float4 main(VertexOut vOut) : SV_Target
 	if (gProbeIndex != INVALID_INDEX)
 	{
 		float4 sampleDir = float4(normalize(vOut.LocalPos.xyz), 0.0);
-		color = ReconstructRadianceFromSf(sampleDir);
+		color = ReconstructRadianceFromSH(sampleDir, gProbeIndex);
 	}
 
     return color;

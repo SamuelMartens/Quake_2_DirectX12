@@ -11,17 +11,17 @@ State
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-DescriptorTable(SRV(t0, numDescriptors = 3), UAV(u0, numDescriptors = 1)),
-DescriptorTable(SRV(t3, numDescriptors = 1))
+DescriptorTable(UAV(u0, numDescriptors = 1)),
+DescriptorTable(SRV(t0, numDescriptors = 4))
 }
 
-[Global, PerPass, Bind: GBuffer_Albedo]
+[Local, PerPass, Bind: GBuffer_Albedo]
 Texture2D GBuffer_Albedo : register(t0)
 
-[Global, PerPass, Bind: GBuffer_Normals]
+[Local, PerPass, Bind: GBuffer_Normals]
 Texture2D GBuffer_Normals : register(t1)
 
-[Global, PerPass, Bind: GBuffer_Position]
+[Local, PerPass, Bind: GBuffer_Position]
 Texture2D GBuffer_Position : register(t2)
 
 [Local, PerPass, Bind: ClusterClassification]

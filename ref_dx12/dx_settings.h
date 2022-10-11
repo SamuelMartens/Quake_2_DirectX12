@@ -36,7 +36,7 @@ namespace Settings
 	constexpr int		 DEFAULT_MEMORY_BUFFER_SIZE = 256 * 1024 * 1024;
 	constexpr int		 DEFAULT_MEMORY_BUFFER_HANDLERS_NUM = 64 * 1024;
 
-	constexpr bool		 DEBUG_LAYER_ENABLED = true;
+	constexpr bool		 DEBUG_LAYER_ENABLED = false;
 	constexpr bool		 DEBUG_MESSAGE_FILTER_ENABLED = true;
 
 	constexpr DXGI_FORMAT BACK_BUFFER_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -86,6 +86,8 @@ namespace Settings
 
 	constexpr int GUARANTEED_BOUNCES_NUM = 2;
 	constexpr int AREA_LIGHTS_SAMPLES_NUM = 4;
+
+	constexpr float CLUSTER_PROBE_GRID_INTERVAL = 50.0f;
 
 	// Because of floating point math errors, funding and reconstruction intersection point
 	// might not work correctly sometimes. This small Epsilon is used to fix this problem
