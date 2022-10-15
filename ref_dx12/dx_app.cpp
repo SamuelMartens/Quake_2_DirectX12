@@ -1081,8 +1081,8 @@ void Renderer::InitDebugGui()
 
 	ImGui::CreateContext();
 
-	ImGui::StyleColorsClassic();
-
+	ImGui::StyleColorsLight();
+	
 	ImGui_ImplWin32_Init(hWindows);
 	ImGui_ImplDX12_Init(
 		Infr::Inst().GetDevice().Get(),
@@ -2095,8 +2095,10 @@ void Renderer::ConsumeDiffuseIndirectLightingBakingResult(BakingData&& results)
 bool Renderer::TryTransferDiffuseIndirectLightingToGPU(GPUJobContext& context)
 {
 	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
+	
+	const uint32_t latestBakeVersion = LightBaker::Inst().GetLatestBakeVersion();
 
-	if (lightBakingResult.obj.probes.empty() == true)
+	if (lightBakingResult.obj.probes.empty() == true || latestBakeVersion == lightBakingResultGPUVersion)
 	{
 		return false;
 	}
@@ -2136,6 +2138,8 @@ bool Renderer::TryTransferDiffuseIndirectLightingToGPU(GPUJobContext& context)
 	args.name = Resource::PROBE_STRUCTURED_BUFFER_NAME;
 
 	resMan.CreateStructuredBuffer(args);
+
+	lightBakingResultGPUVersion = latestBakeVersion;
 
 	return true;
 }
@@ -2264,6 +2268,7 @@ std::vector<ClusterProbeGridInfo> Renderer::GenBakeClusterProbeGridInfo() const
 
 		clusterWithData.StartIndex = bakeData.clusterFirstProbeIndices[*bakeData.bakingCluster];
 	};
+	break;
 	default:
 		DX_ASSERT(false);
 		break;

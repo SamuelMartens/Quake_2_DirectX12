@@ -186,7 +186,7 @@ void GetProbeCubeIndices(float4 position, int clusterIndex, out int4 minProbeCub
 	AABB clusterAABB = ClusterAABBs.Load(clusterIndex);
 	ClusterProbeGridInfo gridInfo = ClusterProbeGridInfoBuffer.Load(clusterIndex);
 	
-	int4 gridSize = int4(gridInfo.SizeX, gridInfo.SizeY, gridInfo.SizeY, 0);
+	int4 gridSize = int4(gridInfo.SizeX, gridInfo.SizeY, gridInfo.SizeZ, 0);
 	int4 zeroInd = int4(0, 0, 0, 0);
 	
 	minProbeCubeInd = clamp(floor((position - clusterAABB.Min) / ProbeGridInterval),
@@ -313,7 +313,9 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	
 	
 	// Monte Carlo factor
-	float4 finalResult = interpolationAlongZ / SAMPLES_NUM * GBuffer_Albedo.Load(int3(dispatchThreadID.xy, 0));
+	//#DEBUG switch
+	//float4 finalResult = interpolationAlongZ / SAMPLES_NUM * GBuffer_Albedo.Load(int3(dispatchThreadID.xy, 0));
+	float4 finalResult = interpolationAlongZ / SAMPLES_NUM * 1.0f;
 	
 	IndirectLightBuffer[dispatchThreadID.xy] = finalResult;
 }

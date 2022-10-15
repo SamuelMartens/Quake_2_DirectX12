@@ -156,7 +156,7 @@ public:
 
 	void BakeJob();
 	void LoadBakingResultsFromFileJob();
-
+	//#DEBUG I have bake version now. Is this redundant?
 	bool IsContainCompleteBakingResult() const;
 
 	int GetTotalProbesNum() const;
@@ -171,6 +171,7 @@ public:
 	void SetBakePosition(const XMFLOAT4& position);
 	void SetBakeFlag(BakeFlags flag, bool value);
 
+	uint32_t GetLatestBakeVersion() const;
 
 private:
 
@@ -216,4 +217,6 @@ private:
 	
 	// Contains data that will be sent to renderer after bake is over
 	BakingData transferableData;
+
+	uint32_t bakeVersion = 0;
 }; 

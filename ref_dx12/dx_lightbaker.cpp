@@ -187,20 +187,6 @@ namespace
 			BakingData& bakingRes = parseCtx.bakingResult;
 
 			bakingRes.bakingMode = std::any_cast<LightBakingMode>(sv[0]);
-
-			if (bakingRes.bakingMode == LightBakingMode::AllClusters)
-			{
-				bakingRes.clusterFirstProbeIndices = std::any_cast<std::vector<int>>(sv[1]);
-			}
-			else if (bakingRes.bakingMode == LightBakingMode::CurrentPositionCluster)
-			{
-				bakingRes.bakingCluster = std::any_cast<int>(sv[1]);
-			}
-			else
-			{
-				DX_ASSERT(false && "Undefined bake mode");
-			}
-
 			bakingRes.probes = std::any_cast<std::vector<DiffuseProbe>>(sv[2]);
 		};
 
@@ -211,13 +197,19 @@ namespace
 		};
 
 		// --- Cluster Data
-		parser["BakingCluster"] = [](const peg::SemanticValues& sv)
+		parser["BakingCluster"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
-			return std::any_cast<int>(sv[0]);
+			Parsing::LightBakingContext& parseCtx = *std::any_cast<Parsing::LightBakingContext*>(ctx);
+			BakingData& bakingRes = parseCtx.bakingResult;
+
+			bakingRes.bakingCluster = std::any_cast<int>(sv[0]);
 		};
 
-		parser["ClusterFirstProbeIndices"] = [](const peg::SemanticValues& sv)
+		parser["ClusterFirstProbeIndices"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
+			Parsing::LightBakingContext& parseCtx = *std::any_cast<Parsing::LightBakingContext*>(ctx);
+			BakingData& bakingRes = parseCtx.bakingResult;
+
 			const int sizesCount = std::any_cast<int>(sv[0]);
 			
 			DX_ASSERT(sv.size() - 1 == sizesCount && "Invalid sizes token number");
@@ -233,11 +225,14 @@ namespace
 
 			DX_ASSERT(clusterFirstProbeIndices.size() == sizesCount);
 
-			return clusterFirstProbeIndices;
+			bakingRes.clusterFirstProbeIndices = std::move(clusterFirstProbeIndices);
 		};
 
-		parser["ClusterGridSizes"] = [](const peg::SemanticValues& sv)
+		parser["ClusterGridSizes"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
+			Parsing::LightBakingContext& parseCtx = *std::any_cast<Parsing::LightBakingContext*>(ctx);
+			BakingData& bakingRes = parseCtx.bakingResult;
+
 			const int sizesCount = std::any_cast<int>(sv[0]);
 
 			DX_ASSERT(sv.size() - 1 == sizesCount && "Invalid sizes token number");
@@ -253,7 +248,7 @@ namespace
 
 			DX_ASSERT(clusterGridSizes.size() == sizesCount);
 
-			return clusterGridSizes;
+			bakingRes.clusterProbeGridSizes = std::move(clusterGridSizes);
 		};
 
 		// --- Probe Data
@@ -427,6 +422,8 @@ void LightBaker::PostBake()
 	clusterBakePoints.clear();
 
 	SetBakeFlag(BakeFlags::SaveToFileAfterBake, false);
+
+	bakeVersion += 1;
 }
 
 std::vector<std::vector<XMFLOAT4>> LightBaker::GenerateClustersBakePoints()
@@ -548,13 +545,13 @@ XMINT3 LightBaker::GenerateClusterGridSize(int clusterIndex) const
 
 
 	// Amount of bake points along X axis
-	const int xAxisNum = std::ceil((clusterAABB.maxVert.x - clusterAABB.minVert.x) / Settings::CLUSTER_PROBE_GRID_INTERVAL);
+	const int xAxisNum = std::ceil((clusterAABB.maxVert.x - clusterAABB.minVert.x) / Settings::CLUSTER_PROBE_GRID_INTERVAL) + 1;
 	// Amount of bake points along Y axis
-	const int yAxisNum = std::ceil((clusterAABB.maxVert.y - clusterAABB.minVert.y) / Settings::CLUSTER_PROBE_GRID_INTERVAL);
+	const int yAxisNum = std::ceil((clusterAABB.maxVert.y - clusterAABB.minVert.y) / Settings::CLUSTER_PROBE_GRID_INTERVAL) + 1;
 	// Amount of bake points along X axis
-	const int zAxisNum = std::ceil((clusterAABB.maxVert.z - clusterAABB.minVert.z) / Settings::CLUSTER_PROBE_GRID_INTERVAL);
-	
-	return { xAxisNum, yAxisNum, zAxisNum };
+	const int zAxisNum = std::ceil((clusterAABB.maxVert.z - clusterAABB.minVert.z) / Settings::CLUSTER_PROBE_GRID_INTERVAL) + 1;
+
+	return { xAxisNum + 1, yAxisNum + 1, zAxisNum + 1};
 }
 
 void LightBaker::BakeJob()
@@ -641,6 +638,8 @@ void LightBaker::BakeJob()
 void LightBaker::LoadBakingResultsFromFileJob()
 {
 	transferableData = LoadBakingResultsFromFile();
+	
+	bakeVersion += 1;
 
 	isContainCompleteBakingResult.store(true);
 }
@@ -701,6 +700,11 @@ void LightBaker::SetBakePosition(const XMFLOAT4& position)
 void LightBaker::SetBakeFlag(BakeFlags flag, bool value)
 {
 	bakeFlags.set(flag, value);
+}
+
+uint32_t LightBaker::GetLatestBakeVersion() const
+{
+	return bakeVersion;
 }
 
 SphericalHarmonic9_t<float> LightBaker::GetSphericalHarmonic9Basis(const XMFLOAT4& direction) const

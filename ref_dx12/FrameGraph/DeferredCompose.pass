@@ -12,7 +12,7 @@ RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 DescriptorTable(UAV(u0, numDescriptors = 1)),
-DescriptorTable(SRV(t0, numDescriptors = 4))
+DescriptorTable(SRV(t0, numDescriptors = 5))
 }
 
 [Local, PerPass, Bind: GBuffer_Albedo]
@@ -27,11 +27,14 @@ Texture2D GBuffer_Position : register(t2)
 [Local, PerPass, Bind: ClusterClassification]
 Texture2D<int> ClusterClassification : register(t3)
 
+[Local, PerPass, Bind: IndirectLightBuffer]
+Texture2D IndirectLightBuffer : register(t4)
+
 [Global, PerPass, Bind: ComposeBuffer]
 RWTexture2D<float4> ComposeBuffer : register(u0)
 
 Type : CS
-External : GBuffer_Albedo, ComposeBuffer, GBuffer_Normals, GBuffer_Position, ClusterClassification
+External : GBuffer_Albedo, ComposeBuffer, GBuffer_Normals, GBuffer_Position, ClusterClassification, IndirectLightBuffer
 <[
 
 float4 VisualizeClusterId(int id)
@@ -74,6 +77,8 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 		
 		ComposeBuffer[dispatchThreadID.xy] = color; 
 	}
+	
+	ComposeBuffer[dispatchThreadID.xy] = IndirectLightBuffer[dispatchThreadID.xy];
 }
 
 
