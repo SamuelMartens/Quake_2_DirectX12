@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdlib>
+
 // Source: https://www.foonathan.net/2016/09/assertions/
 namespace DXAssert
 {
@@ -10,10 +12,13 @@ namespace DXAssert
 		const char* functionName = nullptr;
 	};
 
+	void AssertHandler(bool expr, const  SourceLocation& loc, const char* expression);
+
 	inline void Assert(bool expr, const  SourceLocation& loc, const char* expression)
 	{
 		if (!expr)
 		{
+			AssertHandler(expr, loc, expression);
 			// handle failed assertion
 			std::abort();
 		}

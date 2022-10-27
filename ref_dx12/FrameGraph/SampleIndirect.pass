@@ -51,6 +51,7 @@ StructuredBuffer<AABB> ClusterAABBs : register(t1)
 [Global, PerPass]
 StructuredBuffer<ClusterProbeGridInfo> ClusterProbeGridInfoBuffer : register(t2)
 
+//#DEBUG I only need this for debug purposes, delete this later
 [Global, PerPass]
 StructuredBuffer<float4> ProbePositions : register(t3)
 
@@ -72,7 +73,7 @@ Texture2D GBuffer_Albedo : register (t7)
 RWTexture2D<float4> IndirectLightBuffer : register(u0)
 
 Type : CS
-External: cbSampleIndirect, sbDiffuseProbes, AABB, ClusterProbeGridInfo, ClusterAABBs, 
+External: cbSampleIndirect, sbDiffuseProbes, AABB, ClusterProbeGridInfo, ClusterAABBs, ProbePositions,
 	ClusterProbeGridInfoBuffer,  ClusterClassification, GBuffer_Position, GBuffer_Normals, GBuffer_Albedo, IndirectLightBuffer
 <[
 
@@ -80,7 +81,7 @@ External: cbSampleIndirect, sbDiffuseProbes, AABB, ClusterProbeGridInfo, Cluster
 @include "SHUtils.passh"
 
 #define CUBE_VERTS_NUM 8
-#define SAMPLES_NUM 20
+#define SAMPLES_NUM 32
 #define M_PI		3.14159265358979323846
 #define EPSILON		0.00001f	
 
@@ -134,16 +135,18 @@ float4x4 ConstructV1ToV2RotationMatrix(float4 v1, float4 v2)
 {
 	float4 rotAxis = float4(cross(v1.xyz, v2.xyz).xyz, 0.0f);
 	
-	float rotSin = length(rotAxis);
-	float rotCos = dot(v1, v2);
+	const float rotSin = length(rotAxis);
+	const float rotCos = dot(v1, v2);
 	
-	float4x4 rotMatrix = 
+	const float4x4 identityMat = 
 	{
 		1.0f, 0.0f, 0.0f, 0.0f,
 		0.0f, 1.0f, 0.0f, 0.0f,
 		0.0f, 0.0f, 1.0f, 0.0f,
 		0.0f, 0.0f, 0.0f, 1.0f
 	};
+	
+	float4x4 rotMatrix = identityMat;
 	
 	if (abs(rotSin) < EPSILON)
 	{
@@ -158,9 +161,32 @@ float4x4 ConstructV1ToV2RotationMatrix(float4 v1, float4 v2)
 	{
 		rotAxis = normalize(rotAxis);
 		
-		rotMatrix[0] = float4(0.0f, -rotAxis.z, rotAxis.y, 0.0f);
-		rotMatrix[1] = float4(rotAxis.z, 0.0f, -rotAxis.x, 0.0f);
-		rotMatrix[2] = float4(-rotAxis.y, rotAxis.x, 0.0f, 0.0f);
+		//#DEBUG find why this works but other one doesn't
+		rotMatrix[0] = float4((1 - rotCos) * rotAxis.x * rotAxis.x + rotCos, 
+		(1.0f - rotCos) * rotAxis.x * rotAxis.y - rotSin * rotAxis.z,
+		(1.0f - rotCos) * rotAxis.x * rotAxis.z + rotSin * rotAxis.y, 0.0f);
+		
+		
+		rotMatrix[1] = float4((1.0f - rotCos) * rotAxis.x * rotAxis.y + rotSin * rotAxis.z, 
+		(1.0f - rotCos) * rotAxis.y * rotAxis.y + rotCos,
+		(1.0f - rotCos) * rotAxis.y * rotAxis.z - rotSin * rotAxis.x, 0.0f);
+		
+		
+		rotMatrix[2] = float4((1.0f - rotCos) * rotAxis.x * rotAxis.z - rotSin * rotAxis.y,
+		(1.0f - rotCos) * rotAxis.y * rotAxis.z + rotSin * rotAxis.x, 
+		(1.0f - rotCos) * rotAxis.z * rotAxis.z + rotCos, 0.0f);
+		
+		//rotMatrix[0] = float4(0.0f, -rotAxis.z, rotAxis.y, 0.0f);
+		//rotMatrix[1] = float4(rotAxis.z, 0.0f, -rotAxis.x, 0.0f);
+		//rotMatrix[2] = float4(-rotAxis.y, rotAxis.x, 0.0f, 0.0f);
+		
+		//#DEBUG is there better way to do this?
+		//float4x4 rotMatSqr = rotMatrix;
+		//rotMatSqr[0] = float4(0.0f, -rotAxis.z * -rotAxis.z, rotAxis.y * rotAxis.y, 0.0f);
+		//rotMatSqr[1] = float4(rotAxis.z * rotAxis.z, 0.0f, -rotAxis.x * -rotAxis.x, 0.0f);
+		//rotMatSqr[2] = float4(-rotAxis.y * -rotAxis.y, rotAxis.x * rotAxis.x, 0.0f, 0.0f);
+		
+		//rotMatrix = identityMat + rotSin * rotMatrix + (1.0f - rotCos) * rotMatrix * rotMatrix;
 	}
 	
 	return rotMatrix;
@@ -184,6 +210,15 @@ int GetProbeArrayIndex(int4 gridCoord, int4 gridSize)
 void GetProbeCubeIndices(float4 position, int clusterIndex, out int4 minProbeCubeInd, out int4 maxProbeCubeInd)
 {
 	AABB clusterAABB = ClusterAABBs.Load(clusterIndex);
+	
+	//#DEBUG I need a separate func to stop copy&pasting
+	float3 diagonal = normalize(clusterAABB.Max.xyz - clusterAABB.Min.xyz);
+		
+	// Extend a bit to avoid floating point errors during testing
+	const float epsilon = 0.005f;
+	clusterAABB.Min.xyz = clusterAABB.Min.xyz - diagonal * epsilon;
+	clusterAABB.Max.xyz = clusterAABB.Max.xyz + diagonal * epsilon;
+	
 	ClusterProbeGridInfo gridInfo = ClusterProbeGridInfoBuffer.Load(clusterIndex);
 	
 	int4 gridSize = int4(gridInfo.SizeX, gridInfo.SizeY, gridInfo.SizeZ, 0);
@@ -201,6 +236,15 @@ float3 GetProbeCubeInterpolationValues(float4 position, int clusterIndex)
 {
 	AABB clusterAABB = ClusterAABBs.Load(clusterIndex);
 	
+	//#DEBUG I need a separate func to stop copy&pasting
+	float3 diagonal = normalize(clusterAABB.Max.xyz - clusterAABB.Min.xyz);
+		
+	// Extend a bit to avoid floating point errors during testing
+	const float epsilon = 0.005f;
+	clusterAABB.Min.xyz = clusterAABB.Min.xyz - diagonal * epsilon;
+	clusterAABB.Max.xyz = clusterAABB.Max.xyz + diagonal * epsilon;
+	
+	//#DEBUG swithc
 	return frac((position.xyz - clusterAABB.Min.xyz) / ProbeGridInterval);
 }
 
@@ -259,8 +303,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 					
 					float normSample2 = NextRandomNormalizedSample(normalizedSeed);
 					normalizedSeed = normSample2;
-					
-					float4 sampleDir = float4(GenerateCosineWeightedSample(normSample1, normSample2).xyz, 1.0f);
+					float4 sampleDir = float4(GenerateCosineWeightedSample(normSample1, normSample2).xyz, 0.0f);
 					sampleDir = mul(tangentTransform, sampleDir);
 					
 					int4 gridCoord = int4(
@@ -316,6 +359,10 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	//#DEBUG switch
 	//float4 finalResult = interpolationAlongZ / SAMPLES_NUM * GBuffer_Albedo.Load(int3(dispatchThreadID.xy, 0));
 	float4 finalResult = interpolationAlongZ / SAMPLES_NUM * 1.0f;
+	
+	//#DEBUG
+	//finalResult = interpolationAlongX[2] / SAMPLES_NUM;
+	//END
 	
 	IndirectLightBuffer[dispatchThreadID.xy] = finalResult;
 }

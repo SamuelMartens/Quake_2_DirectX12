@@ -74,6 +74,7 @@
     <ClCompile Include="..\win32\q_shwin.c" />
     <ClCompile Include="dx_allocators.cpp" />
     <ClCompile Include="dx_app.cpp" />
+    <ClCompile Include="dx_assert.cpp" />
     <ClCompile Include="dx_buffer.cpp" />
     <ClCompile Include="dx_camera.cpp" />
     <ClCompile Include="dx_commandlist.cpp" />

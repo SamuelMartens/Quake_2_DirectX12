@@ -2077,9 +2077,9 @@ const BSPTree& Renderer::GetBSPTree() const
 	return bspTree;
 }
 
-int Renderer::GetCurrentFrameIndex() const
+int Renderer::GetCurrentFrameCounter() const
 {
-	return currentFrameIndex;
+	return frameCounter;
 }
 
 void Renderer::ConsumeDiffuseIndirectLightingBakingResult(BakingData&& results)

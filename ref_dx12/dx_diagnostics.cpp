@@ -57,14 +57,14 @@ namespace Logs
 
 	constexpr bool gEnableLogs = true;
 	// NOTE: Logs are very slow if printed to console
-	constexpr bool gPrintToConsole = true;
+	constexpr bool gPrintToConsole = false;
 
 	constexpr bool CategoryEnabled[static_cast<int>(Category::_Count)] =
 	{
-		false,	// Generic,
+		true,	// Generic,
 		false,	// Synchronization,
 		false,	// FrameSubmission,
-		true,	// Resource, 
+		false,	// Resource, 
 		false,	// Job
 		true,	// Parser
 	};

@@ -48,7 +48,7 @@ struct PixelOut
 {
 	float4 Position :	SV_Target0;
 	float4 Albedo :		SV_Target1;
-	float2 Normal :		SV_Target2;
+	float4 Normal :		SV_Target2;
 }
 
 // Resources 
@@ -106,7 +106,7 @@ PixelOut main(VertexOut vOut) : SV_Target
 	PixelOut output;
 	
 	output.Albedo = color;
-	output.Normal =  vOut.Normal.xy;
+	output.Normal = float4(vOut.Normal.xyz, 0.0f);
 	output.Position = vOut.WorldPos;
 	
     return output;

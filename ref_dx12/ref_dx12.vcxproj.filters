@@ -275,5 +275,8 @@
     <ClCompile Include="dx_lightbaker.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="dx_assert.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

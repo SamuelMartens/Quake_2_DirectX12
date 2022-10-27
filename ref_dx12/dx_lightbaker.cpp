@@ -551,7 +551,7 @@ XMINT3 LightBaker::GenerateClusterGridSize(int clusterIndex) const
 	// Amount of bake points along X axis
 	const int zAxisNum = std::ceil((clusterAABB.maxVert.z - clusterAABB.minVert.z) / Settings::CLUSTER_PROBE_GRID_INTERVAL) + 1;
 
-	return { xAxisNum + 1, yAxisNum + 1, zAxisNum + 1};
+	return { xAxisNum , yAxisNum, zAxisNum };
 }
 
 void LightBaker::BakeJob()
@@ -1212,7 +1212,7 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 		// Update nDotL
 		nDotL = XMVectorGetX(XMVector3Dot(sseNormal, sseRayDir));
 
-		DX_ASSERT(nDotL > 0.0f && "nDotL is negative, is it ok?");
+		DX_ASSERT(nDotL >= 0.0f && "nDotL is negative, is it ok?");
 		DX_ASSERT(Utils::IsAlmostEqual(nDotL, 
 			XMVectorGetX(XMVector3Dot(XMLoadFloat4(&Utils::AXIS_Z), XMLoadFloat4(&cosineWieghtedSample)))) &&
 		"Angle between unrotated sample and Z should be the same as angle between rotated sample and normal");
@@ -1233,6 +1233,7 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 
 	return result;
 }
+
 
 void LightBaker::SaveBakingResultsToFile(const BakingData& bakingResult) const
 {

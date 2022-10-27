@@ -680,7 +680,7 @@ namespace RenderCallbacks
 			case HASH("FrameRandSeed"):
 			{
 				int& frameRandSeed = reinterpret_cast<int&>(bindPoint);
-				frameRandSeed = Renderer::Inst().GetCurrentFrameIndex();
+				frameRandSeed = Renderer::Inst().GetCurrentFrameCounter();
 			}
 			break;
 			case HASH("ProbeDataExist"):

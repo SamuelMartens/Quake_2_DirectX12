@@ -106,7 +106,7 @@ class Renderer
 	const std::array<unsigned int, 256>& GetRawPalette() const;
 	const std::array<unsigned int, 256>& GetTable8To24() const;
 	const BSPTree& GetBSPTree() const;
-	int GetCurrentFrameIndex() const;
+	int GetCurrentFrameCounter() const;
 
 	void ConsumeDiffuseIndirectLightingBakingResult(BakingData&& result);
 	bool TryTransferDiffuseIndirectLightingToGPU(GPUJobContext& context);

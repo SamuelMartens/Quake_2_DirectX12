@@ -82,14 +82,11 @@ namespace Settings
 	constexpr float POINT_LIGHTS_MAX_DISTANCE = 1000.0f;
 
 	constexpr float RUSSIAN_ROULETTE_ABSORBTION_PROBABILITY = 0.5f;
-	//#DEBUG switch
+	
 	constexpr int PROBE_SAMPLES_NUM = 6;
-	//constexpr int PROBE_SAMPLES_NUM = 256;
 
 	constexpr int GUARANTEED_BOUNCES_NUM = 2;
-	//#DEBUG switch
 	constexpr int AREA_LIGHTS_SAMPLES_NUM = 4;
-	//constexpr int AREA_LIGHTS_SAMPLES_NUM = 12;
 
 	constexpr float CLUSTER_PROBE_GRID_INTERVAL = 50.0f;
 

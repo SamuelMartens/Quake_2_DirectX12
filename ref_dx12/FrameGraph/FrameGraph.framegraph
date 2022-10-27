@@ -4,9 +4,9 @@ Resources
 	[
 		Type : Texture2D
 		Dimensions : 1024, 768
-		Format : R32G32_FLOAT
+		Format : R32G32B32A32_FLOAT
 		Flags : ALLOW_RENDER_TARGET, ALLOW_UNORDERED_ACCESS
-		ClearValue : 0.0, 0.0, 0.0, 1.0
+		ClearValue : 0.0, 0.0, 0.0, 0.0
 		InitValue: NONE
 	],
 	
