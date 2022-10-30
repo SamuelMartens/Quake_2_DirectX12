@@ -1214,7 +1214,7 @@ std::vector<int> Renderer::BuildVisibleDynamicObjectsList(const Camera& camera, 
 	return visibleObjects;
 }
 
-std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& camera) const
+std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& camera)
 {
 	ASSERT_MAIN_THREAD;
 
@@ -1223,10 +1223,15 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 	if (drawLightProbesDebugGeometry == true)
 	{
 		// Figure out all clusters we want to generate for
-		const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(camera.position);
-		DX_ASSERT(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
+		if (!fixLightProbesDebugGeometryInTheSameCluster || lightProbesDebugGeometryDisplayCluster == Const::INVALID_INDEX)
+		{
+			const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(camera.position);
+			DX_ASSERT(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
 
-		const std::vector<XMFLOAT4> bakePoints = LightBaker::Inst().GenerateClusterBakePoints(cameraNode.cluster);
+			lightProbesDebugGeometryDisplayCluster = cameraNode.cluster;
+		}
+
+		const std::vector<XMFLOAT4> bakePoints = LightBaker::Inst().GenerateClusterBakePoints(lightProbesDebugGeometryDisplayCluster);
 
 		DX_ASSERT(bakePoints.empty() == false && "Bake points are empty. Is this alright?");
 
@@ -1252,7 +1257,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 				{
 					DX_ASSERT(bakeResult.bakingCluster.has_value() == true && "Baking result should have value");
 
-					if (*bakeResult.bakingCluster == cameraNode.cluster)
+					if (*bakeResult.bakingCluster == lightProbesDebugGeometryDisplayCluster)
 					{
 						object.probeIndex = i;
 					}
@@ -1262,7 +1267,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 				{
 					DX_ASSERT(bakeResult.clusterFirstProbeIndices.empty() == false && "Cluster sizes should have value");
 
-					object.probeIndex = i + bakeResult.clusterFirstProbeIndices[cameraNode.cluster];
+					object.probeIndex = i + bakeResult.clusterFirstProbeIndices[lightProbesDebugGeometryDisplayCluster];
 				}
 				break;
 				default:
@@ -1526,10 +1531,15 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 
 			if (GetState() == State::Rendering)
 			{
+				if (ImGui::CollapsingHeader("Debug geometry"))
 				{
-					ImGui::Text(" Debug geometry ");
-
 					ImGui::Checkbox("Light Probes", &drawLightProbesDebugGeometry);
+
+					if (drawLightProbesDebugGeometry == true)
+					{
+						ImGui::SameLine();
+						ImGui::Checkbox("Fix Display Cluster", &fixLightProbesDebugGeometryInTheSameCluster);
+					}
 
 					ImGui::Checkbox("Light Sources", &drawLightSourcesDebugGeometry);
 
@@ -1542,9 +1552,8 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 
 				ImGui::Separator();
 
+				if (ImGui::CollapsingHeader("Path segments display settings"))
 				{
-					ImGui::Text("Path segments display settings");
-
 					{
 						int drawRayMode = static_cast<int>(drawBakeRayPathsMode);
 
@@ -1555,8 +1564,6 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 						drawBakeRayPathsMode = static_cast<DrawRayPathMode>(drawRayMode);
 					}
 
-
-
 					ImGui::Text("Probes num: %d", lightBakingResult.obj.probes.size());
 					ImGui::InputInt("Probe ray index", &drawBakeRayPathsProbeIndex);
 					drawBakeRayPathsProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probes.size() - 1, drawBakeRayPathsProbeIndex));
@@ -1566,9 +1573,8 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 
 				ImGui::Separator();
 
+				if (ImGui::CollapsingHeader("Light sampling display settings"))
 				{
-					ImGui::Text("Light sampling display settings");
-
 					{
 						int drawLightSamplesMode = static_cast<int>(drawPathLightSampleMode_Scale);
 

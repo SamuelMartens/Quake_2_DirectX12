@@ -204,7 +204,7 @@ float3 GenerateCosineWeightedSample(float normalizedSample1, float normalizedSam
 
 int GetProbeArrayIndex(int4 gridCoord, int4 gridSize)
 {
-	return gridCoord.x * (gridSize.x * gridSize.y) + gridCoord.y * gridSize.y + gridCoord.z;
+	return gridCoord.x * (gridSize.y * gridSize.z) + gridCoord.y * gridSize.z + gridCoord.z;
 }
 
 void GetProbeCubeIndices(float4 position, int clusterIndex, out int4 minProbeCubeInd, out int4 maxProbeCubeInd)
@@ -357,8 +357,8 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	
 	// Monte Carlo factor
 	//#DEBUG switch
-	//float4 finalResult = interpolationAlongZ / SAMPLES_NUM * GBuffer_Albedo.Load(int3(dispatchThreadID.xy, 0));
-	float4 finalResult = interpolationAlongZ / SAMPLES_NUM * 1.0f;
+	float4 finalResult = interpolationAlongZ / SAMPLES_NUM * GBuffer_Albedo.Load(int3(dispatchThreadID.xy, 0));
+	//float4 finalResult = interpolationAlongZ / SAMPLES_NUM * 1.0f;
 	
 	//#DEBUG
 	//finalResult = interpolationAlongX[2] / SAMPLES_NUM;

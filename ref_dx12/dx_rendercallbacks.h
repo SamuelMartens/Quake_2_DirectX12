@@ -601,7 +601,7 @@ namespace RenderCallbacks
 		case HASH("ProbePositions"):
 		{
 			// Should be the same as case above
-			const std::string probePositionsResourceName = "ClusterProbeGridInfo";
+			const std::string probePositionsResourceName = "ProbePositions";
 
 			ResourceManager& resMan = ResourceManager::Inst();
 

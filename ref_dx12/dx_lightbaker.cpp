@@ -551,7 +551,7 @@ XMINT3 LightBaker::GenerateClusterGridSize(int clusterIndex) const
 	// Amount of bake points along X axis
 	const int zAxisNum = std::ceil((clusterAABB.maxVert.z - clusterAABB.minVert.z) / Settings::CLUSTER_PROBE_GRID_INTERVAL) + 1;
 
-	return { xAxisNum , yAxisNum, zAxisNum };
+	return { xAxisNum, yAxisNum, zAxisNum };
 }
 
 void LightBaker::BakeJob()
@@ -1219,6 +1219,8 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 
 		// Update PDF 
 		samplesPDF = GetCosineWeightedSamplePDF(nDotL);
+		// Avoid division by 0
+		samplesPDF = std::max(samplesPDF, Utils::EPSILON);
 
 		// Update Throughput
 		const float brdf = GetDiffuseBRDF();

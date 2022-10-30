@@ -218,7 +218,8 @@ public:
 	void DrawDebugGuiJob(GPUJobContext& context);
 
 	std::vector<int> BuildVisibleDynamicObjectsList(const Camera& camera, const std::vector<entity_t>& entities) const;
-	std::vector<DebugObject_t> GenerateFrameDebugObjects(const Camera& camera) const;
+	//#DEBUG can I make this const?
+	std::vector<DebugObject_t> GenerateFrameDebugObjects(const Camera& camera);
 
 	/* State change */
 	void RequestStateChange(State state);
@@ -391,6 +392,9 @@ private:
 
 	/* Debug */
 	bool drawLightProbesDebugGeometry = false;
+	bool fixLightProbesDebugGeometryInTheSameCluster = false;
+	int lightProbesDebugGeometryDisplayCluster = Const::INVALID_INDEX;
+
 	bool drawLightSourcesDebugGeometry = false;
 	bool drawPointLightSourcesRadius = false;
 	
