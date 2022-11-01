@@ -343,7 +343,7 @@ private:
 
 	std::atomic<int>	fenceValue = 0;
 	ComPtr<ID3D12Fence>	fence;
-
+	// Light baking version that is currently on GPU
 	uint32_t lightBakingResultGPUVersion = 0;
 	// Mutable because of mutex :( 
 	mutable LockObject<BakingData> lightBakingResult;

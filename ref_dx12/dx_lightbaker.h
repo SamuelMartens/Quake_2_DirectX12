@@ -156,8 +156,6 @@ public:
 
 	void BakeJob();
 	void LoadBakingResultsFromFileJob();
-	//#DEBUG I have bake version now. Is this redundant?
-	bool IsContainCompleteBakingResult() const;
 
 	int GetTotalProbesNum() const;
 	int GetBakedProbesNum() const;
@@ -171,7 +169,7 @@ public:
 	void SetBakePosition(const XMFLOAT4& position);
 	void SetBakeFlag(BakeFlags flag, bool value);
 
-	uint32_t GetLatestBakeVersion() const;
+	uint32_t GetBakeVersion() const;
 
 private:
 
@@ -209,8 +207,6 @@ private:
 	std::atomic<int> currentBakeCluster;
 	std::atomic<int> probesBaked;
 
-	std::atomic<bool> isContainCompleteBakingResult = false;
-
 	std::optional<XMFLOAT4> bakePosition;
 
 	Utils::Flags<BakeFlags> bakeFlags;
@@ -218,5 +214,5 @@ private:
 	// Contains data that will be sent to renderer after bake is over
 	BakingData transferableData;
 
-	uint32_t bakeVersion = 0;
+	std::atomic<uint32_t> bakeVersion = 0;
 }; 

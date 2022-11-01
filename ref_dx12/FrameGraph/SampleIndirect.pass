@@ -202,6 +202,20 @@ float3 GenerateCosineWeightedSample(float normalizedSample1, float normalizedSam
 	return cosineSample;
 }
 
+AABB GetClusterAABB(int clusterIndex)
+{
+	AABB clusterAABB = ClusterAABBs.Load(clusterIndex);
+	
+	float3 diagonal = normalize(clusterAABB.Max.xyz - clusterAABB.Min.xyz);
+		
+	// Extend a bit to avoid floating point errors during testing
+	const float epsilon = 0.005f;
+	clusterAABB.Min.xyz = clusterAABB.Min.xyz - diagonal * epsilon;
+	clusterAABB.Max.xyz = clusterAABB.Max.xyz + diagonal * epsilon;
+	
+	return clusterAABB;
+}
+
 int GetProbeArrayIndex(int4 gridCoord, int4 gridSize)
 {
 	return gridCoord.x * (gridSize.y * gridSize.z) + gridCoord.y * gridSize.z + gridCoord.z;
@@ -209,15 +223,7 @@ int GetProbeArrayIndex(int4 gridCoord, int4 gridSize)
 
 void GetProbeCubeIndices(float4 position, int clusterIndex, out int4 minProbeCubeInd, out int4 maxProbeCubeInd)
 {
-	AABB clusterAABB = ClusterAABBs.Load(clusterIndex);
-	
-	//#DEBUG I need a separate func to stop copy&pasting
-	float3 diagonal = normalize(clusterAABB.Max.xyz - clusterAABB.Min.xyz);
-		
-	// Extend a bit to avoid floating point errors during testing
-	const float epsilon = 0.005f;
-	clusterAABB.Min.xyz = clusterAABB.Min.xyz - diagonal * epsilon;
-	clusterAABB.Max.xyz = clusterAABB.Max.xyz + diagonal * epsilon;
+	AABB clusterAABB = GetClusterAABB(clusterIndex);
 	
 	ClusterProbeGridInfo gridInfo = ClusterProbeGridInfoBuffer.Load(clusterIndex);
 	
@@ -234,17 +240,8 @@ void GetProbeCubeIndices(float4 position, int clusterIndex, out int4 minProbeCub
 
 float3 GetProbeCubeInterpolationValues(float4 position, int clusterIndex)
 {
-	AABB clusterAABB = ClusterAABBs.Load(clusterIndex);
+	AABB clusterAABB = GetClusterAABB(clusterIndex);
 	
-	//#DEBUG I need a separate func to stop copy&pasting
-	float3 diagonal = normalize(clusterAABB.Max.xyz - clusterAABB.Min.xyz);
-		
-	// Extend a bit to avoid floating point errors during testing
-	const float epsilon = 0.005f;
-	clusterAABB.Min.xyz = clusterAABB.Min.xyz - diagonal * epsilon;
-	clusterAABB.Max.xyz = clusterAABB.Max.xyz + diagonal * epsilon;
-	
-	//#DEBUG swithc
 	return frac((position.xyz - clusterAABB.Min.xyz) / ProbeGridInterval);
 }
 
@@ -357,8 +354,8 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	
 	// Monte Carlo factor
 	//#DEBUG switch
-	float4 finalResult = interpolationAlongZ / SAMPLES_NUM * GBuffer_Albedo.Load(int3(dispatchThreadID.xy, 0));
-	//float4 finalResult = interpolationAlongZ / SAMPLES_NUM * 1.0f;
+	//float4 finalResult = interpolationAlongZ / SAMPLES_NUM * GBuffer_Albedo.Load(int3(dispatchThreadID.xy, 0));
+	float4 finalResult = interpolationAlongZ / SAMPLES_NUM * 1.0f;
 	
 	//#DEBUG
 	//finalResult = interpolationAlongX[2] / SAMPLES_NUM;

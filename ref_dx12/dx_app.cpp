@@ -1040,7 +1040,6 @@ void Renderer::OnStateStart(State state)
 	}
 	case Renderer::State::LoadLightBakingFromFile:
 	{
-		DX_ASSERT(LightBaker::Inst().IsContainCompleteBakingResult() == false && "Already contain some results");
 
 		JobSystem::Inst().GetJobQueue().Enqueue(Job([]() 
 		{
@@ -2102,7 +2101,7 @@ bool Renderer::TryTransferDiffuseIndirectLightingToGPU(GPUJobContext& context)
 {
 	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
 	
-	const uint32_t latestBakeVersion = LightBaker::Inst().GetLatestBakeVersion();
+	const uint32_t latestBakeVersion = LightBaker::Inst().GetBakeVersion();
 
 	if (lightBakingResult.obj.probes.empty() == true || latestBakeVersion == lightBakingResultGPUVersion)
 	{
@@ -2703,7 +2702,7 @@ void Renderer::EndFrame()
 	{
 		const LightBaker& lightBaker = LightBaker::Inst();
 
-		if (lightBaker.IsContainCompleteBakingResult())
+		if (lightBakingResultGPUVersion < lightBaker.GetBakeVersion())
 		{
 			RequestStateChange(State::Rendering);
 		}

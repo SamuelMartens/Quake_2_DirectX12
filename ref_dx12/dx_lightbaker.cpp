@@ -422,8 +422,6 @@ void LightBaker::PostBake()
 	clusterBakePoints.clear();
 
 	SetBakeFlag(BakeFlags::SaveToFileAfterBake, false);
-
-	bakeVersion += 1;
 }
 
 std::vector<std::vector<XMFLOAT4>> LightBaker::GenerateClustersBakePoints()
@@ -523,7 +521,6 @@ std::vector<XMFLOAT4> LightBaker::GenerateClusterBakePoints(int clusterIndex) co
 	return bakePoints;
 }
 
-//#DEBUG sizes that I generate during this is saved to a file. This is stupid I can regenerate those during runtime
 XMINT3 LightBaker::GenerateClusterGridSize(int clusterIndex) const
 {
 	Utils::AABB clusterAABB = Renderer::Inst().GetBSPTree().GetClusterAABB(clusterIndex);
@@ -632,7 +629,10 @@ void LightBaker::BakeJob()
 		}
 	}
 
-	isContainCompleteBakingResult = GetTotalProbesNum() == GetBakedProbesNum();
+	if (GetTotalProbesNum() == GetBakedProbesNum())
+	{
+		bakeVersion += 1;
+	}
 }
 
 void LightBaker::LoadBakingResultsFromFileJob()
@@ -640,13 +640,6 @@ void LightBaker::LoadBakingResultsFromFileJob()
 	transferableData = LoadBakingResultsFromFile();
 	
 	bakeVersion += 1;
-
-	isContainCompleteBakingResult.store(true);
-}
-
-bool LightBaker::IsContainCompleteBakingResult() const
-{
-	return isContainCompleteBakingResult.load();
 }
 
 int LightBaker::GetTotalProbesNum() const
@@ -674,8 +667,6 @@ bool LightBaker::GetBakeFlag(BakeFlags flag) const
 
 BakingData LightBaker::TransferBakingResult()
 {
-	isContainCompleteBakingResult.store(false);
-
 	// I want to be able to reset some data inside transferData after transfer
 	// but if just return it, I can't do it. So that's why this local variable 
 	// is introduced.
@@ -702,7 +693,7 @@ void LightBaker::SetBakeFlag(BakeFlags flag, bool value)
 	bakeFlags.set(flag, value);
 }
 
-uint32_t LightBaker::GetLatestBakeVersion() const
+uint32_t LightBaker::GetBakeVersion() const
 {
 	return bakeVersion;
 }
@@ -1254,7 +1245,7 @@ void LightBaker::SaveBakingResultsToFile(const BakingData& bakingResult) const
 		bakingResultStream << "\n" << "BakingCluster " << *bakingResult.bakingCluster;
 	}
 
-	// Cluster sizes
+	// First probe index
 	if (bakingResult.bakingMode == LightBakingMode::AllClusters)
 	{
 		DX_ASSERT(bakingResult.clusterFirstProbeIndices.empty() == false &&
@@ -1268,6 +1259,7 @@ void LightBaker::SaveBakingResultsToFile(const BakingData& bakingResult) const
 		}
 	}
 
+	// Cluster Grid Sizes
 	DX_ASSERT(bakingResult.clusterProbeGridSizes.empty() == false &&
 		"Cluster probe grid can't be false");
 
@@ -1277,8 +1269,6 @@ void LightBaker::SaveBakingResultsToFile(const BakingData& bakingResult) const
 	{
 		bakingResultStream << "\n" << sizes.x << ", " << sizes.y << ", " << sizes.z;
 	}
-
-	// Cluster Grid Sizes
 
 
 	// Probe Data
