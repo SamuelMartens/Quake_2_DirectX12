@@ -1158,6 +1158,86 @@ void Renderer::RegisterObjectsAtFrameGraphs()
 	}
 }
 
+void Renderer::CreateIndirectLightResources(GPUJobContext& context)
+{
+	CommandListRAIIGuard_t commandListGuard(*context.commandList);
+	ResourceManager& resMan = ResourceManager::Inst();
+
+	DX_ASSERT(lightBakingResult.obj.probes.empty() == false && "Can't create resource from empty lightprobes");
+	DX_ASSERT(lightBakingResultGPUVersion < LightBaker::Inst().GetBakeVersion() && "We already have current version, why update?");
+
+	// Probe data
+	{
+		if (resMan.FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME) != nullptr)
+		{
+			resMan.DeleteResource(Resource::PROBE_STRUCTURED_BUFFER_NAME);
+		}
+
+		int probeVectorSize = 0;
+		std::vector<XMFLOAT4> probeGPUData;
+
+		{
+			std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
+
+			probeVectorSize = lightBakingResult.obj.probes.size() * sizeof(DiffuseProbe::DiffuseSH_t) / sizeof(XMFLOAT4);
+			probeGPUData.reserve(probeVectorSize);
+
+			for (const DiffuseProbe& probe : lightBakingResult.obj.probes)
+			{
+				for (const XMFLOAT4& probeCoeff : probe.radianceSh)
+				{
+					probeGPUData.push_back(probeCoeff);
+				}
+			}
+		}
+
+		ResourceDesc desc;
+		desc.width = probeVectorSize * sizeof(XMFLOAT4);
+		desc.height = 1;
+		desc.format = DXGI_FORMAT_UNKNOWN;
+		desc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+		desc.flags = D3D12_RESOURCE_FLAG_NONE;
+
+
+		FArg::CreateStructuredBuffer args;
+		args.context = &context;
+		args.desc = &desc;
+		args.data = reinterpret_cast<std::byte*>(probeGPUData.data());
+		args.name = Resource::PROBE_STRUCTURED_BUFFER_NAME;
+
+		resMan.CreateStructuredBuffer(args);
+	}
+	
+	// Clusters Grid Probe Info
+	{
+		if (resMan.FindResource(Resource::CLUSTER_GRID_PROBE_STRUCTURED_BUFFER_NAME) != nullptr)
+		{
+			resMan.DeleteResource(Resource::CLUSTER_GRID_PROBE_STRUCTURED_BUFFER_NAME);
+		}
+
+		std::vector<ClusterProbeGridInfo> probeGridInfo = Renderer::Inst().GenBakeClusterProbeGridInfo();
+
+		DX_ASSERT(probeGridInfo.empty() == false && "Can't generate cluster probe grid info. It's empty");
+
+		ResourceDesc desc;
+		desc.width = probeGridInfo.size() * sizeof(ClusterProbeGridInfo);
+		desc.height = 1;
+		desc.format = DXGI_FORMAT_UNKNOWN;
+		desc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+		desc.flags = D3D12_RESOURCE_FLAG_NONE;
+
+		FArg::CreateStructuredBuffer args;
+		args.context = &context;
+		args.desc = &desc;
+		args.data = reinterpret_cast<std::byte*>(probeGridInfo.data());
+		args.name = Resource::CLUSTER_GRID_PROBE_STRUCTURED_BUFFER_NAME;
+
+		resMan.CreateStructuredBuffer(args);
+	}
+
+	lightBakingResultGPUVersion = lightBakingResultCPUVersion;
+}
+
 void Renderer::InitStaticLighting()
 {
 	for (AreaLight& light : staticAreaLights)
@@ -2095,58 +2175,8 @@ void Renderer::ConsumeDiffuseIndirectLightingBakingResult(BakingData&& results)
 
 	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
 	lightBakingResult.obj = std::move(results);
-}
 
-bool Renderer::TryTransferDiffuseIndirectLightingToGPU(GPUJobContext& context)
-{
-	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
-	
-	const uint32_t latestBakeVersion = LightBaker::Inst().GetBakeVersion();
-
-	if (lightBakingResult.obj.probes.empty() == true || latestBakeVersion == lightBakingResultGPUVersion)
-	{
-		return false;
-	}
-
-	ResourceManager& resMan = ResourceManager::Inst();
-
-	if (Resource* probeBuff = resMan.FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME))
-	{
-		resMan.DeleteResource(Resource::PROBE_STRUCTURED_BUFFER_NAME);
-	}
-
-	const int probeVectorSize = lightBakingResult.obj.probes.size() * sizeof(DiffuseProbe::DiffuseSH_t) / sizeof(XMFLOAT4);
-
-	std::vector<XMFLOAT4> probeGPUData;
-	probeGPUData.reserve(probeVectorSize);
-
-	for (const DiffuseProbe& probe : lightBakingResult.obj.probes)
-	{
-		for (const XMFLOAT4& probeCoeff : probe.radianceSh)
-		{
-			probeGPUData.push_back(probeCoeff);
-		}
-	}
-
-	ResourceDesc desc;
-	desc.width = probeVectorSize * sizeof(XMFLOAT4);
-	desc.height = 1;
-	desc.format = DXGI_FORMAT_UNKNOWN;
-	desc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-	desc.flags = D3D12_RESOURCE_FLAG_NONE;
-
-
-	FArg::CreateStructuredBuffer args;
-	args.context = &context;
-	args.desc = &desc;
-	args.data = reinterpret_cast<std::byte*>(probeGPUData.data());
-	args.name = Resource::PROBE_STRUCTURED_BUFFER_NAME;
-
-	resMan.CreateStructuredBuffer(args);
-
-	lightBakingResultGPUVersion = latestBakeVersion;
-
-	return true;
+	lightBakingResultCPUVersion = LightBaker::Inst().GetBakeVersion();
 }
 
 std::vector<std::vector<XMFLOAT4>> Renderer::GenProbePathSegmentsVertices() const
@@ -2716,6 +2746,12 @@ void Renderer::EndFrame()
 	{
 		GPUJobContext createDeferredTextureContext = CreateContext(frame);
 		ResourceManager::Inst().CreateDeferredTextures(createDeferredTextureContext);
+	}
+	
+	if (lightBakingResultGPUVersion < lightBakingResultCPUVersion)
+	{
+		GPUJobContext indirectResUpdateContext = CreateContext(frame);
+		CreateIndirectLightResources(indirectResUpdateContext);
 	}
 
 	// Proceed to next frame

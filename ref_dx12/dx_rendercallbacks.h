@@ -465,11 +465,7 @@ namespace RenderCallbacks
 		break;
 		case HASH("sbDiffuseProbes"):
 		{
-			ResourceManager& resMan = ResourceManager::Inst();
-			
-			Renderer::Inst().TryTransferDiffuseIndirectLightingToGPU(ctx.jobContext);
-
-			Resource* probeGpuBuffer = resMan.FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME);
+			Resource* probeGpuBuffer = ResourceManager::Inst().FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME);
 			if (probeGpuBuffer == nullptr)
 			{
 				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
@@ -550,90 +546,14 @@ namespace RenderCallbacks
 			clusterAAABsSize = clusterSet.size();
 		}
 		break;
-		//#DEBUG I think when I regenerate data, resource like this one are not updated.
-		// They created only once when stuff appears. This needs to be fixed. This also 
-		// happens for ClusterAABB and etc (GO THROUGH PROBE RESOURCE AND SEE WHAT IS UP)
 		case HASH("ClusterProbeGridInfoBuffer"):
 		{
-			// Should be the same as case above
-			const std::string clusterProbeGridInfoResourceName = "ClusterProbeGridInfo";
-
-			ResourceManager& resMan = ResourceManager::Inst();
-
-			if (resMan.FindResource(clusterProbeGridInfoResourceName) == nullptr)
-			{
-				std::vector<ClusterProbeGridInfo> probeGridInfo = Renderer::Inst().GenBakeClusterProbeGridInfo();
-
-				if (probeGridInfo.empty() == false)
-				{
-					ResourceDesc desc;
-					desc.width = probeGridInfo.size() * sizeof(ClusterProbeGridInfo);
-					desc.height = 1;
-					desc.format = DXGI_FORMAT_UNKNOWN;
-					desc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-					desc.flags = D3D12_RESOURCE_FLAG_NONE;
-
-					FArg::CreateStructuredBuffer args;
-					args.context = &ctx.jobContext;
-					args.desc = &desc;
-					args.data = reinterpret_cast<std::byte*>(probeGridInfo.data());
-					args.name = clusterProbeGridInfoResourceName.c_str();
-
-					resMan.CreateStructuredBuffer(args);
-				}
-			}
-
-			if (Resource* clusterProbeGridInfoBuffer = resMan.FindResource(clusterProbeGridInfoResourceName))
+			if (Resource* clusterProbeGridInfoBuffer = ResourceManager::Inst().FindResource(Resource::CLUSTER_GRID_PROBE_STRUCTURED_BUFFER_NAME))
 			{
 				ViewDescription_t defaultSrvDesc{
 					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(clusterProbeGridInfoBuffer, sizeof(ClusterProbeGridInfo)) };
 
 				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, clusterProbeGridInfoBuffer->buffer.Get(), &defaultSrvDesc));
-			}
-			else
-			{
-				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
-
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
-			}
-		}
-		break;
-		case HASH("ProbePositions"):
-		{
-			// Should be the same as case above
-			const std::string probePositionsResourceName = "ProbePositions";
-
-			ResourceManager& resMan = ResourceManager::Inst();
-
-			if (resMan.FindResource(probePositionsResourceName) == nullptr)
-			{
-				std::vector<XMFLOAT4> probePositions = Renderer::Inst().GenBakeProbePositions();
-
-				if (probePositions.empty() == false)
-				{
-					ResourceDesc desc;
-					desc.width = probePositions.size() * sizeof(XMFLOAT4);
-					desc.height = 1;
-					desc.format = DXGI_FORMAT_UNKNOWN;
-					desc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-					desc.flags = D3D12_RESOURCE_FLAG_NONE;
-
-					FArg::CreateStructuredBuffer args;
-					args.context = &ctx.jobContext;
-					args.desc = &desc;
-					args.data = reinterpret_cast<std::byte*>(probePositions.data());
-					args.name = probePositionsResourceName.c_str();
-
-					resMan.CreateStructuredBuffer(args);
-				}
-			}
-
-			if (Resource* probePositionsBuffer = resMan.FindResource(probePositionsResourceName))
-			{
-				ViewDescription_t defaultSrvDesc{
-					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(probePositionsBuffer, sizeof(XMFLOAT4)) };
-
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, probePositionsBuffer->buffer.Get(), &defaultSrvDesc));
 			}
 			else
 			{
@@ -685,11 +605,8 @@ namespace RenderCallbacks
 			break;
 			case HASH("ProbeDataExist"):
 			{
-				//#DEBUG quick hack. Fix this
-				const std::string clusterProbeGridInfoResourceName = "ClusterProbeGridInfo";
-
 				int& dataExist = reinterpret_cast<int&>(bindPoint);
-				dataExist = ResourceManager::Inst().FindResource(clusterProbeGridInfoResourceName) == nullptr ? 0 : 1;
+				dataExist = ResourceManager::Inst().FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME) == nullptr ? 0 : 1;
 			}
 			break;
 			case HASH("ProbeGridInterval"):
