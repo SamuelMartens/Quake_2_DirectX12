@@ -343,7 +343,7 @@ public:
 
 		DX_ASSERT(tex != nullptr && "AllocateRenderTargetView failed. No such texture");
 
-		return descriptorHeapAllocator.Allocate(tex->buffer.Get());
+		return descriptorHeapAllocator.Allocate(tex->gpuBuffer.Get());
 	}
 
 	static void AllocateColorDepthRenderTargetViews(PassParameters& passParams);

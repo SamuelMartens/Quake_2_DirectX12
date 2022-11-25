@@ -50,6 +50,7 @@ namespace FArg
 		const char* name = nullptr;
 		GPUJobContext* context = nullptr;
 		const XMFLOAT4* clearValue = nullptr;
+		bool saveResourceInCPUMemory = false;
 	};
 
 	struct CreateTextureFromDataDeferred
@@ -59,6 +60,7 @@ namespace FArg
 		const char* name = nullptr;
 		Frame* frame = nullptr;
 		const XMFLOAT4* clearValue = nullptr;
+		bool saveResourceInCPUMemory = false;
 	};
 
 	struct _CreateGpuResource
@@ -68,6 +70,13 @@ namespace FArg
 		GPUJobContext* context = nullptr; 
 		const XMFLOAT4* clearValue = nullptr;
 	};
+
+	struct _CreateTextureFromFile
+	{
+		const char* name = nullptr;
+		GPUJobContext* context = nullptr;
+		bool saveResourceInCPUMemory = false;
+	};
 	
 	struct CreateStructuredBuffer
 	{
@@ -75,6 +84,20 @@ namespace FArg
 		const char* name = nullptr;
 		GPUJobContext* context = nullptr;
 		const std::byte* data = nullptr;
+	};
+
+	struct CreateTextureFromFile
+	{
+		const char* name = nullptr;
+		GPUJobContext* context = nullptr;
+		bool saveResourceInCPUMemory = false;
+	};
+
+	struct CreateTextureFromFileDeferred
+	{
+		const char* name = nullptr;
+		Frame* frame = nullptr;
+		bool saveResourceInCPUMemory = false;
 	};
 };
 
@@ -97,8 +120,8 @@ public:
 	Resource* CreateStructuredBuffer(FArg::CreateStructuredBuffer& args);
 
 	/* Textures */
-	Resource* CreateTextureFromFileDeferred(const char* name, Frame& frame);
-	Resource* CreateTextureFromFile(const char* name, GPUJobContext& context);
+	Resource* CreateTextureFromFileDeferred(FArg::CreateTextureFromFileDeferred& args);
+	Resource* CreateTextureFromFile(FArg::CreateTextureFromFile& args);
 	Resource* CreateTextureFromDataDeferred(FArg::CreateTextureFromDataDeferred& args);
 	Resource* CreateTextureFromData(FArg::CreateResource& args);
 	void CreateDeferredTextures(GPUJobContext& context);
@@ -108,7 +131,7 @@ public:
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 
 	/* Resource management */
-	Resource* FindOrCreateResource(std::string_view resourceName, GPUJobContext& context);
+	Resource* FindOrCreateResource(std::string_view resourceName, GPUJobContext& context, bool saveResourceInCPUMemory);
 	Resource* FindResource(std::string_view resourceName);
 
 	void RequestResourceDeletion(ComPtr<ID3D12Resource> resourceToDelete);
@@ -118,7 +141,7 @@ public:
 private:
 
 	/* Textures */
-	Resource* _CreateTextureFromFile(const char* name, GPUJobContext& context);
+	Resource* _CreateTextureFromFile(FArg::_CreateTextureFromFile& args);
 	
 	/* Generic resource */
 	Resource* _CreateResource(FArg::CreateResource& args);

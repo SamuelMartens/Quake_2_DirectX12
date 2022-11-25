@@ -159,13 +159,6 @@ namespace
 		segments.push_back(segment);
 	}
 
-	float GetDiffuseBRDF()
-	{
-		// This is temporarily. Until I get proper albedo from texture
-		constexpr float albedo = 0.5;
-		return albedo / M_PI;
-	}
-
 	void InitLightBakingResultParser(peg::parser& parser)
 	{
 		// Load grammar
@@ -836,11 +829,10 @@ XMFLOAT4 LightBaker::GatherDirectIrradianceFromPointLights(const XMFLOAT4& inter
 			continue;
 		}
 
-		const XMVECTOR sseLightBaseRadiance = XMLoadFloat4(&light.color) *
+		const XMVECTOR sseLightBaseRadiance = (XMLoadFloat4(&light.color) / M_PI) *
 			light.intensity;
 
 		XMVECTOR sseLightRadiance =
-			GetDiffuseBRDF() *
 			distanceFalloff *
 			sseLightBaseRadiance *
 			normalAndIntersectionDotProduct;
@@ -937,6 +929,12 @@ XMFLOAT4 LightBaker::GatherDirectIradianceFromAreaLight(const XMFLOAT4& intersec
 {
 	const SourceStaticObject& lightMesh = Renderer::Inst().GetSourceStaticObjects()[light.staticObjectIndex];
 
+	// Find light source texture
+	const Resource* objTexture = ResourceManager::Inst().FindResource(lightMesh.textureKey);
+
+	DX_ASSERT(objTexture != nullptr && "Can't find obj texture");
+	DX_ASSERT(objTexture->cpuBuffer.has_value() == true && "No CPU buffer");
+
 	const std::vector<float>& lightTrianglesPDF = light.trianglesPDF;
 
 	const BSPTree& bsp = Renderer::Inst().GetBSPTree();
@@ -1030,8 +1028,21 @@ XMFLOAT4 LightBaker::GatherDirectIradianceFromAreaLight(const XMFLOAT4& intersec
 		{
 			continue;
 		}
+
+		// Find texcoord of sample point
+		const XMVECTOR sseV0TexCoord = XMLoadFloat2(&lightMesh.textureCoords[V0Ind]);
+		const XMVECTOR sseV1TexCoord = XMLoadFloat2(&lightMesh.textureCoords[V1Ind]);
+		const XMVECTOR sseV2TexCoord = XMLoadFloat2(&lightMesh.textureCoords[V2Ind]);
+
+		XMVECTOR sseInterpolatedTexCoords = sseV0TexCoord * u + sseV1TexCoord * v + sseV2TexCoord * w;
+		XMFLOAT2 interpolatedTexCoords;
+		XMStoreFloat2(&interpolatedTexCoords, sseInterpolatedTexCoords);
+		interpolatedTexCoords = Utils::NomralizeWrapAroundTextrueCoordinates(interpolatedTexCoords);
+
+		const XMFLOAT4 albedo = Utils::TextureBilinearSample(*objTexture->cpuBuffer, objTexture->desc.format, objTexture->desc.width, objTexture->desc.height, interpolatedTexCoords);
 		
-		const XMVECTOR sseSampleRadiance = GetDiffuseBRDF() *
+		//#DEBUG here I sample  texture of area light. But I think I average it somewhere else too, right? Just check this
+		const XMVECTOR sseSampleRadiance = (XMLoadFloat4(&albedo) / M_PI) *
 			sseLightRadiance *
 			distanceFalloff * intersectionToSampleAndNormalDot;
 
@@ -1214,10 +1225,22 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 		samplesPDF = std::max(samplesPDF, Utils::EPSILON);
 
 		// Update Throughput
-		const float brdf = GetDiffuseBRDF();
+		
+		// Find texture coordinates of the hit
+		const XMFLOAT2 texCoords = Utils::BSPNodeRayIntersectionResult::GetTexCoord(intersectionResult);
+		const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[intersectionResult.staticObjIndex];
+		const Resource* objTexture = ResourceManager::Inst().FindResource(object.textureKey);
+
+		DX_ASSERT(objTexture != nullptr && "Can't find obj texture");
+		DX_ASSERT(objTexture->cpuBuffer.has_value() == true && "No CPU buffer");
+
+		const XMFLOAT2 normalizedTextureCoordinates = Utils::NomralizeWrapAroundTextrueCoordinates(texCoords);
+		const XMFLOAT4 albedo = Utils::TextureBilinearSample(*objTexture->cpuBuffer, objTexture->desc.format, objTexture->desc.width, objTexture->desc.height, normalizedTextureCoordinates);
+		const XMVECTOR sseBrdf = XMLoadFloat4(&albedo) / M_PI;
+
 		// I need to divide by PDF here because in all hemisphere I take only one sample of reflected light.
 		// So in some sense I still do monte carlo but with only 1 sample
-		sseThoroughput = sseThoroughput * brdf * nDotL / samplesPDF;
+		sseThoroughput = sseThoroughput * sseBrdf * nDotL / samplesPDF;
 
 		++rayBounce;
 	}

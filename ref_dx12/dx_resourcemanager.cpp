@@ -251,7 +251,7 @@ void ResourceManager::DeleteRequestedResources()
 	}
 }
 
-Resource* ResourceManager::FindOrCreateResource(std::string_view resourceName, GPUJobContext& context)
+Resource* ResourceManager::FindOrCreateResource(std::string_view resourceName, GPUJobContext& context, bool saveResourceInCPUMemory)
 {
 	std::scoped_lock<std::mutex> lock(resources.mutex);
 
@@ -264,7 +264,12 @@ Resource* ResourceManager::FindOrCreateResource(std::string_view resourceName, G
 	}
 	else
 	{
-		texture = _CreateTextureFromFile(resourceName.data(), context);
+		FArg::_CreateTextureFromFile args;
+		args.name = resourceName.data();
+		args.context = &context;
+		args.saveResourceInCPUMemory = saveResourceInCPUMemory;
+
+		texture = _CreateTextureFromFile(args);
 	}
 
 	return texture;
@@ -279,26 +284,33 @@ Resource* ResourceManager::FindResource(std::string_view resourceName)
 	return texIt == resources.obj.end() ? nullptr : &texIt->second;
 }
 
-Resource* ResourceManager::CreateTextureFromFileDeferred(const char* name, Frame& frame)
+Resource* ResourceManager::CreateTextureFromFileDeferred(FArg::CreateTextureFromFileDeferred& args)
 {
 	std::scoped_lock<std::mutex> lock(resources.mutex);
 
 	Resource tex;
-	tex.name = name;
+	tex.name = args.name;
 
 	Resource* result = &resources.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
 
 	TexCreationRequest_FromFile texRequest(*result);
-	frame.texCreationRequests.push_back(std::move(texRequest));
+	texRequest.saveResourceInCPUMemory = args.saveResourceInCPUMemory;
+
+	args.frame->texCreationRequests.push_back(std::move(texRequest));
 
 	return result;
 }
 
-Resource* ResourceManager::CreateTextureFromFile(const char* name, GPUJobContext& context)
+Resource* ResourceManager::CreateTextureFromFile(FArg::CreateTextureFromFile& args)
 {
 	std::scoped_lock<std::mutex> lock(resources.mutex);
 
-	return _CreateTextureFromFile(name, context);
+	FArg::_CreateTextureFromFile _args;
+	_args.name = args.name;
+	_args.context = args.context;
+	_args.saveResourceInCPUMemory = args.saveResourceInCPUMemory;
+
+	return _CreateTextureFromFile(_args);
 }
 
 Resource* ResourceManager::CreateTextureFromDataDeferred(FArg::CreateTextureFromDataDeferred& args)
@@ -312,7 +324,7 @@ Resource* ResourceManager::CreateTextureFromDataDeferred(FArg::CreateTextureFrom
 	Resource* result = &resources.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
 
 	TexCreationRequest_FromData texRequest(*result);
-	
+	texRequest.saveResourceInCPUMemory = args.saveResourceInCPUMemory;
 	
 	if (args.data != nullptr)
 	{
@@ -356,8 +368,12 @@ void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
 
 			if constexpr (std::is_same_v<T, TexCreationRequest_FromFile>)
 			{
-				std::string name = texRequest.texture.name;
-				_CreateTextureFromFile(name.c_str(), context);
+				FArg::_CreateTextureFromFile createTextureArgs;
+				createTextureArgs.name = texRequest.texture.name.c_str();
+				createTextureArgs.context = &context;
+				createTextureArgs.saveResourceInCPUMemory = texRequest.saveResourceInCPUMemory;
+
+				_CreateTextureFromFile(createTextureArgs);
 			}
 			else if constexpr (std::is_same_v<T, TexCreationRequest_FromData>)
 			{
@@ -369,6 +385,7 @@ void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
 				createTexArgs.name = name.c_str();
 				createTexArgs.context = &context;
 				createTexArgs.clearValue = texRequest.clearValue.has_value() ? &texRequest.clearValue.value() : nullptr;
+				createTexArgs.saveResourceInCPUMemory = texRequest.saveResourceInCPUMemory;
 
 				DX_ASSERT(createTexArgs.desc->dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && "Invalid texture dimension during resource creation");
 
@@ -407,7 +424,7 @@ void ResourceManager::UpdateResource(Resource& res, const std::byte* data, GPUJo
 	CommandList& commandList = *context.commandList;
 
 	// Count alignment and go for what we need
-	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(res.buffer.Get(), 0, 1);
+	const UINT64 uploadBufferSize = GetRequiredIntermediateSize(res.gpuBuffer.Get(), 0, 1);
 
 	ComPtr<ID3D12Resource> resourceUploadBuffer = CreateUploadHeapBuffer(uploadBufferSize);
 	Diagnostics::SetResourceNameWithAutoId(resourceUploadBuffer.Get(), "ResourceUploadBuffer_UpdateResource");
@@ -421,17 +438,17 @@ void ResourceManager::UpdateResource(Resource& res, const std::byte* data, GPUJo
 	resourceData.SlicePitch = resourceData.RowPitch * res.desc.height;
 
 	CD3DX12_RESOURCE_BARRIER copyDestTransition = CD3DX12_RESOURCE_BARRIER::Transition(
-		res.buffer.Get(),
+		res.gpuBuffer.Get(),
 		Resource::DEFAULT_STATE,
 		D3D12_RESOURCE_STATE_COPY_DEST
 	);
 
 	commandList.GetGPUList()->ResourceBarrier(1, &copyDestTransition);
 
-	UpdateSubresources(commandList.GetGPUList(), res.buffer.Get(), resourceUploadBuffer.Get(), 0, 0, 1, &resourceData);
+	UpdateSubresources(commandList.GetGPUList(), res.gpuBuffer.Get(), resourceUploadBuffer.Get(), 0, 0, 1, &resourceData);
 
 	CD3DX12_RESOURCE_BARRIER pixelResourceTransition = CD3DX12_RESOURCE_BARRIER::Transition(
-		res.buffer.Get(),
+		res.gpuBuffer.Get(),
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		Resource::DEFAULT_STATE);
 
@@ -510,25 +527,37 @@ Resource* ResourceManager::_CreateResource(FArg::CreateResource& args)
 	createTexArgs.context = args.context;
 	createTexArgs.clearValue = args.clearValue;
 
-	res.buffer = _CreateGpuResource(createTexArgs);
+	res.gpuBuffer = _CreateGpuResource(createTexArgs);
 
 	res.desc = *args.desc;
 	res.name = args.name;
 
-	Diagnostics::SetResourceName(res.buffer.Get(), res.name);
+	// Create and keep CPU resource in buffer, if we want to
+	if (args.saveResourceInCPUMemory == true)
+	{
+		DX_ASSERT(args.data != nullptr && "Can't save resource in CPU memory if no resource data is provided");
+
+		const int resourceSizeInBytes = args.desc->width * args.desc->height * Resource::GetBytesPerPixel(*args.desc);
+		
+		res.cpuBuffer = std::vector<std::byte>(resourceSizeInBytes);
+		memcpy(res.cpuBuffer->data(), args.data, resourceSizeInBytes);
+	}
+
+	Diagnostics::SetResourceName(res.gpuBuffer.Get(), res.name);
 
 	return &resources.obj.insert_or_assign(res.name, std::move(res)).first->second;
 }
 
-Resource* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContext& context)
+
+Resource* ResourceManager::_CreateTextureFromFile(FArg::_CreateTextureFromFile& args)
 {
-	if (name == nullptr)
+	if (args.name == nullptr)
 		return nullptr;
 
 	std::array<char, MAX_QPATH> nonConstName;
 	// Some old functions access only non const pointer, that's just work around
 	char* nonConstNamePtr = nonConstName.data();
-	strcpy(nonConstNamePtr, name);
+	strcpy(nonConstNamePtr, args.name);
 
 
 	constexpr int fileExtensionLength = 4;
@@ -613,8 +642,9 @@ Resource* ResourceManager::_CreateTextureFromFile(const char* name, GPUJobContex
 	FArg::CreateResource createTexArgs;
 	createTexArgs.data = reinterpret_cast<std::byte*>(image32);
 	createTexArgs.desc = &desc;
-	createTexArgs.name = name;
-	createTexArgs.context = &context;
+	createTexArgs.name = args.name;
+	createTexArgs.context = args.context;
+	createTexArgs.saveResourceInCPUMemory = args.saveResourceInCPUMemory;
 
 	Resource* createdTex = _CreateResource(createTexArgs);
 

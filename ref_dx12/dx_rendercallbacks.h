@@ -90,11 +90,11 @@ namespace RenderCallbacks
 						std::array<char, MAX_QPATH> texFullName;
 						ResourceManager::Inst().GetDrawTextureFullname(obj.name.c_str(), texFullName.data(), texFullName.size());
 
-						Resource* tex = ResourceManager::Inst().FindOrCreateResource(texFullName.data(), ctx.jobContext);
+						Resource* tex = ResourceManager::Inst().FindOrCreateResource(texFullName.data(), ctx.jobContext, false);
 
 						ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
 						DO_IF_SAME_DECAYED_TYPE(bT, int, 
-							renderer.cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
+							renderer.cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->gpuBuffer.Get(), &emtpySrvDesc));
 
 					}
 					else
@@ -122,7 +122,7 @@ namespace RenderCallbacks
 
 				ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
 				DO_IF_SAME_DECAYED_TYPE( bT, int, 
-					Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
+					Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->gpuBuffer.Get(), &emtpySrvDesc));
 			}
 			break;
 			default:
@@ -161,7 +161,7 @@ namespace RenderCallbacks
 
 				ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
 				DO_IF_SAME_DECAYED_TYPE(bT, int, 
-					renderer.cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
+					renderer.cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->gpuBuffer.Get(), &emtpySrvDesc));
 			}
 			break;
 			default:
@@ -340,7 +340,7 @@ namespace RenderCallbacks
 			DX_ASSERT(false && "Not implemented");
 		}
 
-		DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
+		DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->gpuBuffer.Get(), &emtpySrvDesc));
 	}
 
 	template<typename bT>
@@ -358,11 +358,16 @@ namespace RenderCallbacks
 			Resource* tex = resMan.FindResource(texFullName.data());
 			if (tex == nullptr)
 			{
-				tex = resMan.CreateTextureFromFile(texFullName.data(), ctx.jobContext);
+				FArg::CreateTextureFromFile createTexArgs;
+				createTexArgs.name = texFullName.data();
+				createTexArgs.context = &ctx.jobContext;
+				createTexArgs.saveResourceInCPUMemory = false;
+
+				tex = resMan.CreateTextureFromFile(createTexArgs);
 			}
 
 			ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
-			DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
+			DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->gpuBuffer.Get(), &emtpySrvDesc));
 		}
 		break;
 		case HASH("sbDiffuseProbes"):
@@ -423,7 +428,7 @@ namespace RenderCallbacks
 				}
 
 				ViewDescription_t emtpySrvDesc{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, tex->buffer.Get(), &emtpySrvDesc));
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, tex->gpuBuffer.Get(), &emtpySrvDesc));
 			}
 			else
 			{
@@ -476,7 +481,7 @@ namespace RenderCallbacks
 				ViewDescription_t defaultSrvDesc{ 
 					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(probeGpuBuffer, sizeof(DiffuseProbe::DiffuseSH_t)) };
 
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, probeGpuBuffer->buffer.Get(), &defaultSrvDesc));
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, probeGpuBuffer->gpuBuffer.Get(), &defaultSrvDesc));
 			}
 		}
 		break;
@@ -526,7 +531,7 @@ namespace RenderCallbacks
 				ViewDescription_t defaultSrvDesc{
 					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(clusterAABBBuffer, sizeof(Utils::AABB)) };
 
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, clusterAABBBuffer->buffer.Get(), &defaultSrvDesc));
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, clusterAABBBuffer->gpuBuffer.Get(), &defaultSrvDesc));
 			}
 			else
 			{
@@ -553,7 +558,7 @@ namespace RenderCallbacks
 				ViewDescription_t defaultSrvDesc{
 					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(clusterProbeGridInfoBuffer, sizeof(ClusterProbeGridInfo)) };
 
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, clusterProbeGridInfoBuffer->buffer.Get(), &defaultSrvDesc));
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, clusterProbeGridInfoBuffer->gpuBuffer.Get(), &defaultSrvDesc));
 			}
 			else
 			{

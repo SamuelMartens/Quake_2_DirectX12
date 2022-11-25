@@ -65,7 +65,8 @@ public:
 
 public:
 
-	ComPtr<ID3D12Resource> buffer;
+	ComPtr<ID3D12Resource> gpuBuffer;
+	std::optional<std::vector<std::byte>> cpuBuffer;
 
 	std::string name;
 	
@@ -80,6 +81,7 @@ struct TexCreationRequest_FromFile
 	{}
 
 	Resource& texture;
+	bool saveResourceInCPUMemory = false;
 };
 
 struct TexCreationRequest_FromData
@@ -90,6 +92,7 @@ struct TexCreationRequest_FromData
 
 	Resource& texture;
 	std::optional<XMFLOAT4> clearValue;
+	bool saveResourceInCPUMemory = false;
 
 	std::vector<std::byte> data;
 };

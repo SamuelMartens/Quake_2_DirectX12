@@ -79,6 +79,46 @@ namespace
 			vertices.push_back(m1);
 		}
 	}
+
+	template<typename T>
+	XMFLOAT4 InterpolateAttributeOfIntersection(const Utils::BSPNodeRayIntersectionResult& intersection, const std::vector<T>& attribute)
+	{
+		const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[intersection.staticObjIndex];
+
+		const int v0Index = object.indices[intersection.triangleIndex * 3 + 0];
+		const int v1Index = object.indices[intersection.triangleIndex * 3 + 1];
+		const int v2Index = object.indices[intersection.triangleIndex * 3 + 2];
+
+		XMVECTOR sseV0Attr = XMVectorZero();
+		XMVECTOR sseV1Attr = XMVectorZero();
+		XMVECTOR sseV2Attr = XMVectorZero();
+
+		if constexpr (std::is_same_v<T, XMFLOAT4>)
+		{
+			sseV0Attr = XMLoadFloat4(&attribute[v0Index]);
+			sseV1Attr = XMLoadFloat4(&attribute[v1Index]);
+			sseV2Attr = XMLoadFloat4(&attribute[v2Index]);
+		}
+		else if constexpr (std::is_same_v<T, XMFLOAT2>)
+		{
+			sseV0Attr = XMLoadFloat2(&attribute[v0Index]);
+			sseV1Attr = XMLoadFloat2(&attribute[v1Index]);
+			sseV2Attr = XMLoadFloat2(&attribute[v2Index]);
+		}
+		else
+		{
+			DX_ASSERT(false && "Invalid type for attribute interpolation");
+		}
+	
+		XMVECTOR sseInterpolatedAttr = sseV0Attr * intersection.rayTriangleIntersection.u +
+			sseV1Attr * intersection.rayTriangleIntersection.v +
+			sseV1Attr * intersection.rayTriangleIntersection.w;
+
+		XMFLOAT4 result;
+		XMStoreFloat4(&result, sseInterpolatedAttr);
+
+		return result;
+	}
 }
 
 std::vector<XMFLOAT4> Utils::CreateSphere(float radius, int numSubdivisions /*= 1*/)
@@ -963,6 +1003,120 @@ bool Utils::FindClosestIntersectionInNode(const Utils::Ray& ray, const BSPNode& 
 	return false;
 }
 
+int Utils::Find1DIndexFrom2D(XMINT2 sizeIn2D, XMINT2 coordsIn2D)
+{
+	//NOTE: the resource must be row major!
+	return coordsIn2D.y * sizeIn2D.x + coordsIn2D.x;
+}
+
+XMFLOAT2 Utils::NomralizeWrapAroundTextrueCoordinates(const XMFLOAT2& texCoords)
+{
+	XMFLOAT2 normalizeTexCoords;
+
+	normalizeTexCoords.x = texCoords.x - std::floor(texCoords.x);
+	normalizeTexCoords.y = texCoords.y - std::floor(texCoords.y);
+
+	if (normalizeTexCoords.x < 0.0f)
+	{
+		normalizeTexCoords.x = 1.0f - normalizeTexCoords.x;
+	}
+
+	if (normalizeTexCoords.y < 0.0f)
+	{
+		normalizeTexCoords.y = 1.0f - normalizeTexCoords.y;
+	}
+
+	return normalizeTexCoords;
+}
+
+XMFLOAT4 Utils::TextureBilinearSample(const std::vector<std::byte>& texture, DXGI_FORMAT textureFormat, int width, int height, XMFLOAT2 texCoords)
+{
+	const int bytesPerPixel = Resource::BytesPerPixelFromFormat(textureFormat);
+
+	DX_ASSERT(texCoords.x >= 0.0f && texCoords.y >= 0.0f && "Invalid texture coordinates");
+	DX_ASSERT(width > 0 && height > 0 && "Invalid tex size");
+	DX_ASSERT(texture.size() == height * width * bytesPerPixel && "Invalid texture buffer size");
+
+	float fXMin = 0.0f;
+	float fYMin = 0.0f;
+
+	const float xInterpolationFactor = std::modf(texCoords.x * (width - 1), &fXMin);
+	const float yInterpolationFactor = std::modf(texCoords.y * (height - 1), &fYMin);
+
+	const int xMin = static_cast<int>(fXMin);
+	const int yMin = static_cast<int>(fYMin);
+
+	const int xMax = std::min(xMin + 1, width - 1);
+	const int yMax = std::min(yMin + 1, height - 1);
+
+	auto samplePixelFunc = [bytesPerPixel, textureFormat](const std::vector<std::byte>& texture, int index)
+	{
+		XMFLOAT4 sample{0.0f, 0.0f, 0.0f, 0.0f};
+
+		switch (textureFormat)
+		{
+		case DXGI_FORMAT_R8G8B8A8_UNORM:
+		{
+			const uint8_t* pixelData = reinterpret_cast<const uint8_t*>(&texture[index * bytesPerPixel]);
+
+			sample.x = pixelData[0] / 255.0f;
+			sample.y = pixelData[1] / 255.0f;
+			sample.z = pixelData[2] / 255.0f;
+			sample.w = pixelData[3] / 255.0f;
+
+			break;
+		}
+		default:
+			DX_ASSERT(false && "Not implemented");
+			break;
+		}
+
+		return sample;
+	};
+
+	constexpr int sampleQuadSize = 2;
+
+	XMFLOAT4 sampledPixels[sampleQuadSize * sampleQuadSize];
+
+	// Gather data
+	for (int ySampleIndex = 0; ySampleIndex < sampleQuadSize; ++ySampleIndex)
+	{
+		for (int xSampleIndex = 0; xSampleIndex < sampleQuadSize; ++xSampleIndex)
+		{
+			const int xCoord = std::min(xSampleIndex + xMin, xMax);
+			const int yCoord = std::min(ySampleIndex + yMin, yMax);
+
+			const int textureBufferIndex = Find1DIndexFrom2D({ width, height }, { xCoord, yCoord });
+			const int sampledPixelIndex = Find1DIndexFrom2D({ sampleQuadSize, sampleQuadSize }, { xSampleIndex, ySampleIndex });
+
+			sampledPixels[sampledPixelIndex] = samplePixelFunc(texture, textureBufferIndex);
+		}
+	}
+
+	// Now do interpolation
+	XMFLOAT4 interpolatedPixelsX[sampleQuadSize];
+
+	// Interpolate along X
+	for (int ySampleIndex = 0; ySampleIndex < sampleQuadSize; ++ySampleIndex)
+	{
+		XMVECTOR sseV0 = XMLoadFloat4(&sampledPixels[Find1DIndexFrom2D({ sampleQuadSize, sampleQuadSize }, { 0, ySampleIndex })]);
+		XMVECTOR sseV1 = XMLoadFloat4(&sampledPixels[Find1DIndexFrom2D({ sampleQuadSize, sampleQuadSize }, { 1, ySampleIndex })]);
+
+		XMStoreFloat4(&interpolatedPixelsX[ySampleIndex], XMVectorLerp(sseV0, sseV1, xInterpolationFactor));
+	}
+
+	XMFLOAT4 result{0.0f, 0.0f, 0.0f, 0.0f};
+	
+	// Interpolate along Y for the final result
+	XMStoreFloat4(&result, 
+		XMVectorLerp(
+			XMLoadFloat4(&interpolatedPixelsX[0]),
+			XMLoadFloat4(&interpolatedPixelsX[1]),
+			yInterpolationFactor));
+
+	return result;
+}
+
 std::filesystem::path Utils::GetAbsolutePathToRootDir()
 {
 	// Ugly hacks time!
@@ -1003,20 +1157,16 @@ XMFLOAT4 Utils::BSPNodeRayIntersectionResult::GetNormal(const Utils::BSPNodeRayI
 {
 	const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[result.staticObjIndex];
 
-	const int v0Index = object.indices[result.triangleIndex * 3 + 0];
-	const int v1Index = object.indices[result.triangleIndex * 3 + 1];
-	const int v2Index = object.indices[result.triangleIndex * 3 + 2];
-
-	XMVECTOR sseV0Normal = XMLoadFloat4(&object.normals[v0Index]);
-	XMVECTOR sseV1Normal = XMLoadFloat4(&object.normals[v1Index]);
-	XMVECTOR sseV2Normal = XMLoadFloat4(&object.normals[v2Index]);
-
-	XMVECTOR sseNormal = XMVector3Normalize(sseV0Normal * result.rayTriangleIntersection.u +
-		sseV1Normal * result.rayTriangleIntersection.v +
-		sseV2Normal * result.rayTriangleIntersection.w);
-
-	XMFLOAT4 normal;
-	XMStoreFloat4(&normal, sseNormal);
+	XMFLOAT4 normal = InterpolateAttributeOfIntersection(result, object.normals);
+	XMStoreFloat4(&normal, XMVector3Normalize(XMLoadFloat4(&normal)));
 
 	return normal;
+}
+
+XMFLOAT2 Utils::BSPNodeRayIntersectionResult::GetTexCoord(const BSPNodeRayIntersectionResult& result)
+{
+	const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[result.staticObjIndex];
+	XMFLOAT4 texCoord = InterpolateAttributeOfIntersection(result, object.textureCoords);
+
+	return { texCoord.x, texCoord.y };
 }

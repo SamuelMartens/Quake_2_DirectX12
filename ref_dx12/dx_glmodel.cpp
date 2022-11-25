@@ -951,7 +951,7 @@ void Mod_LoadTexinfo(lump_t *l, GPUJobContext& context)
 		char texNameFormat[] = "textures/%s.wal";
 		Com_sprintf(name, sizeof(name), texNameFormat, in->texture);
 
-		out->image = ResourceManager::Inst().FindOrCreateResource(name, context);
+		out->image = ResourceManager::Inst().FindOrCreateResource(name, context, true);
 
 		out->image->desc.iradiance = in->value;
 
@@ -1616,7 +1616,9 @@ void Mod_LoadAliasModel(model_t *mod, void *buffer, GPUJobContext& context)
 	for (i = 0; i < pheader->num_skins; i++)
 	{
 		mod->skins[i] = ResourceManager::Inst().FindOrCreateResource(
-			(char *)pheader + pheader->ofs_skins + i * MAX_SKINNAME, context);
+			(char *)pheader + pheader->ofs_skins + i * MAX_SKINNAME, 
+			context,
+			false);
 	}
 
 	mod->mins[0] = -32;
@@ -1678,7 +1680,7 @@ void Mod_LoadSpriteModel(model_t *mod, void *buffer, GPUJobContext& context)
 		sprout->frames[i].origin_y = LittleLong(sprin->frames[i].origin_y);
 		memcpy(sprout->frames[i].name, sprin->frames[i].name, MAX_SKINNAME);
 
-		mod->skins[i] = ResourceManager::Inst().FindOrCreateResource(sprout->frames[i].name, context);
+		mod->skins[i] = ResourceManager::Inst().FindOrCreateResource(sprout->frames[i].name, context, false);
 	}
 
 	mod->type = mod_sprite;

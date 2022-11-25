@@ -12,28 +12,30 @@ Resource& Resource::operator=(Resource&& other)
 {
 	PREVENT_SELF_MOVE_ASSIGN;
 
-	buffer = other.buffer;
+	gpuBuffer = other.gpuBuffer;
 
-	if (other.buffer != nullptr)
+	if (other.gpuBuffer != nullptr)
 	{
-		ResourceManager::Inst().RequestResourceDeletion(other.buffer);
-		other.buffer = nullptr;
+		ResourceManager::Inst().RequestResourceDeletion(other.gpuBuffer);
+		other.gpuBuffer = nullptr;
 	}
 
 	name = std::move(other.name);
 
 	desc = other.desc;
 
+	cpuBuffer = std::move(other.cpuBuffer);
+
 	return *this;
 }
 
 Resource::~Resource()
 {
-	if (buffer != nullptr)
+	if (gpuBuffer != nullptr)
 	{
 		// This is a bit lame cause, buffer might actually not be deleted, if 
 		// some other resource owns it.
-		ResourceManager::Inst().RequestResourceDeletion(buffer);
+		ResourceManager::Inst().RequestResourceDeletion(gpuBuffer);
 	}
 }
 

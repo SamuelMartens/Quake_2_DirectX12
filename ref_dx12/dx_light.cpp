@@ -120,7 +120,7 @@ XMFLOAT4 AreaLight::CalculateReflectivity(const Resource& texture, const std::by
 
 	return reflectivity;
 }
-
+//#DEBUG rework radiance knowing that reflectivity is only suitable for radiosity method
 XMFLOAT4 AreaLight::CalculateRadiance(const AreaLight& light)
 {
 	DX_ASSERT(light.staticObjectIndex != Const::INVALID_INDEX && "Invalid object index in light data");

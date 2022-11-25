@@ -1888,6 +1888,7 @@ std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std:
 		createTexArgs.name = resourceName.c_str();
 		createTexArgs.frame = &frame;
 		createTexArgs.clearValue = resourceDecl.clearValue.has_value() ? &resourceDecl.clearValue.value() : nullptr;
+		createTexArgs.saveResourceInCPUMemory = false;
 
 		std::vector<std::byte> initBuffer;
 		if (resourceDecl.initValue.has_value() == true)
@@ -1966,7 +1967,7 @@ std::vector<ResourceProxy> FrameGraphBuilder::CreateFrameGraphTextureProxies(con
 
 		DX_ASSERT(texture != nullptr && "Failed to create texture proxy. No such texture is found");
 
-		ResourceProxy& newProxy = proxies.emplace_back(ResourceProxy{ *texture->buffer.Get() });
+		ResourceProxy& newProxy = proxies.emplace_back(ResourceProxy{ *texture->gpuBuffer.Get() });
 		newProxy.hashedName = HASH(texture->name.c_str());
 	}
 

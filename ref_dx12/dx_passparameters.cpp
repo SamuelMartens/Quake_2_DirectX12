@@ -219,7 +219,7 @@ namespace RootArg
 				DX_ASSERT(rootArg.buffer != nullptr && "Invalid buffer. Can't bind root arg");
 
 				commandList.GetGPUList()->SetGraphicsRootShaderResourceView(rootArg.bindIndex,
-					rootArg.buffer->buffer->GetGPUVirtualAddress());
+					rootArg.buffer->gpuBuffer->GetGPUVirtualAddress());
 			}
 			else if constexpr (std::is_same_v<T, DescTable>)
 			{
@@ -283,7 +283,7 @@ namespace RootArg
 				DX_ASSERT(rootArg.buffer != nullptr && "Invalid buffer. Can't bind root arg");
 
 				commandList.GetGPUList()->SetComputeRootShaderResourceView(rootArg.bindIndex, 
-					rootArg.buffer->buffer->GetGPUVirtualAddress());
+					rootArg.buffer->gpuBuffer->GetGPUVirtualAddress());
 			}
 			else if constexpr (std::is_same_v<T, DescTable>)
 			{

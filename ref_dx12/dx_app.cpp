@@ -2036,6 +2036,16 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 		vertices[i].normal = normals[i];
 	}
 
+	// Write textrue coords
+	std::vector<XMFLOAT2> textureCoords;
+	textureCoords.reserve(vertices.size());
+
+	std::transform(vertices.cbegin(), vertices.cend(), std::back_inserter(textureCoords),
+		[](const ShDef::Vert::StaticObjVert_t& vert)
+	{
+		return vert.texCoord;
+	});
+
 	StaticObject& obj = staticObjects.emplace_back(StaticObject());
 
 	// If this is a light surface, add it to the list
@@ -2086,6 +2096,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	sourceObject.textureKey = obj.textureKey;
 	sourceObject.verticesPos = std::move(vertPos);
 	sourceObject.normals = std::move(normals);
+	sourceObject.textureCoords = std::move(textureCoords);
 	
 	std::transform(indices.cbegin(), indices.cend(), std::back_inserter(sourceObject.indices),
 		[](const uint32_t index) 
@@ -2641,6 +2652,7 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 		createTexArgs.desc = &desc;
 		createTexArgs.name = Resource::RAW_TEXTURE_NAME;
 		createTexArgs.frame = &GetMainThreadFrame();
+		createTexArgs.saveResourceInCPUMemory = false;
 
 		rawTex = ResourceManager::Inst().CreateTextureFromDataDeferred(createTexArgs);
 	}
@@ -2829,7 +2841,12 @@ Resource* Renderer::RegisterDrawPic(const char* name)
 	std::array<char, MAX_QPATH> texFullName;
 	resMan.GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
 
-	Resource* newTex = resMan.CreateTextureFromFileDeferred(texFullName.data(), frame);
+	FArg::CreateTextureFromFileDeferred texCreateArgs;
+	texCreateArgs.name = texFullName.data();
+	texCreateArgs.frame = &frame;
+	texCreateArgs.saveResourceInCPUMemory = false;
+
+	Resource* newTex = resMan.CreateTextureFromFileDeferred(texCreateArgs);
 
 	return newTex;
 }
@@ -2947,7 +2964,7 @@ model_s* Renderer::RegisterModel(const char* name)
 			for (int i = 0; i < pheader->num_skins; ++i)
 			{
 				char* imageName = reinterpret_cast<char*>(pheader) + pheader->ofs_skins + i * MAX_SKINNAME;
-				mod->skins[i] = ResourceManager::Inst().FindOrCreateResource(imageName, *dynamicModelRegContext);
+				mod->skins[i] = ResourceManager::Inst().FindOrCreateResource(imageName, *dynamicModelRegContext, false);
 			}
 
 			dynamicObjectsModels[mod] = CreateDynamicGraphicObjectFromGLModel(mod, *dynamicModelRegContext);

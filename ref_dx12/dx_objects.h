@@ -29,6 +29,7 @@ public:
 
 	std::vector<XMFLOAT4> verticesPos;
 	std::vector<XMFLOAT4> normals;
+	std::vector<XMFLOAT2> textureCoords;
 
 	std::vector<int> indices;
 };

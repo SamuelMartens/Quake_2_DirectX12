@@ -11,6 +11,7 @@
 #include <bitset>
 #include <filesystem>
 #include <optional>
+#include <d3d12.h>
 #include <DirectXMath.h>
 
 #include "dx_shaderdefinitions.h"
@@ -82,6 +83,7 @@ namespace Utils
 		Utils::RayTriangleIntersectionResult rayTriangleIntersection;
 
 		static XMFLOAT4 GetNormal(const BSPNodeRayIntersectionResult& result);
+		static XMFLOAT2 GetTexCoord(const BSPNodeRayIntersectionResult& result);
 	};
 
 	struct AABB
@@ -307,6 +309,13 @@ namespace Utils
 	[[nodiscard]]
 	bool IsRayIntersectsTriangle(const Utils::Ray& ray, const XMFLOAT4& v0, const XMFLOAT4& v1, const XMFLOAT4& v2, RayTriangleIntersectionResult& result);
 	bool FindClosestIntersectionInNode(const Utils::Ray& ray, const BSPNode& node, Utils::BSPNodeRayIntersectionResult& result);
+
+	int Find1DIndexFrom2D(XMINT2 sizeIn2D, XMINT2 coordsIn2D);
+
+	[[nodiscard]]
+	XMFLOAT2 NomralizeWrapAroundTextrueCoordinates(const XMFLOAT2& texCoords);
+	[[nodiscard]]
+	XMFLOAT4 TextureBilinearSample(const std::vector<std::byte>& texture, DXGI_FORMAT textureFormat, int width, int height, XMFLOAT2 texCoords);
 
 	bool IsVectorNotZero(const XMFLOAT4& vector);
 
