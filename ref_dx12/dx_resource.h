@@ -26,7 +26,6 @@ struct ResourceDesc
 	// Reflectivity is normalized vector and describes how much of each component of RGB
 	// is emitted by this surface
 	int iradiance = 0;
-	XMFLOAT4 reflectivity = { 0.0f, 0.0f, 0.0f, 0.0f };
 
 	D3D12_RESOURCE_DIMENSION dimension = D3D12_RESOURCE_DIMENSION_UNKNOWN;
 };

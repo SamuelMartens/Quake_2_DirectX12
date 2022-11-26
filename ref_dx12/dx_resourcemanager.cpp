@@ -648,9 +648,6 @@ Resource* ResourceManager::_CreateTextureFromFile(FArg::_CreateTextureFromFile& 
 
 	Resource* createdTex = _CreateResource(createTexArgs);
 
-	createdTex->desc.reflectivity = AreaLight::CalculateReflectivity(*createdTex,
-		reinterpret_cast<std::byte*>(image32));
-	
 	if (image != nullptr)
 	{
 		free(image);

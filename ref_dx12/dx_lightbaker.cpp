@@ -939,7 +939,7 @@ XMFLOAT4 LightBaker::GatherDirectIradianceFromAreaLight(const XMFLOAT4& intersec
 
 	const BSPTree& bsp = Renderer::Inst().GetBSPTree();
 
-	XMVECTOR sseLightRadiance = XMLoadFloat4(&light.radiance);
+	const float lightRadiance = light.radiance;
 	XMVECTOR sseIntersectionPoint = XMLoadFloat4(&intersectionPoint);
 
 	XMVECTOR sseRadianceSum = XMVectorZero();
@@ -1043,7 +1043,7 @@ XMFLOAT4 LightBaker::GatherDirectIradianceFromAreaLight(const XMFLOAT4& intersec
 		
 		//#DEBUG here I sample  texture of area light. But I think I average it somewhere else too, right? Just check this
 		const XMVECTOR sseSampleRadiance = (XMLoadFloat4(&albedo) / M_PI) *
-			sseLightRadiance *
+			lightRadiance *
 			distanceFalloff * intersectionToSampleAndNormalDot;
 
 		sseRadianceSum = sseRadianceSum + sseSampleRadiance;
@@ -1054,9 +1054,9 @@ XMFLOAT4 LightBaker::GatherDirectIradianceFromAreaLight(const XMFLOAT4& intersec
 			XMStoreFloat4(&sampleRadiance, sseSampleRadiance);
 
 			// According to energy conservation law
-			DX_ASSERT(sampleRadiance.x >= 0.0f && sampleRadiance.x <= light.radiance.x);
-			DX_ASSERT(sampleRadiance.y >= 0.0f && sampleRadiance.y <= light.radiance.y);
-			DX_ASSERT(sampleRadiance.z >= 0.0f && sampleRadiance.z <= light.radiance.z);
+			DX_ASSERT(sampleRadiance.x >= 0.0f && sampleRadiance.x <= light.radiance);
+			DX_ASSERT(sampleRadiance.y >= 0.0f && sampleRadiance.y <= light.radiance);
+			DX_ASSERT(sampleRadiance.z >= 0.0f && sampleRadiance.z <= light.radiance);
 		}
 #endif
 

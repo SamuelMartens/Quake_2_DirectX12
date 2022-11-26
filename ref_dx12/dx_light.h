@@ -33,10 +33,8 @@ struct AreaLight
 	// look previous triangle for lower bound value
 	std::vector<float> trianglesPDF;
 
-	XMFLOAT4 radiance = { 0.0f, 0.0f, 0.0f, 0.0f };
+	float radiance = 0.0f;
 
 	static void InitIfValid(AreaLight& light);
-
-	static XMFLOAT4 CalculateReflectivity(const Resource& texture, const std::byte* textureData);
-	static XMFLOAT4 CalculateRadiance(const AreaLight& light);
+	static float CalculateRadiance(const AreaLight& light);
 };

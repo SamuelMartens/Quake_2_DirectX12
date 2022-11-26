@@ -78,50 +78,7 @@ void AreaLight::InitIfValid(AreaLight& light)
 	light.radiance = CalculateRadiance(light);
 }
 
-// Taken from Q2-Pathtracing CalcReflectivityForPathtracing()
-// basically averaging albedo. 
-XMFLOAT4 AreaLight::CalculateReflectivity(const Resource& texture, const std::byte* textureData)
-{
-	// Not sure how relevant this is. Leaving this here just for remainder sake
-	/* The reflectivity is only relevant for wall textures. */
-	//if (image->type != it_wall)
-		//return;
-
-	DX_ASSERT(textureData != nullptr && "Invalid texture data");
-	DX_ASSERT(texture.desc.dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && "Unknown texture dimension");
-	DX_ASSERT(texture.desc.format == DXGI_FORMAT_R8G8B8A8_UNORM && "Invalid texture format");
-
-	XMFLOAT4 reflectivity = { 0.0f, 0.0f, 0.0f, 0.0f };
-
-	const int numTexels = texture.desc.height * texture.desc.width;
-
-	for (int texelInd = 0; texelInd < numTexels; ++texelInd)
-	{
-		reflectivity.x += std::to_integer<int>(textureData[texelInd * 4 + 0]);
-		reflectivity.y += std::to_integer<int>(textureData[texelInd * 4 + 1]);
-		reflectivity.z += std::to_integer<int>(textureData[texelInd * 4 + 2]);
-	}
-
-	// Find average and then normalize
-	XMStoreFloat4(&reflectivity,
-		XMLoadFloat4(&reflectivity) / numTexels / 255.0f);
-
-	// scale the reflectivity up, because the textures are
-	// so dim
-	float scale = ColorNormalize(reflectivity, reflectivity);
-
-	if (scale < 0.5f)
-	{
-		scale *= 2.0f;
-
-		XMStoreFloat4(&reflectivity,
-			XMLoadFloat4(&reflectivity) * scale);
-	}
-
-	return reflectivity;
-}
-//#DEBUG rework radiance knowing that reflectivity is only suitable for radiosity method
-XMFLOAT4 AreaLight::CalculateRadiance(const AreaLight& light)
+float AreaLight::CalculateRadiance(const AreaLight& light)
 {
 	DX_ASSERT(light.staticObjectIndex != Const::INVALID_INDEX && "Invalid object index in light data");
 	DX_ASSERT(light.area != 0.0f && "Invalid are in light data");
@@ -131,10 +88,5 @@ XMFLOAT4 AreaLight::CalculateRadiance(const AreaLight& light)
 
 	DX_ASSERT(lightTexture != nullptr && "Invalid texture name");
 
-	XMFLOAT4 radiance;
-
-	XMStoreFloat4(&radiance, 
-		XMLoadFloat4(&lightTexture->desc.reflectivity) * lightTexture->desc.iradiance / (light.area * M_PI));
-
-	return radiance;
+	return lightTexture->desc.iradiance / (light.area * M_PI);
 }
