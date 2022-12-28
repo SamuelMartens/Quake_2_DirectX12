@@ -1005,6 +1005,8 @@ void Renderer::OnStateEnd(State state)
 	case State::LoadLightBakingFromFile:
 		Renderer::Inst().ConsumeDiffuseIndirectLightingBakingResult(LightBaker::Inst().TransferBakingResult());
 		break;
+	case State::LevelLoading:
+		break;
 	default:
 		break;
 	}
@@ -1048,6 +1050,8 @@ void Renderer::OnStateStart(State state)
 
 		break;
 	}
+	case State::LevelLoading:
+		break;
 	default:
 		break;
 	}
@@ -2581,6 +2585,14 @@ void Renderer::SetPalette(const unsigned char* palette)
 
 void Renderer::EndLevelLoading()
 {
+	if (GetState() != State::LevelLoading)
+	{
+		return;
+	}
+
+	RequestStateChange(State::Rendering);
+	SwitchToRequestedState();
+
 	Logs::Log(Logs::Category::Generic, "API: End level loading");
 
 	Frame& frame = dynamicModelRegContext->frame;
@@ -2831,12 +2843,19 @@ extern model_t* r_worldmodel;
 
 Resource* Renderer::RegisterDrawPic(const char* name)
 {
+	ResourceManager& resMan = ResourceManager::Inst();
+
+	if (GetState() != State::LevelLoading)
+	{
+		// Try to find existing 
+		return resMan.FindResource(name);
+	}
+
 	Logs::Logf(Logs::Category::Generic, "API: Register draw pic %s", name);
 
 	// If dynamic model registration context exists, then we are in the middle of the level loading. At this point
 	// current frame is most likely invalid
 	Frame& frame = dynamicModelRegContext != nullptr ? dynamicModelRegContext->frame : GetMainThreadFrame();
-	ResourceManager& resMan = ResourceManager::Inst();
 
 	std::array<char, MAX_QPATH> texFullName;
 	resMan.GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
@@ -2853,6 +2872,8 @@ Resource* Renderer::RegisterDrawPic(const char* name)
 
 void Renderer::RegisterWorldModel(const char* model)
 {
+	DX_ASSERT(GetState() == State::LevelLoading && "Can only register world model with appropriate state");
+
 	//#TODO I need to manage map model lifetime. So for example in this function
 	// I would need to delete old map model and related to it objects before loading
 	// a new one. (make sure to handle properly when some object is needed in the new
@@ -2897,7 +2918,7 @@ void Renderer::RegisterWorldModel(const char* model)
 	DecomposeGLModelNode(*mapModel, *mapModel->nodes, context);
 
 	// Init bsp
-	bspTree.Create(*mapModel->nodes);
+ 	bspTree.Create(*mapModel->nodes);
 	bspTree.InitClusterVisibility(*mapModel->vis, mapModel->vissize);
 
 	// Submit frame
@@ -2923,6 +2944,16 @@ void Renderer::RegisterWorldModel(const char* model)
 
 void Renderer::BeginLevelLoading(const char* mapName)
 {
+	if (loadedMapName == mapName)
+	{
+		return;
+	}
+
+	loadedMapName = mapName;
+
+	RequestStateChange(State::LevelLoading);
+	SwitchToRequestedState();
+
 	Logs::Logf(Logs::Category::Generic, "API: Begin level loading %s", mapName);
 
 	RegisterWorldModel(mapName);
@@ -2938,6 +2969,11 @@ void Renderer::BeginLevelLoading(const char* mapName)
 
 model_s* Renderer::RegisterModel(const char* name)
 {
+	if (GetState() != State::LevelLoading)
+	{
+		return NULL;
+	}
+
 	Logs::Logf(Logs::Category::Generic, "API: Register model %s", name);
 
 	std::string modelName = name;

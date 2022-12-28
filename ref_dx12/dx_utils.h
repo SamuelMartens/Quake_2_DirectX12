@@ -19,6 +19,7 @@
 #define DEFINE_SINGLETON(ClassName) \
 	private: \
 	ClassName() = default; \
+	inline static ClassName* g_##ClassName; \
 	public: \
 	ClassName(const ClassName&) = delete; \
 	ClassName& operator=(const ClassName&) = delete; \
@@ -28,9 +29,8 @@
 												\
 	static ClassName& Inst()	\
 	{					\
-		static ClassName* obj = nullptr;	\
-		if (obj == nullptr) { obj = new ClassName(); } \
-		return *obj;\
+		if (g_##ClassName == nullptr) { g_##ClassName = new ClassName(); } \
+		return *g_##ClassName;\
 	}
 
 		
@@ -62,7 +62,7 @@ namespace Utils
 	extern const XMFLOAT4 AXIS_Y;
 	extern const XMFLOAT4 AXIS_Z;
 
-	constexpr float EPSILON = 0.00001f;
+	constexpr float EPSILON = 0.0009f;
 
 	/* TYPES */
 
@@ -70,9 +70,9 @@ namespace Utils
 	{
 		float t = FLT_MAX;
 		// Barycentric coordinates of intersection
-		float u = 0;
-		float v = 0;
-		float w = 0;
+		float u = 0.0f;
+		float v = 0.0f;
+		float w = 0.0f;
 	};
 
 	struct BSPNodeRayIntersectionResult

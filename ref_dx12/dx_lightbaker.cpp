@@ -744,23 +744,7 @@ XMFLOAT4 LightBaker::GatherDirectIradianceAtInersectionPoint(const Utils::Ray& r
 		lightSampleDebugInfo->position = intersectionPoint;
 	}
 
-	const SourceStaticObject& object = renderer.GetSourceStaticObjects()[nodeIntersectionResult.staticObjIndex];
-
-	const int v0Index = object.indices[nodeIntersectionResult.triangleIndex * 3 + 0];
-	const int v1Index = object.indices[nodeIntersectionResult.triangleIndex * 3 + 1];
-	const int v2Index = object.indices[nodeIntersectionResult.triangleIndex * 3 + 2];
-
-	XMVECTOR sseV0Normal = XMLoadFloat4(&object.normals[v0Index]);
-	XMVECTOR sseV1Normal = XMLoadFloat4(&object.normals[v1Index]);
-	XMVECTOR sseV2Normal = XMLoadFloat4(&object.normals[v2Index]);
-
-	XMVECTOR sseNormal = XMVector3Normalize(sseV0Normal * nodeIntersectionResult.rayTriangleIntersection.u +
-		sseV1Normal * nodeIntersectionResult.rayTriangleIntersection.v +
-		sseV2Normal * nodeIntersectionResult.rayTriangleIntersection.w);
-
-	XMFLOAT4 intersectionNormal;
-	XMStoreFloat4(&intersectionNormal, sseNormal);
-
+	const XMFLOAT4 intersectionNormal = Utils::BSPNodeRayIntersectionResult::GetNormal(nodeIntersectionResult);
 
 	XMFLOAT4 pointLightsIradiance = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 
@@ -923,7 +907,7 @@ XMFLOAT4 LightBaker::GatherDirectIradianceFromAreaLights(const XMFLOAT4& interse
 	XMStoreFloat4(&resultIradiance, sseResultIradiance);
 
 	return resultIradiance;
-} 
+}
 
 XMFLOAT4 LightBaker::GatherDirectIradianceFromAreaLight(const XMFLOAT4& intersectionPoint, const XMFLOAT4& intersectionSurfaceNormal, const AreaLight& light, LightSamplePoint* lightSampleDebugInfo) const
 {
@@ -1195,7 +1179,7 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 		sseRadiance = sseRadiance + XMLoadFloat4(&directIrradiance) * sseThoroughput;
 
 		// Generate new ray dir
-		XMFLOAT4 normal = Utils::BSPNodeRayIntersectionResult::GetNormal(intersectionResult);
+		const XMFLOAT4 normal = Utils::BSPNodeRayIntersectionResult::GetNormal(intersectionResult);
 		XMVECTOR sseNormal = XMLoadFloat4(&normal);
 
 		const XMFLOAT4X4 rotationMat = Utils::ConstructV1ToV2RotationMatrix(Utils::AXIS_Z, normal);
@@ -1214,13 +1198,19 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 		// Update nDotL
 		nDotL = XMVectorGetX(XMVector3Dot(sseNormal, sseRayDir));
 
+		// Fix up super small numbers
+		if (std::abs(nDotL) < 0.000001f)
+		{
+			nDotL = 0.0f;
+		}
+
 		DX_ASSERT(nDotL >= 0.0f && "nDotL is negative, is it ok?");
 		DX_ASSERT(Utils::IsAlmostEqual(nDotL, 
 			XMVectorGetX(XMVector3Dot(XMLoadFloat4(&Utils::AXIS_Z), XMLoadFloat4(&cosineWieghtedSample)))) &&
 		"Angle between unrotated sample and Z should be the same as angle between rotated sample and normal");
 
 		// Update PDF 
-		samplesPDF = GetCosineWeightedSamplePDF(nDotL);
+		samplesPDF = GetCosineWeightedSamplePDF(nDotL); 
 		// Avoid division by 0
 		samplesPDF = std::max(samplesPDF, Utils::EPSILON);
 

@@ -186,7 +186,8 @@ public:
 	{
 		Rendering,
 		LightBaking,
-		LoadLightBakingFromFile
+		LoadLightBakingFromFile,
+		LevelLoading
 	};
 
 	// Public because it is already wrapped up in class
@@ -329,7 +330,7 @@ private:
 
 	/* Command lists and command queues */
 	ComPtr<ID3D12CommandQueue>	commandQueue;
-	//#TODO during building of frame graph I can ge exactly how much command lists I need
+	//#TODO during building of frame graph I can get exactly how much command lists I need
 	CommandListBuffer<Settings::COMMAND_LISTS_NUM> commandListBuffer;
 
 	/* Misc */
@@ -380,6 +381,8 @@ private:
 	int samplerDescriptorSize = Const::INVALID_SIZE;
 
 	/* Level registration data */
+	std::string loadedMapName;
+
 	std::unique_ptr<GPUJobContext> staticModelRegContext;
 	std::unique_ptr<GPUJobContext> dynamicModelRegContext;
 

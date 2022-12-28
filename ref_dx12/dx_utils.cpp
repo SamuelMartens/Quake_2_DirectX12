@@ -112,7 +112,7 @@ namespace
 	
 		XMVECTOR sseInterpolatedAttr = sseV0Attr * intersection.rayTriangleIntersection.u +
 			sseV1Attr * intersection.rayTriangleIntersection.v +
-			sseV1Attr * intersection.rayTriangleIntersection.w;
+			sseV2Attr * intersection.rayTriangleIntersection.w;
 
 		XMFLOAT4 result;
 		XMStoreFloat4(&result, sseInterpolatedAttr);
