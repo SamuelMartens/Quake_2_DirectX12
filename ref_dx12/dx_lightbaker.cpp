@@ -1025,7 +1025,6 @@ XMFLOAT4 LightBaker::GatherDirectIradianceFromAreaLight(const XMFLOAT4& intersec
 
 		const XMFLOAT4 albedo = Utils::TextureBilinearSample(*objTexture->cpuBuffer, objTexture->desc.format, objTexture->desc.width, objTexture->desc.height, interpolatedTexCoords);
 		
-		//#DEBUG here I sample  texture of area light. But I think I average it somewhere else too, right? Just check this
 		const XMVECTOR sseSampleRadiance = (XMLoadFloat4(&albedo) / M_PI) *
 			lightRadiance *
 			distanceFalloff * intersectionToSampleAndNormalDot;
