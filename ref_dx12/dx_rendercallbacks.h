@@ -620,6 +620,29 @@ namespace RenderCallbacks
 				probeGridInterval = Settings::CLUSTER_PROBE_GRID_INTERVAL;
 			}
 			break;
+			case HASH("DepthBuffer"):
+			{
+				ViewDescription_t genericDesc = std::optional(D3D12_SHADER_RESOURCE_VIEW_DESC());
+
+				D3D12_SHADER_RESOURCE_VIEW_DESC& viewDesc = std::get<std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>>(genericDesc).value();
+				viewDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+				viewDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+				viewDesc.Shader4ComponentMapping = 
+					D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(
+						D3D12_SHADER_COMPONENT_MAPPING_FROM_MEMORY_COMPONENT_0,
+						D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_0,
+						D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_0,
+						D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_0
+					);
+				viewDesc.Texture2D.MostDetailedMip = 0;
+				viewDesc.Texture2D.MipLevels = 1;
+				viewDesc.Texture2D.PlaneSlice = 0;
+				viewDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint,
+					ctx.jobContext.frame.depthStencilBuffer.Get(), &genericDesc));
+			}
+			break;
 			default:
 				break;
 			}

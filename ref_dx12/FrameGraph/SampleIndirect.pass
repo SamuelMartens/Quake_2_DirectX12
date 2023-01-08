@@ -13,7 +13,7 @@ RootSignature
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0),
 DescriptorTable(SRV(t0, numDescriptors = 3)), 
-DescriptorTable(SRV(t4, numDescriptors = 4), UAV(u0, numDescriptors = 1))
+DescriptorTable(SRV(t4, numDescriptors = 5), UAV(u0, numDescriptors = 1))
 }
 
 // Structs
@@ -65,12 +65,15 @@ Texture2D GBuffer_Normals : register(t6)
 [Local, PerPass, Bind: GBuffer_Albedo]
 Texture2D GBuffer_Albedo : register (t7)
 
+[Local, PerPass]
+Texture2D DepthBuffer : register (t8)
+
 [Local, PerPass, Bind: IndirectLightBuffer]
 RWTexture2D<float4> IndirectLightBuffer : register(u0)
 
 Type : CS
 External: cbSampleIndirect, sbDiffuseProbes, AABB, ClusterProbeGridInfo, ClusterAABBs,
-	ClusterProbeGridInfoBuffer,  ClusterClassification, GBuffer_Position, GBuffer_Normals, GBuffer_Albedo, IndirectLightBuffer
+	ClusterProbeGridInfoBuffer,  ClusterClassification, GBuffer_Position, GBuffer_Normals, GBuffer_Albedo, IndirectLightBuffer, DepthBuffer
 <[
 
 @include "Constants.passh"
@@ -349,15 +352,11 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	
 	
 	// Monte Carlo factor
-	//#DEBUG switch
-	//float4 finalResult = interpolationAlongZ / SAMPLES_NUM * GBuffer_Albedo.Load(int3(dispatchThreadID.xy, 0));
-	float4 finalResult = interpolationAlongZ / SAMPLES_NUM * 1.0f;
-	
-	//#DEBUG
-	//finalResult = interpolationAlongX[2] / SAMPLES_NUM;
-	//END
+	float4 finalResult = interpolationAlongZ / SAMPLES_NUM * GBuffer_Albedo.Load(int3(dispatchThreadID.xy, 0));
 	
 	IndirectLightBuffer[dispatchThreadID.xy] = finalResult;
+	
+	
 }
 
 ]>

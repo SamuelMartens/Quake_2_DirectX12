@@ -650,7 +650,7 @@ void Renderer::CreateDepthStencilBuffer(ComPtr<ID3D12Resource>& buffer)
 	depthStencilDesc.Height = DrawAreaHeight;
 	depthStencilDesc.DepthOrArraySize = 1;
 	depthStencilDesc.MipLevels = 1;
-	depthStencilDesc.Format = Settings::DEPTH_STENCIL_FORMAT;
+	depthStencilDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
 	depthStencilDesc.SampleDesc.Count = GetMSAASampleCount();
 	depthStencilDesc.SampleDesc.Quality = GetMSAAQuality();
 	depthStencilDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
