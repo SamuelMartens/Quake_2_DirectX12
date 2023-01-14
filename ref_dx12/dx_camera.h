@@ -15,7 +15,10 @@ struct Camera
 	void Init();
 
 	void Update(const refdef_t& updateData);
+
 	void GenerateViewProjMat();
+	XMMATRIX GenerateViewMatrix() const;
+	XMMATRIX GenerateProjectionMatrix() const;
 
 	[[nodiscard]]
 	XMMATRIX GetViewProjMatrix() const;
@@ -36,9 +39,6 @@ struct Camera
 	int height = 0;
 
 private:
-
-	XMMATRIX GenerateViewMatrix() const;
-	XMMATRIX GenerateProjectionMatrix() const;
 
 	XMFLOAT4X4 viewProjMat;
 

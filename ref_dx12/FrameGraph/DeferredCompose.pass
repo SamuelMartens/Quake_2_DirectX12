@@ -12,7 +12,7 @@ RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 DescriptorTable(UAV(u0, numDescriptors = 1)),
-DescriptorTable(SRV(t0, numDescriptors = 5))
+DescriptorTable(SRV(t0, numDescriptors = 4))
 }
 
 [Local, PerPass, Bind: GBuffer_Albedo]
@@ -21,20 +21,17 @@ Texture2D GBuffer_Albedo : register(t0)
 [Local, PerPass, Bind: GBuffer_Normals]
 Texture2D GBuffer_Normals : register(t1)
 
-[Local, PerPass, Bind: GBuffer_Position]
-Texture2D GBuffer_Position : register(t2)
-
 [Local, PerPass, Bind: ClusterClassification]
-Texture2D<int> ClusterClassification : register(t3)
+Texture2D<int> ClusterClassification : register(t2)
 
 [Local, PerPass, Bind: IndirectLightBuffer]
-Texture2D IndirectLightBuffer : register(t4)
+Texture2D IndirectLightBuffer : register(t3)
 
 [Global, PerPass, Bind: ComposeBuffer]
 RWTexture2D<float4> ComposeBuffer : register(u0)
 
 Type : CS
-External : GBuffer_Albedo, ComposeBuffer, GBuffer_Normals, GBuffer_Position, ClusterClassification, IndirectLightBuffer
+External : GBuffer_Albedo, ComposeBuffer, GBuffer_Normals, ClusterClassification, IndirectLightBuffer
 <[
 
 float4 VisualizeClusterId(int id)
@@ -49,10 +46,6 @@ float4 VisualizeClusterId(int id)
 	return color;
 }
 
-//#DEBUG
-// Important part here is this [numthread] maybe it is confusing main somehow?
-// I did this conclusion after comparing source of this shader to other
-//END
 [numthreads(32, 32, 1)]
 void main(int3 dispatchThreadID : SV_DispatchThreadID)
 {
@@ -61,9 +54,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	//float4 normal = float4(GBuffer_Normals[dispatchThreadID.xy].xy, 0.0f, 0.0f);
 	//normal.z = sqrt(1.0 - normal.x * normal.x - normal.y * normal.y);
 	//ComposeBuffer[dispatchThreadID.xy] = normal * 0.5 + 0.5;
-	
-	//ComposeBuffer[dispatchThreadID.xy] = GBuffer_Position[dispatchThreadID.xy];
-	
+
 	// Visualize cluster classification`
 	{
 		int id = ClusterClassification[dispatchThreadID.xy].r;

@@ -568,6 +568,38 @@ namespace RenderCallbacks
 			}
 		}
 		break;
+		case HASH("ScreenWidth"):
+		{
+			int screenWidth = 0;
+			int screenHeight = 0;
+
+			Renderer::Inst().GetDrawAreaSize(&screenWidth, &screenHeight);
+			
+			reinterpret_cast<int&>(bindPoint) = screenWidth;
+		}
+		break;
+		case HASH("ScreenHeight"):
+		{
+			int screenWidth = 0;
+			int screenHeight = 0;
+
+			Renderer::Inst().GetDrawAreaSize(&screenWidth, &screenHeight);
+
+			reinterpret_cast<int&>(bindPoint) = screenHeight;
+		}
+		break;
+		case HASH("InvertedViewProj"):
+		{
+			XMMATRIX sseViewProjMatrix = ctx.jobContext.frame.camera.GetViewProjMatrix();
+			XMVECTOR sseDeterminant = XMVectorZero();
+
+			sseViewProjMatrix = XMMatrixInverse(&sseDeterminant, sseViewProjMatrix);
+
+			DX_ASSERT(XMVectorGetX(sseDeterminant) != 0.0f && "Matrix determinant is zero, inverse is wrong");
+			XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint),
+				 sseViewProjMatrix);
+		}
+		break;
 		default:
 			break;
 		}

@@ -12,8 +12,9 @@ RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0),
+CBV(b1),
 DescriptorTable(SRV(t0, numDescriptors = 3)), 
-DescriptorTable(SRV(t4, numDescriptors = 5), UAV(u0, numDescriptors = 1))
+DescriptorTable(SRV(t4, numDescriptors = 4), UAV(u0, numDescriptors = 1))
 }
 
 // Structs
@@ -51,29 +52,36 @@ StructuredBuffer<AABB> ClusterAABBs : register(t1)
 [Global, PerPass]
 StructuredBuffer<ClusterProbeGridInfo> ClusterProbeGridInfoBuffer : register(t2)
 
+//#DEBUG this is something I should combine with cbPerPass from Static.pass
+[Global, PerPass]
+cbuffer cbFrameData : register(b1)
+{
+    float4x4 InvertedViewProj;
+	int ScreenWidth;
+	int ScreenHeight;
+}
+
 // --- Local ---
 
 [Local, PerPass, Bind: ClusterClassification]
 Texture2D<int> ClusterClassification : register(t4)
 
-[Local, PerPass, Bind: GBuffer_Position]
-Texture2D GBuffer_Position : register(t5)
-
 [Local, PerPass, Bind: GBuffer_Normals]
-Texture2D GBuffer_Normals : register(t6)
+Texture2D GBuffer_Normals : register(t5)
 
 [Local, PerPass, Bind: GBuffer_Albedo]
-Texture2D GBuffer_Albedo : register (t7)
+Texture2D GBuffer_Albedo : register (t6)
 
 [Local, PerPass]
-Texture2D DepthBuffer : register (t8)
+Texture2D DepthBuffer : register (t7)
 
 [Local, PerPass, Bind: IndirectLightBuffer]
 RWTexture2D<float4> IndirectLightBuffer : register(u0)
 
 Type : CS
 External: cbSampleIndirect, sbDiffuseProbes, AABB, ClusterProbeGridInfo, ClusterAABBs,
-	ClusterProbeGridInfoBuffer,  ClusterClassification, GBuffer_Position, GBuffer_Normals, GBuffer_Albedo, IndirectLightBuffer, DepthBuffer
+	ClusterProbeGridInfoBuffer,  ClusterClassification, GBuffer_Normals, GBuffer_Albedo, IndirectLightBuffer, DepthBuffer,
+	cbFrameData
 <[
 
 @include "Constants.passh"
@@ -244,6 +252,21 @@ float3 GetProbeCubeInterpolationValues(float4 position, int clusterIndex)
 	return frac((position.xyz - clusterAABB.Min.xyz) / ProbeGridInterval);
 }
 
+float3 GetWorldPosFromDepthAndScreenCoord(int2 screenCoord, float depth)
+{
+	// NOTE: This doesn't account for the screen offset
+	const float4 ndcPixelCoords = float4(
+	((float)screenCoord.x / ScreenWidth) * 2.0f - 1.0f, 
+	((float)screenCoord.y / ScreenHeight) * -2.0f + 1.0f,
+	depth, 
+	1.0f);
+
+	float4 worldCoord = mul(InvertedViewProj, ndcPixelCoords);
+	worldCoord = worldCoord / worldCoord.w;
+
+	return worldCoord.xyz;
+}
+
 [numthreads(32, 32, 1)]
 void main(int3 dispatchThreadID : SV_DispatchThreadID)
 {
@@ -262,7 +285,8 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	
 	ClusterProbeGridInfo gridInfo = ClusterProbeGridInfoBuffer.Load(clusterIndex);
 	
-	const float4 position = GBuffer_Position.Load(int3(dispatchThreadID.xy, 0));
+	const float depth = DepthBuffer.Load(int3(dispatchThreadID.xy, 0)).x;
+	const float4 position = float4(GetWorldPosFromDepthAndScreenCoord(dispatchThreadID.xy, depth), 1.0);
 	const float4 normal = GBuffer_Normals.Load(int3(dispatchThreadID.xy, 0));
 	
 	float4x4 tangentTransform = ConstructV1ToV2RotationMatrix(float4(0.0f, 0.0f, 1.0f, 0.0f), normal);
@@ -350,13 +374,10 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	// 3) Interpolate along Z
 	float4 interpolationAlongZ = lerp(interpolationAlongY[0], interpolationAlongY[1], interpolationWages.z);
 	
-	
 	// Monte Carlo factor
 	float4 finalResult = interpolationAlongZ / SAMPLES_NUM * GBuffer_Albedo.Load(int3(dispatchThreadID.xy, 0));
 	
 	IndirectLightBuffer[dispatchThreadID.xy] = finalResult;
-	
-	
 }
 
 ]>
