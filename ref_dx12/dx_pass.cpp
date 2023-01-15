@@ -1057,8 +1057,8 @@ void Pass_Dynamic::UpdateDrawEntities(GPUJobContext& context)
 	for (int i = 0; i < visibleEntitiesIndices.size(); ++i)
 	{
 		PassObj& entity = drawObjects[i];
-
-		_UpdateObjectArgs(entity, cpuMem.data() + perObjectConstBuffMemorySize * i, passHashedName, updateContext);
+		
+ 		_UpdateObjectArgs(entity, cpuMem.data(), passHashedName, updateContext);
 	}
 
 	if (perObjectConstBuffMemorySize != 0)
