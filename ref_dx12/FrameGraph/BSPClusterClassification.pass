@@ -12,8 +12,9 @@ RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0),
+CBV(b1),
 DescriptorTable(SRV(t1, numDescriptors = 1)),
-DescriptorTable(SRV(t0, numDescriptors = 1),
+DescriptorTable(SRV(t2, numDescriptors = 1),
 UAV(u0, numDescriptors = 1))
 }
 
@@ -24,27 +25,51 @@ struct AABB
 	float4 Max;
 }
 
+// --- Global ---
+
 [Global, PerPass]
-cbuffer cbClusterAABBParameters : register(b0)
+cbuffer cbFrameData : register(b0)
+{
+    float4x4 InvertedViewProj;
+	int ScreenWidth;
+	int ScreenHeight;
+}
+
+[Global, PerPass]
+cbuffer cbClusterAABBParameters : register(b1)
 {
 	int ClusterAABBsSize;
 }
 
-// --- Global ---
 [Global, PerPass]
 StructuredBuffer<AABB> ClusterAABBs : register(t1)
 
 // --- Local ---
-
-[Local, PerPass, Bind: GBuffer_Position]
-Texture2D GBuffer_Position : register(t0)
-
 [Local, PerPass, Bind: ClusterClassification]
 RWTexture2D<int> ClusterClassification : register(u0)
 
+[Local, PerPass]
+Texture2D DepthBuffer : register (t2)
+
 Type : CS
-External : GBuffer_Position, AABB, ClusterAABBs, cbClusterAABBParameters, ClusterClassification
+External : AABB, ClusterAABBs, cbClusterAABBParameters, ClusterClassification, DepthBuffer, cbFrameData
 <[
+
+float3 GetWorldPosFromDepthAndScreenCoord(int2 screenCoord, float depth)
+{
+	// NOTE: This doesn't account for the screen offset
+	const float4 ndcPixelCoords = float4(
+	((float)screenCoord.x / ScreenWidth) * 2.0f - 1.0f, 
+	((float)screenCoord.y / ScreenHeight) * -2.0f + 1.0f,
+	depth, 
+	1.0f);
+
+	float4 worldCoord = mul(InvertedViewProj, ndcPixelCoords);
+	worldCoord = worldCoord / worldCoord.w;
+
+	return worldCoord.xyz;
+}
+
 
 [numthreads(32, 32, 1)]
 void main(int3 dispatchThreadID : SV_DispatchThreadID)
@@ -56,7 +81,8 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 
 	int clusterIndex = -1;
 	
-	float3 pixelPosition = GBuffer_Position.Load(dispatchThreadID.xyz).xyz;
+	const float depth = DepthBuffer.Load(int3(dispatchThreadID.xy, 0)).x;
+	float3 pixelPosition = GetWorldPosFromDepthAndScreenCoord(dispatchThreadID.xy, depth);
 	
 	// Iterate over each AABB
 	for (int i = 0; i < ClusterAABBsSize; ++i)

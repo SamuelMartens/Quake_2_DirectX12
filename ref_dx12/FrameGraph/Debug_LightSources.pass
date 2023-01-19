@@ -19,9 +19,9 @@ DepthBiasClamp : -50.0
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-CBV(b0),
 CBV(b1),
-CBV(b2)
+CBV(b2),
+CBV(b3)
 }
 
 // Attributes
@@ -38,7 +38,7 @@ struct VertexOut
 }
 
 [Global, PerPass]
-cbuffer cbPerPass : register(b0)
+cbuffer cbPerPass : register(b1)
 {
     float4x4 gViewProj;
     float4 gCameraYaw;
@@ -48,13 +48,13 @@ cbuffer cbPerPass : register(b0)
 }
 
 [Global, PerObject]
-cbuffer cbPerObject_Global : register(b1)
+cbuffer cbPerObject_Global : register(b2)
 {
 	int gDebugObjectType;
 }
 
 [Local, PerObject]
-cbuffer cbPerObject_Local : register(b2)
+cbuffer cbPerObject_Local : register(b3)
 {
 	int gLightSourceType;
 }

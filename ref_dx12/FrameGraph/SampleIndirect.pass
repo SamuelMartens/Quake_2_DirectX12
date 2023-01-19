@@ -12,7 +12,7 @@ RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0),
-CBV(b1),
+CBV(b5),
 DescriptorTable(SRV(t0, numDescriptors = 3)), 
 DescriptorTable(SRV(t4, numDescriptors = 4), UAV(u0, numDescriptors = 1))
 }
@@ -33,15 +33,28 @@ struct ClusterProbeGridInfo
 	int StartIndex;
 }
 
+
+// -- Global CBVs
+
+[Global, PerPass]
+cbuffer cbFrameData : register(b0)
+{
+    float4x4 InvertedViewProj;
+	int ScreenWidth;
+	int ScreenHeight;
+}
+
+// --- Local CBVs ---
+
 [Local, PerPass]
-cbuffer cbSampleIndirect : register(b0)
+cbuffer cbSampleIndirect : register(b5)
 {
 	int ProbeDataExist;
 	int FrameRandSeed;
 	float ProbeGridInterval;
 }
 
-// --- Global ---
+// --- Global Tex ---
 
 [Global, PerPass]
 StructuredBuffer<float4> sbDiffuseProbes : register(t0)
@@ -51,15 +64,6 @@ StructuredBuffer<AABB> ClusterAABBs : register(t1)
 
 [Global, PerPass]
 StructuredBuffer<ClusterProbeGridInfo> ClusterProbeGridInfoBuffer : register(t2)
-
-//#DEBUG this is something I should combine with cbPerPass from Static.pass
-[Global, PerPass]
-cbuffer cbFrameData : register(b1)
-{
-    float4x4 InvertedViewProj;
-	int ScreenWidth;
-	int ScreenHeight;
-}
 
 // --- Local ---
 

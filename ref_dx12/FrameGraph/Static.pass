@@ -16,7 +16,7 @@ Topology	 : Triangle
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-CBV(b0),
+CBV(b1),
 DescriptorTable(SRV(t0, numDescriptors = 1)),
 DescriptorTable(Sampler(s0))
 }
@@ -50,9 +50,9 @@ struct PixelOut
 }
 
 // Resources 
-
+//#DEBUG this should be merged with frame data cb?
 [Global, PerPass]
-cbuffer cbPerPass : register(b0)
+cbuffer cbPerPass : register(b1)
 {
     float4x4 gViewProj;
     float4 gCameraYaw;

@@ -425,7 +425,8 @@ namespace Parsing
 	{
 		return name == other.name &&
 			bindFrequency == other.bindFrequency &&
-			registerId == other.registerId;
+			registerId == other.registerId &&
+			registerSpace == other.registerSpace;
 	}
 
 

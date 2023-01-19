@@ -356,6 +356,7 @@ namespace Parsing
 		std::optional<std::string> bind;
 
 		int registerId = Const::INVALID_INDEX;
+		int registerSpace = Const::INVALID_INDEX;
 		std::string rawView;
 		
 		bool IsEqual(const Resource_Base& other) const;

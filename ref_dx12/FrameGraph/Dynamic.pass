@@ -17,7 +17,7 @@ Topology	 : Triangle
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-CBV(b0),
+CBV(b5),
 DescriptorTable(SRV(t0, numDescriptors = 1)),
 DescriptorTable(Sampler(s0))
 }
@@ -40,8 +40,8 @@ struct VertexOut
 
 // Resources
 
-[Global, PerObject]
-cbuffer cbPerObject : register(b0)
+[Local, PerObject]
+cbuffer cbPerObject : register(b5)
 {
 	float4x4 gWorldViewProj;
     float4 gAnimMove;

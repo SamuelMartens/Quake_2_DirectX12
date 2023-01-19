@@ -36,7 +36,7 @@ namespace Settings
 	constexpr int		 DEFAULT_MEMORY_BUFFER_SIZE = 256 * 1024 * 1024;
 	constexpr int		 DEFAULT_MEMORY_BUFFER_HANDLERS_NUM = 64 * 1024;
 
-	constexpr bool		 DEBUG_LAYER_ENABLED = false;
+	constexpr bool		 DEBUG_LAYER_ENABLED = true;
 	constexpr bool		 DEBUG_MESSAGE_FILTER_ENABLED = true;
 
 	constexpr DXGI_FORMAT BACK_BUFFER_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;

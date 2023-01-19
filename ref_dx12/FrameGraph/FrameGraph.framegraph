@@ -10,16 +10,6 @@ Resources
 		InitValue: NONE
 	],
 	
-	GBuffer_Position
-	[
-		Type : Texture2D
-		Dimensions : 1024, 768
-		Format : R32G32B32A32_FLOAT
-		Flags : ALLOW_RENDER_TARGET, ALLOW_UNORDERED_ACCESS
-		ClearValue : 0.0, 0.0, 0.0, 1.0
-		InitValue: NONE
-	],
-	
 	GBuffer_Albedo
 	[
 		Type : Texture2D
@@ -73,7 +63,7 @@ Resources
 
 Steps
 {
-	// Cleat color buffer
+	// Clear color buffer
 	Copy(ColorBackBufferClearBuffer, COLOR_BACK_BUFFER)
     Static
 	BSPClusterClassification

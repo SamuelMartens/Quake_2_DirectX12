@@ -16,7 +16,7 @@ Topology	 : Triangle
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-DescriptorTable(SRV(t0, numDescriptors = 1)),
+DescriptorTable(SRV(t0, numDescriptors = 1, space = 1)),
 DescriptorTable(SRV(t1, numDescriptors = 2)),
 DescriptorTable(Sampler(s0)),
 CBV(b0)
@@ -47,7 +47,7 @@ cbuffer cbPerObject : register(b0)
 }
 
 [Global, PerObject]
-Texture2D gDiffuseMap : register(t0)
+Texture2D gDiffuseMap : register(t0, space1)
 
 [Global, PerPass]
 Texture2D gFontTex : register(t1)

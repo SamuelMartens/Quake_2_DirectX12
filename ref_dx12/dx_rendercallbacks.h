@@ -232,41 +232,7 @@ namespace RenderCallbacks
 		}
 		else if constexpr (std::is_same_v<objT, entity_t>)
 		{
-			switch (paramName)
-			{
-			case HASH("gWorldViewProj"):
-			{
-				XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint), 
-					DynamicObjectModel::GenerateModelMat(obj) * ctx.jobContext.frame.camera.GetViewProjMatrix());
-			}
-			break;
-			case HASH("gAnimMove"):
-			{
-				const DynamicObjectModel& model = Renderer::Inst().GetDynamicModels().at(obj.model);
-				auto[animMove, frontLerp, backLerp] =  model.GenerateAnimInterpolationData(obj);
-
-				reinterpret_cast<XMFLOAT4&>(bindPoint) = animMove;
-			}
-			break;
-			case HASH("gFrontLerp"):
-			{
-				const DynamicObjectModel& model = Renderer::Inst().GetDynamicModels().at(obj.model);
-				auto[animMove, frontLerp, backLerp] = model.GenerateAnimInterpolationData(obj);
-
-				reinterpret_cast<XMFLOAT4&>(bindPoint) = frontLerp;
-			}
-			break;
-			case HASH("gBackLerp"):
-			{
-				const DynamicObjectModel& model = Renderer::Inst().GetDynamicModels().at(obj.model);
-				auto[animMove, frontLerp, backLerp] = model.GenerateAnimInterpolationData(obj);
-
-				reinterpret_cast<XMFLOAT4&>(bindPoint) = backLerp;
-			}
-			break;
-			default:
-				break;
-			}
+			
 		}
 		else if constexpr (std::is_same_v<objT, DebugObject_t>)
 		{
@@ -628,6 +594,34 @@ namespace RenderCallbacks
 		{
 		case HASH("BSPClusterClassification"):
 		{
+			switch (paramName)
+			{
+			case HASH("DepthBuffer"):
+			{
+				ViewDescription_t genericDesc = std::optional(D3D12_SHADER_RESOURCE_VIEW_DESC());
+
+				D3D12_SHADER_RESOURCE_VIEW_DESC& viewDesc = std::get<std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>>(genericDesc).value();
+				viewDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+				viewDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+				viewDesc.Shader4ComponentMapping =
+					D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(
+						D3D12_SHADER_COMPONENT_MAPPING_FROM_MEMORY_COMPONENT_0,
+						D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_0,
+						D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_0,
+						D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_0
+					);
+				viewDesc.Texture2D.MostDetailedMip = 0;
+				viewDesc.Texture2D.MipLevels = 1;
+				viewDesc.Texture2D.PlaneSlice = 0;
+				viewDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint,
+					ctx.jobContext.frame.depthStencilBuffer.Get(), &genericDesc));
+			}
+			break;
+			default:
+				break;
+			}
 		}
 		break;
 		case HASH("SampleIndirect"):
@@ -861,7 +855,6 @@ namespace RenderCallbacks
 
 						if constexpr (std::is_same_v<T, DebugObject_ProbePathSegment>)
 						{
-
 							reinterpret_cast<int&>(bindPoint) = static_cast<int>(object.bounce);
 						}
 						else
@@ -887,6 +880,53 @@ namespace RenderCallbacks
 						}
 					}, obj);
 				}
+				default:
+					break;
+				}
+			}
+			break;
+			default:
+				break;
+			}
+		}
+		else if constexpr (std::is_same_v<objT, entity_t>)
+		{
+			switch (passName)
+			{
+			case HASH("Dynamic"):
+			{
+				switch (paramName)
+				{
+				case HASH("gWorldViewProj"):
+				{
+					XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint),
+						DynamicObjectModel::GenerateModelMat(obj) * ctx.jobContext.frame.camera.GetViewProjMatrix());
+				}
+				break;
+				case HASH("gAnimMove"):
+				{
+					const DynamicObjectModel& model = Renderer::Inst().GetDynamicModels().at(obj.model);
+					auto [animMove, frontLerp, backLerp] = model.GenerateAnimInterpolationData(obj);
+
+					reinterpret_cast<XMFLOAT4&>(bindPoint) = animMove;
+				}
+				break;
+				case HASH("gFrontLerp"):
+				{
+					const DynamicObjectModel& model = Renderer::Inst().GetDynamicModels().at(obj.model);
+					auto [animMove, frontLerp, backLerp] = model.GenerateAnimInterpolationData(obj);
+
+					reinterpret_cast<XMFLOAT4&>(bindPoint) = frontLerp;
+				}
+				break;
+				case HASH("gBackLerp"):
+				{
+					const DynamicObjectModel& model = Renderer::Inst().GetDynamicModels().at(obj.model);
+					auto [animMove, frontLerp, backLerp] = model.GenerateAnimInterpolationData(obj);
+
+					reinterpret_cast<XMFLOAT4&>(bindPoint) = backLerp;
+				}
+				break;
 				default:
 					break;
 				}
