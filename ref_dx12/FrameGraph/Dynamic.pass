@@ -17,10 +17,17 @@ Topology	 : Triangle
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-CBV(b5),
-DescriptorTable(SRV(t0, numDescriptors = 1)),
-DescriptorTable(Sampler(s0))
+CBV(b0, space = 3),
+DescriptorTable(SRV(t0, numDescriptors = 1, space = 0)),
+DescriptorTable(Sampler(s0, numDescriptors = 1, space = 0))
 }
+
+
+// -== Register space convention ==-
+//	0 - Global, PerPass
+//	1 - Global, PerObject
+//	2 - Local, PerPass
+//	3 - Local, PerObject
 
 // Attributes
 
@@ -41,7 +48,7 @@ struct VertexOut
 // Resources
 
 [Local, PerObject]
-cbuffer cbPerObject : register(b5)
+cbuffer cbPerObject : register(b0, space3)
 {
 	float4x4 gWorldViewProj;
     float4 gAnimMove;
@@ -50,10 +57,10 @@ cbuffer cbPerObject : register(b5)
 }
 
 [Global, PerObject]
-Texture2D gDiffuseMap : register(t0)
+Texture2D gDiffuseMap : register(t0, space0)
 
 [Global, PerPass]
-SamplerState gSamLinearWrap : register(s0)
+SamplerState gSamLinearWrap : register(s0, space0)
 
 // Shaders
 

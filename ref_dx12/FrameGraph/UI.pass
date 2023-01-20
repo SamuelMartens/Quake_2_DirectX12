@@ -17,10 +17,17 @@ RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 DescriptorTable(SRV(t0, numDescriptors = 1, space = 1)),
-DescriptorTable(SRV(t1, numDescriptors = 2)),
-DescriptorTable(Sampler(s0)),
-CBV(b0)
+DescriptorTable(SRV(t0, numDescriptors = 2, space = 0)),
+DescriptorTable(Sampler(s0, numDescriptors = 1, space = 0)),
+CBV(b0, space = 1)
 }
+
+
+// -== Register space convention ==-
+//	0 - Global, PerPass
+//	1 - Global, PerObject
+//	2 - Local, PerPass
+//	3 - Local, PerObject
 
 // Attributes
 
@@ -40,7 +47,7 @@ struct VertexOut
 // Resources 
 
 [Global, PerObject]
-cbuffer cbPerObject : register(b0)
+cbuffer cbPerObject : register(b0, space1)
 {
 	float4x4 gWorldViewProj;
 	int type;
@@ -50,13 +57,13 @@ cbuffer cbPerObject : register(b0)
 Texture2D gDiffuseMap : register(t0, space1)
 
 [Global, PerPass]
-Texture2D gFontTex : register(t1)
+Texture2D gFontTex : register(t0, space0)
 
 [Global, PerPass]
-Texture2D gMovieTex : register(t2)
+Texture2D gMovieTex : register(t1, space0)
 
 [Global, PerPass]
-SamplerState gSamLinearWrap : register(s0)
+SamplerState gSamLinearWrap : register(s0, space0)
 
 // Shaders
 

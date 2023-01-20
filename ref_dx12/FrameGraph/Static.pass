@@ -16,15 +16,21 @@ Topology	 : Triangle
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-CBV(b1),
-DescriptorTable(SRV(t0, numDescriptors = 1)),
-DescriptorTable(Sampler(s0))
+CBV(b0, space = 0),
+DescriptorTable(SRV(t0, numDescriptors = 1, space = 1)),
+DescriptorTable(Sampler(s0, numDescriptors = 1, space = 0))
 }
 
 PrePass
 {
 	ClearDepth(1.0)
 }
+
+// -== Register space convention ==-
+//	0 - Global, PerPass
+//	1 - Global, PerObject
+//	2 - Local, PerPass
+//	3 - Local, PerObject
 
 // Attributes
 
@@ -52,7 +58,7 @@ struct PixelOut
 // Resources 
 //#DEBUG this should be merged with frame data cb?
 [Global, PerPass]
-cbuffer cbPerPass : register(b1)
+cbuffer cbPerPass : register(b0, space0)
 {
     float4x4 gViewProj;
     float4 gCameraYaw;
@@ -63,10 +69,10 @@ cbuffer cbPerPass : register(b1)
 
 
 [Global, PerObject]
-Texture2D gDiffuseMap : register(t0)
+Texture2D gDiffuseMap : register(t0, space1)
 
 [Global, PerPass]
-SamplerState gSamLinearWrap : register(s0)
+SamplerState gSamLinearWrap : register(s0, space0)
 
 
 

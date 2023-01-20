@@ -20,8 +20,15 @@ Topology	 	: Point
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-CBV(b1)
+CBV(b0, space = 0)
 }
+
+// -== Register space convention ==-
+//	0 - Global, PerPass
+//	1 - Global, PerObject
+//	2 - Local, PerPass
+//	3 - Local, PerObject
+
 
 // Attributes
 
@@ -50,7 +57,7 @@ struct GeomVertOut
 // Resources 
 
 [Global, PerPass]
-cbuffer cbPerPass : register(b1)
+cbuffer cbPerPass : register(b0, space0)
 {
     float4x4 gViewProj;
     float4 gCameraYaw;

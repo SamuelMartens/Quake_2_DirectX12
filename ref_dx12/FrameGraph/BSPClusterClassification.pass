@@ -11,12 +11,20 @@ State
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-CBV(b0),
-CBV(b1),
-DescriptorTable(SRV(t1, numDescriptors = 1)),
-DescriptorTable(SRV(t2, numDescriptors = 1),
-UAV(u0, numDescriptors = 1))
+CBV(b0, space = 0),
+CBV(b1, space = 0),
+DescriptorTable(SRV(t1, numDescriptors = 1, space = 0)),
+DescriptorTable(SRV(t2, numDescriptors = 1, space = 2),
+UAV(u0, numDescriptors = 1, space = 2))
 }
+
+
+// -== Register space convention ==-
+//	0 - Global, PerPass
+//	1 - Global, PerObject
+//	2 - Local, PerPass
+//	3 - Local, PerObject
+
 
 // Structs
 struct AABB
@@ -28,7 +36,7 @@ struct AABB
 // --- Global ---
 
 [Global, PerPass]
-cbuffer cbFrameData : register(b0)
+cbuffer cbFrameData : register(b0, space0)
 {
     float4x4 InvertedViewProj;
 	int ScreenWidth;
@@ -36,20 +44,21 @@ cbuffer cbFrameData : register(b0)
 }
 
 [Global, PerPass]
-cbuffer cbClusterAABBParameters : register(b1)
+cbuffer cbClusterAABBParameters : register(b1, space0)
 {
 	int ClusterAABBsSize;
 }
 
 [Global, PerPass]
-StructuredBuffer<AABB> ClusterAABBs : register(t1)
+StructuredBuffer<AABB> ClusterAABBs : register(t1, space0)
 
 // --- Local ---
 [Local, PerPass, Bind: ClusterClassification]
-RWTexture2D<int> ClusterClassification : register(u0)
+RWTexture2D<int> ClusterClassification : register(u0, space2)
 
+//#DEBUG make this global
 [Local, PerPass]
-Texture2D DepthBuffer : register (t2)
+Texture2D DepthBuffer : register (t2, space2)
 
 Type : CS
 External : AABB, ClusterAABBs, cbClusterAABBParameters, ClusterClassification, DepthBuffer, cbFrameData

@@ -17,11 +17,17 @@ Topology	 : Triangle
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-CBV(b1),
-CBV(b2),
-CBV(b3),
-DescriptorTable(SRV(t0, numDescriptors = 1))
+CBV(b0, space = 0),
+CBV(b0, space = 1),
+CBV(b0, space = 3),
+DescriptorTable(SRV(t0, numDescriptors = 1, space = 0))
 }
+
+// -== Register space convention ==-
+//	0 - Global, PerPass
+//	1 - Global, PerObject
+//	2 - Local, PerPass
+//	3 - Local, PerObject
 
 // Attributes
 
@@ -39,10 +45,7 @@ struct VertexOut
 
 // Resources  
 [Global, PerPass]
-StructuredBuffer<float4> sbDiffuseProbes : register(t0)
-
-[Global, PerPass]
-cbuffer cbPerPass : register(b1)
+cbuffer cbPerPass : register(b0, space0)
 {
     float4x4 gViewProj;
     float4 gCameraYaw;
@@ -51,20 +54,22 @@ cbuffer cbPerPass : register(b1)
     float4 gCameraOrigin;
 }
 
-
 [Global, PerObject]
-cbuffer cbPerObject_Global : register(b2)
+cbuffer cbPerObject_Global : register(b0, space1)
 {
 	int gDebugObjectType;
 }
 
 [Local, PerObject]
-cbuffer cbPerObject_Local : register(b3)
+cbuffer cbPerObject_Local : register(b0, space3)
 {
 	// Probes debug info
 	float4 gCenter;
 	int gProbeIndex;
 }
+
+[Global, PerPass]
+StructuredBuffer<float4> sbDiffuseProbes : register(t0, space0)
 
 // Shaders
 

@@ -11,24 +11,31 @@ State
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-DescriptorTable(UAV(u0, numDescriptors = 1)),
-DescriptorTable(SRV(t0, numDescriptors = 4))
+DescriptorTable(UAV(u0, numDescriptors = 1, space = 0)),
+DescriptorTable(SRV(t0, numDescriptors = 4, space = 2))
 }
 
+// -== Register space convention ==-
+//	0 - Global, PerPass
+//	1 - Global, PerObject
+//	2 - Local, PerPass
+//	3 - Local, PerObject
+
+
 [Local, PerPass, Bind: GBuffer_Albedo]
-Texture2D GBuffer_Albedo : register(t0)
+Texture2D GBuffer_Albedo : register(t0, space2)
 
 [Local, PerPass, Bind: GBuffer_Normals]
-Texture2D GBuffer_Normals : register(t1)
+Texture2D GBuffer_Normals : register(t1, space2)
 
 [Local, PerPass, Bind: ClusterClassification]
-Texture2D<int> ClusterClassification : register(t2)
+Texture2D<int> ClusterClassification : register(t2, space2)
 
 [Local, PerPass, Bind: IndirectLightBuffer]
-Texture2D IndirectLightBuffer : register(t3)
+Texture2D IndirectLightBuffer : register(t3, space2)
 
 [Global, PerPass, Bind: ComposeBuffer]
-RWTexture2D<float4> ComposeBuffer : register(u0)
+RWTexture2D<float4> ComposeBuffer : register(u0, space0)
 
 Type : CS
 External : GBuffer_Albedo, ComposeBuffer, GBuffer_Normals, ClusterClassification, IndirectLightBuffer
