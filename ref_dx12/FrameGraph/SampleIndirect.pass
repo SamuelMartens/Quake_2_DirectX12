@@ -11,11 +11,18 @@ State
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-CBV(b0),
-CBV(b5),
-DescriptorTable(SRV(t0, numDescriptors = 3)), 
-DescriptorTable(SRV(t4, numDescriptors = 4), UAV(u0, numDescriptors = 1))
+CBV(b0, space = 0),
+CBV(b0, space = 2),
+DescriptorTable(SRV(t0, numDescriptors = 3, space = 0)), 
+DescriptorTable(SRV(t0, numDescriptors = 4, space = 2), UAV(u0, numDescriptors = 1, space = 2))
 }
+
+// -== Register space convention ==-
+//	0 - Global, PerPass
+//	1 - Global, PerObject
+//	2 - Local, PerPass
+//	3 - Local, PerObject
+
 
 // Structs
 struct AABB
@@ -37,7 +44,7 @@ struct ClusterProbeGridInfo
 // -- Global CBVs
 
 [Global, PerPass]
-cbuffer cbFrameData : register(b0)
+cbuffer cbFrameData : register(b0, space0)
 {
     float4x4 InvertedViewProj;
 	int ScreenWidth;
@@ -47,7 +54,7 @@ cbuffer cbFrameData : register(b0)
 // --- Local CBVs ---
 
 [Local, PerPass]
-cbuffer cbSampleIndirect : register(b5)
+cbuffer cbSampleIndirect : register(b0, space2)
 {
 	int ProbeDataExist;
 	int FrameRandSeed;
@@ -57,30 +64,30 @@ cbuffer cbSampleIndirect : register(b5)
 // --- Global Tex ---
 
 [Global, PerPass]
-StructuredBuffer<float4> sbDiffuseProbes : register(t0)
+StructuredBuffer<float4> sbDiffuseProbes : register(t0, space0)
 
 [Global, PerPass]
-StructuredBuffer<AABB> ClusterAABBs : register(t1)
+StructuredBuffer<AABB> ClusterAABBs : register(t1, space0)
 
 [Global, PerPass]
-StructuredBuffer<ClusterProbeGridInfo> ClusterProbeGridInfoBuffer : register(t2)
+StructuredBuffer<ClusterProbeGridInfo> ClusterProbeGridInfoBuffer : register(t2, space0)
 
 // --- Local ---
 
 [Local, PerPass, Bind: ClusterClassification]
-Texture2D<int> ClusterClassification : register(t4)
+Texture2D<int> ClusterClassification : register(t0, space2)
 
 [Local, PerPass, Bind: GBuffer_Normals]
-Texture2D GBuffer_Normals : register(t5)
+Texture2D GBuffer_Normals : register(t1, space2)
 
 [Local, PerPass, Bind: GBuffer_Albedo]
-Texture2D GBuffer_Albedo : register (t6)
+Texture2D GBuffer_Albedo : register (t2, space2)
 
 [Local, PerPass]
-Texture2D DepthBuffer : register (t7)
+Texture2D DepthBuffer : register (t3, space2)
 
 [Local, PerPass, Bind: IndirectLightBuffer]
-RWTexture2D<float4> IndirectLightBuffer : register(u0)
+RWTexture2D<float4> IndirectLightBuffer : register(u0, space2)
 
 Type : CS
 External: cbSampleIndirect, sbDiffuseProbes, AABB, ClusterProbeGridInfo, ClusterAABBs,
