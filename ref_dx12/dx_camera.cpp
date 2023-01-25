@@ -80,7 +80,8 @@ XMMATRIX Camera::GenerateProjectionMatrix() const
 	constexpr int zNear = 4;
 	constexpr int zFar = 4096;
 	
-	return XMMatrixPerspectiveFovRH(XMConvertToRadians(std::max(fov.y, 1.0f)), width / height, zNear, zFar);
+	// NOTE: Far and Near intentionally reversed for Perspective matrix
+	return XMMatrixPerspectiveFovRH(XMConvertToRadians(std::max(fov.y, 1.0f)), width / height, zFar, zNear);
 }
 
 
@@ -103,19 +104,19 @@ std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> Camera::GetBasis() const
 
 	return std::make_tuple(yaw, pitch, roll);
 }
-
+//#DEBUG see if this plays well with reversed values
 std::array<Utils::Plane, 6> Camera::GetFrustumPlanes() const
 {
 	std::array<XMFLOAT4, 8> frustum = 
 	{
-		XMFLOAT4(-1.0f, -1.0f, 0.0f, 1.0f ),
-		XMFLOAT4(-1.0f,  1.0f, 0.0f, 1.0f),
-		XMFLOAT4(1.0f,  1.0f, 0.0f, 1.0f),
-		XMFLOAT4(1.0f, -1.0f, 0.0f, 1.0f),
-		XMFLOAT4(-1.0f, -1.0f, 1.0f, 1.0f),
+		XMFLOAT4(-1.0f, -1.0f, 1.0f, 1.0f ),
 		XMFLOAT4(-1.0f,  1.0f, 1.0f, 1.0f),
 		XMFLOAT4(1.0f,  1.0f, 1.0f, 1.0f),
-		XMFLOAT4(1.0f, -1.0f, 1.0f, 1.0f)
+		XMFLOAT4(1.0f, -1.0f, 1.0f, 1.0f),
+		XMFLOAT4(-1.0f, -1.0f, 0.0f, 1.0f),
+		XMFLOAT4(-1.0f,  1.0f, 0.0f, 1.0f),
+		XMFLOAT4(1.0f,  1.0f, 0.0f, 1.0f),
+		XMFLOAT4(1.0f, -1.0f, 0.0f, 1.0f)
 	};
 
 	XMVECTOR sseCameraTransformDeterminant;
@@ -148,19 +149,19 @@ std::array<Utils::Plane, 6> Camera::GetFrustumPlanes() const
 		Utils::ConstructPlane(frustum[4], frustum[0], frustum[3]), // bottom
 	};
 }
-
+//#DEBUG again. see if reverse plays nicely with this
 Utils::AABB Camera::GetAABB() const
 {
 	std::array<XMVECTOR, 8> frustum = 
 	{
-		XMVectorSet(-1.0f, -1.0f, 0.0f, 1.0f ),
-		XMVectorSet(-1.0f,  1.0f, 0.0f, 1.0f),
-		XMVectorSet(1.0f,  1.0f, 0.0f, 1.0f),
-		XMVectorSet(1.0f, -1.0f, 0.0f, 1.0f),
-		XMVectorSet(-1.0f, -1.0f, 1.0f, 1.0f),
+		XMVectorSet(-1.0f, -1.0f, 1.0f, 1.0f ),
 		XMVectorSet(-1.0f,  1.0f, 1.0f, 1.0f),
 		XMVectorSet(1.0f,  1.0f, 1.0f, 1.0f),
-		XMVectorSet(1.0f, -1.0f, 1.0f, 1.0f)
+		XMVectorSet(1.0f, -1.0f, 1.0f, 1.0f),
+		XMVectorSet(-1.0f, -1.0f, 0.0f, 1.0f),
+		XMVectorSet(-1.0f,  1.0f, 0.0f, 1.0f),
+		XMVectorSet(1.0f,  1.0f, 0.0f, 1.0f),
+		XMVectorSet(1.0f, -1.0f, 0.0f, 1.0f)
 	};
 
 	XMVECTOR sseCameraTransformDeterminant;

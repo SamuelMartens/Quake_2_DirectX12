@@ -56,7 +56,7 @@ float4 VisualizeClusterId(int id)
 [numthreads(32, 32, 1)]
 void main(int3 dispatchThreadID : SV_DispatchThreadID)
 {
-	//ComposeBuffer[dispatchThreadID.xy] = float4(GBuffer_Albedo[dispatchThreadID.xy].xyz, 1.0f);
+	ComposeBuffer[dispatchThreadID.xy] = float4(GBuffer_Albedo[dispatchThreadID.xy].xyz, 1.0f);
 	
 	//float4 normal = float4(GBuffer_Normals[dispatchThreadID.xy].xy, 0.0f, 0.0f);
 	//normal.z = sqrt(1.0 - normal.x * normal.x - normal.y * normal.y);
@@ -76,7 +76,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 		ComposeBuffer[dispatchThreadID.xy] = color; 
 	}
 	
-	ComposeBuffer[dispatchThreadID.xy] = IndirectLightBuffer[dispatchThreadID.xy];
+	//ComposeBuffer[dispatchThreadID.xy] = IndirectLightBuffer[dispatchThreadID.xy];
 }
 
 

@@ -650,7 +650,7 @@ void Renderer::CreateDepthStencilBuffer(ComPtr<ID3D12Resource>& buffer)
 	depthStencilDesc.Height = DrawAreaHeight;
 	depthStencilDesc.DepthOrArraySize = 1;
 	depthStencilDesc.MipLevels = 1;
-	depthStencilDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
+	depthStencilDesc.Format = DXGI_FORMAT_R32_TYPELESS;
 	depthStencilDesc.SampleDesc.Count = GetMSAASampleCount();
 	depthStencilDesc.SampleDesc.Quality = GetMSAAQuality();
 	depthStencilDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
@@ -658,7 +658,7 @@ void Renderer::CreateDepthStencilBuffer(ComPtr<ID3D12Resource>& buffer)
 
 	D3D12_CLEAR_VALUE optimizedClearVal;
 	optimizedClearVal.Format = Settings::DEPTH_STENCIL_FORMAT;
-	optimizedClearVal.DepthStencil.Depth = 1.0f;
+	optimizedClearVal.DepthStencil.Depth = 0.0f;
 	optimizedClearVal.DepthStencil.Stencil = 0;
 
 	CD3DX12_HEAP_PROPERTIES heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
@@ -2799,7 +2799,7 @@ void Renderer::PreRenderSetUpFrame(Frame& frame)
 	// Some preparations
 	XMMATRIX tempMat = XMMatrixIdentity();
 	XMStoreFloat4x4(&frame.uiViewMat, tempMat);
-	tempMat = XMMatrixOrthographicRH(frame.camera.width, frame.camera.height, 0.0f, 1.0f);
+	tempMat = XMMatrixOrthographicRH(frame.camera.width, frame.camera.height, 1.0f, 0.0f);
 
 	XMStoreFloat4x4(&frame.uiProjectionMat, tempMat);
 	

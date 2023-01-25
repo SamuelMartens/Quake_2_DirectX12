@@ -15,7 +15,7 @@ void Frame::Init(int arrayIndexVal)
 	ViewDescription_t genericViewDesc = D3D12_DEPTH_STENCIL_VIEW_DESC();
 
 	D3D12_DEPTH_STENCIL_VIEW_DESC& depthViewDesc = std::get<D3D12_DEPTH_STENCIL_VIEW_DESC>(genericViewDesc);
-	depthViewDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	depthViewDesc.Format = Settings::DEPTH_STENCIL_FORMAT;
 	depthViewDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 	depthViewDesc.Flags = D3D12_DSV_FLAG_NONE;
 	depthViewDesc.Texture2D.MipSlice = 0;

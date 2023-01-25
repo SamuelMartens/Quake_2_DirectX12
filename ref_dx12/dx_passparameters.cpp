@@ -520,6 +520,7 @@ PassParametersSource::PassParametersSource()
 	rasterPsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 	rasterPsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	rasterPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	rasterPsoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_GREATER;
 	rasterPsoDesc.SampleMask = UINT_MAX;
 	rasterPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	rasterPsoDesc.NumRenderTargets = 1;

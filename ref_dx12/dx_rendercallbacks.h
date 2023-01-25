@@ -601,7 +601,7 @@ namespace RenderCallbacks
 				ViewDescription_t genericDesc = std::optional(D3D12_SHADER_RESOURCE_VIEW_DESC());
 
 				D3D12_SHADER_RESOURCE_VIEW_DESC& viewDesc = std::get<std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>>(genericDesc).value();
-				viewDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+				viewDesc.Format = DXGI_FORMAT_R32_FLOAT;
 				viewDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 				viewDesc.Shader4ComponentMapping =
 					D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(
@@ -651,7 +651,7 @@ namespace RenderCallbacks
 				ViewDescription_t genericDesc = std::optional(D3D12_SHADER_RESOURCE_VIEW_DESC());
 
 				D3D12_SHADER_RESOURCE_VIEW_DESC& viewDesc = std::get<std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>>(genericDesc).value();
-				viewDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+				viewDesc.Format = DXGI_FORMAT_R32_FLOAT;
 				viewDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 				viewDesc.Shader4ComponentMapping = 
 					D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(

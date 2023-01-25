@@ -23,7 +23,7 @@ DescriptorTable(Sampler(s0, numDescriptors = 1, space = 0))
 
 PrePass
 {
-	ClearDepth(1.0)
+	ClearDepth(0.0)
 }
 
 // -== Register space convention ==-
