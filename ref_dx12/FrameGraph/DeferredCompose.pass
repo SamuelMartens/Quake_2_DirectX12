@@ -76,7 +76,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 		ComposeBuffer[dispatchThreadID.xy] = color; 
 	}
 	
-	//ComposeBuffer[dispatchThreadID.xy] = IndirectLightBuffer[dispatchThreadID.xy];
+	ComposeBuffer[dispatchThreadID.xy] = IndirectLightBuffer[dispatchThreadID.xy];
 }
 
 

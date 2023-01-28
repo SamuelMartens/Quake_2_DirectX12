@@ -12,9 +12,8 @@ RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0, space = 0),
-CBV(b1, space = 0),
 DescriptorTable(SRV(t1, numDescriptors = 1, space = 0)),
-DescriptorTable(SRV(t2, numDescriptors = 1, space = 2),
+DescriptorTable(SRV(t0, numDescriptors = 1, space = 2),
 UAV(u0, numDescriptors = 1, space = 2))
 }
 
@@ -36,15 +35,7 @@ struct AABB
 // --- Global ---
 
 [Global, PerPass]
-cbuffer cbFrameData : register(b0, space0)
-{
-    float4x4 InvertedViewProj;
-	int ScreenWidth;
-	int ScreenHeight;
-}
-
-[Global, PerPass]
-cbuffer cbClusterAABBParameters : register(b1, space0)
+cbuffer cbClusterAABBParameters : register(b0, space0)
 {
 	int ClusterAABBsSize;
 }
@@ -53,32 +44,16 @@ cbuffer cbClusterAABBParameters : register(b1, space0)
 StructuredBuffer<AABB> ClusterAABBs : register(t1, space0)
 
 // --- Local ---
+[Local, PerPass, Bind: GBuffer_Position]
+Texture2D GBuffer_Position : register(t0, space2)
+
 [Local, PerPass, Bind: ClusterClassification]
 RWTexture2D<int> ClusterClassification : register(u0, space2)
 
-//#DEBUG make this global
-[Local, PerPass]
-Texture2D DepthBuffer : register (t2, space2)
 
 Type : CS
-External : AABB, ClusterAABBs, cbClusterAABBParameters, ClusterClassification, DepthBuffer, cbFrameData
+External : AABB, ClusterAABBs, cbClusterAABBParameters, ClusterClassification, GBuffer_Position
 <[
-
-float3 GetWorldPosFromDepthAndScreenCoord(int2 screenCoord, float depth)
-{
-	// NOTE: This doesn't account for the screen offset
-	const float4 ndcPixelCoords = float4(
-	((float)screenCoord.x / ScreenWidth) * 2.0f - 1.0f, 
-	((float)screenCoord.y / ScreenHeight) * -2.0f + 1.0f,
-	depth, 
-	1.0f);
-
-	float4 worldCoord = mul(InvertedViewProj, ndcPixelCoords);
-	worldCoord = worldCoord / worldCoord.w;
-
-	return worldCoord.xyz;
-}
-
 
 [numthreads(32, 32, 1)]
 void main(int3 dispatchThreadID : SV_DispatchThreadID)
@@ -90,8 +65,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 
 	int clusterIndex = -1;
 	
-	const float depth = DepthBuffer.Load(int3(dispatchThreadID.xy, 0)).x;
-	float3 pixelPosition = GetWorldPosFromDepthAndScreenCoord(dispatchThreadID.xy, depth);
+	float3 position = GBuffer_Position[dispatchThreadID.xy].xyz;
 	
 	// Iterate over each AABB
 	for (int i = 0; i < ClusterAABBsSize; ++i)
@@ -107,8 +81,8 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 		
 		
 		// If inside AABB
-		if (all(pixelPosition >= clusterAABB.Min.xyz) &&
-			all(pixelPosition <= clusterAABB.Max.xyz))
+		if (all(position >= clusterAABB.Min.xyz) &&
+			all(position <= clusterAABB.Max.xyz))
 		{
 			clusterIndex = i;
 			break;
