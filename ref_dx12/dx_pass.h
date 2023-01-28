@@ -55,6 +55,13 @@ public:
 
 public:
 
+	Pass_UI() = default;
+	Pass_UI(const Pass_UI&) = default;
+	Pass_UI& operator=(const Pass_UI&) = default;
+	Pass_UI(Pass_UI&&) = default;
+	Pass_UI& operator=(Pass_UI&&) = default;
+	~Pass_UI();
+
 	void Execute(GPUJobContext& context);
 	void Init();
 
@@ -112,6 +119,13 @@ public:
 
 public:
 
+	Pass_Static() = default;
+	Pass_Static(const Pass_Static&) = default;
+	Pass_Static& operator=(const Pass_Static&) = default;
+	Pass_Static(Pass_Static&&) = default;
+	Pass_Static& operator=(Pass_Static&&) = default;
+	~Pass_Static();
+
 	void Execute(GPUJobContext& context);
 	void Init();
 
@@ -157,6 +171,13 @@ public:
 
 public:
 
+	Pass_Dynamic() = default;
+	Pass_Dynamic(const Pass_Dynamic&) = default;
+	Pass_Dynamic& operator=(const Pass_Dynamic&) = default;
+	Pass_Dynamic(Pass_Dynamic&&) = default;
+	Pass_Dynamic& operator=(Pass_Dynamic&&) = default;
+	~Pass_Dynamic();
+
 	void Execute(GPUJobContext& context);
 	void Init();
 
@@ -195,6 +216,13 @@ class Pass_Particles
 
 public:
 
+	Pass_Particles() = default;
+	Pass_Particles(const Pass_Particles&) = default;
+	Pass_Particles& operator=(const Pass_Particles&) = default;
+	Pass_Particles(Pass_Particles&&) = default;
+	Pass_Particles& operator=(Pass_Particles&&) = default;
+	~Pass_Particles();
+
 	void Execute(GPUJobContext& context);
 	void Init();
 
@@ -223,6 +251,13 @@ class Pass_PostProcess
 	friend class FrameGraphBuilder;
 
 public:
+
+	Pass_PostProcess() = default;
+	Pass_PostProcess(const Pass_PostProcess&) = default;
+	Pass_PostProcess& operator=(const Pass_PostProcess&) = default;
+	Pass_PostProcess(Pass_PostProcess&&) = default;
+	Pass_PostProcess& operator=(Pass_PostProcess&&) = default;
+	~Pass_PostProcess();
 
 	void Execute(GPUJobContext& context);
 	void Init();
@@ -269,6 +304,13 @@ public:
 	const static int POINT_LIGHT_SPHERE_SUBDIVISION = 1;
 
 public:
+
+	Pass_Debug() = default;
+	Pass_Debug(const Pass_Debug&) = default;
+	Pass_Debug& operator=(const Pass_Debug&) = default;
+	Pass_Debug(Pass_Debug&&) = default;
+	Pass_Debug& operator=(Pass_Debug&&) = default;
+	~Pass_Debug();
 
 	void Execute(GPUJobContext& context);
 	void Init();

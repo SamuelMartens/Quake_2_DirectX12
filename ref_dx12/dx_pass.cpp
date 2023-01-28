@@ -654,6 +654,11 @@ void Pass_UI::Draw(GPUJobContext& context)
 	}
 }
 
+Pass_UI::~Pass_UI()
+{
+	ReleasePersistentResources();
+}
+
 void Pass_UI::Execute(GPUJobContext& context)
 {
 	if (context.frame.uiDrawCalls.empty() == true)
@@ -715,6 +720,11 @@ void Pass_UI::ReleasePersistentResources()
 	}
 
 	PassUtils::ReleaseColorDepthRenderTargetViews(passParameters);
+}
+
+Pass_Static::~Pass_Static()
+{
+	ReleasePersistentResources();
 }
 
 void Pass_Static::Execute(GPUJobContext& context)
@@ -928,6 +938,11 @@ void Pass_Static::PassObj::ReleaseResources()
 	{
 		RootArg::Release(arg, *Renderer::Inst().cbvSrvHeapAllocator);
 	}
+}
+
+Pass_Dynamic::~Pass_Dynamic()
+{
+	ReleasePersistentResources();
 }
 
 void Pass_Dynamic::Execute(GPUJobContext& context)
@@ -1164,6 +1179,11 @@ void Pass_Dynamic::SetRenderState(GPUJobContext& context)
 	_SetRenderState(passParameters, context);
 }
 
+Pass_Particles::~Pass_Particles()
+{
+	ReleasePersistentResources();
+}
+
 void Pass_Particles::Execute(GPUJobContext& context)
 {
 	if (context.frame.particles.empty() == true)
@@ -1258,6 +1278,11 @@ void Pass_Particles::SetRenderState(GPUJobContext& context)
 	_SetRenderState(passParameters, context);
 }
 
+Pass_PostProcess::~Pass_PostProcess()
+{
+	ReleasePersistentResources();
+}
+
 void Pass_PostProcess::Execute(GPUJobContext& context)
 {
 	UpdatePassResources(context);
@@ -1347,6 +1372,11 @@ void Pass_PostProcess::SetComputeState(GPUJobContext& context)
 	commandList->SetPipelineState(passParameters.pipelineState.Get());
 }
 
+
+Pass_Debug::~Pass_Debug()
+{
+	ReleasePersistentResources();
+}
 
 void Pass_Debug::Execute(GPUJobContext& context)
 {
