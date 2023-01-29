@@ -24,20 +24,20 @@ void Semaphore::Signal()
 {
 	DX_ASSERT(waitValue != 0 && "Not initialized semaphore is signaled");
 
-	Logs::Logf(Logs::Category::Synchronization, "Semaphore signaled, handle %x", reinterpret_cast<unsigned>(winSemaphore));
+	Logs::Logf(Logs::Category::Synchronization, "Semaphore signaled, handle {}", reinterpret_cast<unsigned>(winSemaphore));
 
 	// Remember, fetch_add() will return old value, that's why -1 
 	if (counter.fetch_add(1) >= waitValue - 1)
 	{
 		ReleaseSemaphore(winSemaphore, 1, NULL);
 
-		Logs::Logf(Logs::Category::Synchronization, "Semaphore released, handle %x", reinterpret_cast<unsigned>(winSemaphore));
+		Logs::Logf(Logs::Category::Synchronization, "Semaphore released, handle {}", reinterpret_cast<unsigned>(winSemaphore));
 	};
 }
 
 void Semaphore::Wait() const
 {
-	Logs::Logf(Logs::Category::Synchronization, "Semaphore wait entered, handle %x", reinterpret_cast<unsigned>(winSemaphore));
+	Logs::Logf(Logs::Category::Synchronization, "Semaphore wait entered, handle {}", reinterpret_cast<unsigned>(winSemaphore));
 
 	if (counter.load() < waitValue)
 	{
@@ -50,12 +50,12 @@ void Semaphore::Wait() const
 		DX_ASSERT(prevVal == 0 && "Prev val assert");
 	}
 
-	Logs::Logf(Logs::Category::Synchronization, "Semaphore wait finished, handle %x", reinterpret_cast<unsigned>(winSemaphore));
+	Logs::Logf(Logs::Category::Synchronization, "Semaphore wait finished, handle {}", reinterpret_cast<unsigned>(winSemaphore));
 }
 
 void Semaphore::WaitForMultipleAny(const std::vector<std::shared_ptr<Semaphore>> waitForSemaphores)
 {
-	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait any entered");
+	Logs::Log(Logs::Category::Synchronization, "Semaphore Multi wait any entered");
 
 	DX_ASSERT(waitForSemaphores.empty() == false && "WaitForMultipleAny received empty semaphore list.");
 
@@ -69,7 +69,7 @@ void Semaphore::WaitForMultipleAny(const std::vector<std::shared_ptr<Semaphore>>
 		// If any of semaphores is ready, we are done
 		if (s->counter.load() >= s->waitValue)
 		{
-			Logs::Logf(Logs::Category::Synchronization, "Semaphore multi wait any finished");
+			Logs::Log(Logs::Category::Synchronization, "Semaphore multi wait any finished");
 
 			return;
 		}
@@ -85,13 +85,13 @@ void Semaphore::WaitForMultipleAny(const std::vector<std::shared_ptr<Semaphore>>
 	ReleaseSemaphore(winSemaphores[res - WAIT_OBJECT_0], 1, &prevVal);
 	DX_ASSERT(prevVal == 0 && "Multiple prev val is not equal to 0");
 
-	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait any finished, handle %x", reinterpret_cast<unsigned>(winSemaphores[res - WAIT_OBJECT_0]));
+	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait any finished, handle {}", reinterpret_cast<unsigned>(winSemaphores[res - WAIT_OBJECT_0]));
 
 }
 
 void Semaphore::WaitForMultipleAll(const std::vector<std::shared_ptr<Semaphore>> waitForSemaphores)
 {
-	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait all entered");
+	Logs::Log(Logs::Category::Synchronization, "Semaphore Multi wait all entered");
 
 	DX_ASSERT(waitForSemaphores.empty() == false && "WaitForMultipleAll received empty semaphore list.");
 
@@ -102,7 +102,7 @@ void Semaphore::WaitForMultipleAll(const std::vector<std::shared_ptr<Semaphore>>
 		s->Wait();
 	}
 
-	Logs::Logf(Logs::Category::Synchronization, "Semaphore Multi wait all finished");
+	Logs::Log(Logs::Category::Synchronization, "Semaphore Multi wait all finished");
 }
 
 void ThreadingUtils::Init()

@@ -534,13 +534,13 @@ void FrameGraph::Execute(Frame& frame)
 				std::string_view passName = PassUtils::GetPassName(passTask.pass);
 
 				Diagnostics::BeginEvent(passJobContext.commandList->GetGPUList(), passName);
-				Logs::Logf(Logs::Category::Job, "Pass job started: %s", passName);
+				Logs::Logf(Logs::Category::Job, "Pass job started: {}", passName);
 
 				passJobContext.WaitDependency();
 
 				passTask.Execute(passJobContext);
 
-				Logs::Logf(Logs::Category::Job, "Pass job end: %s", passName);
+				Logs::Logf(Logs::Category::Job, "Pass job end: {}", passName);
 				Diagnostics::EndEvent(passJobContext.commandList->GetGPUList());
 			}));
 		}

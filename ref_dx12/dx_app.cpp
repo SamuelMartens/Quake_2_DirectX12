@@ -812,7 +812,7 @@ void Renderer::SubmitFrame(Frame& frame)
 	commandQueue->Signal(fence.Get(), frame.executeCommandListFenceValue);
 	ThrowIfFailed(fence->SetEventOnCompletion(frame.executeCommandListFenceValue, frame.executeCommandListEvenHandle));
 
-	Logs::Logf(Logs::Category::FrameSubmission, "Frame with frameNumber %d submitted", frame.frameNumber);
+	Logs::Logf(Logs::Category::FrameSubmission, "Frame with frameNumber {} submitted", frame.frameNumber);
 }
 
 void Renderer::OpenFrame(Frame& frame) const
@@ -832,7 +832,7 @@ void Renderer::CloseFrame(Frame& frame)
 
 void Renderer::ReleaseFrameResources(Frame& frame)
 {
-	Logs::Logf(Logs::Category::FrameSubmission, "Frame with frameNumber %d releases resources", frame.frameNumber);
+	Logs::Logf(Logs::Category::FrameSubmission, "Frame with frameNumber {} releases resources", frame.frameNumber);
 
 	for (int acquiredCommandListIndex : frame.acquiredCommandListsIndices)
 	{
@@ -888,7 +888,7 @@ void Renderer::AcquireMainThreadFrame()
 			OpenFrame(*frameIt);
 			currentFrameIndex = std::distance(frames.begin(), frameIt);
 
-			Logs::Logf(Logs::Category::FrameSubmission, "Frame with index %d acquired", currentFrameIndex);
+			Logs::Logf(Logs::Category::FrameSubmission, "Frame with index {} acquired", currentFrameIndex);
 
 			return;
 		}
@@ -916,7 +916,7 @@ void Renderer::AcquireMainThreadFrame()
 	OpenFrame(*frameIt);
 	currentFrameIndex = std::distance(frames.begin(), frameIt);
 
-	Logs::Logf(Logs::Category::FrameSubmission, "Frame with index %d acquired", currentFrameIndex);
+	Logs::Logf(Logs::Category::FrameSubmission, "Frame with index {} acquired", currentFrameIndex);
 }
 
 void Renderer::DetachMainThreadFrame()
@@ -925,7 +925,7 @@ void Renderer::DetachMainThreadFrame()
 
 	DX_ASSERT(currentFrameIndex != Const::INVALID_INDEX && "Trying to detach frame. But there is nothing to detach.");
 
-	Logs::Logf(Logs::Category::FrameSubmission, "Frame with index %d and frameNumber %d detached", currentFrameIndex, frames[currentFrameIndex].frameNumber);
+	Logs::Logf(Logs::Category::FrameSubmission, "Frame with index {} and frameNumber {} detached", currentFrameIndex, frames[currentFrameIndex].frameNumber);
 
 	currentFrameIndex = Const::INVALID_INDEX;
 }
@@ -2536,7 +2536,7 @@ void Renderer::DeleteUploadMemoryBuffer(BufferHandler handler)
 
 void Renderer::GetDrawTextureSize(int* x, int* y, const char* name)
 {
-	Logs::Logf(Logs::Category::Generic, "API: Get draw texture size %s", name);
+	Logs::Logf(Logs::Category::Generic, "API: Get draw texture size {}", name);
 
 	std::array<char, MAX_QPATH> texFullName;
 	ResourceManager::Inst().GetDrawTextureFullname(name, texFullName.data(), texFullName.size());
@@ -2627,7 +2627,7 @@ void Renderer::EndLevelLoading()
 
 void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, int textureWidth, int textureHeight, const std::byte* data)
 {
-	Logs::Logf(Logs::Category::Generic, "API: AddDrawCall_RawPic");
+	Logs::Log(Logs::Category::Generic, "API: AddDrawCall_RawPic");
 
 	DrawCall_StretchRaw drawCall;
 	drawCall.x = x;
@@ -2683,7 +2683,7 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 
 void Renderer::AddDrawCall_Pic(int x, int y, const char* name)
 {
-	Logs::Logf(Logs::Category::Generic, "API: AddDrawCall_Pic %s", name);
+	Logs::Logf(Logs::Category::Generic, "API: AddDrawCall_Pic {}", name);
 
 	GetMainThreadFrame().uiDrawCalls.emplace_back(DrawCall_Pic{ x, y, std::string(name) });
 }
@@ -2851,7 +2851,7 @@ Resource* Renderer::RegisterDrawPic(const char* name)
 		return resMan.FindResource(name);
 	}
 
-	Logs::Logf(Logs::Category::Generic, "API: Register draw pic %s", name);
+	Logs::Logf(Logs::Category::Generic, "API: Register draw pic {}", name);
 
 	// If dynamic model registration context exists, then we are in the middle of the level loading. At this point
 	// current frame is most likely invalid
@@ -2888,20 +2888,19 @@ void Renderer::RegisterWorldModel(const char* model)
 
 	context.commandList->Open();
 
-	char fullName[MAX_QPATH];
-	Utils::Sprintf(fullName, sizeof(fullName), "maps/%s.bsp", model);
+	std::string fullName = std::format("maps/{}.bsp", model);
 
 	char varName[] = "flushmap";
 	char varDefVal[] = "0";
 	cvar_t* flushMap = GetRefImport().Cvar_Get(varName, varDefVal, 0);
 
-	if (strcmp(mod_known[0].name, fullName) || flushMap->value)
+	if (strcmp(mod_known[0].name, fullName.c_str()) || flushMap->value)
 	{
 		Mod_Free(&mod_known[0]);
 	}
 
 	// Create new world model
-	model_t* mapModel = Mod_ForName(fullName, qTrue, context);
+	model_t* mapModel = Mod_ForName(fullName.data(), qTrue, context);
 
 	// Read static point lights
 	int numStaticPointLights = 0;
@@ -2954,7 +2953,7 @@ void Renderer::BeginLevelLoading(const char* mapName)
 	RequestStateChange(State::LevelLoading);
 	SwitchToRequestedState();
 
-	Logs::Logf(Logs::Category::Generic, "API: Begin level loading %s", mapName);
+	Logs::Logf(Logs::Category::Generic, "API: Begin level loading {}", mapName);
 
 	RegisterWorldModel(mapName);
 
@@ -2974,7 +2973,7 @@ model_s* Renderer::RegisterModel(const char* name)
 		return NULL;
 	}
 
-	Logs::Logf(Logs::Category::Generic, "API: Register model %s", name);
+	Logs::Logf(Logs::Category::Generic, "API: Register model {}", name);
 
 	std::string modelName = name;
 

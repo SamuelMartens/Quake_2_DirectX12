@@ -280,16 +280,9 @@ VSCon_Printf
 Print to Visual Studio developers console
 =================
 */
-void Utils::VSCon_Printf(const char *msg, ...)
+void Utils::VSCon_Print(const std::string& msg)
 {
-	va_list		argptr;
-	char		text[1024];
-
-	va_start(argptr, msg);
-	vsprintf_s(text, msg, argptr);
-	va_end(argptr);
-
-	OutputDebugStringA(text);
+	OutputDebugStringA(msg.c_str());
 }
 
 
@@ -361,22 +354,6 @@ unsigned int Utils::Align(unsigned int size, unsigned int alignment)
 	--alignment;
 	return (size + alignment) & ~alignment;
 }
-
-void Utils::Sprintf(char* dest, int size, const char* fmt, ...)
-{
-	int		len;
-	va_list		argptr;
-	char	bigbuffer[0x1000];
-	 
-	va_start(argptr, fmt);
-	len = vsprintf(bigbuffer, fmt, argptr);
-	va_end(argptr);
-
-	DX_ASSERT(len < size);
-
-	strncpy(dest, bigbuffer, size - 1);
-}
-
 
 void Utils::LoadPCX(char* filename, std::byte** image, std::byte** palette, int* width, int* height)
 {

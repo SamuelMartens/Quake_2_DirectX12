@@ -265,9 +265,7 @@ namespace Utils
 	};
 
 	/* FUNCTIONS */
-
-	void Sprintf(char* dest, int size, const char* fmt, ...);
-	void VSCon_Printf(const char *msg, ...);
+	void VSCon_Print(const std::string& msg);
 	std::string StrToLower(const std::string& str);
 
 	std::wstring StringToWideString(const std::string& s);
@@ -338,7 +336,7 @@ namespace Utils
 	if (FAILED(hr__)) \
 	{ \
 		Utils::Exception except(#func, __FILE__, __LINE__, hr__); \
-		Utils::VSCon_Printf("%s", except.what()); \
+		Utils::VSCon_Print(except.what()); \
 		throw except;\
 	} \
 }
@@ -350,7 +348,7 @@ namespace Utils
 	if ((val) == false) \
 	{ \
 		Utils::Exception except(__func__, __FILE__, __LINE__, std::nullopt); \
-		Utils::VSCon_Printf("%s", except.what()); \
+		Utils::VSCon_Print(except.what()); \
 		throw except;\
 	} \
 }

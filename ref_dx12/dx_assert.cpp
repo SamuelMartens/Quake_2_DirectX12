@@ -4,6 +4,6 @@
 
 void DXAssert::AssertHandler(bool expr, const SourceLocation& loc, const char* expression)
 {
-	Logs::Logf(Logs::Category::Generic, "ASSERTION FAIL: File %s, Func %s, Line %d , Expr %s",
+	Logs::Logf(Logs::Category::Generic, "ASSERTION FAIL: File {}, Func {}, Line {} , Expr {}",
 		loc.fileName, loc.functionName, loc.lineNumber, expression);
 }

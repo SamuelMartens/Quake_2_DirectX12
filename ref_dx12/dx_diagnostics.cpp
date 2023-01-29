@@ -1,6 +1,5 @@
 #include "dx_diagnostics.h"
 
-
 #include "dx_utils.h"
 #include "dx_assert.h"
 
@@ -11,24 +10,10 @@ void Diagnostics::BeginEvent(ID3D12GraphicsCommandList* commandList, std::string
 	commandList->BeginEvent(1, msg.data(), msg.size() * sizeof(char));
 }
 
-void Diagnostics::BeginEventf(ID3D12GraphicsCommandList* commandList, const char* fmt, ...)
-{
-	char buffer[0x1000];
-
-	va_list argptr;
-
-	va_start(argptr, fmt);
-	vsprintf(buffer, fmt, argptr);
-	va_end(argptr);
-
-	BeginEvent(commandList, buffer);
-}
-
 void Diagnostics::EndEvent(ID3D12GraphicsCommandList* commandList)
 {
 	commandList->EndEvent();
 }
-
 
 void Diagnostics::SetResourceName(ID3D12Object* resource, const std::string& name)
 {
@@ -52,12 +37,11 @@ void Diagnostics::SetResourceNameWithAutoId(ID3D12Object* resource, const std::s
 
 namespace Logs
 {
-	std::array<Event, BUFFER_SIZE> gEventsBuffer;
-	std::atomic<int> gPos = 0;
+	std::array<Event, BUFFER_SIZE> EventsBuffer;
+	std::atomic<int> BufferPos = 0;
 
-	constexpr bool gEnableLogs = true;
 	// NOTE: Logs are very slow if printed to console
-	constexpr bool gPrintToConsole = true;
+	constexpr bool PRINT_TO_CONSOLE = true;
 
 	constexpr bool CategoryEnabled[static_cast<int>(Category::_Count)] =
 	{
@@ -70,42 +54,26 @@ namespace Logs
 	};
 }
 
-
-void Logs::Logf(Category category, const char* fmt, ...)
+void Logs::Log(Category category, const std::string& message)
 {
-	if constexpr (gEnableLogs == true)
-	{
-		char buffer[1024];
-
-		va_list argptr;
-
-		va_start(argptr, fmt);
-		vsprintf(buffer, fmt, argptr);
-		va_end(argptr);
-
-		Log(category, buffer);
-	}
-}
-
-void Logs::Log(Category category, std::string_view message)
-{
-	if constexpr (gEnableLogs == true)
+	if constexpr (ENABLE_LOGS == true)
 	{
 		if (CategoryEnabled[static_cast<int>(category)] == true)
 		{
-			int index = gPos.fetch_add(1);
+			int index = BufferPos.fetch_add(1);
 			index = index & (BUFFER_SIZE - 1); // Wrap the buffer size
 
-			Event& event = gEventsBuffer[index];
+			Event& event = EventsBuffer[index];
 
 			event.category = category;
 			event.message = message;
 
 			event.threadId = std::this_thread::get_id();
 
-			if constexpr (gPrintToConsole == true)
+			if constexpr (PRINT_TO_CONSOLE == true)
 			{
-				Utils::VSCon_Printf("LOG %s: %s \n", CategoryToString(category), event.message.c_str());
+				const std::string msg = std::format("LOG {}: {} \n", CategoryToString(category), event.message);
+				Utils::VSCon_Print(msg);
 			}
 		}
 	}

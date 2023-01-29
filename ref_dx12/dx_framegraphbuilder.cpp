@@ -16,6 +16,7 @@
 #include "dx_app.h"
 
 #include <limits>
+#include <format>
 
 namespace
 {
@@ -154,7 +155,7 @@ namespace
 
 		parser.set_logger([](size_t line, size_t col, const std::string& msg)
 		{
-			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
+				Logs::Logf(Logs::Category::Parser, "Error: line {} , col {} {}", line, col, msg);
 
 			DX_ASSERT(false && "Preprocessing error");
 		});
@@ -208,7 +209,7 @@ namespace
 
 		parser.set_logger([](size_t line, size_t col, const std::string& msg)
 		{
-			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
+			Logs::Logf(Logs::Category::Parser, "Error: line {} , col {} {}", line, col, msg);
 
 			ThrowIfFalse(false);
 		});
@@ -1158,7 +1159,7 @@ namespace
 
 		parser.set_logger([](size_t line, size_t col, const std::string& msg)
 		{
-			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
+			Logs::Logf(Logs::Category::Parser, "Error: line {} , col {} {}", line, col, msg.c_str());
 
 			DX_ASSERT(false && "FrameGraph parsing error");
 		});
@@ -1728,7 +1729,7 @@ std::vector<FrameGraphBuilder::CompiledShaderData> FrameGraphBuilder::CompileSha
 
 		const std::string strShaderType = PassParametersSource::ShaderTypeToStr(shader.type);
 
-		Logs::Logf(Logs::Category::Parser, "Shader compilation, type: %s", strShaderType.c_str());
+		Logs::Logf(Logs::Category::Parser, "Shader compilation, type: {}", strShaderType);
 
 		HRESULT hr = D3DCompile(
 			sourceCode.c_str(),
@@ -1746,7 +1747,7 @@ std::vector<FrameGraphBuilder::CompiledShaderData> FrameGraphBuilder::CompileSha
 
 		if (errors != nullptr)
 		{
-			Logs::Logf(Logs::Category::Parser, "Shader compilation error: %s",
+			Logs::Logf(Logs::Category::Parser, "Shader compilation error: {}",
 				reinterpret_cast<char*>(errors->GetBufferPointer()));
 		}
 
@@ -1773,7 +1774,7 @@ std::vector<FrameGraphBuilder::CompiledShaderData> FrameGraphBuilder::CompileSha
 
 		if (errors != nullptr)
 		{
-			Logs::Logf(Logs::Category::Parser, "Root signature compilation error: %s",
+			Logs::Logf(Logs::Category::Parser, "Root signature compilation error: {}",
 				reinterpret_cast<char*>(errors->GetBufferPointer()));
 		}
 
@@ -1817,7 +1818,7 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 			{
 				const std::string& passName = step.name;
 
-				Logs::Logf(Logs::Category::Parser, "Compile pass, start: %s", passName.c_str());
+				Logs::Logf(Logs::Category::Parser, "Compile pass, start: {}", passName);
 
 				auto passParamIt = std::find_if(source.passesParametersSources.begin(), source.passesParametersSources.end(),
 					[&passName](const PassParametersSource& paramSource)
@@ -2102,7 +2103,7 @@ std::unordered_map<std::string, std::string> FrameGraphBuilder::LoadPassFiles() 
 
 		if (filePath.extension() == Settings::FRAMEGRAPH_PASS_FILE_EXT)
 		{
-			Logs::Logf(Logs::Category::Parser, "Read pass file %s", filePath.c_str());
+			Logs::Logf(Logs::Category::Parser, "Read pass file {}", filePath.string());
 
 			std::string passFileContent = Utils::ReadFile(filePath);
 
@@ -2123,7 +2124,7 @@ std::string FrameGraphBuilder::LoadFrameGraphFile() const
 
 		if (filePath.extension() == Settings::FRAMEGRAPH_FILE_EXT)
 		{
-			Logs::Logf(Logs::Category::Parser, "Read frame graph file %s", filePath.c_str());
+			Logs::Logf(Logs::Category::Parser, "Read frame graph file %s", filePath.string());
 
 			std::string frameGraphFileContent = Utils::ReadFile(filePath);
 
@@ -2148,7 +2149,7 @@ std::shared_ptr<Parsing::PreprocessorContext> FrameGraphBuilder::ParsePreprocess
 		context->currentFile = passFile.first;
 		context->includes[context->currentFile] = std::vector<Parsing::PreprocessorContext::Include>{};
 
-		Logs::Logf(Logs::Category::Parser, "Preprocess pass file, start: %s", passFile.first.c_str());
+		Logs::Logf(Logs::Category::Parser, "Preprocess pass file, start: {}", passFile.first.c_str());
 
 		std::any ctx = context;
 
@@ -2171,7 +2172,7 @@ std::shared_ptr<Parsing::PassParametersContext> FrameGraphBuilder::ParsePassFile
 	{
 		context->passSources.emplace_back(PassParametersSource()).name = passFile.first.substr(0, passFile.first.rfind('.'));
 
-		Logs::Logf(Logs::Category::Parser, "Parse pass file, start: %s", context->passSources.back().name.c_str());
+		Logs::Logf(Logs::Category::Parser, "Parse pass file, start: {}", context->passSources.back().name);
 
 		std::any ctx = context;
 
@@ -2331,7 +2332,7 @@ const Parsing::VertAttr* FrameGraphBuilder::GetPassInputVertAttr(const PassParam
 
 ComPtr<ID3D12RootSignature> FrameGraphBuilder::GenerateRootSignature(const PassParametersSource& pass, const std::vector<FrameGraphBuilder::CompiledShaderData>& shaders) const
 {
-	Logs::Logf(Logs::Category::Parser, "GenerateRootSignature, start, pass: %s", pass.name.c_str());
+	Logs::Logf(Logs::Category::Parser, "GenerateRootSignature, start, pass: {}", pass.name);
 
 	DX_ASSERT(shaders.empty() == false && "Can't generate root signature with not shaders");
 
@@ -2349,7 +2350,7 @@ ComPtr<ID3D12RootSignature> FrameGraphBuilder::GenerateRootSignature(const PassP
 
 ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const PassParametersSource& passSource, std::vector<FrameGraphBuilder::CompiledShaderData>& shaders, ComPtr<ID3D12RootSignature>& rootSig) const
 {
-	Logs::Logf(Logs::Category::Parser, "GeneratePipelineStateObject, start, pass %s", passSource.name.c_str());
+	Logs::Logf(Logs::Category::Parser, "GeneratePipelineStateObject, start, pass {}", passSource.name);
 
 	DX_ASSERT(passSource.input.has_value() == true && "Can't generate pipeline state object. Pass type is undefined ");
 
@@ -2450,7 +2451,7 @@ ComPtr<ID3D12PipelineState> FrameGraphBuilder::GeneratePipelineStateObject(const
 
 void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& passSource, FrameGraph& frameGraph, PassParameters& pass) const
 {
-	Logs::Logf(Logs::Category::Parser, "CreateResourceArguments, start, pass: %s", passSource.name.c_str());
+	Logs::Logf(Logs::Category::Parser, "CreateResourceArguments, start, pass: {}", passSource.name);
 
 	const std::vector<Parsing::Resource_t>& passResources = passSource.resources;
 

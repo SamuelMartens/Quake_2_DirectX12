@@ -404,7 +404,7 @@ void ResourceManager::GetDrawTextureFullname(const char* name, char* dest, int d
 {
 	if (name[0] != '/' && name[0] != '\\')
 	{
-		Utils::Sprintf(dest, destSize, "pics/%s.pcx", name);
+		snprintf(dest, destSize, "pics/%s.pcx", name);
 	}
 	else
 	{
@@ -415,7 +415,7 @@ void ResourceManager::GetDrawTextureFullname(const char* name, char* dest, int d
 
 void ResourceManager::UpdateResource(Resource& res, const std::byte* data, GPUJobContext& context)
 {
-	Logs::Logf(Logs::Category::Resource, "Update Resource with name %s", res.name.c_str());
+	Logs::Logf(Logs::Category::Resource, "Update Resource with name {}", res.name);
 
 	DX_ASSERT((res.desc.dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
 			res.desc.dimension == D3D12_RESOURCE_DIMENSION_BUFFER) &&
@@ -504,7 +504,7 @@ void ResourceManager::DeleteResource(const char* name)
 {
 	std::scoped_lock<std::mutex> lock(resources.mutex);
 
-	Logs::Logf(Logs::Category::Resource, "Delete resource %s", name);
+	Logs::Logf(Logs::Category::Resource, "Delete resource {}", name);
 
 	auto resIt = resources.obj.find(name);
 
@@ -515,7 +515,7 @@ void ResourceManager::DeleteResource(const char* name)
 
 Resource* ResourceManager::_CreateResource(FArg::CreateResource& args)
 {
-	Logs::Logf(Logs::Category::Resource, "Create resource %s", args.name);
+	Logs::Logf(Logs::Category::Resource, "Create resource {}", args.name);
 
 	DX_ASSERT(args.desc->dimension != D3D12_RESOURCE_DIMENSION_UNKNOWN && "Invalid texture dimension during resource creation");
 

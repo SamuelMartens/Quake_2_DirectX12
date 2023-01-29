@@ -166,7 +166,7 @@ namespace
 
 		parser.set_logger([](size_t line, size_t col, const std::string& msg)
 		{
-			Logs::Logf(Logs::Category::Parser, "Error: line %d , col %d %s", line, col, msg.c_str());
+			Logs::Logf(Logs::Category::Parser, "Error: line {} , col {} {}", line, col, msg);
 
 			DX_ASSERT(false && "Light baking result parsing error");
 		});
