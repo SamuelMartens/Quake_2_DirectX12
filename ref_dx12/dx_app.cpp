@@ -2589,8 +2589,10 @@ void Renderer::EndLevelLoading()
 	{
 		return;
 	}
+	
+	constexpr State nextState = Settings::LOAD_LIGHT_BAKING_DATA_ON_START_UP ? State::LoadLightBakingFromFile : State::Rendering;
 
-	RequestStateChange(State::Rendering);
+	RequestStateChange(nextState);
 	SwitchToRequestedState();
 
 	Logs::Log(Logs::Category::Generic, "API: End level loading");

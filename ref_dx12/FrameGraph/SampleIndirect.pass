@@ -285,7 +285,6 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	GetProbeCubeIndices(position, clusterIndex, probeCubeMin, probeCubeMax);
 	
 	// Random seed
-	//#DEBUG I might just make seed global variable
 	float normalizedSeed = float(uint(dispatchThreadID.x * dispatchThreadID.y * FrameRandSeed)) / maxUintVal;
 	
 	// Init probe cube samples
@@ -310,6 +309,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 					
 					float normSample2 = NextRandomNormalizedSample(normalizedSeed);
 					normalizedSeed = normSample2;
+					
 					float4 sampleDir = float4(GenerateCosineWeightedSample(normSample1, normSample2).xyz, 0.0f);
 					sampleDir = mul(tangentTransform, sampleDir);
 					
@@ -319,7 +319,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 						min(probeCubeMin.z + zInd, probeCubeMax.z),
 						0
 					);
-					//#DEBUG do I have any coverage when data is not there? Check everything in this shader, so it does behave well on invalid data
+					
 					const int probeArrayIndex = gridInfo.StartIndex + 
 						GetProbeArrayIndex(gridCoord, int4(gridInfo.SizeX, gridInfo.SizeY, gridInfo.SizeZ, 0));
 						

@@ -90,4 +90,7 @@ namespace Settings
 	// Because of floating point math errors, funding and reconstruction intersection point
 	// might not work correctly sometimes. This small Epsilon is used to fix this problem
 	constexpr float PATH_TRACING_EPSILON =  0.00015f;
+
+	/* Start up options */
+	constexpr bool LOAD_LIGHT_BAKING_DATA_ON_START_UP = true;
 }
