@@ -45,36 +45,39 @@ struct VertexOut
 
 // Resources  
 [Global, PerPass]
-cbuffer cbPerPass : register(b0, space0)
+cbuffer cbFrameData : register(b0, space0)
 {
-    float4x4 gViewProj;
-    float4 gCameraYaw;
-    float4 gCameraPitch;
-    float4 gCameraRoll;
-    float4 gCameraOrigin;
+	float4x4 InvertedViewProj;
+    float4x4 ViewProj;
+    float4 CameraYaw;
+    float4 CameraPitch;
+    float4 CameraRoll;
+    float4 CameraOrigin;
+	int ScreenWidth;
+	int ScreenHeight;
 }
 
 [Global, PerObject]
 cbuffer cbPerObject_Global : register(b0, space1)
 {
-	int gDebugObjectType;
+	int DebugObjectType;
 }
 
 [Local, PerObject]
 cbuffer cbPerObject_Local : register(b0, space3)
 {
 	// Probes debug info
-	float4 gCenter;
-	int gProbeIndex;
+	float4 ProbeCenter;
+	int ProbeIndex;
 }
 
 [Global, PerPass]
-StructuredBuffer<float4> sbDiffuseProbes : register(t0, space0)
+StructuredBuffer<float4> DiffuseProbes : register(t0, space0)
 
 // Shaders
 
 Type : VS 
-External : cbPerPass, cbPerObject_Local, cbPerObject_Global, VertexIn, VertexOut
+External : cbFrameData, cbPerObject_Local, cbPerObject_Global, VertexIn, VertexOut
 <[
 
 
@@ -85,11 +88,11 @@ VertexOut main(VertexIn vIn)
 {
 	VertexOut vOut;
 	// Funny enought, by default matrices are packed as column major.
-	vOut.Pos = mul(gViewProj, vIn.Pos);
+	vOut.Pos = mul(ViewProj, vIn.Pos);
 	
-	if (gDebugObjectType == DEBUG_OBJECT_LIGHT_PROBE)
+	if (DebugObjectType == DEBUG_OBJECT_LIGHT_PROBE)
 	{
-		vOut.LocalPos =  vIn.Pos - gCenter; 
+		vOut.LocalPos =  vIn.Pos - ProbeCenter; 
 	}
 	else
 	{
@@ -101,7 +104,7 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : PS 
-External : VertexOut, sbDiffuseProbes, cbPerObject_Global, cbPerObject_Local
+External : VertexOut, DiffuseProbes, cbPerObject_Global, cbPerObject_Local
 <[
 
 @include "Debug.passh"
@@ -112,7 +115,7 @@ External : VertexOut, sbDiffuseProbes, cbPerObject_Global, cbPerObject_Local
 
 float4 main(VertexOut vOut) : SV_Target
 {
-	if (gDebugObjectType != DEBUG_OBJECT_LIGHT_PROBE)
+	if (DebugObjectType != DEBUG_OBJECT_LIGHT_PROBE)
 	{
 		discard;
 	}
@@ -122,10 +125,10 @@ float4 main(VertexOut vOut) : SV_Target
 	float4 dirFromCenter = float4(normalize(vOut.LocalPos.xyz) * 0.5 + 0.5, 1.0);
 	color = dirFromCenter;
 		
-	if (gProbeIndex != INVALID_INDEX)
+	if (ProbeIndex != INVALID_INDEX)
 	{
 		float4 sampleDir = float4(normalize(vOut.LocalPos.xyz), 0.0);
-		color = ReconstructRadianceFromSH(sampleDir, gProbeIndex);
+		color = ReconstructRadianceFromSH(sampleDir, ProbeIndex);
 	}
 
     return color;

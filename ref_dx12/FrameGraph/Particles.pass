@@ -57,13 +57,16 @@ struct GeomVertOut
 // Resources 
 
 [Global, PerPass]
-cbuffer cbPerPass : register(b0, space0)
+cbuffer cbFrameData : register(b0, space0)
 {
-    float4x4 gViewProj;
-    float4 gCameraYaw;
-    float4 gCameraPitch;
-    float4 gCameraRoll;
-    float4 gCameraOrigin;
+	float4x4 InvertedViewProj;
+    float4x4 ViewProj;
+    float4 CameraYaw;
+    float4 CameraPitch;
+    float4 CameraRoll;
+    float4 CameraOrigin;
+	int ScreenWidth;
+	int ScreenHeight;
 }
 
 // Shaders
@@ -83,7 +86,7 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : GS 
-External : cbPerPass, VertexOut, GeomVertOut
+External : cbFrameData, VertexOut, GeomVertOut
 <[
 // v1 +--------+ v2
 //    |        |
@@ -95,40 +98,40 @@ External : cbPerPass, VertexOut, GeomVertOut
 void main(point VertexOut vIn[1], inout TriangleStream<GeomVertOut> triStream)
 {
     // hack a scale up to keep particles from disapearing
-    float scale = dot(vIn[0].Pos - gCameraOrigin,  gCameraRoll);
+    float scale = dot(vIn[0].Pos - CameraOrigin,  CameraRoll);
     scale = scale < 20.0f ? 1.0f : 1.0f + scale * 0.004f;
     scale *= 1.5f;
  
     
-    float4 center = (gCameraYaw + gCameraPitch) * 0.5;
+    float4 center = (CameraYaw + CameraPitch) * 0.5;
     
     // Create quad
     // Remember we create triangle strip, that's why order is a bit weird 
     
     GeomVertOut v0;
     v0.ModelPos = 0.0;
-    v0.Pos = mul(gViewProj, vIn[0].Pos + v0.ModelPos);
+    v0.Pos = mul(ViewProj, vIn[0].Pos + v0.ModelPos);
     v0.Col = vIn[0].Col;
     v0.Center = center;
     triStream.Append(v0);
    
     GeomVertOut v1;
-    v1.ModelPos = gCameraYaw;
-    v1.Pos = mul(gViewProj, vIn[0].Pos + mul(v1.ModelPos, scale));
+    v1.ModelPos = CameraYaw;
+    v1.Pos = mul(ViewProj, vIn[0].Pos + mul(v1.ModelPos, scale));
     v1.Col = vIn[0].Col;
     v1.Center = center;
     triStream.Append(v1); 
     
     GeomVertOut v2;
-    v2.ModelPos = gCameraPitch;
-    v2.Pos = mul(gViewProj, vIn[0].Pos + mul(v2.ModelPos, scale));
+    v2.ModelPos = CameraPitch;
+    v2.Pos = mul(ViewProj, vIn[0].Pos + mul(v2.ModelPos, scale));
     v2.Col = vIn[0].Col;
     v2.Center = center;
     triStream.Append(v2);
    
     GeomVertOut v3;
-    v3.ModelPos = gCameraYaw + gCameraPitch;
-    v3.Pos = mul(gViewProj, vIn[0].Pos + mul(v3.ModelPos, scale));
+    v3.ModelPos = CameraYaw + CameraPitch;
+    v3.Pos = mul(ViewProj, vIn[0].Pos + mul(v3.ModelPos, scale));
     v3.Col = vIn[0].Col;
     v3.Center = center;
     triStream.Append(v3);

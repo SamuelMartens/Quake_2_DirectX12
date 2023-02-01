@@ -81,7 +81,7 @@ namespace RenderCallbacks
 
 				switch (paramName)
 				{
-				case HASH("gDiffuseMap"):
+				case HASH("DiffuseMap"):
 				{
 					Renderer& renderer = Renderer::Inst();
 
@@ -116,7 +116,7 @@ namespace RenderCallbacks
 		{
 			switch (paramName)
 			{
-			case HASH("gDiffuseMap"):
+			case HASH("DiffuseMap"):
 			{
 				Resource* tex = ResourceManager::Inst().FindResource(obj.textureKey.c_str());
 
@@ -133,7 +133,7 @@ namespace RenderCallbacks
 		{
 			switch(paramName)
 			{
-			case HASH("gDiffuseMap"):
+			case HASH("DiffuseMap"):
 			{
 				DX_ASSERT(obj.skin == nullptr && "Custom skin. I am not prepared for this");
 
@@ -190,14 +190,14 @@ namespace RenderCallbacks
 
 				switch (paramName)
 				{
-				case HASH("gWorldViewProj"):
+				case HASH("WorldViewProj"):
 				{
 					XMMATRIX mvpMat = XMMatrixTranslation(obj.x, obj.y, 0.0f);
 
 					XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint), mvpMat * XMLoadFloat4x4(&ctx.viewProjMat));
 				}
 				break;
-				case HASH("type"):
+				case HASH("UIObjType"):
 				{
 					int& type = reinterpret_cast<int&>(bindPoint);
 
@@ -238,7 +238,7 @@ namespace RenderCallbacks
 		{
 			switch (paramName)
 			{
-			case HASH("gDebugObjectType"):
+			case HASH("DebugObjectType"):
 			{
 				std::visit([&bindPoint](auto&& object)
 				{
@@ -314,7 +314,7 @@ namespace RenderCallbacks
 	{
 		switch (paramName)
 		{
-		case HASH("gFontTex"): 
+		case HASH("FontTex"): 
 		{
 			std::array<char, MAX_QPATH> texFullName;
 			ResourceManager& resMan = ResourceManager::Inst();
@@ -336,7 +336,7 @@ namespace RenderCallbacks
 			DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->gpuBuffer.Get(), &emtpySrvDesc));
 		}
 		break;
-		case HASH("sbDiffuseProbes"):
+		case HASH("DiffuseProbes"):
 		{
 		}
 		break;
@@ -403,38 +403,38 @@ namespace RenderCallbacks
 			}
 		}
 		break;
-		case HASH("gViewProj"):
+		case HASH("ViewProj"):
 		{
 			XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint), ctx.jobContext.frame.camera.GetViewProjMatrix());
 		}
 		break;
-		case HASH("gCameraYaw"):
+		case HASH("CameraYaw"):
 		{
 			auto[yaw, pitch, roll] = ctx.jobContext.frame.camera.GetBasis();
 
 			reinterpret_cast<XMFLOAT4&>(bindPoint) = yaw;
 		}
 		break;
-		case HASH("gCameraPitch"):
+		case HASH("CameraPitch"):
 		{
 			auto[yaw, pitch, roll] = ctx.jobContext.frame.camera.GetBasis();
 
 			reinterpret_cast<XMFLOAT4&>(bindPoint) = pitch;
 		}
 		break;
-		case HASH("gCameraRoll"):
+		case HASH("CameraRoll"):
 		{
 			auto[yaw, pitch, roll] = ctx.jobContext.frame.camera.GetBasis();
 
 			reinterpret_cast<XMFLOAT4&>(bindPoint) = roll;
 		}
 		break;
-		case HASH("gCameraOrigin"):
+		case HASH("CameraOrigin"):
 		{
 			reinterpret_cast<XMFLOAT4&>(bindPoint) = ctx.jobContext.frame.camera.position;
 		}
 		break;
-		case HASH("sbDiffuseProbes"):
+		case HASH("DiffuseProbes"):
 		{
 			Resource* probeGpuBuffer = ResourceManager::Inst().FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME);
 			if (probeGpuBuffer == nullptr)
@@ -750,7 +750,7 @@ namespace RenderCallbacks
 			{
 				switch (paramName)
 				{
-				case HASH("gCenter"):
+				case HASH("ProbeCenter"):
 				{
 					std::visit([&bindPoint](auto&& object) 
 					{
@@ -767,7 +767,7 @@ namespace RenderCallbacks
 					}, obj);
 				}
 				break;
-				case HASH("gProbeIndex"):
+				case HASH("ProbeIndex"):
 				{
 					std::visit([&bindPoint](auto&& object)
 					{
@@ -794,7 +794,7 @@ namespace RenderCallbacks
 			{
 				switch (paramName)
 				{
-				case HASH("gLightSourceType"):
+				case HASH("LightSourceType"):
 				{
 					std::visit([&bindPoint](auto&& object)
 					{
@@ -819,7 +819,7 @@ namespace RenderCallbacks
 			{
 				switch (paramName)
 				{
-				case HASH("gBounceNum"):
+				case HASH("BounceNum"):
 				{
 					std::visit([&bindPoint](auto&& object)
 					{
@@ -835,7 +835,7 @@ namespace RenderCallbacks
 						}
 					}, obj);
 				}
-				case HASH("gRadiance"):
+				case HASH("Radiance"):
 				{
 					std::visit([&bindPoint](auto&& object)
 					{
@@ -869,13 +869,13 @@ namespace RenderCallbacks
 			{
 				switch (paramName)
 				{
-				case HASH("gWorldViewProj"):
+				case HASH("WorldViewProj"):
 				{
 					XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint),
 						DynamicObjectModel::GenerateModelMat(obj) * ctx.jobContext.frame.camera.GetViewProjMatrix());
 				}
 				break;
-				case HASH("gAnimMove"):
+				case HASH("AnimMove"):
 				{
 					const DynamicObjectModel& model = Renderer::Inst().GetDynamicModels().at(obj.model);
 					auto [animMove, frontLerp, backLerp] = model.GenerateAnimInterpolationData(obj);
@@ -883,7 +883,7 @@ namespace RenderCallbacks
 					reinterpret_cast<XMFLOAT4&>(bindPoint) = animMove;
 				}
 				break;
-				case HASH("gFrontLerp"):
+				case HASH("FrontLerp"):
 				{
 					const DynamicObjectModel& model = Renderer::Inst().GetDynamicModels().at(obj.model);
 					auto [animMove, frontLerp, backLerp] = model.GenerateAnimInterpolationData(obj);
@@ -891,7 +891,7 @@ namespace RenderCallbacks
 					reinterpret_cast<XMFLOAT4&>(bindPoint) = frontLerp;
 				}
 				break;
-				case HASH("gBackLerp"):
+				case HASH("BackLerp"):
 				{
 					const DynamicObjectModel& model = Renderer::Inst().GetDynamicModels().at(obj.model);
 					auto [animMove, frontLerp, backLerp] = model.GenerateAnimInterpolationData(obj);

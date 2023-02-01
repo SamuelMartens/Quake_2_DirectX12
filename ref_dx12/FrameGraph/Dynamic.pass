@@ -50,14 +50,14 @@ struct VertexOut
 [Local, PerObject]
 cbuffer cbPerObject : register(b0, space3)
 {
-	float4x4 gWorldViewProj;
-    float4 gAnimMove;
-    float4 gFrontLerp;
-    float4 gBackLerp;
+	float4x4 WorldViewProj;
+    float4 AnimMove;
+    float4 FrontLerp;
+    float4 BackLerp;
 }
 
 [Global, PerObject]
-Texture2D gDiffuseMap : register(t0, space0)
+Texture2D DiffuseMap : register(t0, space0)
 
 [Global, PerPass]
 SamplerState gSamLinearWrap : register(s0, space0)
@@ -69,12 +69,12 @@ External : cbPerObject, VertexIn, VertexOut
 <[
 VertexOut main(VertexIn vIn)
 {
-    float4 interpolatedPos = gAnimMove + vIn.Pos0 * gBackLerp + vIn.Pos1 * gFrontLerp;
+    float4 interpolatedPos = AnimMove + vIn.Pos0 * BackLerp + vIn.Pos1 * FrontLerp;
     interpolatedPos.w = 1.0f;
 
 	VertexOut vOut;
     // Funny enought, by default matrices are packed as column major.
-    vOut.Pos = mul(gWorldViewProj, interpolatedPos);
+    vOut.Pos = mul(WorldViewProj, interpolatedPos);
     
 	vOut.Tex = vIn.Tex;
 
@@ -83,11 +83,11 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : PS 
-External : gDiffuseMap, gSamLinearWrap, VertexOut
+External : DiffuseMap, gSamLinearWrap, VertexOut
 <[
 float4 main(VertexOut vOut) : SV_Target
 {
-	float4 color = gDiffuseMap.Sample(gSamLinearWrap, vOut.Tex);
+	float4 color = DiffuseMap.Sample(gSamLinearWrap, vOut.Tex);
     
     if (color.a == 0)
     {

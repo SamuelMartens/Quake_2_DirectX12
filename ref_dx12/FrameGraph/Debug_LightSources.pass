@@ -44,38 +44,41 @@ struct VertexOut
 }
 
 [Global, PerPass]
-cbuffer cbPerPass : register(b0, space0)
+cbuffer cbFrameData : register(b0, space0)
 {
-    float4x4 gViewProj;
-    float4 gCameraYaw;
-    float4 gCameraPitch;
-    float4 gCameraRoll;
-    float4 gCameraOrigin;
+	float4x4 InvertedViewProj;
+    float4x4 ViewProj;
+    float4 CameraYaw;
+    float4 CameraPitch;
+    float4 CameraRoll;
+    float4 CameraOrigin;
+	int ScreenWidth;
+	int ScreenHeight;
 }
 
 [Global, PerObject]
 cbuffer cbPerObject_Global : register(b0, space1)
 {
-	int gDebugObjectType;
+	int DebugObjectType;
 }
  
 [Local, PerObject]
 cbuffer cbPerObject_Local : register(b0, space3)
 {
-	int gLightSourceType;
+	int LightSourceType;
 }
 
 // Shaders
 
 Type : VS 
-External : cbPerPass, VertexIn, VertexOut
+External : cbFrameData, VertexIn, VertexOut
 <[
 
 VertexOut main(VertexIn vIn)
 {
 	VertexOut vOut;
 	// Funny enought, by default matrices are packed as column major.
-	vOut.Pos = mul(gViewProj, vIn.Pos);
+	vOut.Pos = mul(ViewProj, vIn.Pos);
 	
 
 	return vOut;
@@ -92,19 +95,19 @@ External : VertexOut, cbPerObject_Global, cbPerObject_Local
 
 float4 main(VertexOut vOut) : SV_Target
 {
-	if (gDebugObjectType != DEBUG_OBJECT_LIGHT_SOURCE)
+	if (DebugObjectType != DEBUG_OBJECT_LIGHT_SOURCE)
 	{
 		discard;
 	}
 
 	float4 color = float4(0.0, 0.0, 0.0, 1.0);
 
-	if (gLightSourceType == DEBUG_AREA_LIGHT)
+	if (LightSourceType == DEBUG_AREA_LIGHT)
 	{
 		color = float4(1.0, 0.0, 0.0, 1.0);
 	}
 	
-	if (gLightSourceType == DEBUG_POINT_LIGHT)
+	if (LightSourceType == DEBUG_POINT_LIGHT)
 	{
 		color = float4(0.0, 1.0, 0.0, 1.0);
 	}

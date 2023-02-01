@@ -58,20 +58,22 @@ struct PixelOut
 }
 
 // Resources 
-//#DEBUG this should be merged with frame data cb?
 [Global, PerPass]
-cbuffer cbPerPass : register(b0, space0)
+cbuffer cbFrameData : register(b0, space0)
 {
-    float4x4 gViewProj;
-    float4 gCameraYaw;
-    float4 gCameraPitch;
-    float4 gCameraRoll;
-    float4 gCameraOrigin;
+	float4x4 InvertedViewProj;
+    float4x4 ViewProj;
+    float4 CameraYaw;
+    float4 CameraPitch;
+    float4 CameraRoll;
+    float4 CameraOrigin;
+	int ScreenWidth;
+	int ScreenHeight;
 }
 
 
 [Global, PerObject]
-Texture2D gDiffuseMap : register(t0, space1)
+Texture2D DiffuseMap : register(t0, space1)
 
 [Global, PerPass]
 SamplerState gSamLinearWrap : register(s0, space0)
@@ -81,13 +83,13 @@ SamplerState gSamLinearWrap : register(s0, space0)
 // Shaders
 
 Type : VS 
-External : cbPerPass, VertexIn, VertexOut
+External : cbFrameData, VertexIn, VertexOut
 <[
 VertexOut main(VertexIn vIn)
 {
 	VertexOut vOut;
 	// Funny enought, by default matrices are packed as column major.
-	vOut.Pos = mul(gViewProj, vIn.Pos);
+	vOut.Pos = mul(ViewProj, vIn.Pos);
 
 	vOut.Normal = vIn.Normal;
 	vOut.WorldPos = vIn.Pos;
@@ -98,11 +100,11 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : PS 
-External : gDiffuseMap, gSamLinearWrap, VertexOut, PixelOut
+External : DiffuseMap, gSamLinearWrap, VertexOut, PixelOut
 <[
 PixelOut main(VertexOut vOut) : SV_Target
 {
-	float4 color = gDiffuseMap.Sample(gSamLinearWrap, vOut.Tex);
+	float4 color = DiffuseMap.Sample(gSamLinearWrap, vOut.Tex);
     
 	if (color.a == 0)
     {

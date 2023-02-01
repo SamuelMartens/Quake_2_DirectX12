@@ -49,15 +49,15 @@ struct VertexOut
 [Global, PerObject]
 cbuffer cbPerObject : register(b0, space1)
 {
-	float4x4 gWorldViewProj;
-	int type;
+	float4x4 WorldViewProj;
+	int UIObjType;
 }
 
 [Global, PerObject]
-Texture2D gDiffuseMap : register(t0, space1)
+Texture2D DiffuseMap : register(t0, space1)
 
 [Global, PerPass]
-Texture2D gFontTex : register(t0, space0)
+Texture2D FontTex : register(t0, space0)
 
 [Global, PerPass]
 Texture2D gMovieTex : register(t1, space0)
@@ -74,7 +74,7 @@ VertexOut main(VertexIn vIn)
 {
 	VertexOut vOut;
 	// Funny enought, by default matrices are packed as column major.
-	vOut.Pos = mul(gWorldViewProj, vIn.Pos);
+	vOut.Pos = mul(WorldViewProj, vIn.Pos);
 
 	vOut.Tex = vIn.Tex;
 
@@ -83,7 +83,7 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : PS 
-External : gDiffuseMap, gSamLinearWrap, VertexOut, gMovieTex, gFontTex, cbPerObject
+External : DiffuseMap, gSamLinearWrap, VertexOut, gMovieTex, FontTex, cbPerObject
 <[
 float4 main(VertexOut vOut) : SV_Target
 {
@@ -91,17 +91,17 @@ float4 main(VertexOut vOut) : SV_Target
 	float4 color = float4(0.0, 0.0, 0.0, 1.0);
 	
 	// Picture object
-	if (type == 0)
+	if (UIObjType == 0)
 	{
-		color =	gDiffuseMap.Sample(gSamLinearWrap, vOut.Tex);
+		color =	DiffuseMap.Sample(gSamLinearWrap, vOut.Tex);
 	}
 	// Text
-	else if (type == 1)
+	else if (UIObjType == 1)
 	{
-		color =	gFontTex.Sample(gSamLinearWrap, vOut.Tex);
+		color =	FontTex.Sample(gSamLinearWrap, vOut.Tex);
 	}
 	// Movie
-	else if (type == 2)
+	else if (UIObjType == 2)
 	{
 		color =	gMovieTex.Sample(gSamLinearWrap, vOut.Tex);
 	}
