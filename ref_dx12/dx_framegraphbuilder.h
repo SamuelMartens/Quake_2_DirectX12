@@ -37,9 +37,8 @@ namespace Parsing
 	struct RootParam_BaseView
 	{
 		int registerId = Const::INVALID_INDEX;
+		int registerSpace = Const::INVALID_INDEX;
 		int num = Const::INVALID_SIZE;
-		//#DEBUG should I rename this to registerSpace and move up in struct?
-		int space = Const::INVALID_INDEX;
 	};
 
 	struct RootParam_ConstBuffView : public RootParam_BaseView

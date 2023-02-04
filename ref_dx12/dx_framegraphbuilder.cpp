@@ -148,6 +148,38 @@ namespace
 		return initBuffer;
 	}
 
+	Parsing::RootParam_BaseView InitRootParamBaseView(const peg::SemanticValues& sv)
+	{
+		int num = DEFAULT_ROOT_SIG_DESCRIPTORS_NUM;
+		int space = DEFAULT_ROOT_SIG_DESCRIPTOR_SPACE;
+
+		for (int i = 1; i < sv.size(); ++i)
+		{
+			auto option = std::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
+
+			switch (std::get<Parsing::Option>(option))
+			{
+			case Parsing::Option::NumDecl:
+				num = std::get<int>(option);
+				break;
+			case Parsing::Option::Visibility:
+				break;
+			case Parsing::Option::Space:
+				space = std::get<int>(option);
+				break;
+			default:
+				DX_ASSERT(false && "Invalid root param option in Sampler decl");
+				break;
+			}
+		}
+
+		return Parsing::RootParam_BaseView{
+			std::any_cast<int>(sv[0]),
+			space,
+			num
+		};
+	}
+
 	void InitPreprocessorParser(peg::parser& parser)
 	{
 		// Load grammar
@@ -576,131 +608,37 @@ namespace
 
 		parser["RSigCBVDecl"] = [](const peg::SemanticValues& sv)
 		{
-			int num = DEFAULT_ROOT_SIG_DESCRIPTORS_NUM;
-			int space = DEFAULT_ROOT_SIG_DESCRIPTOR_SPACE;
-
-			for (int i = 1 ; i < sv.size(); ++i)
-			{
-				auto option = std::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
-
-				switch (std::get<Parsing::Option>(option))
-				{
-				case Parsing::Option::NumDecl:
-					num = std::get<int>(option);
-					break;
-				case Parsing::Option::Visibility:
-					break;
-				case Parsing::Option::Space:
-					space = std::get<int>(option);
-					break;
-				default:
-					DX_ASSERT(false && "Invalid root param option in CBV decl");
-					break;
-				}
-			}
+			Parsing::RootParam_BaseView baseView = InitRootParamBaseView(sv);
 
 			return Parsing::RootParam_ConstBuffView{
-				std::any_cast<int>(sv[0]),
-				num,
-				space
+				baseView
 			};
 		};
 
 		parser["RSigSRVDecl"] = [](const peg::SemanticValues& sv)
 		{
-			int num = DEFAULT_ROOT_SIG_DESCRIPTORS_NUM;
-			int space = DEFAULT_ROOT_SIG_DESCRIPTOR_SPACE;
-
-			for (int i = 1; i < sv.size(); ++i)
-			{
-				auto option = std::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
-
-				switch (std::get<Parsing::Option>(option))
-				{
-				case Parsing::Option::NumDecl:
-					num = std::get<int>(option);
-					break;
-				case Parsing::Option::Visibility:
-					break;
-				case Parsing::Option::Space:
-					space = std::get<int>(option);
-					break;
-				default:
-					DX_ASSERT(false && "Invalid root param option in SRV decl");
-					break;
-				}
-			}
+			Parsing::RootParam_BaseView baseView = InitRootParamBaseView(sv);
 
 			return Parsing::RootParam_ShaderResourceView{
-				std::any_cast<int>(sv[0]),
-				num,
-				space
+				baseView
 			};
 		};
 
 		parser["RSigUAVDecl"] = [](const peg::SemanticValues& sv) 
 		{
-			int num = DEFAULT_ROOT_SIG_DESCRIPTORS_NUM;
-			int space = DEFAULT_ROOT_SIG_DESCRIPTOR_SPACE;
-
-			for (int i = 1; i < sv.size(); ++i)
-			{
-				auto option = std::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
-
-				switch (std::get<Parsing::Option>(option))
-				{
-				case Parsing::Option::NumDecl:
-					num = std::get<int>(option);
-					break;
-				case Parsing::Option::Visibility:
-					break;
-				case Parsing::Option::Space:
-					space = std::get<int>(option);
-					break;
-				default:
-					DX_ASSERT(false && "Invalid root param option in UAV decl");
-					break;
-				}
-			}
+			Parsing::RootParam_BaseView baseView = InitRootParamBaseView(sv);
 
 			return Parsing::RootParam_UAView{
-				std::any_cast<int>(sv[0]),
-				num,
-				space
+				baseView
 			};
 		};
 
 		parser["RSigDescTableSampler"] = [](const peg::SemanticValues& sv)
 		{
-			//#DEBUG this routine is shared with all other functions. I should do something like
-			// 'InitResoureBase'
-			int num = DEFAULT_ROOT_SIG_DESCRIPTORS_NUM;
-			int space = DEFAULT_ROOT_SIG_DESCRIPTOR_SPACE;
-
-			for (int i = 1; i < sv.size(); ++i)
-			{
-				auto option = std::any_cast<std::tuple<Parsing::Option, int>>(sv[i]);
-
-				switch (std::get<Parsing::Option>(option))
-				{
-				case Parsing::Option::NumDecl:
-					num = std::get<int>(option);
-					break;
-				case Parsing::Option::Visibility:
-					break;
-				case Parsing::Option::Space:
-					space = std::get<int>(option);
-					break;
-				default:
-					DX_ASSERT(false && "Invalid root param option in Sampler decl");
-					break;
-				}
-			}
+			Parsing::RootParam_BaseView baseView = InitRootParamBaseView(sv);
 
 			return Parsing::RootParam_SamplerView{
-				std::any_cast<int>(sv[0]),
-				num,
-				space
+				baseView
 			};
 		};
 
@@ -2466,7 +2404,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 			if constexpr (std::is_same_v<T, Parsing::RootParam_ConstBuffView>)
 			{
 				const Parsing::Resource_ConstBuff* res =
-					FindResourceOfTypeAndRegister<Parsing::Resource_ConstBuff>(passResources, rootParam.registerId, rootParam.space);
+					FindResourceOfTypeAndRegister<Parsing::Resource_ConstBuff>(passResources, rootParam.registerId, rootParam.registerSpace);
 
 				DX_ASSERT(rootParam.num == 1 && "Inline const buffer view should always have numDescriptors 1");
 				DX_ASSERT(res->bind.has_value() == false && "Internal bind for inline const buffer view is not implemented");
@@ -2486,7 +2424,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 			else if constexpr (std::is_same_v<T, Parsing::RootParam_UAView>)
 			{
 				const Parsing::Resource_RWTexture* res =
-					FindResourceOfTypeAndRegister<Parsing::Resource_RWTexture>(passResources, rootParam.registerId, rootParam.space);
+					FindResourceOfTypeAndRegister<Parsing::Resource_RWTexture>(passResources, rootParam.registerId, rootParam.registerSpace);
 
 				DX_ASSERT(rootParam.num == 1 && "Inline UAV should always have numDescriptors 1");
 
@@ -2522,7 +2460,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 							for (int i = 0; i < descTableParam.num; ++i)
 							{
 								const Parsing::Resource_ConstBuff* res =
-									FindResourceOfTypeAndRegister<Parsing::Resource_ConstBuff>(passResources, descTableParam.registerId + i, descTableParam.space);
+									FindResourceOfTypeAndRegister<Parsing::Resource_ConstBuff>(passResources, descTableParam.registerId + i, descTableParam.registerSpace);
 
 								SetScopeAndBindFrequency(bindFrequency, scope, res);
 								
@@ -2541,7 +2479,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 							for (int i = 0; i < descTableParam.num; ++i)
 							{
 								const Parsing::Resource_Texture* resTexture =
-									FindResourceOfTypeAndRegister<Parsing::Resource_Texture>(passResources, descTableParam.registerId + i, descTableParam.space);
+									FindResourceOfTypeAndRegister<Parsing::Resource_Texture>(passResources, descTableParam.registerId + i, descTableParam.registerSpace);
 
 								// Is it structured buffer or texture?
 								if (resTexture != nullptr)
@@ -2557,7 +2495,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 								else
 								{
 									const Parsing::Resource_StructuredBuffer* resStructuredBuffer =
-										FindResourceOfTypeAndRegister<Parsing::Resource_StructuredBuffer>(passResources, descTableParam.registerId + i, descTableParam.space);
+										FindResourceOfTypeAndRegister<Parsing::Resource_StructuredBuffer>(passResources, descTableParam.registerId + i, descTableParam.registerSpace);
 
 									SetScopeAndBindFrequency(bindFrequency, scope, resStructuredBuffer);
 
@@ -2573,7 +2511,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 							for (int i = 0; i < descTableParam.num; ++i)
 							{
 								const Parsing::Resource_Sampler* res =
-									FindResourceOfTypeAndRegister<Parsing::Resource_Sampler>(passResources, descTableParam.registerId + i, descTableParam.space);
+									FindResourceOfTypeAndRegister<Parsing::Resource_Sampler>(passResources, descTableParam.registerId + i, descTableParam.registerSpace);
 
 								SetScopeAndBindFrequency(bindFrequency, scope, res);
 
@@ -2589,7 +2527,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 							for (int i = 0; i < descTableParam.num; ++i)
 							{
 								const Parsing::Resource_RWTexture* res =
-									FindResourceOfTypeAndRegister<Parsing::Resource_RWTexture>(passResources, descTableParam.registerId + i, descTableParam.space);
+									FindResourceOfTypeAndRegister<Parsing::Resource_RWTexture>(passResources, descTableParam.registerId + i, descTableParam.registerSpace);
 								
 								SetScopeAndBindFrequency(bindFrequency, scope, res);
 
@@ -2612,9 +2550,9 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 			else if constexpr (std::is_same_v<T, Parsing::RootParam_ShaderResourceView>)
 			{
 				const Parsing::Resource_StructuredBuffer* res =
-					FindResourceOfTypeAndRegister<Parsing::Resource_StructuredBuffer>(passResources, rootParam.registerId, rootParam.space);
+					FindResourceOfTypeAndRegister<Parsing::Resource_StructuredBuffer>(passResources, rootParam.registerId, rootParam.registerSpace);
 
-				DX_ASSERT(FindResourceOfTypeAndRegister<Parsing::Resource_Texture>(passResources, rootParam.registerId, rootParam.space) == nullptr &&
+				DX_ASSERT(FindResourceOfTypeAndRegister<Parsing::Resource_Texture>(passResources, rootParam.registerId, rootParam.registerSpace) == nullptr &&
 					"Inline SRV descriptor cannot correspond to Texture");
 
 				DX_ASSERT(rootParam.num == 1 && "Inline SRV should always have numDescriptors 1");

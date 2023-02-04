@@ -1896,7 +1896,9 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	// Get texture coords and indices in one buffer
 	const int* order = reinterpret_cast<const int*>(reinterpret_cast<const byte*>(aliasHeader) + aliasHeader->ofs_glcmds);
 	UnwindDynamicGeomIntoTriangleList(order, unnormalizedIndexBuffer, unnormalizedTexCoords);
-	//#DEBUG normalizedVertexIndices is getto name, Explain the diff between normalizedIndexBuffer and normalizedVertexIndices
+	
+	// NOTE: normalizedVertexIndices is the indices used to normalize (i.e. remove duplicates) of vertices
+	// later on. This is NOT indices used for geometry rendering.
 	auto[normalizedIndexBuffer, normalizedTexCoordsBuffer, normalizedVertexIndices] =
 		NormalizedDynamGeomVertTexCoord(unnormalizedIndexBuffer, unnormalizedTexCoords);
 
