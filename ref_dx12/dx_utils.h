@@ -280,10 +280,10 @@ namespace Utils
 
 	void MakeQuad(XMFLOAT2 posMin, XMFLOAT2 posMax, XMFLOAT2 texMin, XMFLOAT2 texMax, ShDef::Vert::PosTexCoord* outVert);
 
-	std::vector<uint32_t> GetIndicesListForTrianglelistFromPolygonPrimitive(int numVertices);
+	std::vector<int> GetIndicesListForTrianglelistFromPolygonPrimitive(int numVertices);
 
 	[[nodiscard]]
-	std::vector<XMFLOAT4> GenerateNormals(const std::vector<XMFLOAT4>& vertices, const std::vector<uint32_t>& indices);
+	std::vector<XMFLOAT4> GenerateNormals(const std::vector<XMFLOAT4>& vertices, const std::vector<int>& indices);
 
 	inline bool VecEqual(const XMFLOAT2& v1, const XMFLOAT2& v2)
 	{

@@ -1107,16 +1107,21 @@ void Pass_Dynamic::Draw(GPUJobContext& context)
 	}
 
 	// Position0, Position1, TexCoord 
-	D3D12_VERTEX_BUFFER_VIEW vertexBufferViews[3];
+	D3D12_VERTEX_BUFFER_VIEW vertexBufferViews[5];
 
 	constexpr int vertexSize = sizeof(XMFLOAT4);
 
 	vertexBufferViews[0].StrideInBytes = vertexSize;
 	vertexBufferViews[1].StrideInBytes = vertexSize;
 
+	constexpr int normalSize = sizeof(XMFLOAT4);
+
+	vertexBufferViews[2].StrideInBytes = normalSize;
+	vertexBufferViews[3].StrideInBytes = normalSize;
+
 	constexpr int texCoordStrideSize = sizeof(XMFLOAT2);
 
-	vertexBufferViews[2].StrideInBytes = texCoordStrideSize;
+	vertexBufferViews[4].StrideInBytes = texCoordStrideSize;
 	
 	// Index buffer data
 	D3D12_INDEX_BUFFER_VIEW indexBufferView;
@@ -1143,23 +1148,36 @@ void Pass_Dynamic::Draw(GPUJobContext& context)
 
 		// Set up vertex data
 		const DynamicObjectModel& model = dynamicModels.at(drawEntitiy.originalObj->model);
-		const int frameSize = vertexSize * model.headerData.animFrameVertsNum;
+		const int vertexFrameSize = vertexSize * model.headerData.animFrameVertsNum;
+		const int normalFrameSize = normalSize * model.headerData.animFrameNormalsNum;
+
 		const int vertexBufferStart = defaultMemory.GetOffset(model.vertices);
+		const int normalBufferStart = defaultMemory.GetOffset(model.normals);
 
 		// Position0
 		vertexBufferViews[0].BufferLocation = defaultMemBuffVirtAddress +
-			vertexBufferStart + frameSize * drawEntitiy.originalObj->oldframe;
-		vertexBufferViews[0].SizeInBytes = frameSize;
+			vertexBufferStart + vertexFrameSize * drawEntitiy.originalObj->oldframe;
+		vertexBufferViews[0].SizeInBytes = vertexFrameSize;
 
 		// Position1
 		vertexBufferViews[1].BufferLocation = defaultMemBuffVirtAddress +
-			vertexBufferStart + frameSize * drawEntitiy.originalObj->frame;
-		vertexBufferViews[1].SizeInBytes = frameSize;
+			vertexBufferStart + vertexFrameSize * drawEntitiy.originalObj->frame;
+		vertexBufferViews[1].SizeInBytes = vertexFrameSize;
+
+		// Normal0
+		vertexBufferViews[2].BufferLocation = defaultMemBuffVirtAddress +
+			normalBufferStart + normalFrameSize * drawEntitiy.originalObj->oldframe;
+		vertexBufferViews[2].SizeInBytes = normalFrameSize;
+
+		// Normal1
+		vertexBufferViews[3].BufferLocation = defaultMemBuffVirtAddress +
+			normalBufferStart + normalFrameSize * drawEntitiy.originalObj->frame;
+		vertexBufferViews[3].SizeInBytes = normalFrameSize;
 
 		// TexCoord
-		vertexBufferViews[2].BufferLocation = defaultMemBuffVirtAddress +
+		vertexBufferViews[4].BufferLocation = defaultMemBuffVirtAddress +
 			defaultMemory.GetOffset(model.textureCoords);
-		vertexBufferViews[2].SizeInBytes = texCoordStrideSize * model.headerData.animFrameVertsNum;
+		vertexBufferViews[4].SizeInBytes = texCoordStrideSize * model.headerData.animFrameVertsNum;
 
 		commandList.GetGPUList()->IASetVertexBuffers(0, _countof(vertexBufferViews), vertexBufferViews);
    

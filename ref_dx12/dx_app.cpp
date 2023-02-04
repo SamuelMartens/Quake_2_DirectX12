@@ -217,12 +217,14 @@ namespace
 		return std::make_tuple(reorderInd, reorderTexCoord, reorderVert);
 	}
 
-	void AppendNormalizedVertexData(const std::vector<int>& normalizedVertIndices, const std::vector<XMFLOAT4>& unnormalizedVertices,
-		std::vector<XMFLOAT4>& normalizedVertices)
+	std::vector<XMFLOAT4> NormalizeSingleFrameVertexData(const std::vector<int>& normalizedIndices, const std::vector<XMFLOAT4>& unnormalizedVertices)
 	{
-		for (int i = 0; i < normalizedVertIndices.size(); ++i)
+		std::vector<XMFLOAT4> normalizedVertices;
+		normalizedVertices.reserve(normalizedIndices.size());
+
+		for (int i = 0; i < normalizedIndices.size(); ++i)
 		{
-			const int unnormalizedVertInd = normalizedVertIndices[i];
+			const int unnormalizedVertInd = normalizedIndices[i];
 
 			if (unnormalizedVertInd == -1)
 			{
@@ -234,6 +236,8 @@ namespace
 				normalizedVertices.push_back(unnormalizedVertices[unnormalizedVertInd]);
 			}
 		}
+
+		return normalizedVertices;
 	}
 }
 
@@ -1882,9 +1886,6 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	const dmdl_t* aliasHeader = reinterpret_cast<dmdl_t*>(model->extradata);
 	DX_ASSERT(aliasHeader != nullptr && "Alias header for dynamic object is not found.");
 
-	// Header data
-	object.headerData.animFrameSizeInBytes = aliasHeader->framesize;
-
 	// Allocate buffers on CPU, that we will use for transferring our stuff
 	std::vector<int> unnormalizedIndexBuffer;
 	std::vector<XMFLOAT2> unnormalizedTexCoords;
@@ -1895,19 +1896,30 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	// Get texture coords and indices in one buffer
 	const int* order = reinterpret_cast<const int*>(reinterpret_cast<const byte*>(aliasHeader) + aliasHeader->ofs_glcmds);
 	UnwindDynamicGeomIntoTriangleList(order, unnormalizedIndexBuffer, unnormalizedTexCoords);
-
+	//#DEBUG normalizedVertexIndices is getto name, Explain the diff between normalizedIndexBuffer and normalizedVertexIndices
 	auto[normalizedIndexBuffer, normalizedTexCoordsBuffer, normalizedVertexIndices] =
 		NormalizedDynamGeomVertTexCoord(unnormalizedIndexBuffer, unnormalizedTexCoords);
 
 	object.headerData.animFrameVertsNum = normalizedVertexIndices.size();
+	object.headerData.animFrameNormalsNum = normalizedVertexIndices.size();
 	object.headerData.indicesNum = normalizedIndexBuffer.size();
 
+	// Reserver space for all vertices
 	const int verticesNum = aliasHeader->num_frames * object.headerData.animFrameVertsNum;
 	std::vector<XMFLOAT4> vertexBuffer;
 	vertexBuffer.reserve(verticesNum);
 
+	const int normalsNum = aliasHeader->num_frames * object.headerData.animFrameNormalsNum;
+	std::vector<XMFLOAT4> normalBuffer;
+	normalBuffer.reserve(normalsNum);
+
+	// Reserve space for single frame of vertices
 	std::vector<XMFLOAT4> singleFrameVertexBuffer;
 	singleFrameVertexBuffer.reserve(object.headerData.animFrameVertsNum);
+
+	// Reserve space for single frame of normals
+	std::vector<XMFLOAT4> singleFrameNormalBuffer;
+	singleFrameNormalBuffer.reserve(object.headerData.animFrameNormalsNum);
 
 	// Animation frames data
 	object.animationFrames.reserve(aliasHeader->num_frames);
@@ -1924,6 +1936,7 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 
 		// Fill up one frame vertices (unnormalized)
 		singleFrameVertexBuffer.clear();
+
 		for (int j = 0; j < aliasHeader->num_xyz; ++j)
 		{
 			const byte* currentVert = currentFrame->verts[j].v;
@@ -1933,7 +1946,12 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 				currentVert[2],
 				1.0f));
 		}
-		AppendNormalizedVertexData(normalizedVertexIndices, singleFrameVertexBuffer, vertexBuffer);
+
+		singleFrameVertexBuffer = NormalizeSingleFrameVertexData(normalizedVertexIndices, singleFrameVertexBuffer);
+		singleFrameNormalBuffer = Utils::GenerateNormals(singleFrameVertexBuffer, normalizedIndexBuffer);
+
+		vertexBuffer.insert(vertexBuffer.end(), singleFrameVertexBuffer.cbegin(), singleFrameVertexBuffer.cend());
+		normalBuffer.insert(normalBuffer.end(), singleFrameNormalBuffer.cbegin(), singleFrameNormalBuffer.cend());
 
 		// Get next frame
 		currentFrame = reinterpret_cast<const daliasframe_t*>(
@@ -1946,12 +1964,15 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 
 	// Load GPU buffers
 	const int vertexBufferSize = vertexBuffer.size() * sizeof(XMFLOAT4);
+	const int normalBufferSize = normalBuffer.size() * sizeof(XMFLOAT4);
+
 	const int indexBufferSize = normalizedIndexBuffer.size() * sizeof(int);
 	const int texCoordsBufferSize = normalizedTexCoordsBuffer.size() * sizeof(XMFLOAT2);
 
 	object.vertices = defaultMemory.Allocate(vertexBufferSize);
 	object.indices = defaultMemory.Allocate(indexBufferSize);
 	object.textureCoords = defaultMemory.Allocate(texCoordsBufferSize);
+	object.normals = defaultMemory.Allocate(normalBufferSize);
 
 	ResourceManager& resMan = ResourceManager::Inst();
 
@@ -1962,6 +1983,15 @@ DynamicObjectModel Renderer::CreateDynamicGraphicObjectFromGLModel(const model_t
 	updateArgs.byteSize = vertexBufferSize;
 	updateArgs.data = reinterpret_cast<const void*>(vertexBuffer.data());
 	updateArgs.offset = defaultMemory.GetOffset(object.vertices);
+	updateArgs.context = &context;
+	resMan.UpdateDefaultHeapBuff(updateArgs);
+
+	// Get normals in
+	updateArgs.alignment = 0;
+	updateArgs.buffer = defaultMemory.GetGpuBuffer();
+	updateArgs.byteSize = normalBufferSize;
+	updateArgs.data = reinterpret_cast<const void*>(normalBuffer.data());
+	updateArgs.offset = defaultMemory.GetOffset(object.normals);
 	updateArgs.context = &context;
 	resMan.UpdateDefaultHeapBuff(updateArgs);
 
@@ -2017,7 +2047,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	DX_ASSERT(vertices.empty() == false && "Static object cannot be created from empty vertices");
 
 	// Generate indices
-	std::vector<uint32_t> indices;
+	std::vector<int> indices;
 	indices = Utils::GetIndicesListForTrianglelistFromPolygonPrimitive(vertices.size());
 
 	// Generate normals
@@ -2082,7 +2112,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	ResourceManager::Inst().UpdateDefaultHeapBuff(updateBuffArg);
 
 	// Fill up index buffer
-	obj.indicesSizeInBytes = sizeof(uint32_t) * indices.size();
+	obj.indicesSizeInBytes = sizeof(int) * indices.size();
 	obj.indices = defaultMemory.Allocate(obj.indicesSizeInBytes);
 
 	updateBuffArg.buffer = defaultMemory.GetGpuBuffer();

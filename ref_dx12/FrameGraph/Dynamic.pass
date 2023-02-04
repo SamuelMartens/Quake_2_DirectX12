@@ -2,12 +2,12 @@ PassProperties
 {
 PassInput : Dynamic
 PassVertAttr: VertexIn
-PassSlotLayout: [Pos0 : 0, Pos1 : 1, Tex : 2]
+PassSlotLayout: [Pos0 : 0, Pos1 : 1, Normal0 : 2, Normal1 : 3, Tex : 4]
 }
 
 State
 {
-ColorTarget  : COLOR_BACK_BUFFER
+ColorTarget  : GBuffer_Position, GBuffer_Albedo, GBuffer_Normals
 DepthTarget  : DEPTH_BACK_BUFFER
 Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
@@ -35,6 +35,8 @@ struct VertexIn
 {
 	float4 Pos0 : POSITION0;
     float4 Pos1 : POSITION1;
+	float4 Normal0 : NORMAL0;
+    float4 Normal1 : NORMAL1;
 	float2 Tex : TEXCOORD;
 }
 
@@ -42,7 +44,16 @@ struct VertexIn
 struct VertexOut
 {
 	float4 Pos : SV_POSITION;
+	float4 Normal : NORMAL;
+	float4 WorldPos : POSITION;	
 	float2 Tex : TEXCOORD;
+}
+
+struct PixelOut
+{
+	float4 Position :	SV_Target0;
+	float4 Albedo :		SV_Target1;
+	float4 Normal :		SV_Target2;
 }
 
 // Resources
@@ -51,6 +62,7 @@ struct VertexOut
 cbuffer cbPerObject : register(b0, space3)
 {
 	float4x4 WorldViewProj;
+	float4x4 World;
     float4 AnimMove;
     float4 FrontLerp;
     float4 BackLerp;
@@ -72,10 +84,14 @@ VertexOut main(VertexIn vIn)
     float4 interpolatedPos = AnimMove + vIn.Pos0 * BackLerp + vIn.Pos1 * FrontLerp;
     interpolatedPos.w = 1.0f;
 
+	float4 interpolatedNormal =  vIn.Normal0 * BackLerp + vIn.Normal1 * FrontLerp;
+	interpolatedNormal.w = 0.0f;
+
 	VertexOut vOut;
     // Funny enought, by default matrices are packed as column major.
     vOut.Pos = mul(WorldViewProj, interpolatedPos);
-    
+    vOut.Normal = mul(World, interpolatedNormal);
+	vOut.WorldPos = mul(World, interpolatedPos);
 	vOut.Tex = vIn.Tex;
 
 	return vOut;
@@ -83,9 +99,9 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : PS 
-External : DiffuseMap, gSamLinearWrap, VertexOut
+External : DiffuseMap, gSamLinearWrap, VertexOut, PixelOut
 <[
-float4 main(VertexOut vOut) : SV_Target
+PixelOut main(VertexOut vOut) : SV_Target
 {
 	float4 color = DiffuseMap.Sample(gSamLinearWrap, vOut.Tex);
     
@@ -94,6 +110,12 @@ float4 main(VertexOut vOut) : SV_Target
         discard;
     }
     
-    return color;
+	PixelOut output;
+	
+	output.Albedo = color;
+	output.Normal = vOut.Normal;
+	output.Position = vOut.WorldPos;
+	
+    return output;
 }
 ]>

@@ -64,8 +64,8 @@ DynamicObjectModel& DynamicObjectModel::operator=(DynamicObjectModel&& other)
 	textures = std::move(other.textures);
 
 	headerData = other.headerData;
-	other.headerData.animFrameSizeInBytes = Const::INVALID_SIZE;
 	other.headerData.animFrameVertsNum = Const::INVALID_SIZE;
+	other.headerData.animFrameNormalsNum = Const::INVALID_SIZE;
 	other.headerData.indicesNum = Const::INVALID_SIZE;
 
 	textureCoords = other.textureCoords;

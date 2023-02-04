@@ -68,8 +68,8 @@ public:
 	// Derives from dmdl_t. 
 	struct HeaderData
 	{
-		int animFrameSizeInBytes = Const::INVALID_SIZE;
 		int animFrameVertsNum = Const::INVALID_SIZE;
+		int animFrameNormalsNum = Const::INVALID_SIZE;
 		int indicesNum = Const::INVALID_SIZE;
 	};
 

@@ -875,6 +875,12 @@ namespace RenderCallbacks
 						DynamicObjectModel::GenerateModelMat(obj) * ctx.jobContext.frame.camera.GetViewProjMatrix());
 				}
 				break;
+				case HASH("World"):
+				{
+					XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint),
+						DynamicObjectModel::GenerateModelMat(obj));
+				}
+				break;
 				case HASH("AnimMove"):
 				{
 					const DynamicObjectModel& model = Renderer::Inst().GetDynamicModels().at(obj.model);

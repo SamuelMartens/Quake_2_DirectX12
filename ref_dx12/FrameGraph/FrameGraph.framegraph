@@ -76,11 +76,11 @@ Steps
 	// Clear color buffer
 	Copy(ColorBackBufferClearBuffer, COLOR_BACK_BUFFER)
     Static
+	Dynamic
 	BSPClusterClassification
 	SampleIndirect
 	DeferredCompose
 	Copy(ComposeBuffer, COLOR_BACK_BUFFER)
-    Dynamic
     Particles
 	UI
 	Debug

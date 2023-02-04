@@ -706,18 +706,18 @@ void Utils::MakeQuad(XMFLOAT2 posMin, XMFLOAT2 posMax, XMFLOAT2 texMin, XMFLOAT2
 	outVert[5] = vert3;
 }
 
-std::vector<uint32_t> Utils::GetIndicesListForTrianglelistFromPolygonPrimitive(int numVertices)
+std::vector<int> Utils::GetIndicesListForTrianglelistFromPolygonPrimitive(int numVertices)
 {
 	constexpr int TRIANGLE_VERT_NUM = 3;
 
 	DX_ASSERT(numVertices >= TRIANGLE_VERT_NUM && "Invalid vert num for triangle list generation");
 
-	std::vector<uint32_t> indices;
+	std::vector<int> indices;
 	indices.reserve((numVertices - 2) * TRIANGLE_VERT_NUM);
 
-	constexpr uint32_t rootInd = 0;
+	constexpr int rootInd = 0;
 
-	for (uint32_t i = rootInd + 1; i < numVertices - 1; ++i)
+	for (int i = rootInd + 1; i < numVertices - 1; ++i)
 	{
 		indices.push_back(rootInd);
 		indices.push_back(i);
@@ -727,7 +727,7 @@ std::vector<uint32_t> Utils::GetIndicesListForTrianglelistFromPolygonPrimitive(i
 	return indices;
 }
 
-std::vector<XMFLOAT4> Utils::GenerateNormals(const std::vector<XMFLOAT4>& vertices, const std::vector<uint32_t>& indices)
+std::vector<XMFLOAT4> Utils::GenerateNormals(const std::vector<XMFLOAT4>& vertices, const std::vector<int>& indices)
 {
 	std::vector<XMFLOAT4> normals(vertices.size(), XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f));
 
