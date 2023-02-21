@@ -76,21 +76,6 @@ namespace Parsing
 		std::string rawView;
 	};
 
-	struct PreprocessorContext
-	{
-		struct Include
-		{
-			std::string name;
-			int pos = Const::INVALID_OFFSET;
-			// This is length of include statement, not file itself
-			int len = Const::INVALID_SIZE;
-		};
-
-		std::unordered_map<std::string, std::vector<Include>> includes;
-
-		std::string currentFile;
-	};
-
 	struct FrameGraphSourceContext
 	{
 		std::vector<FrameGraphSource::Step_t> steps;
@@ -150,15 +135,11 @@ private:
 	/*  Files processing */
 	std::unordered_map<std::string, std::string> LoadPassFiles() const;
 	std::string	LoadFrameGraphFile() const;
-	
-	std::shared_ptr<Parsing::PreprocessorContext> ParsePreprocessPassFiles(const std::unordered_map<std::string, std::string>& passFiles) const;
 
 	std::shared_ptr<Parsing::PassParametersContext> ParsePassFiles(const std::unordered_map<std::string, std::string>& passFiles,
 		const Parsing::FrameGraphSourceContext& frameGraphContext) const;
 
 	std::shared_ptr<Parsing::FrameGraphSourceContext> ParseFrameGraphFile(const std::string& materialFileContent) const;
-
-	void PreprocessPassFiles(std::unordered_map<std::string, std::string>& passFiles, Parsing::PreprocessorContext& context) const;
 
 	/* Shaders */
 	std::vector<FrameGraphBuilder::CompiledShaderData> CompileShaders(const PassParametersSource& pass) const;

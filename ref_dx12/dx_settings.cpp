@@ -3,7 +3,6 @@
 const std::string Settings::GRAMMAR_DIR = "Grammar";
 const std::string Settings::GRAMMAR_PASS_FILENAME = "Pass.grammar";
 const std::string Settings::GRAMMAR_FRAMEGRAPH_FILENAME = "FrameGraph.grammar";
-const std::string Settings::GRAMMAR_PREPROCESSOR_FILENAME = "Preprocessor.grammar";
 const std::string Settings::GRAMMAR_LIGHT_BAKING_RESULT_FILENAME = "LightBakingData.grammar";
 
 const std::string Settings::FRAMEGRAPH_DIR = "FrameGraph";

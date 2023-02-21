@@ -51,7 +51,6 @@ namespace Settings
 
 	extern const std::string	GRAMMAR_PASS_FILENAME;
 	extern const std::string	GRAMMAR_FRAMEGRAPH_FILENAME;
-	extern const std::string	GRAMMAR_PREPROCESSOR_FILENAME;
 	extern const std::string	GRAMMAR_LIGHT_BAKING_RESULT_FILENAME;
 
 	/* Frame Graph Builder  */
