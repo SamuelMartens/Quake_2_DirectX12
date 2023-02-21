@@ -10,7 +10,23 @@
 #undef min
 #endif  
 
+const float Camera::Z_NEAR = 4.0f;
+const float Camera::Z_FAR = 4065.0f;
 
+namespace
+{
+	XMVECTOR XM_CALLCONV ScreenToView(FXMVECTOR screenPosition, FXMMATRIX inverseProjectionMat, int screenWidth, int screenHeight)
+	{
+		// Notice vector set has some one. This is to avoid division by 0. We are only interested in xy members of vector
+		XMVECTOR ndcPosition = screenPosition / XMVectorSet(screenWidth, screenHeight, 1.0f, 1.0f);
+		ndcPosition = ndcPosition * XMVectorSet(2.0f, -2.0f, 1.0f, 1.0f) + XMVectorSet(-1.0f, 1.0f, 0.0f, 0.0f);
+
+		XMVECTOR viewSpace = XMVector4Transform(ndcPosition, inverseProjectionMat);
+		viewSpace = viewSpace / XMVectorGetW(viewSpace);
+
+		return viewSpace;
+	}
+}
 
 void Camera::Init()
 {
@@ -41,12 +57,92 @@ void Camera::GenerateViewProjMat()
 	XMStoreFloat4x4(&viewProjMat, GenerateViewMatrix() * GenerateProjectionMatrix());
 }
 
-XMMATRIX Camera::GetViewProjMatrix() const
+XMMATRIX XM_CALLCONV Camera::GetViewProjMatrix() const
 {
 	return XMLoadFloat4x4(&viewProjMat);
 }
 
-XMMATRIX Camera::GenerateViewMatrix() const 
+std::vector<Utils::AABB> Camera::GenerateFrustumClusterInViewSpace(int tileWidth, int tileHeight, int slicesNum) const
+{
+	DX_ASSERT(width != 0 && height != 0 && "Camera has invalid data");
+
+	DX_ASSERT(width % tileWidth == 0 && "Tile width is incorrect");
+	DX_ASSERT(height % tileHeight == 0 && "Tile height is incorrect ");
+	
+	XMVECTOR sseEyePosition = XMVectorSet( 0.0f, 0.0f, 0.0f, 1.0f );
+	
+	XMVECTOR sseDeterminant;
+	
+	XMMATRIX sseInverseProjection = XMMatrixInverse(&sseDeterminant, XMMatrixInverse(&sseDeterminant, GenerateProjectionMatrix()));
+
+	DX_ASSERT(XMVectorGetX(sseDeterminant) != 0.0f && "Invalid matrix determinant");
+
+	const int tilesNumX = width / tileWidth;
+	const int tilesNumY = height / tileHeight;
+	const int tilesNumZ = slicesNum;
+
+	std::vector<Utils::AABB> frustumClusters;
+	frustumClusters.reserve(tilesNumX * tilesNumY * tilesNumZ);
+
+	for (int xClusterIndex = 0; xClusterIndex < tilesNumX; ++xClusterIndex)
+	{
+		for (int yClusterIndex = 0; yClusterIndex < tilesNumY; ++yClusterIndex)
+		{
+			const XMVECTOR seeMinPointScreenSpace = XMVectorSet(
+				xClusterIndex * tileWidth,
+				yClusterIndex * tileHeight,
+				1.0f,
+				1.0f);
+
+			const XMVECTOR seeMaxPointScreenSpace = XMVectorSet(
+				(xClusterIndex + 1) * tileWidth,
+				(yClusterIndex + 1) * tileHeight,
+				1.0f,
+				1.0f);
+
+			const XMVECTOR sseMinPointViewSpace = ScreenToView(seeMinPointScreenSpace,
+				sseInverseProjection, width, height);
+
+			const XMVECTOR sseMaxPointViewSpace = ScreenToView(seeMaxPointScreenSpace,
+				sseInverseProjection, width, height);
+
+			for (int zClusterIndex = 0; zClusterIndex < tilesNumZ; ++zClusterIndex)
+			{
+				const float clusterNear = Z_NEAR * std::powf(Z_FAR / Z_NEAR, 
+					zClusterIndex / static_cast<float>(tilesNumZ));
+
+				const float clusterFar = Z_NEAR * std::powf(Z_FAR / Z_NEAR,
+					(zClusterIndex + 1) / static_cast<float>(tilesNumZ));
+
+				const XMVECTOR sseTileNearPlane = XMVectorSet(0.0f, 0.0f, 1.0f, clusterNear);
+				const XMVECTOR sseTileFarPlane = XMVectorSet(0.0f, 0.0f, 1.0f, clusterFar);
+
+				const XMVECTOR sseMinPointNear = XMPlaneIntersectLine(sseTileNearPlane, sseEyePosition, sseMinPointViewSpace);
+				const XMVECTOR sseMinPointFar = XMPlaneIntersectLine(sseTileFarPlane, sseEyePosition, sseMinPointViewSpace);
+				const XMVECTOR sseMaxPointNear = XMPlaneIntersectLine(sseTileNearPlane, sseEyePosition, sseMaxPointViewSpace);
+				const XMVECTOR sseMaxPointFar = XMPlaneIntersectLine(sseTileFarPlane, sseEyePosition, sseMaxPointViewSpace);
+
+				const XMVECTOR sseAABBMin = XMVectorMin(
+					XMVectorMin(sseMinPointNear, sseMinPointFar),
+					XMVectorMin(sseMaxPointNear, sseMaxPointFar));
+
+				const XMVECTOR sseAABBMax = XMVectorMax(
+					XMVectorMax(sseMinPointNear, sseMinPointFar),
+					XMVectorMax(sseMaxPointNear, sseMaxPointFar));
+
+				Utils::AABB clusterAABB;
+				XMStoreFloat4(&clusterAABB.minVert, sseAABBMin);
+				XMStoreFloat4(&clusterAABB.maxVert, sseAABBMax);
+
+				frustumClusters.push_back(clusterAABB);
+			}
+		}
+	}
+
+	return frustumClusters;
+}
+
+XMMATRIX XM_CALLCONV Camera::GenerateViewMatrix() const 
 {
 	// The reason we have this weird pre transformation here is the difference
 	// between id's software coordinate system and DirectX coordinate system
@@ -75,13 +171,10 @@ XMMATRIX Camera::GenerateViewMatrix() const
 
 }
 
-XMMATRIX Camera::GenerateProjectionMatrix() const
-{
-	constexpr float zNear = 4.0f;
-	constexpr float zFar = 4065.0f;
-	
+XMMATRIX XM_CALLCONV Camera::GenerateProjectionMatrix() const
+{	
 	// NOTE: Far and Near intentionally reversed for Perspective matrix
-	return XMMatrixPerspectiveFovRH(XMConvertToRadians(std::max(fov.y, 1.0f)), width / height, zFar, zNear);
+	return XMMatrixPerspectiveFovRH(XMConvertToRadians(std::max(fov.y, 1.0f)), width / height, Z_FAR, Z_NEAR);
 }
 
 std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> Camera::GetBasis() const
@@ -123,7 +216,7 @@ std::array<Utils::Plane, 6> Camera::GetFrustumPlanes() const
 	const XMMATRIX sseCameraInvTransform = XMMatrixInverse(&sseCameraTransformDeterminant,
 		XMMatrixMultiply(GenerateViewMatrix(), GenerateProjectionMatrix()));
 	
-	assert(XMVectorGetX(sseCameraTransformDeterminant) != 0.0f && "Camera transform inv can't be found. Determinant is zero");
+	DX_ASSERT(XMVectorGetX(sseCameraTransformDeterminant) != 0.0f && "Camera transform inv can't be found. Determinant is zero");
 
 	std::for_each(frustum.begin(), frustum.end(), [sseCameraInvTransform](XMFLOAT4& point)
 	{

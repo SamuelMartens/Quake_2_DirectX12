@@ -83,6 +83,9 @@ public:
 	// and need to fix whenever I will have a chance
 	XMFLOAT4X4 uiYInverseAndCenterMat;
 
+	// Debug data
+	XMFLOAT4X4 debugFrustumClusterInverseViewMat;
+
 	// Synchronization 
 	
 	// These two values are used in the very end when we call ExecuteCommandList

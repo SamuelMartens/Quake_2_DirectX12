@@ -124,6 +124,7 @@ enum class DebugObjectType
 	LightSource = 1,
 	ProbePathTraceSegment = 2,
 	ProbeLightSample = 3,
+	FrustumClusters = 4,
 
 	None
 };
@@ -172,9 +173,15 @@ struct DebugObject_ProbeLightSample
 	XMFLOAT4 radiance =  { 0.0f, 0.0f, 0.0f, 0.0f };
 };
 
+struct DebugObject_FrustumCluster
+{
+	int clusterIndex = Const::INVALID_INDEX;
+};
+
 // NOTE: when adding new type, add registration in Pass_Debug::RegisterObjects()
 using DebugObject_t = std::variant<
 	DebugObject_LightProbe,
 	DebugObject_LightSource,
 	DebugObject_ProbePathSegment,
-	DebugObject_ProbeLightSample>;
+	DebugObject_ProbeLightSample,
+	DebugObject_FrustumCluster>;

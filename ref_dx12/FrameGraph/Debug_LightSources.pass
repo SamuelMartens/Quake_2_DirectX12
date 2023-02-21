@@ -89,8 +89,8 @@ Type : PS
 External : VertexOut, cbPerObject_Global, cbPerObject_Local
 <[
 
-@include "Debug.passh"
-@include "Constants.passh"
+#include "Debug.passh"
+#include "Constants.passh"
 
 
 float4 main(VertexOut vOut) : SV_Target

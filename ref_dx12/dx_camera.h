@@ -1,6 +1,7 @@
 #pragma once
 
 #include <tuple>
+#include <vector>
 
 #include "dx_utils.h"
 #include "dx_common.h"
@@ -12,16 +13,32 @@ extern "C"
 
 struct Camera
 {
+public:
+
+	static const float Z_NEAR;
+	static const float Z_FAR;
+
+	static const int FRUSTUM_TILE_WIDTH = 128;
+	static const int FRUSTUM_TILE_HEIGHT = 128;
+	static const int FRUSTUM_CLUSTER_SLICES = 5;
+
+public:
+
 	void Init();
 
 	void Update(const refdef_t& updateData);
 
 	void GenerateViewProjMat();
-	XMMATRIX GenerateViewMatrix() const;
-	XMMATRIX GenerateProjectionMatrix() const;
+	[[nodiscard]]
+	XMMATRIX XM_CALLCONV GenerateViewMatrix() const;
+	[[nodiscard]]
+	XMMATRIX XM_CALLCONV GenerateProjectionMatrix() const;
 
 	[[nodiscard]]
-	XMMATRIX GetViewProjMatrix() const;
+	XMMATRIX XM_CALLCONV GetViewProjMatrix() const;
+
+	[[nodiscard]]
+	std::vector<Utils::AABB> GenerateFrustumClusterInViewSpace(int tileWidth, int tileHeight, int slicesNum) const;
 
 	// Yaw, Pitch , Roll
 	std::tuple<XMFLOAT4, XMFLOAT4, XMFLOAT4> GetBasis() const;

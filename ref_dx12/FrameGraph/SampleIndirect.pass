@@ -100,8 +100,8 @@ External: cbSampleIndirect, DiffuseProbes, AABB, ClusterProbeGridInfo, ClusterAA
 	cbFrameData
 <[
 
-@include "Constants.passh"
-@include "SHUtils.passh"
+#include "Constants.passh"
+#include "SHUtils.passh"
 
 #define CUBE_VERTS_NUM 8
 #define SAMPLES_NUM 32

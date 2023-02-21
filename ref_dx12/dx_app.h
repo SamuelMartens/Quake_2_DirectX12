@@ -84,6 +84,7 @@ class Renderer
 	void BeginFrame();
 	void EndFrame();
 	void PreRenderSetUpFrame(Frame& frame);
+	void SetUpFrameDebugData(Frame& frame);
 	void FlushAllFrames() const;
 
 	void GetDrawTextureSize(int* x, int* y, const char* name);
@@ -107,6 +108,9 @@ class Renderer
 	const std::array<unsigned int, 256>& GetTable8To24() const;
 	const BSPTree& GetBSPTree() const;
 	int GetCurrentFrameCounter() const;
+
+	struct DebugSettings;
+	const DebugSettings& GetDebugSettings() const;
 
 	void ConsumeDiffuseIndirectLightingBakingResult(BakingData&& result);
 
@@ -188,6 +192,35 @@ public:
 		LightBaking,
 		LoadLightBakingFromFile,
 		LevelLoading
+	};
+
+	struct DebugSettings
+	{
+		bool drawLightProbesDebugGeometry = false;
+		bool fixLightProbesDebugGeometryInTheSameCluster = false;
+		int lightProbesDebugGeometryDisplayCluster = Const::INVALID_INDEX;
+
+		bool drawLightSourcesDebugGeometry = false;
+		bool drawPointLightSourcesRadius = false;
+
+		DrawRayPathMode drawBakeRayPathsMode = DrawRayPathMode::SingleProbe;
+		int drawBakeRayPathsProbeIndex = 0;
+
+		bool drawBakeRayPaths = false;
+
+		DrawPathLightSampleMode_Scale drawPathLightSampleMode_Scale = DrawPathLightSampleMode_Scale::PointSamples;
+		int drawPathLightSamples_ProbeIndex = 0;
+		int drawPathLightSamples_PathIndex = 0;
+		int drawPathLightSamples_PointIndex = 0;
+
+		DrawPathLightSampleMode_Type drawPathLightSampleMode_Type = DrawPathLightSampleMode_Type::All;
+
+		bool drawLightPathSamples = false;
+
+		bool drawFrustumClusters = false;
+		bool fixFrustumClustersInPlace = false;
+
+		XMFLOAT4X4 frustumClustersInverseViewTransform;
 	};
 
 	// Public because it is already wrapped up in class
@@ -286,6 +319,7 @@ private:
 	void RegisterObjectsAtFrameGraphs();
 	static LONG WINAPI MainWndProcWrapper(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	void CreateIndirectLightResources(GPUJobContext& context);
+	void CreateClusteredLightingResources(GPUJobContext& context);
 
 	void InitStaticLighting();
 
@@ -395,26 +429,6 @@ private:
 	std::optional<State> requestedState;
 
 	/* Debug */
-	bool drawLightProbesDebugGeometry = false;
-	bool fixLightProbesDebugGeometryInTheSameCluster = false;
-	int lightProbesDebugGeometryDisplayCluster = Const::INVALID_INDEX;
-
-	bool drawLightSourcesDebugGeometry = false;
-	bool drawPointLightSourcesRadius = false;
-	
-	DrawRayPathMode drawBakeRayPathsMode = DrawRayPathMode::SingleProbe;
-	int drawBakeRayPathsProbeIndex = 0;
-
-	bool drawBakeRayPaths = false;
-
-	DrawPathLightSampleMode_Scale drawPathLightSampleMode_Scale = DrawPathLightSampleMode_Scale::PointSamples;
-	int drawPathLightSamples_ProbeIndex = 0;
-	int drawPathLightSamples_PathIndex = 0;
-	int drawPathLightSamples_PointIndex = 0;
-
-	DrawPathLightSampleMode_Type drawPathLightSampleMode_Type = DrawPathLightSampleMode_Type::All;
-
-	bool drawLightPathSamples = false;
-
 	std::string frameGraphBuildMessage;
+	DebugSettings debugSettings;
 };

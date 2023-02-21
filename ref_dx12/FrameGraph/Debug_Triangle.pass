@@ -10,15 +10,17 @@ ColorTarget  : COLOR_BACK_BUFFER
 DepthTarget  : DEPTH_BACK_BUFFER
 Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
-Topology	 : Line
+Topology	 : Triangle
 }
+
 
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0, space = 0),
 CBV(b0, space = 1),
-CBV(b0, space = 3)
+CBV(b0, space = 3),
+DescriptorTable(SRV(t0, numDescriptors = 1, space = 0))
 }
 
 // -== Register space convention ==-
@@ -26,7 +28,6 @@ CBV(b0, space = 3)
 //	1 - Global, PerObject
 //	2 - Local, PerPass
 //	3 - Local, PerObject
-
 
 // Attributes
 
@@ -39,8 +40,10 @@ struct VertexIn
 struct VertexOut
 {
 	float4 Pos : SV_POSITION;
+	float4 LocalPos : POSITION;
 }
 
+// Resources  
 [Global, PerPass]
 cbuffer cbFrameData : register(b0, space0)
 {
@@ -63,15 +66,23 @@ cbuffer cbPerObject_Global : register(b0, space1)
 [Local, PerObject]
 cbuffer cbPerObject_Local : register(b0, space3)
 {
-	float4 Radiance;
-	int BounceNum;
+	// Probes debug info
+	float4 ProbeCenter;
+	int ProbeIndex;
 }
+
+[Global, PerPass]
+StructuredBuffer<float4> DiffuseProbes : register(t0, space0)
 
 // Shaders
 
 Type : VS 
-External : cbFrameData, VertexIn, VertexOut
+External : cbFrameData, cbPerObject_Local, cbPerObject_Global, VertexIn, VertexOut
 <[
+
+
+#include "Debug.passh"
+
 
 VertexOut main(VertexIn vIn)
 {
@@ -79,31 +90,43 @@ VertexOut main(VertexIn vIn)
 	// Funny enought, by default matrices are packed as column major.
 	vOut.Pos = mul(ViewProj, vIn.Pos);
 	
+	if (DebugObjectType == DEBUG_OBJECT_LIGHT_PROBE)
+	{
+		vOut.LocalPos =  vIn.Pos - ProbeCenter; 
+	}
+	else
+	{
+		vOut.LocalPos = float4(0.0, 0.0, 0.0, 0.0);
+	}
 
 	return vOut;
 }
 ]>
 
 Type : PS 
-External : VertexOut, cbPerObject_Global, cbPerObject_Local
+External : VertexOut, DiffuseProbes, cbPerObject_Global, cbPerObject_Local
 <[
 
-@include "Debug.passh"
-@include "Constants.passh"
-
+#include "Debug.passh"
+#include "Constants.passh"
+#include "SHUtils.passh"
 
 float4 main(VertexOut vOut) : SV_Target
 {
-	if (DebugObjectType != DEBUG_OBJECT_PATH_SEGMENT && DebugObjectType != DEBUG_OBJECT_LIGHT_SAMPLE)
+	if (DebugObjectType != DEBUG_OBJECT_LIGHT_PROBE)
 	{
 		discard;
 	}
 
-	float4 color = float4(0.0, 0.0, 1.0, 1.0);
-
-	if (DebugObjectType == DEBUG_OBJECT_LIGHT_SAMPLE)
+	float4 color = float4(0.0, 0.0, 0.0, 1.0);
+	
+	float4 dirFromCenter = float4(normalize(vOut.LocalPos.xyz) * 0.5 + 0.5, 1.0);
+	color = dirFromCenter;
+		
+	if (ProbeIndex != INVALID_INDEX)
 	{
-		color = float4(0.0, 1.0, 0.0, 1.0);
+		float4 sampleDir = float4(normalize(vOut.LocalPos.xyz), 0.0);
+		color = ReconstructRadianceFromSH(sampleDir, ProbeIndex);
 	}
 
     return color;

@@ -83,7 +83,7 @@ Steps
 	Copy(ComposeBuffer, COLOR_BACK_BUFFER)
     Particles
 	UI
-	Debug
+	Debug_Triangle
+	Debug_Line
 	Debug_LightSources
-	Debug_PathSegments
 }

@@ -780,6 +780,60 @@ Utils::AABB Utils::ConstructAABB(const std::vector<XMFLOAT4>& vertices)
 	return aabb;
 }
 
+std::vector<XMFLOAT4> Utils::GenerateAABBVertices_LinePrimitveType(const AABB& aabb)
+{
+	constexpr int edgesNum = 12;
+	constexpr int verticesPerEdge = 2;
+
+	std::vector<XMFLOAT4> vertices;
+	vertices.reserve(edgesNum * verticesPerEdge);
+
+	const XMFLOAT4& min = aabb.minVert;
+	const XMFLOAT4& max = aabb.maxVert;
+
+	// Bottom
+	vertices.push_back({ min.x, min.y, min.z, 1.0f });
+	vertices.push_back({ max.x, min.y, min.z, 1.0f });
+
+	vertices.push_back({ min.x, min.y, max.z, 1.0f });
+	vertices.push_back({ max.x, min.y, max.z, 1.0f });
+
+	vertices.push_back({ min.x, min.y, min.z, 1.0f });
+	vertices.push_back({ min.x, min.y, max.z, 1.0f });
+
+	vertices.push_back({ max.x, min.y, min.z, 1.0f });
+	vertices.push_back({ max.x, min.y, max.z, 1.0f });
+
+	// Top
+	vertices.push_back({ min.x, max.y, min.z, 1.0f });
+	vertices.push_back({ max.x, max.y, min.z, 1.0f });
+
+	vertices.push_back({ min.x, max.y, max.z, 1.0f });
+	vertices.push_back({ max.x, max.y, max.z, 1.0f });
+
+	vertices.push_back({ min.x, max.y, min.z, 1.0f });
+	vertices.push_back({ min.x, max.y, max.z, 1.0f });
+
+	vertices.push_back({ max.x, max.y, min.z, 1.0f });
+	vertices.push_back({ max.x, max.y, max.z, 1.0f });
+
+	// Front
+	vertices.push_back({ min.x, min.y, min.z, 1.0f });
+	vertices.push_back({ min.x, max.y, min.z, 1.0f });
+
+	vertices.push_back({ max.x, min.y, min.z, 1.0f });
+	vertices.push_back({ max.x, max.y, min.z, 1.0f });
+
+	// Back
+	vertices.push_back({ min.x, min.y, max.z, 1.0f });
+	vertices.push_back({ min.x, max.y, max.z, 1.0f });
+
+	vertices.push_back({ max.x, min.y, max.z, 1.0f });
+	vertices.push_back({ max.x, max.y, max.z, 1.0f });
+
+	return vertices;
+}
+
 bool Utils::IsVectorNotZero(const XMFLOAT4& vector)
 {
 	return vector.x != 0.0f || vector.y != 0.0f || vector.z != 0.0f;

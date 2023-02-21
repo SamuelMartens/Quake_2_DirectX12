@@ -1507,11 +1507,31 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 	std::vector<XMFLOAT4> debugObjectsVertices;
 	debugObjectsVertices.reserve(lightProbeDebugObjectVertices.size() * debugObjects.size());
 
+	// Get required input data
 	const Renderer& renderer = Renderer::Inst();
 	const std::vector<AreaLight>& areaLights = renderer.GetStaticAreaLights();
 	const std::vector<PointLight>& pointLights = renderer.GetStaticPointLights();
 	const std::vector<SourceStaticObject>& staticObjects = renderer.GetSourceStaticObjects();
 
+	// Generate frustum clusters if needed
+	std::vector<Utils::AABB> frustumClusters;
+
+	const bool containsFrustumClusterObject = debugObjects.cend() != std::find_if(debugObjects.cbegin(), debugObjects.cend(),
+		[](const DebugObject_t& object)
+		{
+			return std::holds_alternative<DebugObject_FrustumCluster>(object);
+		});
+
+	if (containsFrustumClusterObject == true)
+	{
+		frustumClusters = context.frame.camera.GenerateFrustumClusterInViewSpace(
+			Camera::FRUSTUM_TILE_WIDTH,
+			Camera::FRUSTUM_TILE_HEIGHT,
+			Camera::FRUSTUM_CLUSTER_SLICES
+		);
+	}
+
+	// Vector for vertices
 	std::vector<int> debugObjectsVertexSizes;
 	debugObjectsVertexSizes.reserve(debugObjects.size());
 
@@ -1530,7 +1550,8 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 			&debugObjectsVertexSizes,
 			&renderer,
 			&pathSegmentVertices,
-			&lightSampleVertices](auto&& debugObject) 
+			&lightSampleVertices,
+			&frustumClusters](auto&& debugObject) 
 		{
 			using T = std::decay_t<decltype(debugObject)>;
 
@@ -1637,6 +1658,18 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 				debugObjectsVertices.push_back(samplePointVertices[debugObject.sampleIndex * 2 + 1]);
 
 				debugObjectsVertexSizes.push_back(lightSampleVertexMemorySize);
+			}
+
+			if constexpr (std::is_same_v<T, DebugObject_FrustumCluster>)
+			{
+				const std::vector<XMFLOAT4> clusterAABBVertices = 
+					Utils::GenerateAABBVertices_LinePrimitveType(frustumClusters[debugObject.clusterIndex]);
+
+				debugObjectsVertices.insert(debugObjectsVertices.end(), 
+					clusterAABBVertices.begin(),
+					clusterAABBVertices.end());
+
+				debugObjectsVertexSizes.push_back(clusterAABBVertices.size()* perVertexMemorySize);
 			}
 
 		}, debugObject);

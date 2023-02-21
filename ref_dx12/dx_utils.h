@@ -34,7 +34,16 @@
 	}
 
 		
-
+// -=== How to create proper functions with DXMath ===-
+// 1) The first three XMVECTOR  parameters should be of type FXMVECTOR
+// 2) The fourth XMVECTOR should be of type GXMVECTOR
+// 3) The fifth and six parameter should be of type HXMVECTOR
+// 4) Any additional XMVECTOR parameters should be of type CXMVECTOR
+// 
+// 5) For first matrix parameter use FXMMATRIX
+// 6) For 2+ use CXMMATRIX
+// 
+// 7) Use XM_CALLCONV before function name
 
 using namespace DirectX;
 
@@ -296,6 +305,9 @@ namespace Utils
 
 	[[nodiscard]]
 	Utils::AABB ConstructAABB(const std::vector<XMFLOAT4>& vertices);
+
+	[[nodiscard]]
+	std::vector<XMFLOAT4> GenerateAABBVertices_LinePrimitveType(const Utils::AABB& aabb);
 
 	[[nodiscard]]
 	std::vector<XMFLOAT4> CreateSphere(float radius, int numSubdivisions = 1);

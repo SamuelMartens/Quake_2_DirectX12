@@ -260,6 +260,10 @@ namespace RenderCallbacks
 					{
 						reinterpret_cast<int&>(bindPoint) = static_cast<int>(DebugObjectType::ProbeLightSample);
 					}
+					else if constexpr (std::is_same_v<T, DebugObject_FrustumCluster>)
+					{
+						reinterpret_cast<int&>(bindPoint) = static_cast<int>(DebugObjectType::FrustumClusters);
+					}
 					else
 					{
 						DX_ASSERT(false && "Unidentified debug object type");
@@ -646,6 +650,20 @@ namespace RenderCallbacks
 			}
 		}
 		break;
+		case HASH("Debug_Line"):
+		{
+			switch (paramName)
+			{
+			case HASH("FrustumClusterInvertedView"):
+			{
+				reinterpret_cast<XMFLOAT4X4&>(bindPoint) = ctx.jobContext.frame.debugFrustumClusterInverseViewMat;
+			}
+			break;
+			default:
+				break;
+			}
+		}
+		break;
 		default:
 			break;
 		}
@@ -843,12 +861,27 @@ namespace RenderCallbacks
 
 						if constexpr (std::is_same_v<T, DebugObject_ProbeLightSample>)
 						{
-
 							reinterpret_cast<XMFLOAT4&>(bindPoint) = object.radiance;
 						}
 						else
 						{
 							reinterpret_cast<XMFLOAT4&>(bindPoint) = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+						}
+					}, obj);
+				}
+				case HASH("FrustumClusterIndex"):
+				{
+					std::visit([&bindPoint](auto&& object)
+					{
+						using T = std::decay_t<decltype(object)>;
+
+						if constexpr (std::is_same_v<T, DebugObject_FrustumCluster>)
+						{
+							reinterpret_cast<int&>(bindPoint) = object.clusterIndex;
+						}
+						else
+						{
+							reinterpret_cast<int&>(bindPoint) = Const::INVALID_INDEX;
 						}
 					}, obj);
 				}

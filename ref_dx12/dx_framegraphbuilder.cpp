@@ -1669,12 +1669,15 @@ std::vector<FrameGraphBuilder::CompiledShaderData> FrameGraphBuilder::CompileSha
 
 		Logs::Logf(Logs::Category::Parser, "Shader compilation, type: {}", strShaderType);
 
+		// Need to specify this in order for includes work properly
+		const std::filesystem::path absolutePassPath = Utils::GenAbsolutePathToFile(Settings::FRAMEGRAPH_DIR + "/" + pass.name + strShaderType);
+
 		HRESULT hr = D3DCompile(
 			sourceCode.c_str(),
 			sourceCode.size(),
-			(pass.name + strShaderType).c_str(),
+			absolutePassPath.generic_string().c_str(),
 			nullptr,
-			nullptr,
+			D3D_COMPILE_STANDARD_FILE_INCLUDE,
 			"main",
 			(Utils::StrToLower(strShaderType) + Settings::SHADER_FEATURE_LEVEL).c_str(),
 			Settings::SHADER_COMPILATION_FLAGS,
@@ -1696,12 +1699,15 @@ std::vector<FrameGraphBuilder::CompiledShaderData> FrameGraphBuilder::CompileSha
 		const std::string rootSigDefine = "ROOT_SIGNATURE";
 		std::string rawRootSig = "#define " + rootSigDefine + " \" " + pass.rootSignature->rawView + " \" ";
 
+		// Need to specify this in order for includes work properly
+		const std::filesystem::path absoluteRootSigPath = Utils::GenAbsolutePathToFile(Settings::FRAMEGRAPH_DIR + "/" + "RootSignature_" + pass.name);
+
 		hr = D3DCompile(
 			rawRootSig.c_str(),
 			rawRootSig.size(),
-			("RootSignature_" + pass.name).c_str(),
+			absoluteRootSigPath.generic_string().c_str(),
 			nullptr,
-			nullptr,
+			D3D_COMPILE_STANDARD_FILE_INCLUDE,
 			rootSigDefine.c_str(),
 			"rootsig_1_1",
 			0,

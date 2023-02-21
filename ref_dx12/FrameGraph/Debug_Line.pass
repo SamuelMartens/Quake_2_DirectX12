@@ -10,17 +10,16 @@ ColorTarget  : COLOR_BACK_BUFFER
 DepthTarget  : DEPTH_BACK_BUFFER
 Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
-Topology	 : Triangle
+Topology	 : Line
 }
-
 
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0, space = 0),
 CBV(b0, space = 1),
-CBV(b0, space = 3),
-DescriptorTable(SRV(t0, numDescriptors = 1, space = 0))
+CBV(b0, space = 2),
+CBV(b0, space = 3)
 }
 
 // -== Register space convention ==-
@@ -28,6 +27,7 @@ DescriptorTable(SRV(t0, numDescriptors = 1, space = 0))
 //	1 - Global, PerObject
 //	2 - Local, PerPass
 //	3 - Local, PerObject
+
 
 // Attributes
 
@@ -40,10 +40,8 @@ struct VertexIn
 struct VertexOut
 {
 	float4 Pos : SV_POSITION;
-	float4 LocalPos : POSITION;
 }
 
-// Resources  
 [Global, PerPass]
 cbuffer cbFrameData : register(b0, space0)
 {
@@ -63,72 +61,70 @@ cbuffer cbPerObject_Global : register(b0, space1)
 	int DebugObjectType;
 }
 
+[Local, PerPass]
+cbuffer cbPerPass_Local : register(b0, space2)
+{
+	float4x4 FrustumClusterInvertedView;
+}
+
 [Local, PerObject]
 cbuffer cbPerObject_Local : register(b0, space3)
 {
-	// Probes debug info
-	float4 ProbeCenter;
-	int ProbeIndex;
+	float4 Radiance;
+	int BounceNum;
+	int FrustumClusterIndex;
 }
-
-[Global, PerPass]
-StructuredBuffer<float4> DiffuseProbes : register(t0, space0)
 
 // Shaders
 
 Type : VS 
-External : cbFrameData, cbPerObject_Local, cbPerObject_Global, VertexIn, VertexOut
+External : cbFrameData, cbPerPass_Local, cbPerObject_Global, VertexIn, VertexOut
 <[
 
-
-@include "Debug.passh"
-
+#include "Debug.passh"
 
 VertexOut main(VertexIn vIn)
 {
 	VertexOut vOut;
-	// Funny enought, by default matrices are packed as column major.
-	vOut.Pos = mul(ViewProj, vIn.Pos);
 	
-	if (DebugObjectType == DEBUG_OBJECT_LIGHT_PROBE)
+	vOut.Pos = vIn.Pos;
+	
+	if (DebugObjectType == DEBUG_OBJECT_FRUSTUM_CLUSTER)
 	{
-		vOut.LocalPos =  vIn.Pos - ProbeCenter; 
+		vOut.Pos = mul(FrustumClusterInvertedView, vOut.Pos);
 	}
-	else
-	{
-		vOut.LocalPos = float4(0.0, 0.0, 0.0, 0.0);
-	}
+	
+	// Funny enought, by default matrices are packed as column major.
+	vOut.Pos = mul(ViewProj, vOut.Pos);
+	
 
 	return vOut;
 }
 ]>
 
 Type : PS 
-External : VertexOut, DiffuseProbes, cbPerObject_Global, cbPerObject_Local
+External : VertexOut, cbPerObject_Global, cbPerObject_Local
 <[
 
-@include "Debug.passh"
-@include "Constants.passh"
-@include "SHUtils.passh"
-
+#include "Debug.passh"
+#include "Constants.passh"
 
 
 float4 main(VertexOut vOut) : SV_Target
 {
-	if (DebugObjectType != DEBUG_OBJECT_LIGHT_PROBE)
+	if (
+	DebugObjectType != DEBUG_OBJECT_PATH_SEGMENT &&
+	DebugObjectType != DEBUG_OBJECT_LIGHT_SAMPLE &&
+	DebugObjectType != DEBUG_OBJECT_FRUSTUM_CLUSTER)
 	{
 		discard;
 	}
 
-	float4 color = float4(0.0, 0.0, 0.0, 1.0);
-	
-	float4 dirFromCenter = float4(normalize(vOut.LocalPos.xyz) * 0.5 + 0.5, 1.0);
-	color = dirFromCenter;
-		
-	if (ProbeIndex != INVALID_INDEX)
+	float4 color = float4(0.0, 0.0, 1.0, 1.0);
+
+	if (DebugObjectType == DEBUG_OBJECT_LIGHT_SAMPLE)
 	{
-		float4 sampleDir = float4(normalize(vOut.LocalPos.xyz), 0.0);
-		color = ReconstructRadianceFromSH(sampleDir, ProbeIndex);
+		color = float4(0.0, 1.0, 0.0, 1.0);
 	}
 
     return color;

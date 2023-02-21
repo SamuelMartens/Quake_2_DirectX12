@@ -1246,6 +1246,34 @@ void Renderer::CreateIndirectLightResources(GPUJobContext& context)
 	lightBakingResultGPUVersion = lightBakingResultCPUVersion;
 }
 
+void Renderer::CreateClusteredLightingResources(GPUJobContext& context)
+{
+	ResourceManager& resMan = ResourceManager::Inst();
+
+	DX_ASSERT(resMan.FindResource(Resource::FRUSTUM_CLUSTERS_AABB) == nullptr &&
+	"Trying create frustum cluster resources that already exist");
+
+	const std::vector<Utils::AABB> frustumClusters = context.frame.camera.GenerateFrustumClusterInViewSpace(
+		Camera::FRUSTUM_TILE_WIDTH,
+		Camera::FRUSTUM_TILE_HEIGHT,
+		Camera::FRUSTUM_CLUSTER_SLICES);
+
+	ResourceDesc desc;
+	desc.width = frustumClusters.size() * sizeof(Utils::AABB);
+	desc.height = 1;
+	desc.format = DXGI_FORMAT_UNKNOWN;
+	desc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	desc.flags = D3D12_RESOURCE_FLAG_NONE;
+
+	FArg::CreateStructuredBuffer args;
+	args.context = &context;
+	args.desc = &desc;
+	args.data = reinterpret_cast<const std::byte*>(frustumClusters.data());
+	args.name = Resource::FRUSTUM_CLUSTERS_AABB;
+
+	resMan.CreateStructuredBuffer(args);
+}
+
 void Renderer::InitStaticLighting()
 {
 	for (AreaLight& light : staticAreaLights)
@@ -1301,24 +1329,40 @@ std::vector<int> Renderer::BuildVisibleDynamicObjectsList(const Camera& camera, 
 	return visibleObjects;
 }
 
+void Renderer::SetUpFrameDebugData(Frame& frame)
+{
+	if (debugSettings.fixFrustumClustersInPlace == false)
+	{
+		XMVECTOR sseDeterminant;
+		XMMATRIX sseInvertedViewMatrix = XMMatrixInverse(&sseDeterminant,
+			frame.camera.GenerateViewMatrix());
+
+		DX_ASSERT(XMVectorGetX(sseDeterminant) != 0.0f && "Invalid matrix determinant");
+
+		XMStoreFloat4x4(&debugSettings.frustumClustersInverseViewTransform, sseInvertedViewMatrix);
+	}
+	frame.debugFrustumClusterInverseViewMat = debugSettings.frustumClustersInverseViewTransform;
+}
+
 std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& camera)
 {
 	ASSERT_MAIN_THREAD;
 
 	std::vector<DebugObject_t> debugObjects;
 	// NOTE: order of registering here should match FrameGraph::RegisterGlobalObjectsResDebug
-	if (drawLightProbesDebugGeometry == true)
+	if (debugSettings.drawLightProbesDebugGeometry == true)
 	{
 		// Figure out all clusters we want to generate for
-		if (!fixLightProbesDebugGeometryInTheSameCluster || lightProbesDebugGeometryDisplayCluster == Const::INVALID_INDEX)
+		if (debugSettings.fixLightProbesDebugGeometryInTheSameCluster == false ||
+			debugSettings.lightProbesDebugGeometryDisplayCluster == Const::INVALID_INDEX)
 		{
 			const BSPNode& cameraNode = Renderer::Inst().GetBSPTree().GetNodeWithPoint(camera.position);
 			DX_ASSERT(cameraNode.cluster != Const::INVALID_INDEX && "Camera is located in invalid BSP node.");
 
-			lightProbesDebugGeometryDisplayCluster = cameraNode.cluster;
+			debugSettings.lightProbesDebugGeometryDisplayCluster = cameraNode.cluster;
 		}
 
-		const std::vector<XMFLOAT4> bakePoints = LightBaker::Inst().GenerateClusterBakePoints(lightProbesDebugGeometryDisplayCluster);
+		const std::vector<XMFLOAT4> bakePoints = LightBaker::Inst().GenerateClusterBakePoints(debugSettings.lightProbesDebugGeometryDisplayCluster);
 
 		DX_ASSERT(bakePoints.empty() == false && "Bake points are empty. Is this alright?");
 
@@ -1344,7 +1388,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 				{
 					DX_ASSERT(bakeResult.bakingCluster.has_value() == true && "Baking result should have value");
 
-					if (*bakeResult.bakingCluster == lightProbesDebugGeometryDisplayCluster)
+					if (*bakeResult.bakingCluster == debugSettings.lightProbesDebugGeometryDisplayCluster)
 					{
 						object.probeIndex = i;
 					}
@@ -1354,7 +1398,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 				{
 					DX_ASSERT(bakeResult.clusterFirstProbeIndices.empty() == false && "Cluster sizes should have value");
 
-					object.probeIndex = i + bakeResult.clusterFirstProbeIndices[lightProbesDebugGeometryDisplayCluster];
+					object.probeIndex = i + bakeResult.clusterFirstProbeIndices[debugSettings.lightProbesDebugGeometryDisplayCluster];
 				}
 				break;
 				default:
@@ -1367,14 +1411,14 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 		}
 	}
 
-	if (drawLightSourcesDebugGeometry == true) 
+	if (debugSettings.drawLightSourcesDebugGeometry == true) 
 	{
 		for (int i = 0; i < staticPointLights.size(); ++i)
 		{
 			DebugObject_LightSource object;
 			object.sourceIndex = i;
 			object.type = DebugObject_LightSource::Type::Point;
-			object.showRadius = drawPointLightSourcesRadius;
+			object.showRadius = debugSettings.drawPointLightSourcesRadius;
 
 			debugObjects.push_back(object);
 		}
@@ -1390,13 +1434,13 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 		}
 	}
 
-	if (drawBakeRayPaths == true)
+	if (debugSettings.drawBakeRayPaths == true)
 	{
 		std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
 
 		if (lightBakingResult.obj.probes.empty() == false)
 		{
-			switch (drawBakeRayPathsMode)
+			switch (debugSettings.drawBakeRayPathsMode)
 			{
 			case Renderer::DrawRayPathMode::AllClusterProbes:
 			{
@@ -1409,9 +1453,9 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 			}
 			case Renderer::DrawRayPathMode::SingleProbe:
 			{
-				DX_ASSERT(drawBakeRayPathsProbeIndex < lightBakingResult.obj.probes.size() && "Invalid probe index");
+				DX_ASSERT(debugSettings.drawBakeRayPathsProbeIndex < lightBakingResult.obj.probes.size() && "Invalid probe index");
 
-				AddProbeDebugRaySegments(debugObjects, lightBakingResult.obj.probes, drawBakeRayPathsProbeIndex);
+				AddProbeDebugRaySegments(debugObjects, lightBakingResult.obj.probes, debugSettings.drawBakeRayPathsProbeIndex);
 
 				break;
 			}
@@ -1422,13 +1466,13 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 		}
 	}
 
-	if (drawLightPathSamples == true)
+	if (debugSettings.drawLightPathSamples == true)
 	{
 		std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
 
 		if (lightBakingResult.obj.probes.empty() == false)
 		{
-			switch (drawPathLightSampleMode_Scale)
+			switch (debugSettings.drawPathLightSampleMode_Scale)
 			{
 			case Renderer::DrawPathLightSampleMode_Scale::AllSamples:
 			{
@@ -1453,7 +1497,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 								probeIndex,
 								pathIndex,
 								pointIndex,
-								drawPathLightSampleMode_Type);
+								debugSettings.drawPathLightSampleMode_Type);
 						}
 					}
 				}
@@ -1462,7 +1506,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 			}
 			case Renderer::DrawPathLightSampleMode_Scale::ProbeSamples:
 			{
-				const DiffuseProbe& probe = lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex];
+				const DiffuseProbe& probe = lightBakingResult.obj.probes[debugSettings.drawPathLightSamples_ProbeIndex];
 
 				if (probe.lightSamples.has_value() == true)
 				{
@@ -1475,10 +1519,10 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 							AddPointLightSampleSegments(
 								debugObjects, 
 								lightBakingResult.obj.probes,
-								drawPathLightSamples_ProbeIndex,
+								debugSettings.drawPathLightSamples_ProbeIndex,
 								pathIndex,
 								pointIndex,
-								drawPathLightSampleMode_Type);
+								debugSettings.drawPathLightSampleMode_Type);
 						}
 					}
 				}
@@ -1487,21 +1531,21 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 			}
 			case Renderer::DrawPathLightSampleMode_Scale::PathSamples:
 			{
-				const DiffuseProbe& probe = lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex];
+				const DiffuseProbe& probe = lightBakingResult.obj.probes[debugSettings.drawPathLightSamples_ProbeIndex];
 
 				if (probe.lightSamples.has_value() == true)
 				{
-					const PathLightSampleInfo_t& path = probe.lightSamples->at(drawPathLightSamples_PathIndex);
+					const PathLightSampleInfo_t& path = probe.lightSamples->at(debugSettings.drawPathLightSamples_PathIndex);
 
 					for (int pointIndex = 0; pointIndex < path.size(); ++pointIndex)
 					{
 						AddPointLightSampleSegments(
 							debugObjects,
 							lightBakingResult.obj.probes,
-							drawPathLightSamples_ProbeIndex,
-							drawPathLightSamples_PathIndex,
+							debugSettings.drawPathLightSamples_ProbeIndex,
+							debugSettings.drawPathLightSamples_PathIndex,
 							pointIndex,
-							drawPathLightSampleMode_Type);
+							debugSettings.drawPathLightSampleMode_Type);
 					}
 				}
 
@@ -1509,19 +1553,19 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 			}
 			case Renderer::DrawPathLightSampleMode_Scale::PointSamples:
 			{
-				const DiffuseProbe& probe = lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex];
+				const DiffuseProbe& probe = lightBakingResult.obj.probes[debugSettings.drawPathLightSamples_ProbeIndex];
 
 				if (probe.lightSamples.has_value() == true)
 				{
-					const PathLightSampleInfo_t& path = probe.lightSamples->at(drawPathLightSamples_PathIndex);
+					const PathLightSampleInfo_t& path = probe.lightSamples->at(debugSettings.drawPathLightSamples_PathIndex);
 
 					AddPointLightSampleSegments(
 						debugObjects,
 						lightBakingResult.obj.probes,
-						drawPathLightSamples_ProbeIndex,
-						drawPathLightSamples_PathIndex,
-						drawPathLightSamples_PointIndex,
-						drawPathLightSampleMode_Type);
+						debugSettings.drawPathLightSamples_ProbeIndex,
+						debugSettings.drawPathLightSamples_PathIndex,
+						debugSettings.drawPathLightSamples_PointIndex,
+						debugSettings.drawPathLightSampleMode_Type);
 				}
 
 				break;
@@ -1530,6 +1574,24 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 				DX_ASSERT(false && "Invalid draw light sample mode");
 				break;
 			}
+		}
+	}
+
+	if (debugSettings.drawFrustumClusters == true)
+	{
+		const int numTilesX = camera.width / Camera::FRUSTUM_TILE_WIDTH;
+		const int numTilesY = camera.height / Camera::FRUSTUM_TILE_HEIGHT;
+		const int numTilesZ = Camera::FRUSTUM_CLUSTER_SLICES;
+
+		const int numCluster = numTilesX * numTilesY *
+			numTilesZ;
+
+		for (int i = 0; i < numCluster; ++i)
+		{
+			DebugObject_FrustumCluster object;
+			object.clusterIndex = i;
+
+			debugObjects.push_back(object);
 		}
 	}
 
@@ -1620,193 +1682,228 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 			{
 				if (ImGui::CollapsingHeader("Debug geometry"))
 				{
-					ImGui::Checkbox("Light Probes", &drawLightProbesDebugGeometry);
+					ImGui::Indent();
 
-					if (drawLightProbesDebugGeometry == true)
+					ImGui::Checkbox("Light Probes", &debugSettings.drawLightProbesDebugGeometry);
+
+					if (debugSettings.drawLightProbesDebugGeometry == true)
 					{
-						ImGui::SameLine();
-						ImGui::Checkbox("Fix Display Cluster", &fixLightProbesDebugGeometryInTheSameCluster);
+						ImGui::Indent();
+						ImGui::Checkbox("Fix In Place", &debugSettings.fixLightProbesDebugGeometryInTheSameCluster);
+						ImGui::Unindent();
 					}
 
-					ImGui::Checkbox("Light Sources", &drawLightSourcesDebugGeometry);
+					ImGui::Checkbox("Light Sources", &debugSettings.drawLightSourcesDebugGeometry);
 
-					if (drawLightSourcesDebugGeometry == true)
+					if (debugSettings.drawLightSourcesDebugGeometry == true)
 					{
-						ImGui::SameLine();
-						ImGui::Checkbox("Point Light Source Radius", &drawPointLightSourcesRadius);
+						ImGui::Indent();
+						ImGui::Checkbox("Point Light Source Radius", &debugSettings.drawPointLightSourcesRadius);
+						ImGui::Unindent();
 					}
+
+					ImGui::Checkbox("Frustum clusters", &debugSettings.drawFrustumClusters);
+
+					if (debugSettings.drawFrustumClusters == true)
+					{
+						ImGui::Indent();
+						ImGui::Checkbox("Fix In Place", &debugSettings.fixFrustumClustersInPlace);
+						ImGui::Unindent();
+					}
+
+					ImGui::Unindent();
 				}
 
 				ImGui::Separator();
 
-				if (ImGui::CollapsingHeader("Path segments display settings"))
+				if (ImGui::CollapsingHeader("Light baking debug display settings"))
 				{
+					ImGui::Indent();
+					if (ImGui::CollapsingHeader("Path segments display settings"))
 					{
-						int drawRayMode = static_cast<int>(drawBakeRayPathsMode);
+						ImGui::Indent();
 
-						ImGui::RadioButton("Single probe", &drawRayMode, static_cast<int>(DrawRayPathMode::SingleProbe));
-						ImGui::SameLine();
-						ImGui::RadioButton("All probes", &drawRayMode, static_cast<int>(DrawRayPathMode::AllClusterProbes));
-
-						drawBakeRayPathsMode = static_cast<DrawRayPathMode>(drawRayMode);
-					}
-
-					ImGui::Text("Probes num: %d", lightBakingResult.obj.probes.size());
-					ImGui::InputInt("Probe ray index", &drawBakeRayPathsProbeIndex);
-					drawBakeRayPathsProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probes.size() - 1, drawBakeRayPathsProbeIndex));
-
-					ImGui::Checkbox("Show Ray Paths", &drawBakeRayPaths);
-				}
-
-				ImGui::Separator();
-
-				if (ImGui::CollapsingHeader("Light sampling display settings"))
-				{
-					{
-						int drawLightSamplesMode = static_cast<int>(drawPathLightSampleMode_Scale);
-
-						ImGui::RadioButton("Single Probe", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::ProbeSamples));
-						ImGui::SameLine();
-						ImGui::RadioButton("Single Path", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::PathSamples));
-						ImGui::SameLine();
-						ImGui::RadioButton("Single Point", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::PointSamples));
-						ImGui::SameLine();
-						ImGui::RadioButton("All Samples", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::AllSamples));
-
-						drawPathLightSampleMode_Scale = static_cast<DrawPathLightSampleMode_Scale>(drawLightSamplesMode);
-					}
-
-					{
-						int drawLightSampleMode = static_cast<int>(drawPathLightSampleMode_Type);
-
-						ImGui::RadioButton("Point", &drawLightSampleMode, static_cast<int>(DrawPathLightSampleMode_Type::Point));
-						ImGui::SameLine();
-						ImGui::RadioButton("Area", &drawLightSampleMode, static_cast<int>(DrawPathLightSampleMode_Type::Area));
-						ImGui::SameLine();
-						ImGui::RadioButton("All", &drawLightSampleMode, static_cast<int>(DrawPathLightSampleMode_Type::All));
-
-						drawPathLightSampleMode_Type = static_cast<DrawPathLightSampleMode_Type>(drawLightSampleMode);
-					}
-
-					ImGui::Text("Probes num: %d", lightBakingResult.obj.probes.size());
-					ImGui::InputInt("Probe index", &drawPathLightSamples_ProbeIndex);
-					drawPathLightSamples_ProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probes.size() - 1, drawPathLightSamples_ProbeIndex));
-
-					const bool isLightSamplePathDataExists = lightBakingResult.obj.probes.empty() == false &&
-						lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex].lightSamples.has_value();
-
-					const int lightSamplePathNum = isLightSamplePathDataExists ?
-						lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex].lightSamples->size() : 0;
-
-					ImGui::Text("Paths num: %d", lightSamplePathNum);
-					ImGui::InputInt("Path index", &drawPathLightSamples_PathIndex);
-					drawPathLightSamples_PathIndex = std::max(0, std::min<int>(lightSamplePathNum - 1, drawPathLightSamples_PathIndex));
-
-					const int lightSamplePointsNum = isLightSamplePathDataExists ?
-						lightBakingResult.obj.probes[drawPathLightSamples_ProbeIndex].lightSamples->at(drawPathLightSamples_PathIndex).size() : 0;
-
-					ImGui::Text("Sample points num: %d", lightSamplePointsNum);
-					ImGui::InputInt("Sample point index ", &drawPathLightSamples_PointIndex);
-					drawPathLightSamples_PointIndex = std::max(0, std::min<int>(lightSamplePointsNum - 1, drawPathLightSamples_PointIndex));
-
-					ImGui::Checkbox("Show Light Sample Rays", &drawLightPathSamples);
-
-				}
-
-				ImGui::Separator();
-
-				{
-
-					ImGui::Text("Bake Options");
-
-					ImGui::Text("Only use this option if baking for camera cluster");
-
-					bool saveBakeRayPaths = lightBaker.GetBakeFlag(BakeFlags::SaveRayPath);
-
-					if (ImGui::Checkbox("Save Bake Ray Paths", &saveBakeRayPaths))
-					{
-						lightBaker.SetBakeFlag(BakeFlags::SaveRayPath, saveBakeRayPaths);
-					}
-
-					bool saveLightSamples = lightBaker.GetBakeFlag(BakeFlags::SaveLightSampling);
-
-					if (ImGui::Checkbox("Save Light Samples", &saveLightSamples))
-					{
-						lightBaker.SetBakeFlag(BakeFlags::SaveLightSampling, saveLightSamples);
-					}
-
-					{
-						int bakeMode = static_cast<int>(lightBaker.GetBakingMode());
-
-						ImGui::RadioButton("Camera cluster", &bakeMode, static_cast<int>(LightBakingMode::CurrentPositionCluster));
-						ImGui::SameLine();
-						ImGui::RadioButton("All clusters", &bakeMode, static_cast<int>(LightBakingMode::AllClusters));
-						lightBaker.SetBakingMode(static_cast<LightBakingMode>(bakeMode));
-					}
-				}
-
-				ImGui::Separator();
-
-				{
-					ImGui::Text("Light Sampling settings");
-
-					bool samplePointLights = lightBaker.GetBakeFlag(BakeFlags::SamplePointLights);
-
-					if (ImGui::Checkbox("Sample Point Lights", &samplePointLights))
-					{
-						lightBaker.SetBakeFlag(BakeFlags::SamplePointLights, samplePointLights);
-					}
-
-					ImGui::SameLine();
-
-					bool sampleAreaLights = lightBaker.GetBakeFlag(BakeFlags::SampleAreaLights);
-
-					if (ImGui::Checkbox("Sample Area Lights", &sampleAreaLights))
-					{
-						lightBaker.SetBakeFlag(BakeFlags::SampleAreaLights, sampleAreaLights);
-					}
-				}
-
-				ImGui::Separator();
-
-				{
-					bool saveToFileAfterBake = lightBaker.GetBakeFlag(BakeFlags::SaveToFileAfterBake);
-
-					if (ImGui::Checkbox("Save to file after bake", &saveToFileAfterBake))
-					{
-						lightBaker.SetBakeFlag(BakeFlags::SaveToFileAfterBake, saveToFileAfterBake);
-					}
-				}
-
-				ImGui::Separator();
-
-				{
-					if (ImGui::Button("Start bake"))
-					{
-						if (lightBaker.GetBakingMode() == LightBakingMode::CurrentPositionCluster)
 						{
-							lightBaker.SetBakePosition(context.frame.camera.position);
-						}
-						else
-						{
-							// Enforce false, because certain flags can only be used for certain modes
-							lightBaker.SetBakeFlag(BakeFlags::SaveRayPath, false);
-							lightBaker.SetBakeFlag(BakeFlags::SaveLightSampling, false);
+							int drawRayMode = static_cast<int>(debugSettings.drawBakeRayPathsMode);
+
+							ImGui::RadioButton("Single probe", &drawRayMode, static_cast<int>(DrawRayPathMode::SingleProbe));
+							ImGui::SameLine();
+							ImGui::RadioButton("All probes", &drawRayMode, static_cast<int>(DrawRayPathMode::AllClusterProbes));
+
+							debugSettings.drawBakeRayPathsMode = static_cast<DrawRayPathMode>(drawRayMode);
 						}
 
-						RequestStateChange(State::LightBaking);
+						ImGui::Text("Probes num: %d", lightBakingResult.obj.probes.size());
+						ImGui::InputInt("Probe ray index", &debugSettings.drawBakeRayPathsProbeIndex);
+						debugSettings.drawBakeRayPathsProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probes.size() - 1, 
+							debugSettings.drawBakeRayPathsProbeIndex));
+
+						ImGui::Checkbox("Show Ray Paths", &debugSettings.drawBakeRayPaths);
+
+						ImGui::Unindent();
 					}
+
+					ImGui::Separator();
+
+					if (ImGui::CollapsingHeader("Light sampling display settings"))
+					{
+						ImGui::Indent();
+
+						{
+							int drawLightSamplesMode = static_cast<int>(debugSettings.drawPathLightSampleMode_Scale);
+
+							ImGui::RadioButton("Single Probe", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::ProbeSamples));
+							ImGui::SameLine();
+							ImGui::RadioButton("Single Path", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::PathSamples));
+							ImGui::SameLine();
+							ImGui::RadioButton("Single Point", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::PointSamples));
+							ImGui::SameLine();
+							ImGui::RadioButton("All Samples", &drawLightSamplesMode, static_cast<int>(DrawPathLightSampleMode_Scale::AllSamples));
+
+							debugSettings.drawPathLightSampleMode_Scale = static_cast<DrawPathLightSampleMode_Scale>(drawLightSamplesMode);
+						}
+
+						{
+							int drawLightSampleMode = static_cast<int>(debugSettings.drawPathLightSampleMode_Type);
+
+							ImGui::RadioButton("Point", &drawLightSampleMode, static_cast<int>(DrawPathLightSampleMode_Type::Point));
+							ImGui::SameLine();
+							ImGui::RadioButton("Area", &drawLightSampleMode, static_cast<int>(DrawPathLightSampleMode_Type::Area));
+							ImGui::SameLine();
+							ImGui::RadioButton("All", &drawLightSampleMode, static_cast<int>(DrawPathLightSampleMode_Type::All));
+
+							debugSettings.drawPathLightSampleMode_Type = static_cast<DrawPathLightSampleMode_Type>(drawLightSampleMode);
+						}
+
+						ImGui::Text("Probes num: %d", lightBakingResult.obj.probes.size());
+						ImGui::InputInt("Probe index", &debugSettings.drawPathLightSamples_ProbeIndex);
+						debugSettings.drawPathLightSamples_ProbeIndex = std::max(0, std::min<int>(lightBakingResult.obj.probes.size() - 1, 
+							debugSettings.drawPathLightSamples_ProbeIndex));
+
+						const bool isLightSamplePathDataExists = lightBakingResult.obj.probes.empty() == false &&
+							lightBakingResult.obj.probes[debugSettings.drawPathLightSamples_ProbeIndex].lightSamples.has_value();
+
+						const int lightSamplePathNum = isLightSamplePathDataExists ?
+							lightBakingResult.obj.probes[debugSettings.drawPathLightSamples_ProbeIndex].lightSamples->size() : 0;
+
+						ImGui::Text("Paths num: %d", lightSamplePathNum);
+						ImGui::InputInt("Path index", &debugSettings.drawPathLightSamples_PathIndex);
+						debugSettings.drawPathLightSamples_PathIndex = std::max(0, std::min<int>(lightSamplePathNum - 1, debugSettings.drawPathLightSamples_PathIndex));
+
+						const int lightSamplePointsNum = isLightSamplePathDataExists ?
+							lightBakingResult.obj.probes[debugSettings.drawPathLightSamples_ProbeIndex].lightSamples->at(debugSettings.drawPathLightSamples_PathIndex).size() : 0;
+
+						ImGui::Text("Sample points num: %d", lightSamplePointsNum);
+						ImGui::InputInt("Sample point index ", &debugSettings.drawPathLightSamples_PointIndex);
+						debugSettings.drawPathLightSamples_PointIndex = std::max(0, std::min<int>(lightSamplePointsNum - 1, debugSettings.drawPathLightSamples_PointIndex));
+
+						ImGui::Checkbox("Show Light Sample Rays", &debugSettings.drawLightPathSamples);
+
+						ImGui::Unindent();
+					}
+					
+					ImGui::Unindent();
 				}
 
 				ImGui::Separator();
 
+				if (ImGui::CollapsingHeader("Light Baking"))
 				{
-					if (ImGui::Button("Load light baking data from file"))
-					{
-						RequestStateChange(State::LoadLightBakingFromFile);
-					}
-				}
+					ImGui::Indent();
 
+					{
+						ImGui::Text("Bake Options");
+
+						ImGui::Text("Only use this option if baking for camera cluster");
+
+						bool saveBakeRayPaths = lightBaker.GetBakeFlag(BakeFlags::SaveRayPath);
+
+						if (ImGui::Checkbox("Save Bake Ray Paths", &saveBakeRayPaths))
+						{
+							lightBaker.SetBakeFlag(BakeFlags::SaveRayPath, saveBakeRayPaths);
+						}
+
+						bool saveLightSamples = lightBaker.GetBakeFlag(BakeFlags::SaveLightSampling);
+
+						if (ImGui::Checkbox("Save Light Samples", &saveLightSamples))
+						{
+							lightBaker.SetBakeFlag(BakeFlags::SaveLightSampling, saveLightSamples);
+						}
+
+						{
+							int bakeMode = static_cast<int>(lightBaker.GetBakingMode());
+
+							ImGui::RadioButton("Camera cluster", &bakeMode, static_cast<int>(LightBakingMode::CurrentPositionCluster));
+							ImGui::SameLine();
+							ImGui::RadioButton("All clusters", &bakeMode, static_cast<int>(LightBakingMode::AllClusters));
+							lightBaker.SetBakingMode(static_cast<LightBakingMode>(bakeMode));
+						}
+					}
+
+					ImGui::Separator();
+
+					{
+						ImGui::Text("Light Sampling settings");
+
+						bool samplePointLights = lightBaker.GetBakeFlag(BakeFlags::SamplePointLights);
+
+						if (ImGui::Checkbox("Sample Point Lights", &samplePointLights))
+						{
+							lightBaker.SetBakeFlag(BakeFlags::SamplePointLights, samplePointLights);
+						}
+
+						ImGui::SameLine();
+
+						bool sampleAreaLights = lightBaker.GetBakeFlag(BakeFlags::SampleAreaLights);
+
+						if (ImGui::Checkbox("Sample Area Lights", &sampleAreaLights))
+						{
+							lightBaker.SetBakeFlag(BakeFlags::SampleAreaLights, sampleAreaLights);
+						}
+					}
+
+					ImGui::Separator();
+
+					{
+						bool saveToFileAfterBake = lightBaker.GetBakeFlag(BakeFlags::SaveToFileAfterBake);
+
+						if (ImGui::Checkbox("Save to file after bake", &saveToFileAfterBake))
+						{
+							lightBaker.SetBakeFlag(BakeFlags::SaveToFileAfterBake, saveToFileAfterBake);
+						}
+					}
+
+					ImGui::Separator();
+
+					{
+						if (ImGui::Button("Start bake"))
+						{
+							if (lightBaker.GetBakingMode() == LightBakingMode::CurrentPositionCluster)
+							{
+								lightBaker.SetBakePosition(context.frame.camera.position);
+							}
+							else
+							{
+								// Enforce false, because certain flags can only be used for certain modes
+								lightBaker.SetBakeFlag(BakeFlags::SaveRayPath, false);
+								lightBaker.SetBakeFlag(BakeFlags::SaveLightSampling, false);
+							}
+
+							RequestStateChange(State::LightBaking);
+						}
+					}
+
+					ImGui::Separator();
+
+					{
+						if (ImGui::Button("Load light baking data from file"))
+						{
+							RequestStateChange(State::LoadLightBakingFromFile);
+						}
+					}
+
+					ImGui::Unindent();
+				}
 			}
 			else if (GetState() == State::LightBaking)
 			{
@@ -2212,6 +2309,11 @@ const BSPTree& Renderer::GetBSPTree() const
 int Renderer::GetCurrentFrameCounter() const
 {
 	return frameCounter;
+}
+
+const Renderer::DebugSettings& Renderer::GetDebugSettings() const
+{
+	return debugSettings;
 }
 
 void Renderer::ConsumeDiffuseIndirectLightingBakingResult(BakingData&& results)
@@ -2800,6 +2902,7 @@ void Renderer::EndFrame()
 
 	Frame& frame = GetMainThreadFrame();
 
+	// Create some permanent resources
 	if (frame.texCreationRequests.empty() == false)
 	{
 		GPUJobContext createDeferredTextureContext = CreateContext(frame);
@@ -2810,6 +2913,14 @@ void Renderer::EndFrame()
 	{
 		GPUJobContext indirectResUpdateContext = CreateContext(frame);
 		CreateIndirectLightResources(indirectResUpdateContext);
+	}
+
+	const bool cameraIsInitalized = frame.camera.fov.x != 0 && frame.camera.fov.y != 0;
+	if (ResourceManager::Inst().FindResource(Resource::FRUSTUM_CLUSTERS_AABB) == nullptr &&
+		cameraIsInitalized)
+	{
+		GPUJobContext clusteredLightingResourcesContext = CreateContext(frame);
+		CreateClusteredLightingResources(clusteredLightingResourcesContext);
 	}
 
 	// Proceed to next frame
@@ -2830,13 +2941,15 @@ void Renderer::PreRenderSetUpFrame(Frame& frame)
 {
 	ASSERT_MAIN_THREAD;
 
-	// Some preparations
+	// UI Proj matrix
 	XMMATRIX tempMat = XMMatrixIdentity();
 	XMStoreFloat4x4(&frame.uiViewMat, tempMat);
 	tempMat = XMMatrixOrthographicRH(frame.camera.width, frame.camera.height, 1.0f, 0.0f);
 
 	XMStoreFloat4x4(&frame.uiProjectionMat, tempMat);
 	
+	SetUpFrameDebugData(frame);
+
 	// Static objects
 	frame.visibleStaticObjectsIndices = bspTree.GetCameraVisibleObjectsIndices(frame.camera);
 
