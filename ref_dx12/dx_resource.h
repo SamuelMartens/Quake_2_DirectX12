@@ -15,6 +15,7 @@ struct ResourceDesc
 
 	int width = 0;
 	int height = 0;
+
 	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
 	D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
 
@@ -53,7 +54,7 @@ public:
 	Resource() = default;
 
 	Resource(const Resource&) = delete;
-	Resource& operator=(const Resource&) = delete;
+	Resource& operator=(const Resource&) = delete; 
 
 	Resource(Resource&& other);
 	Resource& operator=(Resource&& other);
@@ -84,13 +85,13 @@ struct TexCreationRequest_FromFile
 	bool saveResourceInCPUMemory = false;
 };
 
-struct TexCreationRequest_FromData
+struct ResourceCreationRequest_FromData
 {
-	explicit TexCreationRequest_FromData(Resource& val) :
-		texture(val)
+	explicit ResourceCreationRequest_FromData(Resource& val) :
+		resource(val)
 	{}
 
-	Resource& texture;
+	Resource& resource;
 	std::optional<XMFLOAT4> clearValue;
 	bool saveResourceInCPUMemory = false;
 
@@ -125,4 +126,4 @@ private:
 	D3D12_RESOURCE_STATES state = Resource::DEFAULT_STATE;
 };
 
-using TextureCreationRequest_t = std::variant<TexCreationRequest_FromData, TexCreationRequest_FromFile>;
+using ResourceCreationRequest_t = std::variant<ResourceCreationRequest_FromData, TexCreationRequest_FromFile>;

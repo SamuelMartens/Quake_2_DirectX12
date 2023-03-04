@@ -1,0 +1,63 @@
+PassProperties
+{
+PassInput : PostProcess
+// Should be the same as define, in shader below
+PassThreadGroups: 32, 24, 1
+}
+
+State
+{
+}
+
+RootSignature
+{
+RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
+DescriptorTable(UAV(u0, numDescriptors = 1, space = 2)),
+CBV(b1, space = 0)
+}
+
+// -== Register space convention ==-
+//	0 - Global, PerPass
+//	1 - Global, PerObject
+//	2 - Local, PerPass
+//	3 - Local, PerObject
+
+// -- Global CBVs
+
+[Global, PerPass]
+cbuffer cbTileData : register(b1, space0)
+{
+	int TileWidth;
+	int TileHeight;
+	int NumFrustumSlices;
+	int ClusterListSize;
+}
+
+// --- Local tex
+
+[Local, PerPass, Bind: ClusteredLight_ActiveClusters]
+RWStructuredBuffer<int> ActiveClustersList : register(u0, space2)
+
+Type : CS
+External : cbTileData, ActiveClustersList
+<[
+
+#define DISPATCH_SIZE int3(32, 24, 1)
+#define THREAD_GROUP_SIZE int3(32, 32, 1)
+#define CLEAN_CLUSTER_LIGHTS_PER_THREAD 16
+
+// Should match thread groupd size
+[numthreads(32, 32, 1)]
+void main(int3 dispatchThreadID : SV_DispatchThreadID)
+{
+	const int3 dispatchThreadsNum = DISPATCH_SIZE * THREAD_GROUP_SIZE;
+	const int flatDispatchThreadID = dispatchThreadID.y * dispatchThreadsNum.x + dispatchThreadID.x;
+	
+	// Clean active cluster values in range of that thread
+	for (int i = flatDispatchThreadID * CLEAN_CLUSTER_LIGHTS_PER_THREAD; i < min(ClusterListSize, (flatDispatchThreadID + 1) * CLEAN_CLUSTER_LIGHTS_PER_THREAD); i++)
+	{
+		ActiveClustersList[i] = 0;
+	}
+}
+
+]>

@@ -52,6 +52,8 @@ cbuffer cbFrameData : register(b0, space0)
     float4 CameraPitch;
     float4 CameraRoll;
     float4 CameraOrigin;
+	float CameraNear;
+	float CameraFar;
 	int ScreenWidth;
 	int ScreenHeight;
 }

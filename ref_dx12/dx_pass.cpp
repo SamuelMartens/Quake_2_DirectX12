@@ -68,10 +68,9 @@ namespace
 								if (descTableEntitiy.internalBindName.has_value())
 								{
 									// This is internal resource
-									RenderCallbacks::RegisterInternalResource<D3D12_SHADER_RESOURCE_VIEW_DESC>(
+									RenderCallbacks::RegisterInternalResourceDescriptor(
 										currentViewIndex,
-										*descTableEntitiy.internalBindName
-									);
+										descTableEntitiy);
 								}
 								else
 								{
@@ -89,10 +88,9 @@ namespace
 								if (descTableEntitiy.internalBindName.has_value())
 								{
 									// This is internal resource
-									RenderCallbacks::RegisterInternalResource<D3D12_UNORDERED_ACCESS_VIEW_DESC>(
+									RenderCallbacks::RegisterInternalResourceDescriptor(
 										currentViewIndex,
-										*descTableEntitiy.internalBindName
-										);
+										descTableEntitiy);
 								}
 								else
 								{

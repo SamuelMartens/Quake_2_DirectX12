@@ -852,7 +852,7 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	frame.entities.clear();
 	frame.particles.clear();
 
-	frame.texCreationRequests.clear();
+	frame.resourceCreationRequests.clear();
 
 	// Remove used draw calls
 	frame.uiDrawCalls.clear();
@@ -2736,7 +2736,7 @@ void Renderer::EndLevelLoading()
 	dynamicModelRegContext->commandList->Close();
 	
 	GPUJobContext createDeferredTextureContext = CreateContext(frame);
-	ResourceManager::Inst().CreateDeferredTextures(createDeferredTextureContext);
+	ResourceManager::Inst().CreateDeferredResource(createDeferredTextureContext);
 	
 	CloseFrame(frame);
 
@@ -2795,14 +2795,14 @@ void Renderer::AddDrawCall_RawPic(int x, int y, int quadWidth, int quadHeight, i
 			texture[i] = rawPalette[std::to_integer<int>(data[i])];
 		}
 
-		FArg::CreateTextureFromDataDeferred createTexArgs;
+		FArg::CreateResourceFromDataDeferred createTexArgs;
 		createTexArgs.data = reinterpret_cast<std::byte*>(texture.data());
 		createTexArgs.desc = &desc;
 		createTexArgs.name = Resource::RAW_TEXTURE_NAME;
 		createTexArgs.frame = &GetMainThreadFrame();
 		createTexArgs.saveResourceInCPUMemory = false;
 
-		rawTex = ResourceManager::Inst().CreateTextureFromDataDeferred(createTexArgs);
+		rawTex = ResourceManager::Inst().CreateResourceFromDataDeferred(createTexArgs);
 	}
 	else
 	{
@@ -2903,10 +2903,10 @@ void Renderer::EndFrame()
 	Frame& frame = GetMainThreadFrame();
 
 	// Create some permanent resources
-	if (frame.texCreationRequests.empty() == false)
+	if (frame.resourceCreationRequests.empty() == false)
 	{
 		GPUJobContext createDeferredTextureContext = CreateContext(frame);
-		ResourceManager::Inst().CreateDeferredTextures(createDeferredTextureContext);
+		ResourceManager::Inst().CreateDeferredResource(createDeferredTextureContext);
 	}
 	
 	if (lightBakingResultGPUVersion < lightBakingResultCPUVersion)

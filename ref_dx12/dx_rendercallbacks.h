@@ -283,34 +283,41 @@ namespace RenderCallbacks
 
 	}
 
-
-	template<typename DescT, typename bT>
-	void RegisterInternalResource(bT& bindPoint, std::string_view internalResourceName)
+	template<typename ResT, typename bT>
+	void RegisterInternalResourceDescriptor(bT& bindPoint, const ResT& rootArg)
 	{
 		// For internal resource there is no difference if it is global or local,
 		// object or pass. No context passed as well because essentially those kind of
 		// resources are handled on GPU side.
-		Resource* tex = ResourceManager::Inst().FindResource(internalResourceName);
+		Resource* res = ResourceManager::Inst().FindResource(*rootArg.internalBindName);
 
-		DX_ASSERT(tex != nullptr && "Can register internal resource. Target texture doesn't exist");
+		DX_ASSERT(res != nullptr && "Can register internal resource. Target texture doesn't exist");
 
-		ViewDescription_t emtpySrvDesc;
-		if constexpr( std::is_same_v<DescT,D3D12_SHADER_RESOURCE_VIEW_DESC>)
+		ViewDescription_t descriptorDesc;
+		if constexpr( std::is_same_v<ResT, RootArg::DescTableEntity_Texture>)
 		{
-			emtpySrvDesc = ViewDescription_t{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
-		}
-
-		if constexpr (std::is_same_v<DescT, D3D12_UNORDERED_ACCESS_VIEW_DESC>)
+			descriptorDesc = ViewDescription_t{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
+		} 
+		else if constexpr (std::is_same_v<ResT, RootArg::DescTableEntity_UAView>)
 		{
-			emtpySrvDesc = ViewDescription_t{ std::optional<D3D12_UNORDERED_ACCESS_VIEW_DESC>(std::nullopt) };
+			if (res->desc.dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
+			{
+				D3D12_UNORDERED_ACCESS_VIEW_DESC desc = 
+					DescriptorHeapUtils::GenerateDefaultStructuredBufferUAV(res, *rootArg.strideInBytes);
+
+ 				descriptorDesc = ViewDescription_t{ std::optional(desc) };
+			}
+			else
+			{
+				descriptorDesc = ViewDescription_t{ std::optional<D3D12_UNORDERED_ACCESS_VIEW_DESC>(std::nullopt) };
+			} 
 		}
-		
-		if constexpr (std::is_same_v<DescT, D3D12_CONSTANT_BUFFER_VIEW_DESC>)
+		else
 		{
 			DX_ASSERT(false && "Not implemented");
 		}
 
-		DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, tex->gpuBuffer.Get(), &emtpySrvDesc));
+		DO_IF_SAME_DECAYED_TYPE(bT, int, Renderer::Inst().cbvSrvHeapAllocator->AllocateDescriptor(bindPoint, res->gpuBuffer.Get(), &descriptorDesc));
 	}
 
 	template<typename bT>
@@ -436,6 +443,16 @@ namespace RenderCallbacks
 		case HASH("CameraOrigin"):
 		{
 			reinterpret_cast<XMFLOAT4&>(bindPoint) = ctx.jobContext.frame.camera.position;
+		}
+		break;
+		case HASH("CameraNear"):
+		{
+			reinterpret_cast<float&>(bindPoint) = Camera::Z_NEAR;
+		}
+		break;
+		case HASH("CameraFar"):
+		{
+			reinterpret_cast<float&>(bindPoint) = Camera::Z_FAR;
 		}
 		break;
 		case HASH("DiffuseProbes"):
@@ -570,6 +587,48 @@ namespace RenderCallbacks
 				 sseInvViewProjMatrix);
 		}
 		break;
+		case HASH("TileWidth"):
+		{
+			reinterpret_cast<int&>(bindPoint) = Camera::FRUSTUM_TILE_WIDTH;
+		}
+		break;
+		case HASH("TileHeight"):
+		{
+			reinterpret_cast<int&>(bindPoint) = Camera::FRUSTUM_TILE_HEIGHT;
+		}
+		break;
+		case HASH("NumFrustumSlices"):
+		{
+			reinterpret_cast<int&>(bindPoint) = Camera::FRUSTUM_CLUSTER_SLICES;
+		}
+		break;
+		case HASH("ClusterListSize"):
+		{
+			reinterpret_cast<int&>(bindPoint) = Settings::CLUSTERED_LIGHT_LIST_SIZE;
+		}
+		break;
+		case HASH("DepthBuffer"):
+		{
+			ViewDescription_t genericDesc = std::optional(D3D12_SHADER_RESOURCE_VIEW_DESC());
+
+			D3D12_SHADER_RESOURCE_VIEW_DESC& viewDesc = std::get<std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>>(genericDesc).value();
+			viewDesc.Format = DXGI_FORMAT_R32_FLOAT;
+			viewDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			viewDesc.Shader4ComponentMapping =
+				D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(
+					D3D12_SHADER_COMPONENT_MAPPING_FROM_MEMORY_COMPONENT_0,
+					D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_0,
+					D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_0,
+					D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_0
+				);
+			viewDesc.Texture2D.MostDetailedMip = 0;
+			viewDesc.Texture2D.MipLevels = 1;
+			viewDesc.Texture2D.PlaneSlice = 0;
+			viewDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+
+			DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint,
+				ctx.jobContext.frame.depthStencilBuffer.Get(), &genericDesc));
+		}
 		default:
 			break;
 		}

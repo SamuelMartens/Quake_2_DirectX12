@@ -68,6 +68,17 @@ Resources
 		Flags : NONE
 		ClearValue : NONE
 		InitValue : 0.0, 0.0, 0.0, 1.0
+	],
+	
+	ClusteredLight_ActiveClusters
+	[
+		Type : Buffer
+		// Should match Settings::CLUSTERED_LIGHT_LIST_SIZE * INT size (which is 4 bytes)
+		Dimensions : 2048, 1
+		Format : UNKNOWN
+		Flags : ALLOW_UNORDERED_ACCESS
+		ClearValue : NONE
+		InitValue : NONE
 	]
 }
 
@@ -75,8 +86,10 @@ Steps
 {
 	// Clear color buffer
 	Copy(ColorBackBufferClearBuffer, COLOR_BACK_BUFFER)
+	FrameSetup
     Static
 	Dynamic
+	ClusteredLighting_MarkActiveClusters
 	BSPClusterClassification
 	SampleIndirect
 	DeferredCompose

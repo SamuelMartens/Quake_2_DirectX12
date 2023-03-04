@@ -53,7 +53,7 @@ namespace FArg
 		bool saveResourceInCPUMemory = false;
 	};
 
-	struct CreateTextureFromDataDeferred
+	struct CreateResourceFromDataDeferred
 	{
 		const std::byte* data = nullptr;
 		const ResourceDesc* desc = nullptr;
@@ -122,9 +122,9 @@ public:
 	/* Textures */
 	Resource* CreateTextureFromFileDeferred(FArg::CreateTextureFromFileDeferred& args);
 	Resource* CreateTextureFromFile(FArg::CreateTextureFromFile& args);
-	Resource* CreateTextureFromDataDeferred(FArg::CreateTextureFromDataDeferred& args);
+	Resource* CreateResourceFromDataDeferred(FArg::CreateResourceFromDataDeferred& args);
 	Resource* CreateTextureFromData(FArg::CreateResource& args);
-	void CreateDeferredTextures(GPUJobContext& context);
+	void CreateDeferredResource(GPUJobContext& context);
 
 	void GetDrawTextureFullname(const char* name, char* dest, int destSize) const;
 	void UpdateResource(Resource& res, const std::byte* data, GPUJobContext& context);

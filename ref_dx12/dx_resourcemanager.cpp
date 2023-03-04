@@ -296,7 +296,7 @@ Resource* ResourceManager::CreateTextureFromFileDeferred(FArg::CreateTextureFrom
 	TexCreationRequest_FromFile texRequest(*result);
 	texRequest.saveResourceInCPUMemory = args.saveResourceInCPUMemory;
 
-	args.frame->texCreationRequests.push_back(std::move(texRequest));
+	args.frame->resourceCreationRequests.push_back(std::move(texRequest));
 
 	return result;
 }
@@ -313,34 +313,34 @@ Resource* ResourceManager::CreateTextureFromFile(FArg::CreateTextureFromFile& ar
 	return _CreateTextureFromFile(_args);
 }
 
-Resource* ResourceManager::CreateTextureFromDataDeferred(FArg::CreateTextureFromDataDeferred& args)
+Resource* ResourceManager::CreateResourceFromDataDeferred(FArg::CreateResourceFromDataDeferred& args)
 {
 	std::scoped_lock<std::mutex> lock(resources.mutex);
 
-	Resource tex;
-	tex.name = args.name;
-	tex.desc = *args.desc;
+	Resource resource;
+	resource.name = args.name;
+	resource.desc = *args.desc;
 
-	Resource* result = &resources.obj.insert_or_assign(tex.name, std::move(tex)).first->second;
+	Resource* result = &resources.obj.insert_or_assign(resource.name, std::move(resource)).first->second;
 
-	TexCreationRequest_FromData texRequest(*result);
-	texRequest.saveResourceInCPUMemory = args.saveResourceInCPUMemory;
+	ResourceCreationRequest_FromData resRequest(*result);
+	resRequest.saveResourceInCPUMemory = args.saveResourceInCPUMemory;
 	
 	if (args.data != nullptr)
 	{
 		// In bytes
-		const int texSize = tex.desc.width * tex.desc.height * Resource::GetBytesPerPixel(tex.desc);
+		const int resSize = resource.desc.width * resource.desc.height * Resource::GetBytesPerPixel(resource.desc);
 
-		texRequest.data.resize(texSize);
-		memcpy(texRequest.data.data(), args.data, texSize);
+		resRequest.data.resize(resSize);
+		memcpy(resRequest.data.data(), args.data, resSize);
 	}
 
 	if (args.clearValue != nullptr)
 	{
-		texRequest.clearValue = *args.clearValue;
+		resRequest.clearValue = *args.clearValue;
 	}
 
-	args.frame->texCreationRequests.push_back(std::move(texRequest));
+	args.frame->resourceCreationRequests.push_back(std::move(resRequest));
 
 	return result;
 }
@@ -354,49 +354,47 @@ Resource* ResourceManager::CreateTextureFromData(FArg::CreateResource& args)
 	return _CreateResource(args);
 }
 
-void ResourceManager::CreateDeferredTextures(GPUJobContext& context)
+void ResourceManager::CreateDeferredResource(GPUJobContext& context)
 {
 	CommandListRAIIGuard_t commandListGuard(*context.commandList);
 
 	std::scoped_lock<std::mutex> lock(resources.mutex);
 
-	for (const TextureCreationRequest_t& tr : context.frame.texCreationRequests)
+	for (const ResourceCreationRequest_t& resRequest : context.frame.resourceCreationRequests)
 	{
-		std::visit([&context, this](auto&& texRequest)
+		std::visit([&context, this](auto&& resourceRequest)
 		{
-			using T = std::decay_t<decltype(texRequest)>;
+			using T = std::decay_t<decltype(resourceRequest)>;
 
 			if constexpr (std::is_same_v<T, TexCreationRequest_FromFile>)
 			{
 				FArg::_CreateTextureFromFile createTextureArgs;
-				createTextureArgs.name = texRequest.texture.name.c_str();
+				createTextureArgs.name = resourceRequest.texture.name.c_str();
 				createTextureArgs.context = &context;
-				createTextureArgs.saveResourceInCPUMemory = texRequest.saveResourceInCPUMemory;
+				createTextureArgs.saveResourceInCPUMemory = resourceRequest.saveResourceInCPUMemory;
 
 				_CreateTextureFromFile(createTextureArgs);
 			}
-			else if constexpr (std::is_same_v<T, TexCreationRequest_FromData>)
+			else if constexpr (std::is_same_v<T, ResourceCreationRequest_FromData>)
 			{
-				std::string name = texRequest.texture.name;
+				std::string name = resourceRequest.resource.name;
 
 				FArg::CreateResource createTexArgs;
-				createTexArgs.data = texRequest.data.empty() == true ? nullptr : texRequest.data.data();
-				createTexArgs.desc = &texRequest.texture.desc;
+				createTexArgs.data = resourceRequest.data.empty() == true ? nullptr : resourceRequest.data.data();
+				createTexArgs.desc = &resourceRequest.resource.desc;
 				createTexArgs.name = name.c_str();
 				createTexArgs.context = &context;
-				createTexArgs.clearValue = texRequest.clearValue.has_value() ? &texRequest.clearValue.value() : nullptr;
-				createTexArgs.saveResourceInCPUMemory = texRequest.saveResourceInCPUMemory;
-
-				DX_ASSERT(createTexArgs.desc->dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && "Invalid texture dimension during resource creation");
-
+				createTexArgs.clearValue = resourceRequest.clearValue.has_value() ? &resourceRequest.clearValue.value() : nullptr;
+				createTexArgs.saveResourceInCPUMemory = resourceRequest.saveResourceInCPUMemory;
+				
 				_CreateResource(createTexArgs);
 			}
 			else
 			{
-				static_assert(false, "Invalid class in Deferred Tex creation");
+				static_assert(false, "Invalid class in Deferred Res creation");
 			}
 		}
-		, tr);
+		, resRequest);
 	}
 }
 

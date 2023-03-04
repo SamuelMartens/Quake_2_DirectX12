@@ -119,6 +119,7 @@ namespace RootArg
 		unsigned int hashedName = 0;
 
 		std::optional<std::string> internalBindName;
+		std::optional<int> strideInBytes;
 	};
 
 	struct DescTableEntity_StructuredBufferView
@@ -379,7 +380,8 @@ namespace Parsing
 	{};
 
 	// Either some struct or basic type
-	using StructBufferDataType_t = std::variant<std::string, DataType>;
+	using StructBufferDataType_t = std::variant<std::string,
+		DataType>;
 
 	struct Resource_StructuredBuffer : public Resource_Base
 	{
@@ -388,12 +390,16 @@ namespace Parsing
 		bool IsEqual(const Resource_StructuredBuffer& other) const;
 	};
 
+	struct Resource_RWStructuredBuffer : public Resource_StructuredBuffer
+	{};
+
 	using  Resource_t = std::variant<
 		Resource_ConstBuff, 
 		Resource_Texture,
 		Resource_Sampler,
 		Resource_RWTexture,
-		Resource_StructuredBuffer
+		Resource_StructuredBuffer,
+		Resource_RWStructuredBuffer
 	>;
 
 	bool IsEqual(const Resource_t& res1, const Resource_t& res2);
@@ -407,6 +413,7 @@ namespace Parsing
 	std::string_view GetMiscDefRawView(const Parsing::MiscDef_t& def);
 
 	int GetVertAttrSize(const VertAttr& vertAttr);
+	int GetStructBufferDataTypeSize(const StructBufferDataType_t& dataType);
 };
 
 

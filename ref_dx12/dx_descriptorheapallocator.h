@@ -185,4 +185,5 @@ namespace DescriptorHeapUtils
 	D3D12_SHADER_RESOURCE_VIEW_DESC GetSRVBufferNullDescription();
 	
 	D3D12_SHADER_RESOURCE_VIEW_DESC GenerateDefaultStructuredBufferViewDesc(Resource* buffer, int stride);
+	D3D12_UNORDERED_ACCESS_VIEW_DESC GenerateDefaultStructuredBufferUAV(Resource* buffer, int stride);
 }

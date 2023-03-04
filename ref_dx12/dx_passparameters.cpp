@@ -511,6 +511,31 @@ namespace Parsing
 		});
 	}
 
+	int GetStructBufferDataTypeSize(const StructBufferDataType_t& dataType)
+	{
+		return std::visit([](auto&& dataType) -> int
+			{
+				using T = std::decay_t<decltype(dataType)>;
+				
+				if constexpr (std::is_same_v<T, DataType>)
+				{
+					return static_cast<int>(GetParseDataTypeSize(dataType));
+				}
+				else if constexpr (std::is_same_v<T, std::string>)
+				{
+					// Write custom sizes here if there is one
+					DX_ASSERT(false && "No type specified");
+					return Const::INVALID_SIZE;
+				}
+				else
+				{
+					DX_ASSERT(false && "Unknown struct buffer data type");
+				}
+				
+				return Const::INVALID_SIZE;
+			}, dataType);
+	}
+
 }
 
 PassParametersSource::PassParametersSource()

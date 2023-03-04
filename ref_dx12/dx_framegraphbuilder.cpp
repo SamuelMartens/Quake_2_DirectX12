@@ -710,6 +710,10 @@ namespace
 			{
 				currentPass.resources.emplace_back(std::any_cast<Parsing::Resource_StructuredBuffer>(sv[1]));
 			}
+			else if (sv[1].type() == typeid(Parsing::Resource_RWStructuredBuffer))
+			{
+				currentPass.resources.emplace_back(std::any_cast<Parsing::Resource_RWStructuredBuffer>(sv[1]));
+			}
 			else
 			{
 				DX_ASSERT(false && "Resource callback invalid type. Local scope");
@@ -735,6 +739,23 @@ namespace
 			const int registerSpace = std::get<1>(std::any_cast<std::tuple<int, int>>(sv[2]));
 
 			return Parsing::Resource_StructuredBuffer{
+				std::any_cast<std::string>(sv[1]),
+				std::nullopt,
+				std::nullopt,
+				std::nullopt,
+				registerId,
+				registerSpace,
+				std::string(sv.sv()),
+				std::any_cast<Parsing::StructBufferDataType_t>(sv[0])
+			};
+		};
+
+		parser["RWStructuredBuff"] = [](const peg::SemanticValues& sv)
+		{
+			const int registerId = std::get<0>(std::any_cast<std::tuple<int, int>>(sv[2]));
+			const int registerSpace = std::get<1>(std::any_cast<std::tuple<int, int>>(sv[2]));
+
+			return Parsing::Resource_RWStructuredBuffer{
 				std::any_cast<std::string>(sv[1]),
 				std::nullopt,
 				std::nullopt,
@@ -1170,6 +1191,8 @@ namespace
 				return DXGI_FORMAT_R16_FLOAT;
 			case HASH("R16_SINT"):
 				return DXGI_FORMAT_R16_SINT;
+			case HASH("R8_UINT"):
+				return DXGI_FORMAT_R8_UINT;
 			case HASH("D24_UNORM_S8_UINT"):
 				return DXGI_FORMAT_D24_UNORM_S8_UINT;
 			default:
@@ -1837,17 +1860,14 @@ std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std:
 		
 		DX_ASSERT(resourceManager.FindResource(resourceName) == nullptr && "This framegraph resource already exists");
 
-		DX_ASSERT(resourceDecl.desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && 
-			"Only 2D textures are implemented as frame graph internal res");
-
 		ResourceDesc desc;
 		desc.width = resourceDecl.desc.Width;
 		desc.height = resourceDecl.desc.Height;
 		desc.format = resourceDecl.desc.Format;
 		desc.flags = resourceDecl.desc.Flags;
-		desc.dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+		desc.dimension = resourceDecl.desc.Dimension;
 
-		FArg::CreateTextureFromDataDeferred createTexArgs;
+		FArg::CreateResourceFromDataDeferred createTexArgs;
 		createTexArgs.data = nullptr;
 		createTexArgs.desc = &desc;
 		createTexArgs.name = resourceName.c_str();
@@ -1914,7 +1934,7 @@ std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std:
 			createTexArgs.data = initBuffer.data();
 		}
 
-		resourceManager.CreateTextureFromDataDeferred(createTexArgs);
+		resourceManager.CreateResourceFromDataDeferred(createTexArgs);
 	}
 
 	return internalResourcesName;
@@ -2008,7 +2028,7 @@ std::string FrameGraphBuilder::LoadFrameGraphFile() const
 
 		if (filePath.extension() == Settings::FRAMEGRAPH_FILE_EXT)
 		{
-			Logs::Logf(Logs::Category::Parser, "Read frame graph file %s", filePath.string());
+			Logs::Logf(Logs::Category::Parser, "Read frame graph file {}", filePath.string());
 
 			std::string frameGraphFileContent = Utils::ReadFile(filePath);
 
@@ -2412,13 +2432,34 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 							{
 								const Parsing::Resource_RWTexture* res =
 									FindResourceOfTypeAndRegister<Parsing::Resource_RWTexture>(passResources, descTableParam.registerId + i, descTableParam.registerSpace);
-								
-								SetScopeAndBindFrequency(bindFrequency, scope, res);
 
-								descTableArgument.content.emplace_back(RootArg::DescTableEntity_UAView{
-									HASH(res->name.c_str()),
-									res->bind
-									});
+								if (res != nullptr)
+								{
+									SetScopeAndBindFrequency(bindFrequency, scope, res);
+
+									descTableArgument.content.emplace_back(RootArg::DescTableEntity_UAView{
+										HASH(res->name.c_str()),
+										res->bind,
+										std::nullopt
+										});
+								}
+								else
+								{
+									// We were not able to find texture, look for a buffer
+									const Parsing::Resource_RWStructuredBuffer* res =
+										FindResourceOfTypeAndRegister<Parsing::Resource_RWStructuredBuffer>(passResources, descTableParam.registerId + i, descTableParam.registerSpace);
+
+									SetScopeAndBindFrequency(bindFrequency, scope, res);
+
+									const int strideInBytes = GetStructBufferDataTypeSize(res->dataType);
+
+									descTableArgument.content.emplace_back(RootArg::DescTableEntity_UAView{
+										HASH(res->name.c_str()),
+										res->bind,
+										strideInBytes
+										});
+								}
+								
 							}
 						}
 						else

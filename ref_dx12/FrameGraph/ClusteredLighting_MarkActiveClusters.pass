@@ -1,0 +1,102 @@
+PassProperties
+{
+PassInput : PostProcess
+PassThreadGroups: 32, 24, 1
+}
+
+State
+{
+}
+
+RootSignature
+{
+RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
+CBV(b0, space = 0),
+CBV(b1, space = 0),
+DescriptorTable(SRV(t0, numDescriptors = 1, space = 0)),
+DescriptorTable(UAV(u0, numDescriptors = 1, space = 2))
+}
+
+// -== Register space convention ==-
+//	0 - Global, PerPass
+//	1 - Global, PerObject
+//	2 - Local, PerPass
+//	3 - Local, PerObject
+
+
+// -- Global CBVs
+
+[Global, PerPass]
+cbuffer cbFrameData : register(b0, space0)
+{
+	float4x4 InvertedViewProj;
+    float4x4 ViewProj;
+    float4 CameraYaw;
+    float4 CameraPitch;
+    float4 CameraRoll;
+    float4 CameraOrigin;
+	float CameraNear;
+	float CameraFar;
+	int ScreenWidth;
+	int ScreenHeight;
+}
+
+[Global, PerPass]
+cbuffer cbTileData : register(b1, space0)
+{
+	int TileWidth;
+	int TileHeight;
+	int NumFrustumSlices;
+	int ClusterListSize;
+}
+
+[Global, PerPass]
+Texture2D DepthBuffer : register (t0, space0)
+
+// --- Local CBVs ---
+
+
+// --- Local tex
+
+[Local, PerPass, Bind: ClusteredLight_ActiveClusters]
+RWStructuredBuffer<int> ActiveClustersList : register(u0, space2)
+
+Type : CS
+External : cbFrameData, cbTileData, ActiveClustersList, DepthBuffer
+<[
+
+int GetFrustumSlice(float depth)
+{
+	const float farNearLog = log(CameraFar/CameraNear);
+	
+	const float equationPart1 = NumFrustumSlices / farNearLog;
+	const float equationPart2 = NumFrustumSlices * log(CameraNear) / farNearLog;
+	
+	return floor(log(depth) * equationPart1 - equationPart2);
+}
+
+int GetClusterIndex(int2 screentCoord, float depth)
+{
+	const int clusterZIndex = GetFrustumSlice(depth);
+	
+	const int2 clusterXYIndices = screentCoord / int2(TileWidth, TileHeight);
+	
+	const int2 numTiles = int2(ScreenWidth, ScreenHeight) / int2(TileWidth, TileHeight);
+	
+	const int clusterLinearIndex = clusterXYIndices.x + 
+		numTiles.x * clusterXYIndices.y +
+		(numTiles.x * numTiles.y) * clusterZIndex;
+	
+	return clusterLinearIndex;
+}
+
+[numthreads(32, 32, 1)]
+void main(int3 dispatchThreadID : SV_DispatchThreadID)
+{
+	const float depth = DepthBuffer.Load(int3(dispatchThreadID.xy, 0)).x;
+	
+	const int clusterIndex = GetClusterIndex(dispatchThreadID.xy, depth);
+	ActiveClustersList[clusterIndex] = 1;
+}
+
+]>

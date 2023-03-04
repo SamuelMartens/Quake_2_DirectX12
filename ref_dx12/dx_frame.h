@@ -69,7 +69,7 @@ public:
 	std::vector<int> visibleStaticObjectsIndices;
 	std::vector<int> visibleEntitiesIndices;
 	
-	std::vector<TextureCreationRequest_t> texCreationRequests;
+	std::vector<ResourceCreationRequest_t> resourceCreationRequests;
 
 	int frameNumber = Const::INVALID_INDEX;
 

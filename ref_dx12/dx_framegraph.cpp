@@ -1186,10 +1186,9 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 							if (descTableEntitiy.internalBindName.has_value())
 							{
 								// This is internal resource
-								RenderCallbacks::RegisterInternalResource<D3D12_SHADER_RESOURCE_VIEW_DESC>(
+								RenderCallbacks::RegisterInternalResourceDescriptor(
 									currentViewIndex,
-									*descTableEntitiy.internalBindName
-								);
+									descTableEntitiy);
 							}
 							else
 							{
@@ -1206,10 +1205,9 @@ void FrameGraph::RegisterGlobaPasslRes(GPUJobContext& context)
 							if (descTableEntitiy.internalBindName.has_value())
 							{
 								// This is internal resource
-								RenderCallbacks::RegisterInternalResource<D3D12_UNORDERED_ACCESS_VIEW_DESC>(
+								RenderCallbacks::RegisterInternalResourceDescriptor(
 									currentViewIndex,
-									*descTableEntitiy.internalBindName
-									);
+									descTableEntitiy);
 							}
 							else
 							{
