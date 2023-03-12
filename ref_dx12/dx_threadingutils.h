@@ -102,7 +102,7 @@ public:
 	Frame& frame;
 	CommandList* commandList = nullptr;
 
-	std::vector<ResourceProxy> internalTextureProxies;
+	std::vector<ResourceProxy> internalResourceProxies;
 
 private:
 

@@ -51,6 +51,7 @@ namespace Logs
 		false,	// Resource, 
 		false,	// Job
 		true,	// Parser
+		true,	// Validation
 	};
 }
 

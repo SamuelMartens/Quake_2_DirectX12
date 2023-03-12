@@ -107,12 +107,14 @@ public:
 
 	DEFINE_SINGLETON(ResourceManager);
 	
-	/* Constant buffers */
+	/* Buffer low level */
 	ComPtr<ID3D12Resource> CreateDefaultHeapBuffer(const void* data, UINT64 byteSize, GPUJobContext& context);
 	ComPtr<ID3D12Resource> CreateUploadHeapBuffer(UINT64 byteSize) const;
+	ComPtr<ID3D12Resource> CreateReadBackHeapBuffer(UINT64 byteSize) const;
+
+	/* Utils */
 	void UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const;
 	void UpdateDefaultHeapBuff(FArg::UpdateDefaultHeapBuff& args);
-
 	void ZeroMemoryUploadHeapBuff(FArg::ZeroUploadHeapBuff& args);
 	void VerifyZeroUploadHeapBuff(FArg::VerifyZeroUploadHeapBuff& args) const;
 
@@ -131,6 +133,7 @@ public:
 	void ResampleTexture(const unsigned *in, int inwidth, int inheight, unsigned *out, int outwidth, int outheight);
 
 	/* Resource management */
+	Resource* RegisterD3DResource(ComPtr<ID3D12Resource> d3dResource, const ResourceDesc* desc, const std::string& resourceName);
 	Resource* FindOrCreateResource(std::string_view resourceName, GPUJobContext& context, bool saveResourceInCPUMemory);
 	Resource* FindResource(std::string_view resourceName);
 

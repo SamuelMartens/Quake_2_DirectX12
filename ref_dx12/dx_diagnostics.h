@@ -13,7 +13,7 @@
 
 namespace Diagnostics
 {
-#ifdef ENABLE_VALIDATION
+#if (ENABLE_VALIDATION)
 	constexpr bool ENABLE_DX_RESOURCE_NAMING = true;
 #else
 	constexpr bool ENABLE_DX_RESOURCE_NAMING = false;
@@ -44,6 +44,7 @@ namespace Logs
 		Resource,
 		Job,
 		Parser,
+		Validation,
 
 		_Count
 	};
@@ -55,7 +56,8 @@ namespace Logs
 		"FrameSubmission",
 		"Resource",
 		"Job",
-		"Parser"
+		"Parser",
+		"Validation"
 	};
 
 	struct Event

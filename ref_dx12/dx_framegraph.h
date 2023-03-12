@@ -55,6 +55,8 @@ public:
 	std::vector<PassParametersSource> passesParametersSources;
 };
 
+class Frame;
+
 class FrameGraph
 {
 	friend class FrameGraphBuilder;
@@ -91,8 +93,11 @@ public:
 	~FrameGraph();
 
 	/* Execution func */
-	void Execute(class Frame& frame);
+	void Execute(Frame& frame);
 	void Init(GPUJobContext& context);
+
+	/* Resource readback */
+	void AddResourceReadbackCallbacks(const Frame& frame);
 
 	/* Inner resource management  */
 	void BindPassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const;
@@ -124,8 +129,8 @@ public:
 	/* Texture Proxies */
 	std::vector<ResourceProxy> GetTextureProxy() const;
 	void AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>& jobContexts) const;
-	bool IsTextureProxiesCreationRequired() const;
-	void CreateTextureProxies();
+	bool IsResourceProxiesCreationRequired() const;
+	void CreateResourceProxies();
 
 private:
 
@@ -185,11 +190,11 @@ private:
 	BufferHandler particlesVertexMemory = Const::INVALID_BUFFER_HANDLER;
 
 	// This is shared pointer to imply that all framegraphs share this resource
-	std::shared_ptr<std::vector<std::string>> internalTextureNames;
+	std::shared_ptr<std::vector<std::string>> internalResourceNames;
 
-	// This data is copied whenever job needs texture proxy list.
+	// This data is copied whenever job needs resource proxy list.
 	// Once created, don't change this
-	std::vector<ResourceProxy> internalTextureProxy;
+	std::vector<ResourceProxy> internalResourceProxy;
 
 	//#TODO delete when proper runtime load is developed.
 	// this is temp hack

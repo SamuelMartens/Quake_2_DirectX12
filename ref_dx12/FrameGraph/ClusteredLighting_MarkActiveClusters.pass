@@ -30,6 +30,7 @@ DescriptorTable(UAV(u0, numDescriptors = 1, space = 2))
 cbuffer cbFrameData : register(b0, space0)
 {
 	float4x4 InvertedViewProj;
+	float4x4 InvertedProj;
     float4x4 ViewProj;
     float4 CameraYaw;
     float4 CameraPitch;
@@ -65,8 +66,25 @@ Type : CS
 External : cbFrameData, cbTileData, ActiveClustersList, DepthBuffer
 <[
 
+float3 GetViewPosFromDepthAndScreenCoord(int2 screenCoord, float depth)
+{
+	// NOTE: This doesn't account for the screen offset
+	const float4 ndcPixelCoords = float4(
+	((float)screenCoord.x / ScreenWidth) * 2.0f - 1.0f, 
+	((float)screenCoord.y / ScreenHeight) * -2.0f + 1.0f,
+	depth, 
+	1.0f);
+
+	float4 worldCoord = mul(InvertedProj, ndcPixelCoords);
+	worldCoord = worldCoord / worldCoord.w;
+
+	return worldCoord.xyz;
+}
+
+
 int GetFrustumSlice(float depth)
 {
+
 	const float farNearLog = log(CameraFar/CameraNear);
 	
 	const float equationPart1 = NumFrustumSlices / farNearLog;
@@ -94,8 +112,9 @@ int GetClusterIndex(int2 screentCoord, float depth)
 void main(int3 dispatchThreadID : SV_DispatchThreadID)
 {
 	const float depth = DepthBuffer.Load(int3(dispatchThreadID.xy, 0)).x;
+	const float3 pixelViewPosition = GetViewPosFromDepthAndScreenCoord(dispatchThreadID.xy, depth);
 	
-	const int clusterIndex = GetClusterIndex(dispatchThreadID.xy, depth);
+	const int clusterIndex = GetClusterIndex(dispatchThreadID.xy, pixelViewPosition.z);
 	ActiveClustersList[clusterIndex] = 1;
 }
 

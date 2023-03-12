@@ -175,7 +175,8 @@ struct DebugObject_ProbeLightSample
 
 struct DebugObject_FrustumCluster
 {
-	int clusterIndex = Const::INVALID_INDEX;
+	int index = Const::INVALID_INDEX;
+	bool isActive = false;
 };
 
 // NOTE: when adding new type, add registration in Pass_Debug::RegisterObjects()

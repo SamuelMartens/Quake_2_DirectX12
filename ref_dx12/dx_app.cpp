@@ -845,7 +845,6 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	frame.acquiredCommandListsIndices.clear();
 
 	frame.colorBufferAndView = nullptr;
-	frame.frameNumber = Const::INVALID_INDEX;
 
 	DO_IN_LOCK(frame.uploadResources, clear());
 
@@ -861,10 +860,24 @@ void Renderer::ReleaseFrameResources(Frame& frame)
 	// Release debug objects
 	frame.debugObjects.clear();
 
+	// Release readback related stuff
+	ResourceManager& resMan = ResourceManager::Inst();
+
+	for (const ResourceReadBackRequest& request : frame.resourceReadBackRequests)
+	{
+		resMan.DeleteResource(Resource::GetReadbackResourceNameFromRequest(request, frame.frameNumber).c_str());
+	}
+
+	frame.resourceReadBackRequests.clear();
+
+	// Release frame graph resource
 	if (frame.frameGraph != nullptr)
 	{
 		frame.frameGraph->ReleasePerFrameResources(frame);
 	}
+
+	// Should always be last
+	frame.frameNumber = Const::INVALID_INDEX;
 }
 
 void Renderer::AcquireMainThreadFrame()
@@ -1274,6 +1287,36 @@ void Renderer::CreateClusteredLightingResources(GPUJobContext& context)
 	resMan.CreateStructuredBuffer(args);
 }
 
+void Renderer::CopyFromReadBackResourcesToCPUMemory(Frame& frame)
+{
+	ResourceManager& resMan = ResourceManager::Inst();
+
+	for (ResourceReadBackRequest& request : frame.resourceReadBackRequests)
+	{
+		Resource* readBackResource = resMan.FindResource(Resource::GetReadbackResourceNameFromRequest(request, frame.frameNumber));
+
+		DX_ASSERT(readBackResource != nullptr && "Can't find readback resource");
+		DX_ASSERT(readBackResource->desc.height == 1 &&
+			readBackResource->desc.format == DXGI_FORMAT_UNKNOWN &&
+			"Invalid readback resource data");
+
+		const int readBackSize = readBackResource->desc.width;
+		std::byte* readBackData = nullptr;
+
+		D3D12_RANGE readBackRange{ 0, static_cast<SIZE_T>(readBackSize) };
+		ThrowIfFailed(readBackResource->gpuBuffer->Map(
+			0,
+			&readBackRange,
+			reinterpret_cast<void**>(&readBackData)));
+
+		memcpy(request.readBackCPUMemory, readBackData, readBackSize);
+
+		// Do this, to indicate that CPU didn't write anything to the resource
+		readBackRange.End = readBackRange.Begin;
+		readBackResource->gpuBuffer->Unmap(0, &readBackRange);
+	}
+}
+
 void Renderer::InitStaticLighting()
 {
 	for (AreaLight& light : staticAreaLights)
@@ -1340,7 +1383,23 @@ void Renderer::SetUpFrameDebugData(Frame& frame)
 		DX_ASSERT(XMVectorGetX(sseDeterminant) != 0.0f && "Invalid matrix determinant");
 
 		XMStoreFloat4x4(&debugSettings.frustumClustersInverseViewTransform, sseInvertedViewMatrix);
+
+		// Active Clusters Readback 
+		const int frustumClustersNum = frame.camera.GetFrustumClustersNum();
+
+		if (frustumClustersNum > 0 && debugSettings.showActiveFrustumClusters == true)
+		{
+			debugSettings.activeFrustumClusters.resize(frustumClustersNum);
+
+			ResourceReadBackRequest readBackRequest;
+			readBackRequest.readBackCPUMemory = reinterpret_cast<std::byte*>(debugSettings.activeFrustumClusters.data());
+			readBackRequest.targetPassName = "ClusteredLighting_MarkActiveClusters";
+			readBackRequest.targetResourceName = "ClusteredLight_ActiveClusters";
+
+			frame.resourceReadBackRequests.push_back(readBackRequest);
+		}
 	}
+
 	frame.debugFrustumClusterInverseViewMat = debugSettings.frustumClustersInverseViewTransform;
 }
 
@@ -1589,7 +1648,17 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 		for (int i = 0; i < numCluster; ++i)
 		{
 			DebugObject_FrustumCluster object;
-			object.clusterIndex = i;
+			object.index = i;
+
+			if (debugSettings.activeFrustumClusters.empty() == false)
+			{
+				DX_ASSERT(debugSettings.activeFrustumClusters.size() > object.index && "Invalid active cluster array size");
+				object.isActive = static_cast<bool>(debugSettings.activeFrustumClusters[object.index]);
+			}
+			else
+			{
+				object.isActive = false;
+			}
 
 			debugObjects.push_back(object);
 		}
@@ -1638,6 +1707,8 @@ void Renderer::EndFrameJob(GPUJobContext& context)
 	CloseFrame(frame);
 
 	PresentAndSwapBuffers(frame);
+
+	CopyFromReadBackResourcesToCPUMemory(frame);
 
 	ReleaseFrameResources(frame);
 	
@@ -1689,7 +1760,7 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 					if (debugSettings.drawLightProbesDebugGeometry == true)
 					{
 						ImGui::Indent();
-						ImGui::Checkbox("Fix In Place", &debugSettings.fixLightProbesDebugGeometryInTheSameCluster);
+						ImGui::Checkbox("Fix in place", &debugSettings.fixLightProbesDebugGeometryInTheSameCluster);
 						ImGui::Unindent();
 					}
 
@@ -1698,7 +1769,7 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 					if (debugSettings.drawLightSourcesDebugGeometry == true)
 					{
 						ImGui::Indent();
-						ImGui::Checkbox("Point Light Source Radius", &debugSettings.drawPointLightSourcesRadius);
+						ImGui::Checkbox("Point light source radius", &debugSettings.drawPointLightSourcesRadius);
 						ImGui::Unindent();
 					}
 
@@ -1707,7 +1778,8 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 					if (debugSettings.drawFrustumClusters == true)
 					{
 						ImGui::Indent();
-						ImGui::Checkbox("Fix In Place", &debugSettings.fixFrustumClustersInPlace);
+						ImGui::Checkbox("Fix in place", &debugSettings.fixFrustumClustersInPlace);
+						ImGui::Checkbox("Show active clusters", &debugSettings.showActiveFrustumClusters);
 						ImGui::Unindent();
 					}
 
@@ -2926,12 +2998,15 @@ void Renderer::EndFrame()
 	// Proceed to next frame
 	DetachMainThreadFrame();
 
-	// Some preparations
+	// Renderer preparations
 	PreRenderSetUpFrame(frame);
 
-	if (frame.frameGraph->IsTextureProxiesCreationRequired())
+	// Frame Graph preparations
+	frame.frameGraph->AddResourceReadbackCallbacks(frame);
+
+	if (frame.frameGraph->IsResourceProxiesCreationRequired())
 	{
-		frame.frameGraph->CreateTextureProxies();
+		frame.frameGraph->CreateResourceProxies();
 	}
 
 	frame.frameGraph->Execute(frame);

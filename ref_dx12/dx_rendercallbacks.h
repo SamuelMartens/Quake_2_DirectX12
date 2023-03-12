@@ -587,6 +587,18 @@ namespace RenderCallbacks
 				 sseInvViewProjMatrix);
 		}
 		break;
+		case HASH("InvertedProj"):
+		{
+			XMMATRIX sseInvProjMatrix = ctx.jobContext.frame.camera.GenerateProjectionMatrix();
+			XMVECTOR sseDeterminant = XMVectorZero();
+
+			sseInvProjMatrix = XMMatrixInverse(&sseDeterminant, sseInvProjMatrix);
+
+			DX_ASSERT(XMVectorGetX(sseDeterminant) != 0.0f && "Matrix determinant is zero, inverse is wrong");
+			XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint),
+				sseInvProjMatrix);
+		}
+		break;
 		case HASH("TileWidth"):
 		{
 			reinterpret_cast<int&>(bindPoint) = Camera::FRUSTUM_TILE_WIDTH;
@@ -604,7 +616,7 @@ namespace RenderCallbacks
 		break;
 		case HASH("ClusterListSize"):
 		{
-			reinterpret_cast<int&>(bindPoint) = Settings::CLUSTERED_LIGHT_LIST_SIZE;
+			reinterpret_cast<int&>(bindPoint) = ctx.jobContext.frame.camera.GetFrustumClustersNum();
 		}
 		break;
 		case HASH("DepthBuffer"):
@@ -770,7 +782,7 @@ namespace RenderCallbacks
 		{
 			switch (passName)
 			{
-			case HASH("Debug"):
+			case HASH("Debug_Triangle"):
 			{
 
 			}
@@ -823,7 +835,7 @@ namespace RenderCallbacks
 		{
 			switch (passName)
 			{
-			case HASH("Debug"):
+			case HASH("Debug_Triangle"):
 			{
 				switch (paramName)
 				{
@@ -887,12 +899,13 @@ namespace RenderCallbacks
 						}
 					}, obj);
 				}
+				break;
 				default:
 					break;
 				}
 			}
 			break;
-			case HASH("Debug_PathSegments"): 
+			case HASH("Debug_Line"): 
 			{
 				switch (paramName)
 				{
@@ -912,6 +925,7 @@ namespace RenderCallbacks
 						}
 					}, obj);
 				}
+				break;
 				case HASH("Radiance"):
 				{
 					std::visit([&bindPoint](auto&& object)
@@ -928,6 +942,7 @@ namespace RenderCallbacks
 						}
 					}, obj);
 				}
+				break;
 				case HASH("FrustumClusterIndex"):
 				{
 					std::visit([&bindPoint](auto&& object)
@@ -936,7 +951,7 @@ namespace RenderCallbacks
 
 						if constexpr (std::is_same_v<T, DebugObject_FrustumCluster>)
 						{
-							reinterpret_cast<int&>(bindPoint) = object.clusterIndex;
+							reinterpret_cast<int&>(bindPoint) = object.index;
 						}
 						else
 						{
@@ -944,6 +959,24 @@ namespace RenderCallbacks
 						}
 					}, obj);
 				}
+				break;
+				case HASH("IsActiveFrustumCluster"):
+				{
+					std::visit([&bindPoint, &ctx](auto&& object)
+					{
+						using T = std::decay_t<decltype(object)>;
+
+						if constexpr (std::is_same_v<T, DebugObject_FrustumCluster>)
+						{
+							reinterpret_cast<int&>(bindPoint) = static_cast<int>(object.isActive);
+						}
+						else
+						{
+							reinterpret_cast<int&>(bindPoint) = static_cast<int>(false);
+						}
+					}, obj);
+				}
+				break;
 				default:
 					break;
 				}

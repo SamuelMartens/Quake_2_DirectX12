@@ -92,7 +92,4 @@ namespace Settings
 
 	/* Start up options */
 	constexpr bool LOAD_LIGHT_BAKING_DATA_ON_START_UP = true;
-
-	/* Clustered lighting */
-	constexpr int CLUSTERED_LIGHT_LIST_SIZE = 512;
 }

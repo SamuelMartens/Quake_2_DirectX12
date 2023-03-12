@@ -1661,7 +1661,7 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 			if constexpr (std::is_same_v<T, DebugObject_FrustumCluster>)
 			{
 				const std::vector<XMFLOAT4> clusterAABBVertices = 
-					Utils::GenerateAABBVertices_LinePrimitveType(frustumClusters[debugObject.clusterIndex]);
+					Utils::GenerateAABBVertices_LinePrimitveType(frustumClusters[debugObject.index]);
 
 				debugObjectsVertices.insert(debugObjectsVertices.end(), 
 					clusterAABBVertices.begin(),
@@ -1803,7 +1803,12 @@ void Pass_Debug::SetRenderState(GPUJobContext& context)
 
 void PassTask::Execute(GPUJobContext& context)
 {
-	for (Callback_t& callback : prePassCallbacks)
+	for (Callback_t& callback : prePassRunTimeCallbacks )
+	{
+		callback(context, &pass);
+	}
+
+	for (Callback_t& callback : prePassCompileTimeCallbacks)
 	{
 		callback(context, &pass);
 	}
@@ -1813,10 +1818,21 @@ void PassTask::Execute(GPUJobContext& context)
 		pass.Execute(context);
 	}, pass);
 
-	for (Callback_t& callback : postPassCallbacks)
+	for (Callback_t& callback : postPassCompileTimeCallbacks)
 	{
 		callback(context, &pass);
 	}
+
+	for (Callback_t& callback : postPassRunTimeCallbacks)
+	{
+		callback(context, &pass);
+	}
+
+	// Post execute clean up
+	// If I will ever need more complicated logic for runtime callbacks management
+	// I will need to move this to some other, place, it's own method
+	prePassRunTimeCallbacks.clear();
+	postPassRunTimeCallbacks.clear();
 }
 
 void PassUtils::AllocateColorDepthRenderTargetViews(PassParameters& passParams)
@@ -1845,7 +1861,7 @@ void PassUtils::ClearColorCallback(XMFLOAT4 color, GPUJobContext& context, const
 	DX_ASSERT(pass != nullptr && "Pass value is nullptr");
 
 	const PassParameters& params = GetPassParameters(*pass);
-	std::vector<ResourceProxy>& proxies = context.internalTextureProxies;
+	std::vector<ResourceProxy>& proxies = context.internalResourceProxies;
 
 	for (const PassParameters::RenderTarget& renderTarget : params.colorRenderTargets)
 	{
@@ -1878,7 +1894,7 @@ void PassUtils::ClearDeptCallback(float value, GPUJobContext& context, const Pas
 	DX_ASSERT(pass != nullptr && "Pass value is nullptr");
 
 	const PassParameters& params = GetPassParameters(*pass);
-	std::vector<ResourceProxy>& proxies = context.internalTextureProxies;
+	std::vector<ResourceProxy>& proxies = context.internalResourceProxies;
 
 	// Transition to state
 	const unsigned int depthTargetHashedName = HASH(params.depthRenderTarget.name.c_str());
@@ -1909,15 +1925,17 @@ void PassUtils::ClearDeptCallback(float value, GPUJobContext& context, const Pas
 		nullptr);
 }
 
-void PassUtils::InternalTextureProxiesToInterPassStateCallback(GPUJobContext& context, const Pass_t* pass)
+void PassUtils::InternalResourceProxiesToInterPassStateCallback(GPUJobContext& context, const Pass_t* pass)
 {
 	// In case I will have performance problems, it is extremely easy to optimize this.
 	// Just batch barriers.
 	ID3D12GraphicsCommandList* commandList = context.commandList->GetGPUList();
 	
-	for (ResourceProxy& textureProxy : context.internalTextureProxies) 
+	for (ResourceProxy& proxy : context.internalResourceProxies) 
 	{
-		textureProxy.TransitionTo(Resource::DEFAULT_STATE, commandList);
+		const D3D12_RESOURCE_STATES targetState = proxy.interPassState.has_value() ? proxy.interPassState.value() : Resource::DEFAULT_STATE;
+
+		proxy.TransitionTo(targetState, commandList);
 	}
 }
 
@@ -1931,7 +1949,7 @@ void PassUtils::RenderTargetToRenderStateCallback(GPUJobContext& context, const 
 	{
 		ResourceProxy::FindAndTranslateTo(
 			renderTarget.name,
-			context.internalTextureProxies,
+			context.internalResourceProxies,
 			D3D12_RESOURCE_STATE_RENDER_TARGET,
 			context.commandList->GetGPUList()
 		);
@@ -1946,15 +1964,15 @@ void PassUtils::DepthTargetToRenderStateCallback(GPUJobContext& context, const P
 
 	ResourceProxy::FindAndTranslateTo(
 		params.depthRenderTarget.name,
-		context.internalTextureProxies,
+		context.internalResourceProxies,
 		D3D12_RESOURCE_STATE_DEPTH_WRITE,
 		context.commandList->GetGPUList()
 	);
 }
 
-void PassUtils::CopyTextureCallback(const std::string sourceName, const std::string destinationName, GPUJobContext& context, const Pass_t* pass)
+void PassUtils::CopyResourceCallback(const std::string sourceName, const std::string destinationName, GPUJobContext& context, const Pass_t* pass)
 {
-	std::vector<ResourceProxy>& proxies = context.internalTextureProxies;
+	std::vector<ResourceProxy>& proxies = context.internalResourceProxies;
 
 	const unsigned int sourceHashedName = HASH(sourceName.c_str());
 
@@ -1976,7 +1994,7 @@ void PassUtils::CopyTextureCallback(const std::string sourceName, const std::str
 		return proxy.hashedName == destinationHashedName;
 	});
 
-	DX_ASSERT(destinationProxyIt != proxies.end() && "CopyTextureCallback failed. Can't find source proxy");
+	DX_ASSERT(destinationProxyIt != proxies.end() && "CopyTextureCallback failed. Can't find target proxy");
 	destinationProxyIt->TransitionTo(D3D12_RESOURCE_STATE_COPY_DEST, context.commandList->GetGPUList());
 
 	context.commandList->GetGPUList()->CopyResource(&destinationProxyIt->resource, &sourceProxyIt->resource);
@@ -1987,10 +2005,49 @@ void PassUtils::BackBufferToPresentStateCallback(GPUJobContext& context, const P
 {
 	ResourceProxy::FindAndTranslateTo(
 		PassParameters::COLOR_BACK_BUFFER_NAME,
-		context.internalTextureProxies,
+		context.internalResourceProxies,
 		D3D12_RESOURCE_STATE_PRESENT,
 		context.commandList->GetGPUList()
 	);
+}
+
+void PassUtils::CreateReabackResourceAndFillItUp(ResourceReadBackRequest request, GPUJobContext& context, const Pass_t* pass)
+{
+	ResourceManager& resMan = ResourceManager::Inst();
+
+	const Resource* targetResource = resMan.FindResource(request.targetResourceName);
+
+	DX_ASSERT(targetResource != nullptr && "Can't perform resource readback. Invalid resource name");
+
+	// Create resource from readback heap
+	const int bytesPerPixel = targetResource->desc.format == DXGI_FORMAT_UNKNOWN ? 1 : Resource::BytesPerPixelFromFormat(targetResource->desc.format);
+	const int resourceSize = targetResource->desc.width * targetResource->desc.height * bytesPerPixel;
+
+	ComPtr<ID3D12Resource> readBackResource = resMan.CreateReadBackHeapBuffer(resourceSize);
+	const std::string readBackResourceName = Resource::GetReadbackResourceNameFromRequest(request, context.frame.frameNumber);
+
+	// It's okay to fill it up here manually, since everything except width
+	// should be the same across all readback resources.
+	ResourceDesc readbackResourceDesc;
+	readbackResourceDesc.width = resourceSize;
+	readbackResourceDesc.height = 1;
+	readbackResourceDesc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	readbackResourceDesc.format = DXGI_FORMAT_UNKNOWN;
+	readbackResourceDesc.flags = D3D12_RESOURCE_FLAG_NONE;
+
+	resMan.RegisterD3DResource(readBackResource, &readbackResourceDesc, readBackResourceName);
+
+	// Add proxy for the new resource
+	ResourceProxy& readBackProxy = context.internalResourceProxies.emplace_back(ResourceProxy
+		{
+			*readBackResource.Get(),
+			Resource::DEFAULT_READBACK_STATE,
+			Resource::DEFAULT_READBACK_STATE
+		});
+
+	readBackProxy.hashedName = HASH(readBackResourceName.c_str());
+
+	PassUtils::CopyResourceCallback(request.targetResourceName, readBackResourceName, context, pass);
 }
 
 const PassParameters& PassUtils::GetPassParameters(const Pass_t& pass)

@@ -112,7 +112,7 @@ public:
 	void BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGraph, std::vector<FrameGraphSource::FrameGraphResourceDecl>& internalResourceDecl);
 
 	void CreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls, FrameGraph& frameGraph) const;
-	std::vector<ResourceProxy> CreateFrameGraphTextureProxies(const std::vector<std::string>& internalTextureList) const;
+	std::vector<ResourceProxy> CreateFrameGraphResourceProxies(const std::vector<std::string>& internalResourceList) const;
 
 private:
 

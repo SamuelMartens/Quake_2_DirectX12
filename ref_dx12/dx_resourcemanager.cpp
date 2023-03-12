@@ -66,7 +66,6 @@ ComPtr<ID3D12Resource> ResourceManager::CreateUploadHeapBuffer(UINT64 byteSize) 
 {
 	ComPtr<ID3D12Resource> uploadHeapBuffer;
 
-	// Create actual buffer 
 	D3D12_RESOURCE_DESC bufferDesc = {};
 	bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
 	bufferDesc.Alignment = 0;
@@ -92,6 +91,37 @@ ComPtr<ID3D12Resource> ResourceManager::CreateUploadHeapBuffer(UINT64 byteSize) 
 	));
 
 	return uploadHeapBuffer;
+}
+
+ComPtr<ID3D12Resource> ResourceManager::CreateReadBackHeapBuffer(UINT64 byteSize) const
+{
+	ComPtr<ID3D12Resource> readBackHeapBuffer;
+
+	D3D12_RESOURCE_DESC bufferDesc = {};
+	bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	bufferDesc.Alignment = 0;
+	bufferDesc.Width = byteSize;
+	bufferDesc.Height = 1;
+	bufferDesc.DepthOrArraySize = 1;
+	bufferDesc.MipLevels = 1;
+	bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
+	bufferDesc.SampleDesc.Count = 1;
+	bufferDesc.SampleDesc.Quality = 0;
+	bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	bufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+	CD3DX12_HEAP_PROPERTIES heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
+
+	ThrowIfFailed(Infr::Inst().GetDevice()->CreateCommittedResource(
+		&heapProperties,
+		D3D12_HEAP_FLAG_NONE,
+		&bufferDesc,
+		Resource::DEFAULT_READBACK_STATE,
+		nullptr,
+		IID_PPV_ARGS(&readBackHeapBuffer)
+	));
+
+	return readBackHeapBuffer;
 }
 
 void ResourceManager::UpdateUploadHeapBuff(FArg::UpdateUploadHeapBuff& args) const
@@ -496,6 +526,23 @@ void ResourceManager::ResampleTexture(const unsigned *in, int inwidth, int inhei
 			((byte *)(out + j))[3] = (pix1[3] + pix2[3] + pix3[3] + pix4[3]) >> 2;
 		}
 	}
+}
+
+Resource* ResourceManager::RegisterD3DResource(ComPtr<ID3D12Resource> d3dResource, const ResourceDesc* desc, const std::string& resourceName)
+{
+	std::scoped_lock<std::mutex> lock(resources.mutex);
+
+	Logs::Logf(Logs::Category::Resource, "Register resource {}", resourceName);
+
+	Resource res;
+
+	res.gpuBuffer = std::move(d3dResource);
+	res.desc = *desc;
+	res.name = resourceName;
+
+	Diagnostics::SetResourceName(res.gpuBuffer.Get(), res.name);
+
+	return &resources.obj.insert_or_assign(res.name, std::move(res)).first->second;
 }
 
 void ResourceManager::DeleteResource(const char* name)

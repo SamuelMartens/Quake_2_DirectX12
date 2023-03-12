@@ -400,11 +400,11 @@ FrameGraph::~FrameGraph()
 		}
 	}
 
-	if (internalTextureNames.use_count() == 1)
+	if (internalResourceNames.use_count() == 1)
 	{
 		ResourceManager& resourceManager = ResourceManager::Inst();
 
-		for (const std::string& name : *internalTextureNames)
+		for (const std::string& name : *internalResourceNames)
 		{
 			resourceManager.DeleteResource(name.c_str());
 		}
@@ -572,6 +572,23 @@ void FrameGraph::Init(GPUJobContext& context)
 
 	// Register static objects
 	RegisterStaticObjects(Renderer::Inst().GetStaticObjects(), context);
+}
+
+void FrameGraph::AddResourceReadbackCallbacks(const Frame& frame)
+{
+	for (const ResourceReadBackRequest& request : frame.resourceReadBackRequests)
+	{
+		auto targetPassIt = std::find_if(passTasks.begin(), passTasks.end(),
+			[&request](const PassTask& passTask)
+			{
+				return request.targetPassName == PassUtils::GetPassName(passTask.pass);
+			});
+
+		DX_ASSERT(targetPassIt != passTasks.end() && "Readback request failed, can't find target pass");
+
+		targetPassIt->postPassRunTimeCallbacks.push_back(std::bind(PassUtils::CreateReabackResourceAndFillItUp, request,
+			std::placeholders::_1, std::placeholders::_2));
+	}
 }
 
 void FrameGraph::BindPassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const
@@ -808,7 +825,7 @@ BufferHandler FrameGraph::GetParticlesVertexMemory() const
 
 std::vector<ResourceProxy> FrameGraph::GetTextureProxy() const
 {
-	return internalTextureProxy;
+	return internalResourceProxy;
 }
 
 void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>& jobContexts) const
@@ -818,7 +835,7 @@ void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>&
 	// Attach internal texture proxies 
 	for (GPUJobContext& jobContext : jobContexts)
 	{
-		jobContext.internalTextureProxies = GetTextureProxy();
+		jobContext.internalResourceProxies = GetTextureProxy();
 	}
 
 	// Deal with depth back buffer
@@ -826,7 +843,7 @@ void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>&
 	{
 		GPUJobContext& context = jobContexts[i];
 
-		ResourceProxy& backBufferProxy = context.internalTextureProxies.emplace_back(ResourceProxy
+		ResourceProxy& backBufferProxy = context.internalResourceProxies.emplace_back(ResourceProxy
 			{
 				*context.frame.depthStencilBuffer.Get()
 			});
@@ -839,7 +856,7 @@ void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>&
 		// Note, that first job context is special because we start not from default state, but from D3D12_RESOURCE_STATE_PRESENT
 		GPUJobContext& firstContext = jobContexts.front();
 
-		ResourceProxy& backBufferProxy = firstContext.internalTextureProxies.emplace_back(ResourceProxy
+		ResourceProxy& backBufferProxy = firstContext.internalResourceProxies.emplace_back(ResourceProxy
 			{
 				*firstContext.frame.colorBufferAndView->buffer.Get(),
 				D3D12_RESOURCE_STATE_PRESENT
@@ -847,12 +864,12 @@ void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>&
 
 		backBufferProxy.hashedName = HASH(PassParameters::COLOR_BACK_BUFFER_NAME);
 	}
-
+	
 	for (int i = 1; i < jobContexts.size(); ++i)
 	{
 		GPUJobContext& context = jobContexts[i];
 
-		ResourceProxy& backBufferProxy = context.internalTextureProxies.emplace_back(ResourceProxy
+		ResourceProxy& backBufferProxy = context.internalResourceProxies.emplace_back(ResourceProxy
 			{
 				*context.frame.colorBufferAndView->buffer.Get()
 			});
@@ -861,18 +878,18 @@ void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>&
 	}
 }
 
-bool FrameGraph::IsTextureProxiesCreationRequired() const
+bool FrameGraph::IsResourceProxiesCreationRequired() const
 {
-	return internalTextureNames != nullptr &&
-		internalTextureNames->size() != internalTextureProxy.size();
+	return internalResourceNames != nullptr &&
+		internalResourceNames->size() != internalResourceProxy.size();
 }
 
-void FrameGraph::CreateTextureProxies()
+void FrameGraph::CreateResourceProxies()
 {
-	DX_ASSERT(internalTextureNames != nullptr);
-	DX_ASSERT(internalTextureProxy.empty() == true && "Internal texture proxy mush be clean at this stage");
+	DX_ASSERT(internalResourceNames != nullptr);
+	DX_ASSERT(internalResourceProxy.empty() == true && "Internal texture proxy mush be clean at this stage");
 
-	internalTextureProxy = FrameGraphBuilder::Inst().CreateFrameGraphTextureProxies(*internalTextureNames);
+	internalResourceProxy = FrameGraphBuilder::Inst().CreateFrameGraphResourceProxies(*internalResourceNames);
 }
 
 void FrameGraph::RegisterGlobalObjectsResUI(GPUJobContext& context)

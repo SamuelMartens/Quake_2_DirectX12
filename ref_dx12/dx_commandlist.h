@@ -7,10 +7,11 @@
 #include "dx_common.h"
 #include "dx_allocators.h"
 #include "dx_utils.h"
+#include "dx_assert.h"
 
-#ifdef _DEBUG
+#if (ENABLE_VALIDATION) 
 #define VALIDATE_COMMAND_LIST
-#endif
+#endif // ENABLE_VALIDATION
 
 class CommandList
 {

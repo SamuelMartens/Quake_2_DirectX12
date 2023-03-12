@@ -1411,7 +1411,7 @@ void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
 
 void FrameGraphBuilder::ValidatePassResources(const std::vector<PassParametersSource>& passesParametersSources) const
 {
-#ifdef ENABLE_VALIDATION
+#if (ENABLE_VALIDATION)
 
 	// Per object resources are a bit special. From logical point of view it is totally fine if
 	// global per object resources will collide if they are related to different types of objects,
@@ -1549,19 +1549,19 @@ void FrameGraphBuilder::AttachSpecialPostPreCallbacks(std::vector<PassTask>& pas
 		// Watch callbacks order here
 		if (PassUtils::GetPassInputType(passTask.pass) != Parsing::PassInputType::PostProcess)
 		{
-			passTask.prePassCallbacks.insert(
-				passTask.prePassCallbacks.end(),
+			passTask.prePassCompileTimeCallbacks.insert(
+				passTask.prePassCompileTimeCallbacks.end(),
 				{ std::bind(PassUtils::RenderTargetToRenderStateCallback, std::placeholders::_1, std::placeholders::_2),
 					std::bind(PassUtils::DepthTargetToRenderStateCallback, std::placeholders::_1, std::placeholders::_2)}
 			);
 		}
 
 		
-		passTask.postPassCallbacks.push_back(PassUtils::InternalTextureProxiesToInterPassStateCallback);
+		passTask.postPassCompileTimeCallbacks.push_back(PassUtils::InternalResourceProxiesToInterPassStateCallback);
 	}
 
 	// End frame routine
-	passTasks.back().postPassCallbacks.push_back(PassUtils::BackBufferToPresentStateCallback);
+	passTasks.back().postPassCompileTimeCallbacks.push_back(PassUtils::BackBufferToPresentStateCallback);
 }
 
 std::vector<FrameGraphBuilder::CompiledShaderData> FrameGraphBuilder::CompileShaders(const PassParametersSource& pass) const
@@ -1707,7 +1707,7 @@ void FrameGraphBuilder::BuildFrameGraph(std::unique_ptr<FrameGraph>& outFrameGra
 
 void FrameGraphBuilder::CreateFrameGraphResources(const std::vector<FrameGraphSource::FrameGraphResourceDecl>& resourceDecls, FrameGraph& frameGraph) const
 {
-	frameGraph.internalTextureNames = std::make_shared<std::vector<std::string>>(CreateFrameGraphResources(resourceDecls));
+	frameGraph.internalResourceNames = std::make_shared<std::vector<std::string>>(CreateFrameGraphResources(resourceDecls));
 }
 
 FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
@@ -1786,13 +1786,13 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 				}
 
 				PassTask& currentPassTask = frameGraph.passTasks.back();
-				currentPassTask.prePassCallbacks = CompilePassCallbacks(prePassFuncs, passParam);
-				currentPassTask.postPassCallbacks = CompilePassCallbacks(postPassFuncs, passParam);
+				currentPassTask.prePassCompileTimeCallbacks = CompilePassCallbacks(prePassFuncs, passParam);
+				currentPassTask.postPassCompileTimeCallbacks = CompilePassCallbacks(postPassFuncs, passParam);
 
 				if (pendingCallbacks.empty() == false)
 				{
-					currentPassTask.prePassCallbacks.insert(
-						currentPassTask.prePassCallbacks.end(),
+					currentPassTask.prePassCompileTimeCallbacks.insert(
+						currentPassTask.prePassCompileTimeCallbacks.end(),
 						pendingCallbacks.begin(),
 						pendingCallbacks.end());
 
@@ -1811,7 +1811,7 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 			if constexpr (std::is_same_v<T, FrameGraphSource::FixedFunctionCopy>)
 			{
 				PassTask::Callback_t copyCallback = std::bind(
-					PassUtils::CopyTextureCallback,
+					PassUtils::CopyResourceCallback,
 					step.source, step.destination, std::placeholders::_1, std::placeholders::_2);
 
 				if (frameGraph.passTasks.empty())
@@ -1820,7 +1820,7 @@ FrameGraph FrameGraphBuilder::CompileFrameGraph(FrameGraphSource&& source) const
 				}
 				else
 				{
-					frameGraph.passTasks.back().postPassCallbacks.push_back(copyCallback);
+					frameGraph.passTasks.back().postPassCompileTimeCallbacks.push_back(copyCallback);
 				}
 			}
 
@@ -1940,20 +1940,20 @@ std::vector<std::string> FrameGraphBuilder::CreateFrameGraphResources(const std:
 	return internalResourcesName;
 }
 
-std::vector<ResourceProxy> FrameGraphBuilder::CreateFrameGraphTextureProxies(const std::vector<std::string>& internalTextureList) const
+std::vector<ResourceProxy> FrameGraphBuilder::CreateFrameGraphResourceProxies(const std::vector<std::string>& internalResourceList) const
 {
 	std::vector<ResourceProxy> proxies;
 
 	ResourceManager& resMan = ResourceManager::Inst();
 
-	for(const std::string& textureName : internalTextureList)
+	for(const std::string& resourceName : internalResourceList)
 	{
-		Resource* texture = resMan.FindResource(textureName);
+		Resource* resource = resMan.FindResource(resourceName);
 
-		DX_ASSERT(texture != nullptr && "Failed to create texture proxy. No such texture is found");
+		DX_ASSERT(resource != nullptr && "Failed to create resource proxy. No such resource is found");
 
-		ResourceProxy& newProxy = proxies.emplace_back(ResourceProxy{ *texture->gpuBuffer.Get() });
-		newProxy.hashedName = HASH(texture->name.c_str());
+		ResourceProxy& newProxy = proxies.emplace_back(ResourceProxy{ *resource->gpuBuffer.Get() });
+		newProxy.hashedName = HASH(resource->name.c_str());
 	}
 
 	return proxies;

@@ -45,6 +45,8 @@ public:
 	[[nodiscard]]
 	std::array<Utils::Plane, 6> GetFrustumPlanes() const;
 	
+	int GetFrustumClustersNum() const;
+
 	// Result is in world space
 	Utils::AABB GetAABB() const;
 	// In degrees 

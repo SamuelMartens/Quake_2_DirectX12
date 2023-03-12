@@ -73,6 +73,11 @@ int Resource::GetBytesPerPixel(const ResourceDesc& desc)
 	return 0;
 }
 
+std::string Resource::GetReadbackResourceNameFromRequest(const ResourceReadBackRequest& request, int frameNumber)
+{
+	return std::format("{}_{}_{}_READBACK", request.targetResourceName, request.targetPassName, frameNumber);
+}
+
 ResourceProxy::ResourceProxy(ID3D12Resource& initResource):
 	resource(initResource)
 {}
@@ -80,6 +85,12 @@ ResourceProxy::ResourceProxy(ID3D12Resource& initResource):
 ResourceProxy::ResourceProxy(ID3D12Resource& initResource, D3D12_RESOURCE_STATES initState):
 	resource(initResource),
 	state(initState)
+{}
+
+ResourceProxy::ResourceProxy(ID3D12Resource& initResource, D3D12_RESOURCE_STATES initState, D3D12_RESOURCE_STATES initInterPassState):
+	resource(initResource),
+	state(initState),
+	interPassState(initInterPassState)
 {}
 
 void ResourceProxy::TransitionTo(D3D12_RESOURCE_STATES newSate, ID3D12GraphicsCommandList* commandList)

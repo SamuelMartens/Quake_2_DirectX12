@@ -70,6 +70,7 @@ public:
 	std::vector<int> visibleEntitiesIndices;
 	
 	std::vector<ResourceCreationRequest_t> resourceCreationRequests;
+	std::vector<ResourceReadBackRequest> resourceReadBackRequests;
 
 	int frameNumber = Const::INVALID_INDEX;
 

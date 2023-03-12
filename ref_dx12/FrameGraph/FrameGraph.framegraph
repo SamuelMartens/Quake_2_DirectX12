@@ -73,8 +73,9 @@ Resources
 	ClusteredLight_ActiveClusters
 	[
 		Type : Buffer
-		// Should match Settings::CLUSTERED_LIGHT_LIST_SIZE * INT size (which is 4 bytes)
-		Dimensions : 2048, 1
+		// Should match NUM_CLUSTERS * INT size (which is 4 bytes)
+		// NUM_CLUSTERS can be deduced by camera settings and resolution
+		Dimensions : 960, 1
 		Format : UNKNOWN
 		Flags : ALLOW_UNORDERED_ACCESS
 		ClearValue : NONE

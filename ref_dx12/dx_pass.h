@@ -361,8 +361,11 @@ struct PassTask
 
 	Pass_t pass;
 
-	std::vector<Callback_t> prePassCallbacks;
-	std::vector<Callback_t> postPassCallbacks;
+	std::vector<Callback_t> prePassCompileTimeCallbacks;
+	std::vector<Callback_t> postPassCompileTimeCallbacks;
+	
+	std::vector<Callback_t> prePassRunTimeCallbacks;
+	std::vector<Callback_t> postPassRunTimeCallbacks;
 
 	void Execute(GPUJobContext& context);
 };
@@ -442,12 +445,14 @@ public:
 
 	static void ClearDeptCallback(float value, GPUJobContext& context, const Pass_t* pass);
 
-	static void InternalTextureProxiesToInterPassStateCallback(GPUJobContext& context, const Pass_t* pass);
+	static void InternalResourceProxiesToInterPassStateCallback(GPUJobContext& context, const Pass_t* pass);
 	static void RenderTargetToRenderStateCallback(GPUJobContext& context, const Pass_t* pass);
 	static void DepthTargetToRenderStateCallback(GPUJobContext& context, const Pass_t* pass);
 
-	static void CopyTextureCallback(const std::string sourceName, const std::string destinationName, GPUJobContext& context, const Pass_t* pass);
+	static void CopyResourceCallback(const std::string sourceName, const std::string destinationName, GPUJobContext& context, const Pass_t* pass);
 	static void BackBufferToPresentStateCallback(GPUJobContext& context, const Pass_t* pass);
+
+	static void CreateReabackResourceAndFillItUp(ResourceReadBackRequest request, GPUJobContext& context, const Pass_t* pass);
 
 private:
 

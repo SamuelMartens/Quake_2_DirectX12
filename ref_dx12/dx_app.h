@@ -219,6 +219,8 @@ public:
 
 		bool drawFrustumClusters = false;
 		bool fixFrustumClustersInPlace = false;
+		bool showActiveFrustumClusters = false;
+		std::vector<int> activeFrustumClusters;
 
 		XMFLOAT4X4 frustumClustersInverseViewTransform;
 	};
@@ -320,6 +322,7 @@ private:
 	static LONG WINAPI MainWndProcWrapper(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	void CreateIndirectLightResources(GPUJobContext& context);
 	void CreateClusteredLightingResources(GPUJobContext& context);
+	void CopyFromReadBackResourcesToCPUMemory(Frame& frame);
 
 	void InitStaticLighting();
 

@@ -242,6 +242,14 @@ std::array<Utils::Plane, 6> Camera::GetFrustumPlanes() const
 	};
 }
 
+int Camera::GetFrustumClustersNum() const
+{
+	const int clustersX = width / Camera::FRUSTUM_TILE_WIDTH;
+	const int clustersY = height / Camera::FRUSTUM_TILE_HEIGHT;
+
+	return clustersX * clustersY * Camera::FRUSTUM_CLUSTER_SLICES;
+}
+
 Utils::AABB Camera::GetAABB() const
 {
 	std::array<XMVECTOR, 8> frustum = 

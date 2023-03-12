@@ -31,6 +31,16 @@ struct ResourceDesc
 	D3D12_RESOURCE_DIMENSION dimension = D3D12_RESOURCE_DIMENSION_UNKNOWN;
 };
 
+struct ResourceReadBackRequest
+{
+	// Which resource do we want to read
+	std::string targetResourceName;
+	// After which pass we shall perform read back
+	std::string targetPassName;
+
+	std::byte* readBackCPUMemory = nullptr;
+};
+
 class Resource
 {
 
@@ -50,6 +60,7 @@ public:
 	// When a job is finished it leaves resource in this state.
 	//#PERF parsing of visibility can allow to have appropriate state like D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE instead of this generic one
 	const static D3D12_RESOURCE_STATES DEFAULT_STATE = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+	const static D3D12_RESOURCE_STATES DEFAULT_READBACK_STATE = D3D12_RESOURCE_STATE_COPY_DEST;
 
 	Resource() = default;
 
@@ -63,6 +74,7 @@ public:
 	
 	static int BytesPerPixelFromFormat(DXGI_FORMAT format);
 	static int GetBytesPerPixel(const ResourceDesc& desc);
+	static std::string GetReadbackResourceNameFromRequest(const ResourceReadBackRequest& request, int frameNumber);
 
 public:
 
@@ -109,6 +121,7 @@ struct ResourceProxy
 {
 	explicit ResourceProxy(ID3D12Resource& initResource);
 	ResourceProxy(ID3D12Resource& initResource, D3D12_RESOURCE_STATES initState);
+	ResourceProxy(ID3D12Resource& initResource, D3D12_RESOURCE_STATES initState, D3D12_RESOURCE_STATES initInterPassState);
 
 	void TransitionTo(D3D12_RESOURCE_STATES newSate, ID3D12GraphicsCommandList* commandList);
 	
@@ -120,6 +133,8 @@ struct ResourceProxy
 	
 	ID3D12Resource& resource;
 	unsigned int hashedName = Const::INVALID_HASHED_NAME;
+
+	const std::optional<D3D12_RESOURCE_STATES> interPassState;
 
 private:
 

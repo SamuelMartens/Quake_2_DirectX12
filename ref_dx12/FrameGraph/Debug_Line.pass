@@ -46,6 +46,7 @@ struct VertexOut
 cbuffer cbFrameData : register(b0, space0)
 {
 	float4x4 InvertedViewProj;
+	float4x4 InvertedProj;
     float4x4 ViewProj;
     float4 CameraYaw;
     float4 CameraPitch;
@@ -75,6 +76,7 @@ cbuffer cbPerObject_Local : register(b0, space3)
 	float4 Radiance;
 	int BounceNum;
 	int FrustumClusterIndex;
+	int IsActiveFrustumCluster;
 }
 
 // Shaders
@@ -127,6 +129,12 @@ float4 main(VertexOut vOut) : SV_Target
 	if (DebugObjectType == DEBUG_OBJECT_LIGHT_SAMPLE)
 	{
 		color = float4(0.0, 1.0, 0.0, 1.0);
+	}
+	
+	if (DebugObjectType == DEBUG_OBJECT_FRUSTUM_CLUSTER && IsActiveFrustumCluster > 0)
+	{
+		// Orange
+		color = float4(1.0f, 0.71f, 0.0f, 1.0f);
 	}
 
     return color;
