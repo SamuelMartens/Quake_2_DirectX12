@@ -32,6 +32,7 @@ cbuffer cbFrameData : register(b0, space0)
 	float4x4 InvertedViewProj;
 	float4x4 InvertedProj;
     float4x4 ViewProj;
+	float4x4 View;
     float4 CameraYaw;
     float4 CameraPitch;
     float4 CameraRoll;
@@ -95,15 +96,17 @@ int GetFrustumSlice(float depth)
 
 int GetClusterIndex(int2 screentCoord, float depth)
 {
+	// Need to negate depth, because I use right hand coordinate system
+	depth = -depth;
+
 	const int clusterZIndex = GetFrustumSlice(depth);
-	
 	const int2 clusterXYIndices = screentCoord / int2(TileWidth, TileHeight);
 	
-	const int2 numTiles = int2(ScreenWidth, ScreenHeight) / int2(TileWidth, TileHeight);
+	const int3 numClusters = int3(int2(ScreenWidth, ScreenHeight) / int2(TileWidth, TileHeight), NumFrustumSlices);
 	
-	const int clusterLinearIndex = clusterXYIndices.x + 
-		numTiles.x * clusterXYIndices.y +
-		(numTiles.x * numTiles.y) * clusterZIndex;
+	const int clusterLinearIndex = clusterZIndex + 
+		numClusters.z * clusterXYIndices.y +
+		(numClusters.z * numClusters.y) * clusterXYIndices.x;
 	
 	return clusterLinearIndex;
 }

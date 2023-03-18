@@ -419,6 +419,11 @@ namespace RenderCallbacks
 			XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint), ctx.jobContext.frame.camera.GetViewProjMatrix());
 		}
 		break;
+		case HASH("View"):
+		{
+			XMStoreFloat4x4(&reinterpret_cast<XMFLOAT4X4&>(bindPoint), ctx.jobContext.frame.camera.GenerateViewMatrix());
+		}
+		break;
 		case HASH("CameraYaw"):
 		{
 			auto[yaw, pitch, roll] = ctx.jobContext.frame.camera.GetBasis();
@@ -605,7 +610,7 @@ namespace RenderCallbacks
 		}
 		break;
 		case HASH("TileHeight"):
-		{
+		{ 
 			reinterpret_cast<int&>(bindPoint) = Camera::FRUSTUM_TILE_HEIGHT;
 		}
 		break;

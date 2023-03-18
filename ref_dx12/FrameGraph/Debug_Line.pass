@@ -48,6 +48,7 @@ cbuffer cbFrameData : register(b0, space0)
 	float4x4 InvertedViewProj;
 	float4x4 InvertedProj;
     float4x4 ViewProj;
+	float4x4 View;
     float4 CameraYaw;
     float4 CameraPitch;
     float4 CameraRoll;

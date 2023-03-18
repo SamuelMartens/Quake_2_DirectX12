@@ -72,8 +72,7 @@ std::vector<Utils::AABB> Camera::GenerateFrustumClusterInViewSpace(int tileWidth
 	XMVECTOR sseEyePosition = XMVectorSet( 0.0f, 0.0f, 0.0f, 1.0f );
 	
 	XMVECTOR sseDeterminant;
-	
-	XMMATRIX sseInverseProjection = XMMatrixInverse(&sseDeterminant, XMMatrixInverse(&sseDeterminant, GenerateProjectionMatrix()));
+	XMMATRIX sseInverseProjection = XMMatrixInverse(&sseDeterminant, GenerateProjectionMatrix());
 
 	DX_ASSERT(XMVectorGetX(sseDeterminant) != 0.0f && "Invalid matrix determinant");
 
@@ -108,14 +107,14 @@ std::vector<Utils::AABB> Camera::GenerateFrustumClusterInViewSpace(int tileWidth
 
 			for (int zClusterIndex = 0; zClusterIndex < tilesNumZ; ++zClusterIndex)
 			{
-				const float clusterNear = Z_NEAR * std::powf(Z_FAR / Z_NEAR, 
+				const float clusterNear = -Z_NEAR * std::powf(Z_FAR / Z_NEAR,
 					zClusterIndex / static_cast<float>(tilesNumZ));
 
-				const float clusterFar = Z_NEAR * std::powf(Z_FAR / Z_NEAR,
+				const float clusterFar = -Z_NEAR * std::powf(Z_FAR / Z_NEAR,
 					(zClusterIndex + 1) / static_cast<float>(tilesNumZ));
 
-				const XMVECTOR sseTileNearPlane = XMVectorSet(0.0f, 0.0f, 1.0f, clusterNear);
-				const XMVECTOR sseTileFarPlane = XMVectorSet(0.0f, 0.0f, 1.0f, clusterFar);
+				const XMVECTOR sseTileNearPlane = XMVectorSet(0.0f, 0.0f, -1.0f, clusterNear);
+				const XMVECTOR sseTileFarPlane = XMVectorSet(0.0f, 0.0f, -1.0f, clusterFar);
 
 				const XMVECTOR sseMinPointNear = XMPlaneIntersectLine(sseTileNearPlane, sseEyePosition, sseMinPointViewSpace);
 				const XMVECTOR sseMinPointFar = XMPlaneIntersectLine(sseTileFarPlane, sseEyePosition, sseMinPointViewSpace);
