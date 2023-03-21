@@ -1650,7 +1650,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 			DebugObject_FrustumCluster object;
 			object.index = i;
 
-			if (debugSettings.activeFrustumClusters.empty() == false)
+			if (debugSettings.activeFrustumClusters.empty() == false && debugSettings.showActiveFrustumClusters == true)
 			{
 				DX_ASSERT(debugSettings.activeFrustumClusters.size() > object.index && "Invalid active cluster array size");
 				object.isActive = static_cast<bool>(debugSettings.activeFrustumClusters[object.index]);

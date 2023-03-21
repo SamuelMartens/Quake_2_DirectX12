@@ -80,6 +80,18 @@ Resources
 		Flags : ALLOW_UNORDERED_ACCESS
 		ClearValue : NONE
 		InitValue : NONE
+	],
+	
+	ClusteredLight_UniqueActiveClusters
+	[
+		Type : Buffer
+		// Should match NUM_CLUSTERS * INT size (which is 4 bytes)
+		// NUM_CLUSTERS can be deduced by camera settings and resolution
+		Dimensions : 960, 1
+		Format : UNKNOWN
+		Flags : ALLOW_UNORDERED_ACCESS
+		ClearValue : NONE
+		InitValue : NONE
 	]
 }
 
@@ -91,6 +103,7 @@ Steps
     Static
 	Dynamic
 	ClusteredLighting_MarkActiveClusters
+	ClusteredLighting_CompactActiveClusters
 	BSPClusterClassification
 	SampleIndirect
 	DeferredCompose

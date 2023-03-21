@@ -1,8 +1,7 @@
 PassProperties
 {
 PassInput : PostProcess
-// Should be the same as define, in shader below
-PassThreadGroups: 32, 24, 1
+PassThreadGroups: 1, 1, 1
 }
 
 State
@@ -45,27 +44,27 @@ Type : CS
 External : cbTileData, ActiveClustersList, UniqueActiveClustersList
 <[
 
-#define DISPATCH_SIZE int3(32, 24, 1)
+#define THREAD_GROUP_SIZE 1024
 
-#define THREAD_GROUP_SIZE_X 32
-#define THREAD_GROUP_SIZE_Y 32
-#define THREAD_GROUP_SIZE_Z 1
+groupshared int globalActiveClusterCount = 0;
 
-#define THREAD_GROUP_SIZE int3(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)
-#define CLEAN_CLUSTER_LIGHTS_PER_THREAD 16
-
-// Should match thread groupd size
-[numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
 void main(int3 dispatchThreadID : SV_DispatchThreadID)
 {
-	const int3 dispatchThreadsNum = DISPATCH_SIZE * THREAD_GROUP_SIZE;
-	const int flatDispatchThreadID = dispatchThreadID.y * dispatchThreadsNum.x + dispatchThreadID.x;
+	const int perThreadClustersCheck = ceil((float)ClusterListSize / THREAD_GROUP_SIZE);
 	
-	// Clean active cluster values in range of that thread
-	for (int i = flatDispatchThreadID * CLEAN_CLUSTER_LIGHTS_PER_THREAD; i < min(ClusterListSize, (flatDispatchThreadID + 1) * CLEAN_CLUSTER_LIGHTS_PER_THREAD); i++)
+	const int threadMinClusterIndex = perThreadClustersCheck * dispatchThreadID.x;
+	const int threadMaxClusterIndex = perThreadClustersCheck * (dispatchThreadID.x + 1);
+	
+	for (int i = threadMinClusterIndex; i < threadMaxClusterIndex && i < ClusterListSize; ++i)
 	{
-		ActiveClustersList[i] = 0;
-		UniqueActiveClustersList[i] = 0;
+		if (ActiveClustersList[i] == 1)
+		{
+			uint offset = 0;
+			InterlockedAdd(globalActiveClusterCount, 1, offset);
+			
+			UniqueActiveClustersList[offset] = i;
+		}
 	}
 }
 
