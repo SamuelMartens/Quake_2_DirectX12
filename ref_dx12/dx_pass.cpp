@@ -3,6 +3,15 @@
 
 #include "dx_rendercallbacks.h"
 
+#ifdef max
+#undef max
+#endif
+
+#ifdef min
+#undef min
+#endif
+
+
 const float Pass_Debug::LIGHT_PROBE_SPHERE_RADIUS = 6.0f;
 const float Pass_Debug::POINT_LIGHT_SPHERE_RADIUS = 3.0f;
 
@@ -1613,9 +1622,11 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 					
 					if (debugObject.showRadius)
 					{
-						DX_ASSERT(pointLight.radius > 0.0f && "Negative radius");
+						DX_ASSERT(pointLight.objectPhysicalRadius >= 0.0f && "Negative physical radius");
 
-						radiusSphereVertices = Utils::CreateSphere(pointLight.radius, POINT_LIGHT_SPHERE_SUBDIVISION);
+						const float lightObjectPhysicalRadius = std::max(pointLight.objectPhysicalRadius, 0.01f);
+
+						radiusSphereVertices = Utils::CreateSphere(lightObjectPhysicalRadius, POINT_LIGHT_SPHERE_SUBDIVISION);
 						sphereVertices = &radiusSphereVertices;
 					}
 					else

@@ -205,16 +205,16 @@ void EnsurePointLightDoesNotIntersectWalls(PointLight *pointlight)
 		//char msg[] = "EnsureEntityLightDoesNotIntersectWalls: Entity's origin is within a wall.\n";
 		//
 		//ri.Sys_Error(PRINT_DEVELOPER, msg);
-		pointlight->radius = 0;
+		pointlight->objectPhysicalRadius = 0;
 		return;
 	}
 
 	/* If the entity intersects a solid wall then reduce it's radius by half repeatedly until either
 		it becomes free or it becomes too small. */
 
-	while (SphereIntersectsAnySolidLeaf(origin, pointlight->radius) && pointlight->radius > 1.0f / 8.0f)
+	while (SphereIntersectsAnySolidLeaf(origin, pointlight->objectPhysicalRadius) && pointlight->objectPhysicalRadius > 1.0f / 8.0f)
 	{
-		pointlight->radius /= 2.0f;
+		pointlight->objectPhysicalRadius /= 2.0f;
 	}
 }
 
@@ -241,7 +241,7 @@ void BuildClusterListForPointLight(PointLight* pointlight)
 	DX_ASSERT(pointlight != NULL);
 
 	stack_size = 0;
-	r = pointlight->radius;
+	r = pointlight->objectPhysicalRadius;
 	model = r_worldmodel;
 	num_clusters = 0;
 
@@ -396,7 +396,7 @@ char* ParseEntityDictionary(char* data, PointLight* pointlights, int* numlights)
 		pointlight->intensity = atof(light);
 
 		/* The default radius is set to stay within the QUAKED bounding box specified for lights in g_misc.c */
-		pointlight->radius = 8;
+		pointlight->objectPhysicalRadius = 8;
 
 		/* Enforce the same defaults and restrictions that qrad3 enforces. */
 

@@ -1572,7 +1572,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 			DebugObject_LightSource object;
 			object.sourceIndex = i;
 			object.type = DebugObject_LightSource::Type::Point;
-			object.showRadius = debugSettings.drawPointLightSourcesRadius;
+			object.showRadius = debugSettings.drawPointLightObjectRadius;
 
 			debugObjects.push_back(object);
 		}
@@ -1864,7 +1864,7 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 					if (debugSettings.drawLightSourcesDebugGeometry == true)
 					{
 						ImGui::Indent();
-						ImGui::Checkbox("Point light source radius", &debugSettings.drawPointLightSourcesRadius);
+						ImGui::Checkbox("Point light object physical radius", &debugSettings.drawPointLightObjectRadius);
 						ImGui::Unindent();
 					}
 

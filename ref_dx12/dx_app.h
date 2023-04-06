@@ -201,7 +201,7 @@ public:
 		int lightProbesDebugGeometryDisplayCluster = Const::INVALID_INDEX;
 
 		bool drawLightSourcesDebugGeometry = false;
-		bool drawPointLightSourcesRadius = false;
+		bool drawPointLightObjectRadius = false;
 
 		DrawRayPathMode drawBakeRayPathsMode = DrawRayPathMode::SingleProbe;
 		int drawBakeRayPathsProbeIndex = 0;

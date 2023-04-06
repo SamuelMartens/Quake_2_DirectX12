@@ -15,7 +15,8 @@ struct PointLight
 	XMFLOAT4 origin = { 0.0f, 0.0f, 0.0f, 1.0f };
 	XMFLOAT4 color = { 0.0f, 0.0f, 0.0f, 1.0f };
 	// NOTE: this doesn't indicate how far this light can reach, instead it shows physical size of this light.
-	float radius = 0.0f;
+	//#DEBUG this might be 0. How does it influences distance fall off?
+	float objectPhysicalRadius = 0.0f;
 	// Amount of power per unit solid angle
 	float intensity = 0.0f;
 

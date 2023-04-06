@@ -349,6 +349,14 @@ namespace
 			currentPass.rasterPsoDesc.PrimitiveTopologyType = std::get<D3D12_PRIMITIVE_TOPOLOGY_TYPE>(topology);
 		};
 
+		parser["FillModeSt"] = [](const peg::SemanticValues& sv, std::any& ctx)
+		{
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			PassParametersSource& currentPass = parseCtx.passSources.back();
+
+			currentPass.rasterPsoDesc.RasterizerState.FillMode = std::any_cast<D3D12_FILL_MODE>(sv[0]);
+		};
+
 		parser["DepthWriteMaskSt"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
@@ -416,6 +424,24 @@ namespace
 			}
 
 			return std::make_tuple(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST,  D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);
+		};
+
+		parser["FillModeValues"] = [](const peg::SemanticValues& sv)
+		{
+			switch (sv.choice())
+			{
+			case 0:
+				return D3D12_FILL_MODE_SOLID;
+				break;
+			case 1:
+				return D3D12_FILL_MODE_WIREFRAME;
+				break;
+			default:
+				DX_ASSERT(false && "Invalid fill mode state");
+				break;
+			}
+
+			return D3D12_FILL_MODE_SOLID;
 		};
 
 		// --- Shader code

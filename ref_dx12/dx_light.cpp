@@ -178,7 +178,7 @@ Utils::Sphere PointLight::GetBoundingSphere(const PointLight& light)
 	Utils::Sphere sphere;
 
 	sphere.origin = light.origin;
-	sphere.radius = CalculateLightFarDistance(light.intensity, light.radius, Settings::POINT_LIGHTS_MAX_DISTANCE);
+	sphere.radius = CalculateLightFarDistance(light.intensity, light.objectPhysicalRadius, Settings::POINT_LIGHTS_MAX_DISTANCE);
 
 	return sphere;
 }

@@ -806,7 +806,7 @@ XMFLOAT4 LightBaker::GatherDirectIrradianceFromPointLights(const XMFLOAT4& inter
 			continue;
 		}
 
-		const float distanceFalloff = CalculateDistanceFalloff(distanceToLight, light.radius, Settings::POINT_LIGHTS_MAX_DISTANCE);
+		const float distanceFalloff = CalculateDistanceFalloff(distanceToLight, light.objectPhysicalRadius, Settings::POINT_LIGHTS_MAX_DISTANCE);
 
 		if (distanceFalloff == 0.0f)
 		{
