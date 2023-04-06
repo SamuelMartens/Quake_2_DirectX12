@@ -1586,11 +1586,19 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 
 					const SourceStaticObject& staticObject = staticObjects[light.staticObjectIndex];
 
-					debugObjectsVertices.insert(debugObjectsVertices.end(),
-						staticObject.verticesPos.cbegin(),
-						staticObject.verticesPos.cend());
+					std::vector<XMFLOAT4> vertices;
+					vertices.reserve(staticObject.indices.size());
 
-					debugObjectsVertexSizes.push_back(staticObject.verticesPos.size() * perVertexMemorySize);
+					for (const int index : staticObject.indices)
+					{
+						vertices.push_back(staticObject.verticesPos[index]);
+					}
+
+					debugObjectsVertices.insert(debugObjectsVertices.end(),
+						vertices.cbegin(),
+						vertices.cend());
+
+					debugObjectsVertexSizes.push_back(vertices.size() * perVertexMemorySize);
 				}
 
 				if (debugObject.type == DebugObject_LightSource::Type::Point)

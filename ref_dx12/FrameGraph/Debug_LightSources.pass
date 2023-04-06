@@ -11,9 +11,9 @@ DepthTarget  : DEPTH_BACK_BUFFER
 Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
 Topology	 : Triangle
-DepthBias	 : -5
-DepthBiasSlope : -2.0
-DepthBiasClamp : -50.0
+DepthBias	 : 5
+DepthBiasSlope : 2.0
+DepthBiasClamp : 50.0
 }
 
 RootSignature

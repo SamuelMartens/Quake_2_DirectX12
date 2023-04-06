@@ -1263,7 +1263,7 @@ void Renderer::CreateClusteredLightingResources(GPUJobContext& context)
 {
 	ResourceManager& resMan = ResourceManager::Inst();
 
-	DX_ASSERT(resMan.FindResource(Resource::FRUSTUM_CLUSTERS_AABB) == nullptr &&
+	DX_ASSERT(resMan.FindResource(Resource::FRUSTUM_CLUSTERS_AABB_NAME) == nullptr &&
 	"Trying create frustum cluster resources that already exist");
 
 	const std::vector<Utils::AABB> frustumClusters = context.frame.camera.GenerateFrustumClusterInViewSpace(
@@ -1282,9 +1282,63 @@ void Renderer::CreateClusteredLightingResources(GPUJobContext& context)
 	args.context = &context;
 	args.desc = &desc;
 	args.data = reinterpret_cast<const std::byte*>(frustumClusters.data());
-	args.name = Resource::FRUSTUM_CLUSTERS_AABB;
+	args.name = Resource::FRUSTUM_CLUSTERS_AABB_NAME;
 
 	resMan.CreateStructuredBuffer(args);
+}
+
+void Renderer::CreateLightResources(GPUJobContext& context) const
+{
+	DX_ASSERT(staticLightBoundingVolumes.empty() == false &&
+	"Can't create light resources ");
+
+	// Generate GPU light bounding volumes
+	std::vector<GPULightBoundingVolume> gpuBoundingVolumes;
+	gpuBoundingVolumes.reserve(staticLightBoundingVolumes.size());
+
+	for (const LightBoundingVolume_t& volume : staticLightBoundingVolumes)
+	{
+		std::visit([&gpuBoundingVolumes](auto&& vol)
+		{
+			using T = std::decay_t<decltype(vol)>;
+			
+			GPULightBoundingVolume gpuVolume;
+
+			if constexpr (std::is_same_v<T, Utils::Sphere>)
+			{
+				gpuVolume.origin = vol.origin;
+				gpuVolume.radius = vol.radius;
+			}
+
+			if constexpr(std::is_same_v<T, Utils::Hemisphere>)
+			{
+				gpuVolume.origin = vol.origin;
+				gpuVolume.radius = vol.radius;
+				gpuVolume.normal = vol.normal;
+			}
+
+			gpuBoundingVolumes.push_back(gpuVolume);
+
+		}, volume);
+	}
+
+	DX_ASSERT(ResourceManager::Inst().FindResource(Resource::LIGHT_BOUNDING_VOLUME_LIST_NAME) == nullptr &&
+		"Light bounding volume resource already exists");
+
+	ResourceDesc desc;
+	desc.width = gpuBoundingVolumes.size() * sizeof(GPULightBoundingVolume);
+	desc.height = 1;
+	desc.format = DXGI_FORMAT_UNKNOWN;
+	desc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	desc.flags = D3D12_RESOURCE_FLAG_NONE;
+
+	FArg::CreateStructuredBuffer args;
+	args.context = &context;
+	args.desc = &desc;
+	args.data = reinterpret_cast<std::byte*>(gpuBoundingVolumes.data());
+	args.name = Resource::LIGHT_BOUNDING_VOLUME_LIST_NAME;
+
+	ResourceManager::Inst().CreateStructuredBuffer(args);
 }
 
 void Renderer::CopyFromReadBackResourcesToCPUMemory(Frame& frame)
@@ -1317,6 +1371,42 @@ void Renderer::CopyFromReadBackResourcesToCPUMemory(Frame& frame)
 	}
 }
 
+void Renderer::GenerateStaticLightBoundingVolumes()
+{
+	DX_ASSERT(
+		staticAreaLights.empty() == false &&
+		staticPointLights.empty() == false &&
+		"Can't generate light bounding volumes, lights list is empty");
+
+	DX_ASSERT(staticLightBoundingVolumes.empty() == true && 
+		"Static light bounding volumes list was never cleaned up");
+
+	staticLightBoundingVolumes.reserve(staticAreaLights.size() + staticPointLights.size());
+
+	for (const PointLight& light : staticPointLights)
+	{
+		staticLightBoundingVolumes.push_back(PointLight::GetBoundingSphere(light));
+	}
+
+	ResourceManager& resMan = ResourceManager::Inst();
+
+	for (const AreaLight& light : staticAreaLights)
+	{
+		const SourceStaticObject& object = GetSourceStaticObjects()[light.staticObjectIndex];
+		const Resource* texture = resMan.FindResource(object.textureKey);
+
+		DX_ASSERT(texture != nullptr && "Can't find resource of area light");
+
+		if ((texture->desc.surfaceFlags & SURF_SKY) != 0)
+		{
+			// Ignore sky meshes
+			continue;
+		}
+
+		staticLightBoundingVolumes.push_back(AreaLight::GetBoundingHemisphere(light));
+	}
+}
+
 void Renderer::InitStaticLighting()
 {
 	for (AreaLight& light : staticAreaLights)
@@ -1324,11 +1414,12 @@ void Renderer::InitStaticLighting()
 		AreaLight::InitIfValid(light);
 	}
 
-	// Remove lights with 0.0 area
+	// Remove lights with 0.0 area or intensity
 	staticAreaLights.erase(std::remove_if(staticAreaLights.begin(), staticAreaLights.end(), 
 		[](const AreaLight& light) 
 	{
-		return light.area == 0.0f;
+		return light.area == 0.0f || 
+		light.radiance == 0.0f;
 	}), staticAreaLights.end());
 }
 
@@ -2215,6 +2306,35 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 		}
 	}
 
+	// Remove duplicating vertices
+	for (int i = vertices.size() - 1; i > 0; --i)
+	{
+		const ShDef::Vert::StaticObjVert_t& currentVert = vertices[i];
+
+		const auto similarVertIter = std::find_if(vertices.cbegin(), vertices.cbegin() + i,
+			[&currentVert](const ShDef::Vert::StaticObjVert_t& vert)
+			{
+				constexpr float epsilon = 0.00001f;
+				
+				const bool similarPosition = XMVector3NearEqual(
+					XMLoadFloat4(&currentVert.position), 
+					XMLoadFloat4(&vert.position),
+					XMVectorSet(epsilon, epsilon, epsilon, epsilon));
+
+				const bool similarTexCoord = XMVector2NearEqual(
+					XMLoadFloat2(&currentVert.texCoord),
+					XMLoadFloat2(&vert.texCoord),
+					XMVectorSet(epsilon, epsilon, epsilon, epsilon));
+
+				return similarPosition && similarTexCoord;
+			});
+
+		if (similarVertIter != vertices.cbegin() + i)
+		{
+			vertices.erase(vertices.begin() + i);
+		}
+	}
+
 	DX_ASSERT(vertices.empty() == false && "Static object cannot be created from empty vertices");
 
 	// Generate indices
@@ -2231,8 +2351,9 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 		return vert.position;
 	});
 
-
-	std::vector<XMFLOAT4> normals = Utils::GenerateNormals(vertPos, indices);
+	
+	std::vector<int> degenerateTrianglesIndices;
+	std::vector<XMFLOAT4> normals = Utils::GenerateNormals(vertPos, indices, &degenerateTrianglesIndices);
 
 	DX_ASSERT(normals.size() == vertices.size() && "Vertex size should match generated normals");
 
@@ -2251,12 +2372,61 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 		return vert.texCoord;
 	});
 
-	StaticObject& obj = staticObjects.emplace_back(StaticObject());
+	// If true, it means entire mesh consists of degenerate triangles. 
+	const bool isDegenerateMesh = degenerateTrianglesIndices.size() * 3 == indices.size();
+
+	// Get rid of degenerate triangles 
+	// Ideally, I can skip creating of degenerate meshes at all
+	// But in reality, my bsp stores mesh indices and if I mess up indices then
+	// culling will be busted.
+	if (degenerateTrianglesIndices.empty() == false && isDegenerateMesh == false)
+	{
+		// 1) Delete indices
+		for (int i = degenerateTrianglesIndices.size() - 1; i >= 0; --i)
+		{
+			const int triangleIndex = degenerateTrianglesIndices[i];
+			indices.erase(indices.begin() + triangleIndex * 3, indices.begin() + (triangleIndex + 1) * 3);
+		}
+		
+		// 2) Detect vertices that are not used anymore
+		std::vector<bool> usedVertices(vertices.size(), false);
+
+		for (const int index : indices)
+		{
+			usedVertices[index] = true;
+		}
+		 
+		// 3) Delete those vertices along with normals and texCoords
+		for (int i = usedVertices.size() - 1; i >= 0 ; --i)
+		{
+			if (usedVertices[i] == true)
+			{
+				continue;
+			}
+
+			vertices.erase(vertices.begin() + i);
+			vertPos.erase(vertPos.begin() + i);
+			textureCoords.erase(textureCoords.begin() + i);
+			normals.erase(normals.begin() + i);
+
+			// Patch up indices
+			for (int& index : indices)
+			{
+				if (index > i)
+				{
+					index -= 1;
+				}
+
+				DX_ASSERT(index >= 0 && "Invalid result index value");
+			}
+		}
+	}
 
 	// If this is a light surface, add it to the list
 	if ((surf.texinfo->flags & SURF_WARP) == 0 && 
 		(surf.texinfo->flags & (SURF_LIGHT | SURF_SKY)) != 0 &&
-		surf.texinfo->image->desc.iradiance > 0)
+		surf.texinfo->image->desc.irradiance > 0 &&
+		isDegenerateMesh == false)
 	{
 		staticAreaLights.emplace_back(AreaLight{ 
 			static_cast<int>(staticObjects.size()) - 1 });
@@ -2264,6 +2434,9 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 
 	auto& defaultMemory =
 		MemoryManager::Inst().GetBuff<DefaultBuffer_t>();
+
+
+	StaticObject& obj = staticObjects.emplace_back(StaticObject());
 
 	// Set the texture name
 	obj.textureKey = surf.texinfo->image->name;
@@ -2988,11 +3161,23 @@ void Renderer::EndFrame()
 	}
 
 	const bool cameraIsInitalized = frame.camera.fov.x != 0 && frame.camera.fov.y != 0;
-	if (ResourceManager::Inst().FindResource(Resource::FRUSTUM_CLUSTERS_AABB) == nullptr &&
+	if (ResourceManager::Inst().FindResource(Resource::FRUSTUM_CLUSTERS_AABB_NAME) == nullptr &&
 		cameraIsInitalized)
 	{
 		GPUJobContext clusteredLightingResourcesContext = CreateContext(frame);
 		CreateClusteredLightingResources(clusteredLightingResourcesContext);
+	}
+
+	if (staticLightBoundingVolumes.empty() == true &&
+		staticAreaLights.empty() == false &&
+		staticPointLights.empty() == false)
+	{
+		//GPUJobContext createLightingResourcesContext = CreateContext(frame);
+
+		// Init light Resources
+		GenerateStaticLightBoundingVolumes();
+		//#DEBUG uncomment
+		//CreateLightResources(createLightingResourcesContext);
 	}
 
 	// Proceed to next frame

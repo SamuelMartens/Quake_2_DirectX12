@@ -26,6 +26,18 @@ namespace
 
 		return max;
 	}
+
+	float CalculateLightFarDistance(float intensity, float minDistance, float maxDistance)
+	{
+		constexpr float intensityCutoff = 0.01f;
+
+		DX_ASSERT(intensity > 0.0f && "Can't calculate light far distance, invalid intensity");
+		DX_ASSERT(minDistance < maxDistance && "Can't calculate light far distance, invalid min/max");
+
+		const float farDistance = minDistance / std::sqrt(intensityCutoff / intensity);
+
+		return std::clamp(farDistance, minDistance, maxDistance);
+	}
 }
 
 void AreaLight::InitIfValid(AreaLight& light)
@@ -88,5 +100,85 @@ float AreaLight::CalculateRadiance(const AreaLight& light)
 
 	DX_ASSERT(lightTexture != nullptr && "Invalid texture name");
 
-	return lightTexture->desc.iradiance / (light.area * M_PI);
+	return lightTexture->desc.irradiance / (light.area * M_PI);
+}
+
+Utils::Hemisphere AreaLight::GetBoundingHemisphere(const AreaLight& light)
+{
+	const SourceStaticObject& object = Renderer::Inst().GetSourceStaticObjects()[light.staticObjectIndex];
+
+	DX_ASSERT(object.indices.empty() == false && "Empty area light source indices");
+	DX_ASSERT(object.normals.empty() == false && "Empty area light source normals");
+
+	const XMFLOAT4& normal = object.normals[0];
+
+	constexpr float epsilon = 0.00001f;
+
+#if ENABLE_VALIDATION
+	for (const XMFLOAT4& currentNormal : object.normals)
+	{
+		DX_ASSERT(XMVector4NearEqual(XMLoadFloat4(&currentNormal), XMLoadFloat4(&normal),
+			XMVectorSet(epsilon, epsilon, epsilon, epsilon)) &&
+			"In area light object all normal should be equal");
+	}
+#endif
+
+	const XMFLOAT4X4 toLocalSpaceMatrix = Utils::ConstructV1ToV2RotationMatrix(normal, XMFLOAT4(0.0f, 0.0f, 1.0f, 0.0f));
+	const XMMATRIX sseToLocalSpaceMatrix = XMLoadFloat4x4(&toLocalSpaceMatrix);
+
+	XMVECTOR sseMin = XMVectorSet(FLT_MAX, FLT_MAX, FLT_MAX, 1.0f);
+	XMVECTOR sseMax = XMVectorSet(-FLT_MAX, -FLT_MAX, -FLT_MAX, 1.0f);
+
+	for (const int& index : object.indices)
+	{
+		XMVECTOR sseVertex = XMLoadFloat4(&object.verticesPos[index]);
+		sseVertex = XMVector4Transform(sseVertex, sseToLocalSpaceMatrix);
+
+		sseMin = XMVectorMin(sseMin, sseVertex);
+		sseMax = XMVectorMax(sseMax, sseVertex);
+	}
+
+	XMVECTOR sseCenter = (sseMin + sseMax) / 2.0f;
+	const float maxDist = XMVectorGetX(XMVector3Length((sseMax - sseMin) / 2.0f));
+
+	const float falloffDist = CalculateLightFarDistance(light.radiance, 
+		Settings::AREA_LIGHTS_MIN_DISTANCE,
+		Settings::AREA_LIGHTS_MAX_DISTANCE);
+
+	XMVECTOR sseDeterminant;
+
+	XMMATRIX sseToWorldSpaceMatrix = XMMatrixInverse(&sseDeterminant, sseToLocalSpaceMatrix);
+	DX_ASSERT(XMVectorGetX(sseDeterminant) != 0.0f && "Invalid matrix determinant");
+
+	sseCenter = XMVector4Transform(sseCenter, sseToWorldSpaceMatrix);
+
+	Utils::Hemisphere boundingVolume;
+	XMStoreFloat4(&boundingVolume.origin, sseCenter);
+	boundingVolume.normal = normal;
+	boundingVolume.radius = std::max(maxDist, falloffDist);
+	
+#if ENABLE_VALIDATION
+	{
+		XMFLOAT4 min;
+		XMFLOAT4 max;
+
+		XMStoreFloat4(&min, sseMin);
+		XMStoreFloat4(&max, sseMax);
+
+		DX_ASSERT(min.x <= max.x && min.y <= max.y && min.z <= max.z && 
+			"Minimum should be less than maximum");
+	}
+#endif
+
+	return boundingVolume;
+}
+
+Utils::Sphere PointLight::GetBoundingSphere(const PointLight& light)
+{
+	Utils::Sphere sphere;
+
+	sphere.origin = light.origin;
+	sphere.radius = CalculateLightFarDistance(light.intensity, light.radius, Settings::POINT_LIGHTS_MAX_DISTANCE);
+
+	return sphere;
 }

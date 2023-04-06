@@ -727,7 +727,7 @@ std::vector<int> Utils::GetIndicesListForTrianglelistFromPolygonPrimitive(int nu
 	return indices;
 }
 
-std::vector<XMFLOAT4> Utils::GenerateNormals(const std::vector<XMFLOAT4>& vertices, const std::vector<int>& indices)
+std::vector<XMFLOAT4> Utils::GenerateNormals(const std::vector<XMFLOAT4>& vertices, const std::vector<int>& indices, std::vector<int>* degenerateTrianglesIndices)
 {
 	std::vector<XMFLOAT4> normals(vertices.size(), XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f));
 
@@ -744,6 +744,16 @@ std::vector<XMFLOAT4> Utils::GenerateNormals(const std::vector<XMFLOAT4>& vertic
 		XMVECTOR sseV2 = XMLoadFloat4(&vertices[v2Ind]);
 
 		XMVECTOR sseFaceCrossProd = XMVector3Cross(sseV2 - sseV0, sseV1 - sseV0);
+
+		if (degenerateTrianglesIndices != nullptr)
+		{
+			const float crossLength = XMVectorGetX(XMVector3Length(sseFaceCrossProd));
+
+			if (Utils::IsAlmostEqual(crossLength, 0.0f))
+			{
+				degenerateTrianglesIndices->push_back(triangleInd);
+			}
+		}
 
 		XMStoreFloat4(&normals[v0Ind], XMLoadFloat4(&normals[v0Ind]) + sseFaceCrossProd);
 		XMStoreFloat4(&normals[v1Ind], XMLoadFloat4(&normals[v1Ind]) + sseFaceCrossProd);

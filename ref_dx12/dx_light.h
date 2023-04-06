@@ -1,8 +1,10 @@
 #pragma once
 
 #include <vector>
+#include <variant>
 
 #include "dx_common.h"
+#include "dx_objects.h"
 #include "dx_objects.h"
 
 class Resource;
@@ -18,6 +20,8 @@ struct PointLight
 	float intensity = 0.0f;
 
 	std::vector<int> clusters;
+
+	static Utils::Sphere GetBoundingSphere(const PointLight& light);
 };
 
 struct AreaLight
@@ -37,4 +41,15 @@ struct AreaLight
 
 	static void InitIfValid(AreaLight& light);
 	static float CalculateRadiance(const AreaLight& light);
+
+	static Utils::Hemisphere GetBoundingHemisphere(const AreaLight& light);
 };
+
+struct GPULightBoundingVolume
+{
+	XMFLOAT4 normal = { 0.0f, 0.0f, 0.0f, 0.0f };
+	XMFLOAT4 origin = { 0.0f, 0.0f, 0.0f, 1.0f };
+	float radius = 0.0f;
+};
+
+using LightBoundingVolume_t = std::variant<Utils::Sphere, Utils::Hemisphere>;

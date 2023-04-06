@@ -102,6 +102,19 @@ namespace Utils
 		XMFLOAT4 maxVert = { -FLT_MAX, -FLT_MAX, -FLT_MAX, 1.0f };
 	};
 
+	struct Sphere
+	{
+		XMFLOAT4 origin = { 0.0f, 0.0f, 0.0f, 1.0f };
+		float radius = 0.0f;
+	};
+
+	struct Hemisphere
+	{
+		XMFLOAT4 origin = { 0.0f, 0.0f, 0.0f, 1.0f };
+		XMFLOAT4 normal = { 0.0f, 0.0f, 0.0f, 0.0f };
+		float radius = 0.0f;
+	};
+
 	struct Ray
 	{
 		XMFLOAT4 origin = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -292,7 +305,8 @@ namespace Utils
 	std::vector<int> GetIndicesListForTrianglelistFromPolygonPrimitive(int numVertices);
 
 	[[nodiscard]]
-	std::vector<XMFLOAT4> GenerateNormals(const std::vector<XMFLOAT4>& vertices, const std::vector<int>& indices);
+	std::vector<XMFLOAT4> GenerateNormals(const std::vector<XMFLOAT4>& vertices, 
+		const std::vector<int>& indices, std::vector<int>* degenerateTrianglesIndices = nullptr);
 
 	inline bool VecEqual(const XMFLOAT2& v1, const XMFLOAT2& v2)
 	{

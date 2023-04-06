@@ -322,7 +322,10 @@ private:
 	static LONG WINAPI MainWndProcWrapper(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	void CreateIndirectLightResources(GPUJobContext& context);
 	void CreateClusteredLightingResources(GPUJobContext& context);
+	void CreateLightResources(GPUJobContext& context) const;
 	void CopyFromReadBackResourcesToCPUMemory(Frame& frame);
+
+	void GenerateStaticLightBoundingVolumes();
 
 	void InitStaticLighting();
 
@@ -399,6 +402,8 @@ private:
 	/* Lights collections */
 	std::vector<PointLight> staticPointLights;
 	std::vector<AreaLight> staticAreaLights;
+
+	std::vector<LightBoundingVolume_t> staticLightBoundingVolumes;
 
 	/* Frames  */
 	std::array<Frame, Settings::FRAMES_NUM> frames;

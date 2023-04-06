@@ -74,8 +74,8 @@ namespace Settings
 
 	/* Light Baker */
 	constexpr float AREA_LIGHTS_MIN_DISTANCE = 1.0f;
-	constexpr float AREA_LIGHTS_MAX_DISTANCE = 1000.0f;
-	constexpr float POINT_LIGHTS_MAX_DISTANCE = 1000.0f;
+	constexpr float AREA_LIGHTS_MAX_DISTANCE = 500.0f;
+	constexpr float POINT_LIGHTS_MAX_DISTANCE = 500.0f;
 
 	constexpr float RUSSIAN_ROULETTE_ABSORBTION_PROBABILITY = 0.5f;
 	
