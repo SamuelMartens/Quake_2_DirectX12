@@ -100,7 +100,7 @@ float AreaLight::CalculateRadiance(const AreaLight& light)
 
 	DX_ASSERT(lightTexture != nullptr && "Invalid texture name");
 
-	return lightTexture->desc.irradiance / (light.area * M_PI);
+	return lightTexture->desc.surfaceProperties->irradiance / (light.area * M_PI);
 }
 
 Utils::Hemisphere AreaLight::GetBoundingHemisphere(const AreaLight& light)

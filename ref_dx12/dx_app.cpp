@@ -1261,6 +1261,7 @@ void Renderer::CreateIndirectLightResources(GPUJobContext& context)
 
 void Renderer::CreateClusteredLightingResources(GPUJobContext& context)
 {
+	CommandListRAIIGuard_t commandListGuard(*context.commandList);
 	ResourceManager& resMan = ResourceManager::Inst();
 
 	DX_ASSERT(resMan.FindResource(Resource::FRUSTUM_CLUSTERS_AABB_NAME) == nullptr &&
@@ -1289,6 +1290,8 @@ void Renderer::CreateClusteredLightingResources(GPUJobContext& context)
 
 void Renderer::CreateLightResources(GPUJobContext& context) const
 {
+	CommandListRAIIGuard_t commandListGuard(*context.commandList);
+
 	DX_ASSERT(staticLightBoundingVolumes.empty() == false &&
 	"Can't create light resources ");
 
@@ -1396,8 +1399,9 @@ void Renderer::GenerateStaticLightBoundingVolumes()
 		const Resource* texture = resMan.FindResource(object.textureKey);
 
 		DX_ASSERT(texture != nullptr && "Can't find resource of area light");
+		DX_ASSERT(texture->desc.surfaceProperties.has_value() == true && "Surface properties are absent");
 
-		if ((texture->desc.surfaceFlags & SURF_SKY) != 0)
+		if ((texture->desc.surfaceProperties->flags & SURF_SKY) != 0)
 		{
 			// Ignore sky meshes
 			continue;
@@ -2425,7 +2429,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	// If this is a light surface, add it to the list
 	if ((surf.texinfo->flags & SURF_WARP) == 0 && 
 		(surf.texinfo->flags & (SURF_LIGHT | SURF_SKY)) != 0 &&
-		surf.texinfo->image->desc.irradiance > 0 &&
+		surf.texinfo->image->desc.surfaceProperties->irradiance > 0 &&
 		isDegenerateMesh == false)
 	{
 		staticAreaLights.emplace_back(AreaLight{ 
@@ -3172,12 +3176,11 @@ void Renderer::EndFrame()
 		staticAreaLights.empty() == false &&
 		staticPointLights.empty() == false)
 	{
-		//GPUJobContext createLightingResourcesContext = CreateContext(frame);
+		GPUJobContext createLightingResourcesContext = CreateContext(frame);
 
 		// Init light Resources
 		GenerateStaticLightBoundingVolumes();
-		//#DEBUG uncomment
-		//CreateLightResources(createLightingResourcesContext);
+		CreateLightResources(createLightingResourcesContext);
 	}
 
 	// Proceed to next frame

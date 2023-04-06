@@ -10,28 +10,23 @@
 #include "dx_common.h"
 #include "dx_utils.h"
 
+struct SurfacePropertes
+{
+	int irradiance = 0;
+	int flags = 0;
+};
+
 struct ResourceDesc
 {
-
 	int width = 0;
 	int height = 0;
 
 	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
 	D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
 
-	//#DEBUG move this to aseparate field (which is optional)
-	// This is awkward to have this data in resource decs. The reason being that from
-	// game's perspective each texture (which mode if resources are) can have this values.
-	// Perhaps I should move to lighting texture sometime?
-	// Flux of the surface = irradiance * reflectivity 
-	// Iradiance is just intensity, which describes how much we want to scale reflectivity
-	// Reflectivity is normalized vector and describes how much of each component of RGB
-	// is emitted by this surface
-	int irradiance = 0;
-	// Everything said for irradiance is also to this member, this doesn't belong here
-	int surfaceFlags = 0;
-
 	D3D12_RESOURCE_DIMENSION dimension = D3D12_RESOURCE_DIMENSION_UNKNOWN;
+
+	std::optional<SurfacePropertes> surfaceProperties;
 };
 
 struct ResourceReadBackRequest
