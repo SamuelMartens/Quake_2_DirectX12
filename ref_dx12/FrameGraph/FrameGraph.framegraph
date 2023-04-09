@@ -111,6 +111,7 @@ Steps
     Particles
 	UI
 	Debug_Triangle
+	Debug_TriangleWireframe
 	Debug_Line
 	Debug_LightSources
 }

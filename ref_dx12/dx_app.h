@@ -133,6 +133,7 @@ class Renderer
 	const std::vector<SourceStaticObject>& GetSourceStaticObjects() const;
 	const std::vector<AreaLight>& GetStaticAreaLights() const;
 	const std::vector<PointLight>& GetStaticPointLights() const;
+	const std::vector<LightBoundingVolume>& GetLightBoundingVolumes() const;
 
 	void Load8To24Table();
 	void ImageBpp8To32(const std::byte* data, int width, int height, unsigned int* out) const;
@@ -202,6 +203,8 @@ public:
 
 		bool drawLightSourcesDebugGeometry = false;
 		bool drawPointLightObjectRadius = false;
+		bool drawPointLightBoundingVolume = false;
+		bool drawAreaLightBoundingVolume = false;
 
 		DrawRayPathMode drawBakeRayPathsMode = DrawRayPathMode::SingleProbe;
 		int drawBakeRayPathsProbeIndex = 0;
@@ -403,7 +406,7 @@ private:
 	std::vector<PointLight> staticPointLights;
 	std::vector<AreaLight> staticAreaLights;
 
-	std::vector<LightBoundingVolume_t> staticLightBoundingVolumes;
+	std::vector<LightBoundingVolume> staticLightBoundingVolumes;
 
 	/* Frames  */
 	std::array<Frame, Settings::FRAMES_NUM> frames;

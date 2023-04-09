@@ -1,0 +1,133 @@
+PassProperties
+{
+PassInput : Debug
+PassVertAttr: VertexIn
+}
+
+State
+{
+ColorTarget  : COLOR_BACK_BUFFER
+DepthTarget  : DEPTH_BACK_BUFFER
+Viewport	 : 0.0, 0.0, 1.0, 1.0
+BlendEnabled : false
+Topology	 : Triangle
+FillMode	 : Wireframe
+}
+
+RootSignature
+{
+RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
+CBV(b0, space = 0),
+CBV(b0, space = 1),
+CBV(b0, space = 3),
+DescriptorTable(SRV(t4, numDescriptors = 1, space = 0))
+}
+
+// -== Register space convention ==-
+//	0 - Global, PerPass
+//	1 - Global, PerObject
+//	2 - Local, PerPass
+//	3 - Local, PerObject
+
+// Attributes
+
+struct VertexIn
+{
+	float4 Pos : POSITION;
+}
+
+struct VertexOut
+{
+	float4 Pos : SV_POSITION;
+	float4 WorldPos : POSITION;
+}
+
+// Structs
+struct GPULightBoundingVolume
+{
+	float4 normal;
+	float4 origin;
+	float radius;
+}
+
+// Resources  
+[Global, PerPass]
+cbuffer cbFrameData : register(b0, space0)
+{
+	float4x4 InvertedViewProj;
+	float4x4 InvertedProj;
+    float4x4 ViewProj;
+	float4x4 View;
+    float4 CameraYaw;
+    float4 CameraPitch;
+    float4 CameraRoll;
+    float4 CameraOrigin;
+	float CameraNear;
+	float CameraFar;
+	int ScreenWidth;
+	int ScreenHeight;
+}
+
+[Global, PerObject]
+cbuffer cbPerObject_Global : register(b0, space1)
+{
+	int DebugObjectType;
+}
+
+[Local, PerObject]
+cbuffer cbPerObject_Local : register(b0, space3)
+{
+	int BoundingVolumeIndex;
+}
+
+[Global, PerPass]
+StructuredBuffer<GPULightBoundingVolume> LightBoundingVolumes : register(t4, space0)
+
+Type : VS 
+External : cbFrameData, cbPerObject_Local, cbPerObject_Global, VertexIn, VertexOut
+<[
+
+#include "Debug.passh"
+
+VertexOut main(VertexIn vIn)
+{
+	VertexOut vOut;
+	vOut.Pos = mul(ViewProj, vIn.Pos);
+	
+	if (DebugObjectType == DEBUG_OBJECT_LIGHT_BOUNDING_VOLUME)
+	{
+		vOut.WorldPos = vIn.Pos;
+	}
+	else
+	{
+		vOut.WorldPos = float4(0.0f, 0.0f, 0.0f, 0.0f);
+	}
+	
+	return vOut;
+}
+
+]>
+
+
+Type : PS 
+External : VertexOut, GPULightBoundingVolume, LightBoundingVolumes, cbPerObject_Global, cbPerObject_Local
+<[
+
+#include "Debug.passh"
+
+float4 main(VertexOut vOut) : SV_Target
+{
+	if (DebugObjectType != DEBUG_OBJECT_LIGHT_BOUNDING_VOLUME)
+	{
+		discard;
+	}
+	
+	//#DEBUG so far, I don't have global light list, but that's where light type should be stored.
+	// so everything is just going to be a sphere for now. Later implemenent different coloring
+	// for different types. As well as different treatment for area lights hemisphere front and back
+	float4 color = float4(1.0f, 0.5f, 0.0f, 1.0f);
+	
+	return color;
+}
+
+]>

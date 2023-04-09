@@ -125,6 +125,7 @@ enum class DebugObjectType
 	ProbePathTraceSegment = 2,
 	ProbeLightSample = 3,
 	FrustumClusters = 4,
+	LightBoundingVolume = 5,
 
 	None
 };
@@ -179,10 +180,17 @@ struct DebugObject_FrustumCluster
 	bool isActive = false;
 };
 
+struct DebugObject_LightBoundingVolume
+{
+	DebugObject_LightSource::Type type = DebugObject_LightSource::Type::None;
+	int sourceIndex = Const::INVALID_INDEX;
+};
+
 // NOTE: when adding new type, add registration in Pass_Debug::RegisterObjects()
 using DebugObject_t = std::variant<
 	DebugObject_LightProbe,
 	DebugObject_LightSource,
 	DebugObject_ProbePathSegment,
 	DebugObject_ProbeLightSample,
-	DebugObject_FrustumCluster>;
+	DebugObject_FrustumCluster,
+	DebugObject_LightBoundingVolume>;

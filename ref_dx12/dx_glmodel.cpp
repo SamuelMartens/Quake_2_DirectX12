@@ -200,11 +200,7 @@ void EnsurePointLightDoesNotIntersectWalls(PointLight *pointlight)
 	
 	if (!leaf || leaf->contents == CONTENTS_SOLID || leaf->cluster == -1)
 	{
-		// I always hit this, and it doesn't seems to be that critical. Comment for now,
-		// it might bite me later tho
-		//char msg[] = "EnsureEntityLightDoesNotIntersectWalls: Entity's origin is within a wall.\n";
-		//
-		//ri.Sys_Error(PRINT_DEVELOPER, msg);
+		// Effectively disable light
 		pointlight->objectPhysicalRadius = 0;
 		return;
 	}

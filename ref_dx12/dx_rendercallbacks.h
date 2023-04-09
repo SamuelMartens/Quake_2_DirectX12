@@ -264,6 +264,10 @@ namespace RenderCallbacks
 					{
 						reinterpret_cast<int&>(bindPoint) = static_cast<int>(DebugObjectType::FrustumClusters);
 					}
+					else if constexpr (std::is_same_v<T, DebugObject_LightBoundingVolume>)
+					{
+						reinterpret_cast<int&>(bindPoint) = static_cast<int>(DebugObjectType::LightBoundingVolume);
+					}
 					else
 					{
 						DX_ASSERT(false && "Unidentified debug object type");
@@ -348,6 +352,10 @@ namespace RenderCallbacks
 		}
 		break;
 		case HASH("DiffuseProbes"):
+		{
+		}
+		break;
+		case HASH("LightBoundingVolumes"):
 		{
 		}
 		break;
@@ -474,6 +482,23 @@ namespace RenderCallbacks
 					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(probeGpuBuffer, sizeof(DiffuseProbe::DiffuseSH_t)) };
 
 				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, probeGpuBuffer->gpuBuffer.Get(), &defaultSrvDesc));
+			}
+		}
+		break;
+		case HASH("LightBoundingVolumes"):
+		{
+			Resource* boundingVolumeGpuBuffer = ResourceManager::Inst().FindResource(Resource::LIGHT_BOUNDING_VOLUME_LIST_NAME);
+			if (boundingVolumeGpuBuffer == nullptr)
+			{
+				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
+			}
+			else
+			{
+				ViewDescription_t defaultSrvDesc{
+					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(boundingVolumeGpuBuffer, sizeof(GPULightBoundingVolume)) };
+
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, boundingVolumeGpuBuffer->gpuBuffer.Get(), &defaultSrvDesc));
 			}
 		}
 		break;
@@ -876,6 +901,32 @@ namespace RenderCallbacks
 							reinterpret_cast<int&>(bindPoint) = Const::INVALID_INDEX;
 						}
 
+					}, obj);
+				}
+				break;
+				default:
+					break;
+				}
+			}
+			break;
+			case HASH("Debug_TriangleWireframe"):
+			{
+				switch (paramName)
+				{
+				case HASH("BoundingVolumeIndex"):
+				{
+					std::visit([&bindPoint](auto&& object)
+					{
+						using T = std::decay_t<decltype(object)>;
+
+						if constexpr (std::is_same_v<T, DebugObject_LightBoundingVolume>)
+						{
+							reinterpret_cast<int&>(bindPoint) = static_cast<int>(object.sourceIndex);
+						}
+						else
+						{
+							reinterpret_cast<int&>(bindPoint) = -1;
+						}
 					}, obj);
 				}
 				break;

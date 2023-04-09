@@ -1299,7 +1299,7 @@ void Renderer::CreateLightResources(GPUJobContext& context) const
 	std::vector<GPULightBoundingVolume> gpuBoundingVolumes;
 	gpuBoundingVolumes.reserve(staticLightBoundingVolumes.size());
 
-	for (const LightBoundingVolume_t& volume : staticLightBoundingVolumes)
+	for (const LightBoundingVolume& volume : staticLightBoundingVolumes)
 	{
 		std::visit([&gpuBoundingVolumes](auto&& vol)
 		{
@@ -1322,7 +1322,7 @@ void Renderer::CreateLightResources(GPUJobContext& context) const
 
 			gpuBoundingVolumes.push_back(gpuVolume);
 
-		}, volume);
+		}, volume.shape);
 	}
 
 	DX_ASSERT(ResourceManager::Inst().FindResource(Resource::LIGHT_BOUNDING_VOLUME_LIST_NAME) == nullptr &&
@@ -1386,16 +1386,21 @@ void Renderer::GenerateStaticLightBoundingVolumes()
 
 	staticLightBoundingVolumes.reserve(staticAreaLights.size() + staticPointLights.size());
 
-	for (const PointLight& light : staticPointLights)
+	for (int i = 0; i < staticPointLights.size(); ++i)
 	{
-		staticLightBoundingVolumes.push_back(PointLight::GetBoundingSphere(light));
+		LightBoundingVolume volume;
+		volume.type = LightBoundingVolume::Type::Point;
+		volume.shape = PointLight::GetBoundingSphere(staticPointLights[i]);
+		volume.sourceIndex = i;
+
+		staticLightBoundingVolumes.push_back(volume);
 	}
 
 	ResourceManager& resMan = ResourceManager::Inst();
 
-	for (const AreaLight& light : staticAreaLights)
+	for (int i =0; i < staticAreaLights.size(); ++i)
 	{
-		const SourceStaticObject& object = GetSourceStaticObjects()[light.staticObjectIndex];
+		const SourceStaticObject& object = GetSourceStaticObjects()[staticAreaLights[i].staticObjectIndex];
 		const Resource* texture = resMan.FindResource(object.textureKey);
 
 		DX_ASSERT(texture != nullptr && "Can't find resource of area light");
@@ -1407,7 +1412,12 @@ void Renderer::GenerateStaticLightBoundingVolumes()
 			continue;
 		}
 
-		staticLightBoundingVolumes.push_back(AreaLight::GetBoundingHemisphere(light));
+		LightBoundingVolume volume;
+		volume.type = LightBoundingVolume::Type::Area;
+		volume.shape = AreaLight::GetBoundingHemisphere(staticAreaLights[i]);
+		volume.sourceIndex = i;
+
+		staticLightBoundingVolumes.push_back(volume);
 	}
 }
 
@@ -1585,6 +1595,40 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 			object.showRadius = false;
 
 			debugObjects.push_back(object);
+		}
+	}
+
+	if (debugSettings.drawPointLightBoundingVolume)
+	{
+		for (int i = 0; i < staticLightBoundingVolumes.size(); ++i)
+		{
+			const LightBoundingVolume& volume = staticLightBoundingVolumes[i];
+
+			if (volume.type == LightBoundingVolume::Type::Point)
+			{
+				DebugObject_LightBoundingVolume object;
+				object.sourceIndex = i;
+				object.type = DebugObject_LightSource::Type::Point;
+
+				debugObjects.push_back(object);
+			}
+		}
+	}
+
+	if (debugSettings.drawAreaLightBoundingVolume)
+	{
+		for (int i = 0; i < staticLightBoundingVolumes.size(); ++i)
+		{
+			const LightBoundingVolume& volume = staticLightBoundingVolumes[i];
+
+			if (volume.type == LightBoundingVolume::Type::Area)
+			{
+				DebugObject_LightBoundingVolume object;
+				object.sourceIndex = i;
+				object.type = DebugObject_LightSource::Type::Area;
+
+				debugObjects.push_back(object);
+			}
 		}
 	}
 
@@ -1777,6 +1821,11 @@ const std::vector<PointLight>& Renderer::GetStaticPointLights() const
 	return staticPointLights;
 }
 
+const std::vector<LightBoundingVolume>& Renderer::GetLightBoundingVolumes() const
+{
+	return staticLightBoundingVolumes;
+}
+
 void Renderer::RequestStateChange(State state)
 {
 	DX_ASSERT(requestedState.has_value() == false && "State Already requested");
@@ -1865,6 +1914,8 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 					{
 						ImGui::Indent();
 						ImGui::Checkbox("Point light object physical radius", &debugSettings.drawPointLightObjectRadius);
+						ImGui::Checkbox("Point light bounding volumes", &debugSettings.drawPointLightBoundingVolume);
+						ImGui::Checkbox("Area light bounding volumes", &debugSettings.drawAreaLightBoundingVolume);
 						ImGui::Unindent();
 					}
 
@@ -3316,10 +3367,17 @@ void Renderer::RegisterWorldModel(const char* model)
 	int numStaticPointLights = 0;
 	const PointLight* pointLights = Mod_StaticPointLights(&numStaticPointLights);
 
-	staticPointLights.resize(numStaticPointLights);
+	staticPointLights.reserve(numStaticPointLights);
 	for (int i = 0; i < numStaticPointLights; ++pointLights, ++i)
 	{
-		staticPointLights[i] = *pointLights;
+		if (pointLights->objectPhysicalRadius == 0.0f)
+		{
+			// Ignore disabled lights. Usually means they are within the wall.
+			// Look EnsurePointLightDoesNotIntersectWalls() for more details.
+			continue;
+		}
+
+		staticPointLights.push_back(*pointLights);
 	}
 
 	Mod_FreeStaticPointLights();

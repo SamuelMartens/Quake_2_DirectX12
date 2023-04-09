@@ -303,6 +303,8 @@ public:
 	const static float POINT_LIGHT_SPHERE_RADIUS;
 	const static int POINT_LIGHT_SPHERE_SUBDIVISION = 1;
 
+	const static int LIGHT_BOUNDING_VOLUME_SUBDIVISION = 2;
+
 public:
 
 	Pass_Debug() = default;

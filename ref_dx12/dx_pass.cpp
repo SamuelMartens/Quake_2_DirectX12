@@ -1519,6 +1519,7 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 	const std::vector<AreaLight>& areaLights = renderer.GetStaticAreaLights();
 	const std::vector<PointLight>& pointLights = renderer.GetStaticPointLights();
 	const std::vector<SourceStaticObject>& staticObjects = renderer.GetSourceStaticObjects();
+	const std::vector<LightBoundingVolume>& lightBoundingVolumes = renderer.GetLightBoundingVolumes();
 
 	// Generate frustum clusters if needed
 	std::vector<Utils::AABB> frustumClusters;
@@ -1558,7 +1559,8 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 			&renderer,
 			&pathSegmentVertices,
 			&lightSampleVertices,
-			&frustumClusters](auto&& debugObject) 
+			&frustumClusters,
+			&lightBoundingVolumes](auto&& debugObject) 
 		{
 			using T = std::decay_t<decltype(debugObject)>;
 
@@ -1622,11 +1624,9 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 					
 					if (debugObject.showRadius)
 					{
-						DX_ASSERT(pointLight.objectPhysicalRadius >= 0.0f && "Negative physical radius");
+						DX_ASSERT(pointLight.objectPhysicalRadius > 0.0f && "Invalid physical radius");
 
-						const float lightObjectPhysicalRadius = std::max(pointLight.objectPhysicalRadius, 0.01f);
-
-						radiusSphereVertices = Utils::CreateSphere(lightObjectPhysicalRadius, POINT_LIGHT_SPHERE_SUBDIVISION);
+						radiusSphereVertices = Utils::CreateSphere(pointLight.objectPhysicalRadius, POINT_LIGHT_SPHERE_SUBDIVISION);
 						sphereVertices = &radiusSphereVertices;
 					}
 					else
@@ -1687,6 +1687,45 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 					clusterAABBVertices.end());
 
 				debugObjectsVertexSizes.push_back(clusterAABBVertices.size()* perVertexMemorySize);
+			}
+
+			if constexpr (std::is_same_v<T, DebugObject_LightBoundingVolume>)
+			{
+				const LightBoundingVolume& volume = lightBoundingVolumes[debugObject.sourceIndex];
+
+				std::vector<XMFLOAT4> volumeVertices;
+				XMVECTOR sseLightPos = XMVectorZero();
+
+				std::visit([&volumeVertices, &sseLightPos](auto&& shape)
+					{
+						using T = std::decay_t<decltype(shape)>;
+						
+						if constexpr (std::is_same_v<T, Utils::Sphere>)
+						{
+							volumeVertices = Utils::CreateSphere(shape.radius, LIGHT_BOUNDING_VOLUME_SUBDIVISION);
+							sseLightPos = XMLoadFloat4(&shape.origin);
+						}
+
+						if constexpr (std::is_same_v<T, Utils::Hemisphere>)
+						{
+							// Intentional, since actually sphere test will be used for cluster test
+							volumeVertices = Utils::CreateSphere(shape.radius, LIGHT_BOUNDING_VOLUME_SUBDIVISION);
+							sseLightPos = XMLoadFloat4(&shape.origin);
+						}
+
+					}, volume.shape);
+
+
+				std::transform(volumeVertices.cbegin(), volumeVertices.cend(), std::back_inserter(debugObjectsVertices),
+					[sseLightPos](const XMFLOAT4& vertex)
+					{
+						XMFLOAT4 resultVertex;
+						XMStoreFloat4(&resultVertex, XMVectorSetW(XMLoadFloat4(&vertex) + sseLightPos, 1.0f));
+
+						return resultVertex;
+					});
+
+				debugObjectsVertexSizes.push_back(volumeVertices.size()* perVertexMemorySize);
 			}
 
 		}, debugObject);

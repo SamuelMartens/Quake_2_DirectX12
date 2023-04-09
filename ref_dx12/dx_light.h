@@ -53,4 +53,20 @@ struct GPULightBoundingVolume
 	float radius = 0.0f;
 };
 
-using LightBoundingVolume_t = std::variant<Utils::Sphere, Utils::Hemisphere>;
+struct LightBoundingVolume
+{
+	enum class Type
+	{
+		Point,
+		Area,
+
+		None
+	};
+
+	using BoundingVolume_t = std::variant<Utils::Sphere, Utils::Hemisphere>;
+
+	Type type = Type::None;
+	BoundingVolume_t shape;
+
+	int sourceIndex = Const::INVALID_INDEX;
+};
