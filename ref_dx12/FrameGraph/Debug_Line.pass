@@ -57,6 +57,7 @@ cbuffer cbFrameData : register(b0, space0)
 	float CameraFar;
 	int ScreenWidth;
 	int ScreenHeight;
+	int LightListSize;
 }
 
 [Global, PerObject]

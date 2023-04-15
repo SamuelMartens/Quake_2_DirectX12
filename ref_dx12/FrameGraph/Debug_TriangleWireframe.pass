@@ -45,7 +45,6 @@ struct VertexOut
 // Structs
 struct GPULightBoundingVolume
 {
-	float4 normal;
 	float4 origin;
 	float radius;
 }
@@ -66,6 +65,7 @@ cbuffer cbFrameData : register(b0, space0)
 	float CameraFar;
 	int ScreenWidth;
 	int ScreenHeight;
+	int LightListSize;
 }
 
 [Global, PerObject]

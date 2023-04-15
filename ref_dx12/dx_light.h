@@ -4,18 +4,38 @@
 #include <variant>
 
 #include "dx_common.h"
-#include "dx_objects.h"
-#include "dx_objects.h"
+#include "dx_utils.h"
 
 class Resource;
+
+namespace Light
+{
+	// Should match shader definition in Debug.passh
+	enum class Type
+	{
+		Area = 0,
+		Point = 1,
+
+		None
+	};
+};
+
+struct GPULight
+{
+	XMFLOAT4X4 worldTransform;
+	// RGB <- color, A <- intensity
+	XMFLOAT4 colorAndIntensity = { 0.0f, 0.0f, 0.0f, 0.0f };
+	// Point light X - radius
+	// Area light X,Y sizes of OBB (in 2D)
+	XMFLOAT2 extends = { 0.0f, 0.0f };
+	int type = static_cast<int>(Light::Type::None);
+};
 
 // In reality this is not Point light, but Spherical area light 
 struct PointLight
 {
 	XMFLOAT4 origin = { 0.0f, 0.0f, 0.0f, 1.0f };
 	XMFLOAT4 color = { 0.0f, 0.0f, 0.0f, 1.0f };
-	// NOTE: this doesn't indicate how far this light can reach, instead it shows physical size of this light.
-	//#DEBUG this might be 0. How does it influences distance fall off?
 	float objectPhysicalRadius = 0.0f;
 	// Amount of power per unit solid angle
 	float intensity = 0.0f;
@@ -23,6 +43,7 @@ struct PointLight
 	std::vector<int> clusters;
 
 	static Utils::Sphere GetBoundingSphere(const PointLight& light);
+	static GPULight ToGPULight(const PointLight& light);
 };
 
 struct AreaLight
@@ -43,30 +64,20 @@ struct AreaLight
 	static void InitIfValid(AreaLight& light);
 	static float CalculateRadiance(const AreaLight& light);
 
-	static Utils::Hemisphere GetBoundingHemisphere(const AreaLight& light);
+	static Utils::Sphere GetBoundingSphere(const AreaLight& light, const XMFLOAT2& extends, const XMFLOAT4& origin);
+	static GPULight ToGPULight(const AreaLight& light);
 };
 
 struct GPULightBoundingVolume
 {
-	XMFLOAT4 normal = { 0.0f, 0.0f, 0.0f, 0.0f };
 	XMFLOAT4 origin = { 0.0f, 0.0f, 0.0f, 1.0f };
 	float radius = 0.0f;
 };
 
 struct LightBoundingVolume
 {
-	enum class Type
-	{
-		Point,
-		Area,
-
-		None
-	};
-
-	using BoundingVolume_t = std::variant<Utils::Sphere, Utils::Hemisphere>;
-
-	Type type = Type::None;
-	BoundingVolume_t shape;
+	Light::Type type = Light::Type::None;
+	Utils::Sphere shape;
 
 	int sourceIndex = Const::INVALID_INDEX;
 };

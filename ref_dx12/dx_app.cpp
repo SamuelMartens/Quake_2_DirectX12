@@ -135,13 +135,13 @@ namespace
 			const LightSamplePoint::Sample& sample = point.samples[sampleIndex];
 
 			if (type == Renderer::DrawPathLightSampleMode_Type::Point &&
-				sample.lightType != DebugObject_LightSource::Type::Point)
+				sample.lightType != Light::Type::Point)
 			{
 				continue;
 			}
 
 			if (type == Renderer::DrawPathLightSampleMode_Type::Area &&
-				sample.lightType != DebugObject_LightSource::Type::Area)
+				sample.lightType != Light::Type::Area)
 			{
 				continue;
 			}
@@ -1288,60 +1288,51 @@ void Renderer::CreateClusteredLightingResources(GPUJobContext& context)
 	resMan.CreateStructuredBuffer(args);
 }
 
-void Renderer::CreateLightResources(GPUJobContext& context) const
+void Renderer::CreateLightResources(const std::vector<GPULight>& gpuLights, const std::vector<GPULightBoundingVolume>& gpuBoundingVolumes, GPUJobContext& context) const
 {
 	CommandListRAIIGuard_t commandListGuard(*context.commandList);
 
-	DX_ASSERT(staticLightBoundingVolumes.empty() == false &&
-	"Can't create light resources ");
-
-	// Generate GPU light bounding volumes
-	std::vector<GPULightBoundingVolume> gpuBoundingVolumes;
-	gpuBoundingVolumes.reserve(staticLightBoundingVolumes.size());
-
-	for (const LightBoundingVolume& volume : staticLightBoundingVolumes)
-	{
-		std::visit([&gpuBoundingVolumes](auto&& vol)
-		{
-			using T = std::decay_t<decltype(vol)>;
-			
-			GPULightBoundingVolume gpuVolume;
-
-			if constexpr (std::is_same_v<T, Utils::Sphere>)
-			{
-				gpuVolume.origin = vol.origin;
-				gpuVolume.radius = vol.radius;
-			}
-
-			if constexpr(std::is_same_v<T, Utils::Hemisphere>)
-			{
-				gpuVolume.origin = vol.origin;
-				gpuVolume.radius = vol.radius;
-				gpuVolume.normal = vol.normal;
-			}
-
-			gpuBoundingVolumes.push_back(gpuVolume);
-
-		}, volume.shape);
-	}
-
+	// Bounding volumes buffer
 	DX_ASSERT(ResourceManager::Inst().FindResource(Resource::LIGHT_BOUNDING_VOLUME_LIST_NAME) == nullptr &&
 		"Light bounding volume resource already exists");
 
-	ResourceDesc desc;
-	desc.width = gpuBoundingVolumes.size() * sizeof(GPULightBoundingVolume);
-	desc.height = 1;
-	desc.format = DXGI_FORMAT_UNKNOWN;
-	desc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-	desc.flags = D3D12_RESOURCE_FLAG_NONE;
+	DX_ASSERT(gpuBoundingVolumes.empty() == false && "Trying to create resource with empty gpu bounding volumes lights list");
 
-	FArg::CreateStructuredBuffer args;
-	args.context = &context;
-	args.desc = &desc;
-	args.data = reinterpret_cast<std::byte*>(gpuBoundingVolumes.data());
-	args.name = Resource::LIGHT_BOUNDING_VOLUME_LIST_NAME;
+	ResourceDesc volumesBufferDesc;
+	volumesBufferDesc.width = gpuBoundingVolumes.size() * sizeof(GPULightBoundingVolume);
+	volumesBufferDesc.height = 1;
+	volumesBufferDesc.format = DXGI_FORMAT_UNKNOWN;
+	volumesBufferDesc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	volumesBufferDesc.flags = D3D12_RESOURCE_FLAG_NONE;
 
-	ResourceManager::Inst().CreateStructuredBuffer(args);
+	FArg::CreateStructuredBuffer volumeBufferArgs;
+	volumeBufferArgs.context = &context;
+	volumeBufferArgs.desc = &volumesBufferDesc;
+	volumeBufferArgs.data = reinterpret_cast<const std::byte*>(gpuBoundingVolumes.data());
+	volumeBufferArgs.name = Resource::LIGHT_BOUNDING_VOLUME_LIST_NAME;
+
+	ResourceManager::Inst().CreateStructuredBuffer(volumeBufferArgs);
+
+	// Lights buffer
+	DX_ASSERT(ResourceManager::Inst().FindResource(Resource::LIGHT_LIST_NAME) == nullptr &&
+		"Light list resource already exists");
+
+	DX_ASSERT(gpuLights.empty() == false && "Trying to create resource with empty gpu lights list");
+
+	ResourceDesc lightBufferDesc;
+	lightBufferDesc.width = gpuLights.size() * sizeof(GPULight);
+	lightBufferDesc.height = 1;
+	lightBufferDesc.format = DXGI_FORMAT_UNKNOWN;
+	lightBufferDesc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	lightBufferDesc.flags = D3D12_RESOURCE_FLAG_NONE;
+
+	FArg::CreateStructuredBuffer lightBufferArgs;
+	lightBufferArgs.context = &context;
+	lightBufferArgs.desc = &lightBufferDesc;
+	lightBufferArgs.data = reinterpret_cast<const std::byte*>(gpuLights.data());
+	lightBufferArgs.name = Resource::LIGHT_LIST_NAME;
+
+	ResourceManager::Inst().CreateStructuredBuffer(lightBufferArgs);
 }
 
 void Renderer::CopyFromReadBackResourcesToCPUMemory(Frame& frame)
@@ -1374,7 +1365,7 @@ void Renderer::CopyFromReadBackResourcesToCPUMemory(Frame& frame)
 	}
 }
 
-void Renderer::GenerateStaticLightBoundingVolumes()
+void Renderer::GenerateStaticLightBoundingVolumes(const std::vector<GPULight>& gpuLights)
 {
 	DX_ASSERT(
 		staticAreaLights.empty() == false &&
@@ -1386,10 +1377,11 @@ void Renderer::GenerateStaticLightBoundingVolumes()
 
 	staticLightBoundingVolumes.reserve(staticAreaLights.size() + staticPointLights.size());
 
+	// NOTE: Lights must be the same order as in GenerateGPULightList()
 	for (int i = 0; i < staticPointLights.size(); ++i)
 	{
 		LightBoundingVolume volume;
-		volume.type = LightBoundingVolume::Type::Point;
+		volume.type = Light::Type::Point;
 		volume.shape = PointLight::GetBoundingSphere(staticPointLights[i]);
 		volume.sourceIndex = i;
 
@@ -1400,25 +1392,71 @@ void Renderer::GenerateStaticLightBoundingVolumes()
 
 	for (int i =0; i < staticAreaLights.size(); ++i)
 	{
-		const SourceStaticObject& object = GetSourceStaticObjects()[staticAreaLights[i].staticObjectIndex];
-		const Resource* texture = resMan.FindResource(object.textureKey);
+		const GPULight& gpuLight = gpuLights[staticPointLights.size() + i];
 
-		DX_ASSERT(texture != nullptr && "Can't find resource of area light");
-		DX_ASSERT(texture->desc.surfaceProperties.has_value() == true && "Surface properties are absent");
-
-		if ((texture->desc.surfaceProperties->flags & SURF_SKY) != 0)
-		{
-			// Ignore sky meshes
-			continue;
-		}
+		const XMFLOAT4 origin = XMFLOAT4(
+			gpuLight.worldTransform.m[3][0],
+			gpuLight.worldTransform.m[3][1],
+			gpuLight.worldTransform.m[3][2],
+			gpuLight.worldTransform.m[3][3]);
 
 		LightBoundingVolume volume;
-		volume.type = LightBoundingVolume::Type::Area;
-		volume.shape = AreaLight::GetBoundingHemisphere(staticAreaLights[i]);
+		volume.type = Light::Type::Area;
+		volume.shape = AreaLight::GetBoundingSphere(staticAreaLights[i], 
+			gpuLight.extends,
+			origin);
 		volume.sourceIndex = i;
 
 		staticLightBoundingVolumes.push_back(volume);
 	}
+}
+
+std::vector<GPULight> Renderer::GenerateGPULightList() const
+{
+	DX_ASSERT(
+		staticAreaLights.empty() == false &&
+		staticPointLights.empty() == false &&
+		"Can't generate GPU lights, lights list is empty");
+
+	std::vector<GPULight> gpuLights;
+	gpuLights.reserve(staticAreaLights.size() + staticPointLights.size());
+
+	// NOTE: Lights must be the same order as in GenerateGPULightList()
+	for (int i = 0; i < staticPointLights.size(); ++i)
+	{
+		gpuLights.push_back(PointLight::ToGPULight(staticPointLights[i]));
+	}
+
+	ResourceManager& resMan = ResourceManager::Inst();
+
+	for (int i = 0; i < staticAreaLights.size(); ++i)
+	{
+		gpuLights.push_back(AreaLight::ToGPULight(staticAreaLights[i]));
+	}
+
+	return gpuLights;
+}
+
+std::vector<GPULightBoundingVolume> Renderer::GenerateGPULightBoundingVolumesList() const
+{
+	DX_ASSERT(staticLightBoundingVolumes.empty() == false &&
+		"Can't create light resources ");
+
+	// Generate GPU light bounding volumes
+	std::vector<GPULightBoundingVolume> gpuBoundingVolumes;
+	gpuBoundingVolumes.reserve(staticLightBoundingVolumes.size());
+
+	for (const LightBoundingVolume& volume : staticLightBoundingVolumes)
+	{
+		GPULightBoundingVolume gpuVolume;
+
+		gpuVolume.origin = volume.shape.origin;
+		gpuVolume.radius = volume.shape.radius;
+
+		gpuBoundingVolumes.push_back(gpuVolume);
+	}
+
+	return gpuBoundingVolumes;
 }
 
 void Renderer::InitStaticLighting()
@@ -1581,8 +1619,9 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 		{
 			DebugObject_LightSource object;
 			object.sourceIndex = i;
-			object.type = DebugObject_LightSource::Type::Point;
+			object.type = Light::Type::Point;
 			object.showRadius = debugSettings.drawPointLightObjectRadius;
+			object.showApproximation = false;
 
 			debugObjects.push_back(object);
 		}
@@ -1591,8 +1630,9 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 		{
 			DebugObject_LightSource object;
 			object.sourceIndex = i;
-			object.type = DebugObject_LightSource::Type::Area;
+			object.type = Light::Type::Area;
 			object.showRadius = false;
+			object.showApproximation = debugSettings.drawAreaLightApproximation;
 
 			debugObjects.push_back(object);
 		}
@@ -1604,11 +1644,11 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 		{
 			const LightBoundingVolume& volume = staticLightBoundingVolumes[i];
 
-			if (volume.type == LightBoundingVolume::Type::Point)
+			if (volume.type == Light::Type::Point)
 			{
 				DebugObject_LightBoundingVolume object;
 				object.sourceIndex = i;
-				object.type = DebugObject_LightSource::Type::Point;
+				object.type = volume.type;
 
 				debugObjects.push_back(object);
 			}
@@ -1621,11 +1661,11 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 		{
 			const LightBoundingVolume& volume = staticLightBoundingVolumes[i];
 
-			if (volume.type == LightBoundingVolume::Type::Area)
+			if (volume.type == Light::Type::Area)
 			{
 				DebugObject_LightBoundingVolume object;
 				object.sourceIndex = i;
-				object.type = DebugObject_LightSource::Type::Area;
+				object.type = volume.type;
 
 				debugObjects.push_back(object);
 			}
@@ -1914,6 +1954,8 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 					{
 						ImGui::Indent();
 						ImGui::Checkbox("Point light object physical radius", &debugSettings.drawPointLightObjectRadius);
+						ImGui::Checkbox("Area light approximation", &debugSettings.drawAreaLightApproximation);
+						ImGui::NewLine();
 						ImGui::Checkbox("Point light bounding volumes", &debugSettings.drawPointLightBoundingVolume);
 						ImGui::Checkbox("Area light bounding volumes", &debugSettings.drawAreaLightBoundingVolume);
 						ImGui::Unindent();
@@ -2479,7 +2521,8 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 
 	// If this is a light surface, add it to the list
 	if ((surf.texinfo->flags & SURF_WARP) == 0 && 
-		(surf.texinfo->flags & (SURF_LIGHT | SURF_SKY)) != 0 &&
+		(surf.texinfo->flags & SURF_SKY) == 0 &&
+		(surf.texinfo->flags & SURF_LIGHT) != 0 &&
 		surf.texinfo->image->desc.surfaceProperties->irradiance > 0 &&
 		isDegenerateMesh == false)
 	{
@@ -3230,8 +3273,12 @@ void Renderer::EndFrame()
 		GPUJobContext createLightingResourcesContext = CreateContext(frame);
 
 		// Init light Resources
-		GenerateStaticLightBoundingVolumes();
-		CreateLightResources(createLightingResourcesContext);
+		const std::vector<GPULight> gpuLights = GenerateGPULightList();
+
+		GenerateStaticLightBoundingVolumes(gpuLights);
+		const std::vector<GPULightBoundingVolume> gpuBoundingVolumes = GenerateGPULightBoundingVolumesList();
+
+		CreateLightResources(gpuLights, gpuBoundingVolumes, createLightingResourcesContext);
 	}
 
 	// Proceed to next frame

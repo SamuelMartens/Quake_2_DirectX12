@@ -203,6 +203,7 @@ public:
 
 		bool drawLightSourcesDebugGeometry = false;
 		bool drawPointLightObjectRadius = false;
+		bool drawAreaLightApproximation = false;
 		bool drawPointLightBoundingVolume = false;
 		bool drawAreaLightBoundingVolume = false;
 
@@ -325,10 +326,12 @@ private:
 	static LONG WINAPI MainWndProcWrapper(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	void CreateIndirectLightResources(GPUJobContext& context);
 	void CreateClusteredLightingResources(GPUJobContext& context);
-	void CreateLightResources(GPUJobContext& context) const;
+	void CreateLightResources(const std::vector<GPULight>& gpuLights, const std::vector<GPULightBoundingVolume>& gpuBoundingVolumes, GPUJobContext& context) const;
 	void CopyFromReadBackResourcesToCPUMemory(Frame& frame);
 
-	void GenerateStaticLightBoundingVolumes();
+	void GenerateStaticLightBoundingVolumes(const std::vector<GPULight>& gpuLights);
+	std::vector<GPULight> GenerateGPULightList() const;
+	std::vector<GPULightBoundingVolume> GenerateGPULightBoundingVolumesList() const;
 
 	void InitStaticLighting();
 

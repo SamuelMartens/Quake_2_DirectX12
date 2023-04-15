@@ -11,6 +11,7 @@
 #include "dx_common.h"
 #include "dx_buffer.h"
 #include "dx_settings.h"
+#include "dx_light.h"
 
 extern "C" 
 {
@@ -142,20 +143,13 @@ struct DebugObject_ProbePathSegment
 
 struct DebugObject_LightSource
 {
-	// Should match shader definition in Debug.passh
-	enum class Type
-	{
-		Area = 0,
-		Point = 1,
-
-		None
-	};
-
-	Type type = Type::None;
+	Light::Type type = Light::Type::None;
 	int sourceIndex = Const::INVALID_INDEX;
 
 	// For point lights only
 	bool showRadius = false;
+	// For area lights only
+	bool showApproximation = false;
 };
 
 struct DebugObject_LightProbe
@@ -182,7 +176,7 @@ struct DebugObject_FrustumCluster
 
 struct DebugObject_LightBoundingVolume
 {
-	DebugObject_LightSource::Type type = DebugObject_LightSource::Type::None;
+	Light::Type type = Light::Type::None;
 	int sourceIndex = Const::INVALID_INDEX;
 };
 

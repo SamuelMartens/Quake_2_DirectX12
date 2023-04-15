@@ -841,7 +841,7 @@ XMFLOAT4 LightBaker::GatherDirectIrradianceFromPointLights(const XMFLOAT4& inter
 		if (lightSampleDebugInfo != nullptr)
 		{
 			LightSamplePoint::Sample sample;
-			sample.lightType = DebugObject_LightSource::Type::Point;
+			sample.lightType = Light::Type::Point;
 			sample.position = light.origin;
 			XMStoreFloat4(&sample.radiance, sseLightRadiance);
 
@@ -1046,7 +1046,7 @@ XMFLOAT4 LightBaker::GatherDirectIradianceFromAreaLight(const XMFLOAT4& intersec
 		if (lightSampleDebugInfo != nullptr)
 		{
 			LightSamplePoint::Sample sample;
-			sample.lightType = DebugObject_LightSource::Type::Area;
+			sample.lightType = Light::Type::Area;
 			sample.position = lightSamplePoint;
 			XMStoreFloat4(&sample.radiance, sseSampleRadiance);
 

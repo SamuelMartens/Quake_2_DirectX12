@@ -114,4 +114,5 @@ Steps
 	Debug_TriangleWireframe
 	Debug_Line
 	Debug_LightSources
+	//Debug_LightSourcePicker
 }

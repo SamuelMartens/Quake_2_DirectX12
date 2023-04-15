@@ -1,0 +1,112 @@
+PassProperties
+{
+PassInput : PostProcess
+PassThreadGroups: 32, 24, 1
+}
+
+State
+{
+}
+
+RootSignature
+{
+RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
+CBV(b0, space = 0),
+CBV(b10, space = 0),
+DescriptorTable(SRV(t0, numDescriptors = 1, space = 0)),
+DescriptorTable(UAV(t0, numDescriptors = 1, space = 2))
+}
+
+// -== Register space convention ==-
+//	0 - Global, PerPass
+//	1 - Global, PerObject
+//	2 - Local, PerPass
+//	3 - Local, PerObject
+
+// Resources
+[Global, PerPass]
+cbuffer cbFrameData : register(b0, space0)
+{
+	float4x4 InvertedViewProj;
+	float4x4 InvertedProj;
+    float4x4 ViewProj;
+	float4x4 View;
+    float4 CameraYaw;
+    float4 CameraPitch;
+    float4 CameraRoll;
+    float4 CameraOrigin;
+	float CameraNear;
+	float CameraFar;
+	int ScreenWidth;
+	int ScreenHeight;
+	int LightListSize;
+}
+
+[Global, PerPass]
+cbuffer cbFrameDebugData : register(b10, space0)
+{
+	// Screen Space
+	int MousePosX;
+	int MousePosY;
+
+	// Debug pass state
+	int LightSourcePickerEnabled;
+}
+
+[Global, PerPass]
+Texture2D DepthBuffer : register (t0, space0)
+
+[Local, PerPass]
+RWStructuredBuffer<int> PickedLights : register(t0, space2)
+
+Type : CS
+External : cbFrameData, cbFrameDebugData, PickedLights, DepthBuffer
+<[
+
+float3 GetWorldPosFromDepthAndScreenCoord(int2 screenCoord, float depth)
+{
+	// NOTE: This doesn't account for the screen offset
+	const float4 ndcPixelCoords = float4(
+	((float)screenCoord.x / ScreenWidth) * 2.0f - 1.0f, 
+	((float)screenCoord.y / ScreenHeight) * -2.0f + 1.0f,
+	depth, 
+	1.0f);
+
+	float4 worldCoord = mul(InvertedViewProj, ndcPixelCoords);
+	worldCoord = worldCoord / worldCoord.w;
+
+	return worldCoord.xyz;
+}
+
+bool IsInsideSphere(float3 point, float3 sphereOrigin, float sphereRadius)
+{
+	const float3 pointToOrigin = sphereOrigin - point;
+	
+	return dot(pointToOrigin, pointToOrigin) < sphereRadius * sphereRadius;
+}
+
+[numthreads(32, 32, 1)]
+void main(int3 dispatchThreadID : SV_DispatchThreadID)
+{
+	const int threadLinearId = dispatchThreadID.y * ScreenWidth + dispatchThreadID.x;
+
+	const int numWorkingThreads = ScreenWidth * ScreenHeight;
+	const int lightsPerThread = ceil(float(LightListSize) / numWorkingThreads);
+	
+	const float depth = DepthBuffer.Load(int3(dispatchThreadID.xy, 0)).x;
+	const float3 mouseWorldPosition = GetWorldPosFromDepthAndScreenCoord(float2(MousePosX, MousePosY), depth);
+	
+	// Need to boost radius a bit to compensate for the depth buffer imprecision.
+	// (Also mouse world pos is always located on top of the sphere not inside it, since I sample depth
+	// from depth buffer)
+	const float radiusEpsilon = 0.05f;
+	
+	//#DEBUG think where do you want to clear PickedLightBoundingVolumes, do I want to?
+	
+	for (int i = threadLinearId * lightsPerThread; i < (threadLinearId + 1) * lightsPerThread && i < LightListSize; ++i)
+	{
+		
+	}
+}
+
+]>

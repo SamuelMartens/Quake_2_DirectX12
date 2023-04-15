@@ -22,7 +22,7 @@ struct LightSamplePoint
 		XMFLOAT4 position = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 		XMFLOAT4 radiance = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 
-		DebugObject_LightSource::Type lightType = DebugObject_LightSource::Type::None;
+		Light::Type lightType = Light::Type::None;
 	};
 
 	XMFLOAT4 position = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);

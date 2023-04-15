@@ -41,6 +41,7 @@ cbuffer cbFrameData : register(b0, space0)
 	float CameraFar;
 	int ScreenWidth;
 	int ScreenHeight;
+	int LightListSize;
 }
 
 [Global, PerPass]
@@ -58,7 +59,7 @@ Texture2D DepthBuffer : register (t0, space0)
 // --- Local CBVs ---
 
 
-// --- Local tex
+// --- Local res
 
 [Local, PerPass, Bind: ClusteredLight_ActiveClusters]
 RWStructuredBuffer<int> ActiveClustersList : register(u0, space2)

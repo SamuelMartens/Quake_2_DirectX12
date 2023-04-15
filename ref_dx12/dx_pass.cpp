@@ -1582,13 +1582,13 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 
 			if constexpr (std::is_same_v<T, DebugObject_LightSource>)
 			{
-				DX_ASSERT(debugObject.type != DebugObject_LightSource::Type::None && 
+				DX_ASSERT(debugObject.type != Light::Type::None && 
 					"Invalid debug object light source type");
 
 				DX_ASSERT(debugObject.sourceIndex != Const::INVALID_INDEX && 
 					"Invalid index for debug object light source");
 
-				if (debugObject.type == DebugObject_LightSource::Type::Area)
+				if (debugObject.type == Light::Type::Area)
 				{
 					const AreaLight& light = areaLights[debugObject.sourceIndex];
 
@@ -1598,12 +1598,45 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 					const SourceStaticObject& staticObject = staticObjects[light.staticObjectIndex];
 
 					std::vector<XMFLOAT4> vertices;
-					vertices.reserve(staticObject.indices.size());
 
-					for (const int index : staticObject.indices)
+					if (debugObject.showApproximation)
 					{
-						vertices.push_back(staticObject.verticesPos[index]);
+						const GPULight gpuLight = AreaLight::ToGPULight(light);
+
+						const XMFLOAT4 v0 = XMFLOAT4(-gpuLight.extends.x / 2.0f, -gpuLight.extends.y / 2.0f, 0.0f, 1.0f);
+						const XMFLOAT4 v1 = XMFLOAT4(-gpuLight.extends.x / 2.0f, gpuLight.extends.y / 2.0f, 0.0f, 1.0f);
+						const XMFLOAT4 v2 = XMFLOAT4(gpuLight.extends.x / 2.0f, gpuLight.extends.y / 2.0f, 0.0f, 1.0f);
+						const XMFLOAT4 v3 = XMFLOAT4(gpuLight.extends.x / 2.0f, -gpuLight.extends.y / 2.0f, 0.0f, 1.0f);
+
+						constexpr int quadVerticesNum = 6;
+
+						vertices.reserve(quadVerticesNum);
+				
+						vertices.push_back(v0);
+						vertices.push_back(v1);
+						vertices.push_back(v3);
+
+						vertices.push_back(v1);
+						vertices.push_back(v2);
+						vertices.push_back(v3); 
+
+						const XMMATRIX sseTransformationMatrix = XMLoadFloat4x4(&gpuLight.worldTransform);
+
+						for (XMFLOAT4& vertex : vertices)
+						{
+							XMStoreFloat4(&vertex, XMVector4Transform(XMLoadFloat4(&vertex), sseTransformationMatrix));
+						}
 					}
+					else
+					{
+						vertices.reserve(staticObject.indices.size());
+
+						for (const int index : staticObject.indices)
+						{
+							vertices.push_back(staticObject.verticesPos[index]);
+						}
+					}
+
 
 					debugObjectsVertices.insert(debugObjectsVertices.end(),
 						vertices.cbegin(),
@@ -1612,7 +1645,7 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 					debugObjectsVertexSizes.push_back(vertices.size() * perVertexMemorySize);
 				}
 
-				if (debugObject.type == DebugObject_LightSource::Type::Point)
+				if (debugObject.type == Light::Type::Point)
 				{
 					const PointLight& pointLight = pointLights[debugObject.sourceIndex];
 
@@ -1696,25 +1729,8 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 				std::vector<XMFLOAT4> volumeVertices;
 				XMVECTOR sseLightPos = XMVectorZero();
 
-				std::visit([&volumeVertices, &sseLightPos](auto&& shape)
-					{
-						using T = std::decay_t<decltype(shape)>;
-						
-						if constexpr (std::is_same_v<T, Utils::Sphere>)
-						{
-							volumeVertices = Utils::CreateSphere(shape.radius, LIGHT_BOUNDING_VOLUME_SUBDIVISION);
-							sseLightPos = XMLoadFloat4(&shape.origin);
-						}
-
-						if constexpr (std::is_same_v<T, Utils::Hemisphere>)
-						{
-							// Intentional, since actually sphere test will be used for cluster test
-							volumeVertices = Utils::CreateSphere(shape.radius, LIGHT_BOUNDING_VOLUME_SUBDIVISION);
-							sseLightPos = XMLoadFloat4(&shape.origin);
-						}
-
-					}, volume.shape);
-
+				volumeVertices = Utils::CreateSphere(volume.shape.radius, LIGHT_BOUNDING_VOLUME_SUBDIVISION);
+				sseLightPos = XMLoadFloat4(&volume.shape.origin);
 
 				std::transform(volumeVertices.cbegin(), volumeVertices.cend(), std::back_inserter(debugObjectsVertices),
 					[sseLightPos](const XMFLOAT4& vertex)
