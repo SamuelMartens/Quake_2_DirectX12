@@ -14,7 +14,8 @@ RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0, space = 0),
 CBV(b10, space = 0),
 DescriptorTable(SRV(t0, numDescriptors = 1, space = 0)),
-DescriptorTable(UAV(t0, numDescriptors = 1, space = 2))
+DescriptorTable(SRV(t5, numDescriptors = 1, space = 0)),
+DescriptorTable(UAV(u0, numDescriptors = 1, space = 2))
 }
 
 // -== Register space convention ==-
@@ -22,6 +23,15 @@ DescriptorTable(UAV(t0, numDescriptors = 1, space = 2))
 //	1 - Global, PerObject
 //	2 - Local, PerPass
 //	3 - Local, PerObject
+
+// Structs
+struct GPULight
+{
+	float4x4 worldTransform;
+	float4 colorAndIntensity;
+	float2 extends;
+	int type;
+}
 
 // Resources
 [Global, PerPass]
@@ -48,6 +58,7 @@ cbuffer cbFrameDebugData : register(b10, space0)
 	// Screen Space
 	int MousePosX;
 	int MousePosY;
+	int LeftMouseButtonDown;
 
 	// Debug pass state
 	int LightSourcePickerEnabled;
@@ -57,11 +68,16 @@ cbuffer cbFrameDebugData : register(b10, space0)
 Texture2D DepthBuffer : register (t0, space0)
 
 [Local, PerPass]
-RWStructuredBuffer<int> PickedLights : register(t0, space2)
+RWStructuredBuffer<int> PickedLights : register(u0, space2)
+
+[Global, PerPass]
+StructuredBuffer<GPULight> LightsList : register(t5, space0)
 
 Type : CS
-External : cbFrameData, cbFrameDebugData, PickedLights, DepthBuffer
+External : cbFrameData, cbFrameDebugData, PickedLights, DepthBuffer, GPULight, LightsList
 <[
+
+#include "Debug.passh"
 
 float3 GetWorldPosFromDepthAndScreenCoord(int2 screenCoord, float depth)
 {
@@ -78,9 +94,9 @@ float3 GetWorldPosFromDepthAndScreenCoord(int2 screenCoord, float depth)
 	return worldCoord.xyz;
 }
 
-bool IsInsideSphere(float3 point, float3 sphereOrigin, float sphereRadius)
+bool IsInsideSphere(float3 targetPoint, float3 sphereOrigin, float sphereRadius)
 {
-	const float3 pointToOrigin = sphereOrigin - point;
+	const float3 pointToOrigin = sphereOrigin - targetPoint;
 	
 	return dot(pointToOrigin, pointToOrigin) < sphereRadius * sphereRadius;
 }
@@ -88,24 +104,39 @@ bool IsInsideSphere(float3 point, float3 sphereOrigin, float sphereRadius)
 [numthreads(32, 32, 1)]
 void main(int3 dispatchThreadID : SV_DispatchThreadID)
 {
+	if (LightSourcePickerEnabled == 0 || LeftMouseButtonDown == 0)
+	{
+		return;
+	}
+
 	const int threadLinearId = dispatchThreadID.y * ScreenWidth + dispatchThreadID.x;
 
 	const int numWorkingThreads = ScreenWidth * ScreenHeight;
 	const int lightsPerThread = ceil(float(LightListSize) / numWorkingThreads);
 	
-	const float depth = DepthBuffer.Load(int3(dispatchThreadID.xy, 0)).x;
-	const float3 mouseWorldPosition = GetWorldPosFromDepthAndScreenCoord(float2(MousePosX, MousePosY), depth);
+	const float2 mouseScreenCoords = float2(MousePosX, MousePosY);
+	const float depth = DepthBuffer.Load(int3(mouseScreenCoords, 0)).x;
+	const float3 mouseWorldPosition = GetWorldPosFromDepthAndScreenCoord(mouseScreenCoords, depth);
 	
 	// Need to boost radius a bit to compensate for the depth buffer imprecision.
 	// (Also mouse world pos is always located on top of the sphere not inside it, since I sample depth
 	// from depth buffer)
 	const float radiusEpsilon = 0.05f;
 	
-	//#DEBUG think where do you want to clear PickedLightBoundingVolumes, do I want to?
-	
 	for (int i = threadLinearId * lightsPerThread; i < (threadLinearId + 1) * lightsPerThread && i < LightListSize; ++i)
 	{
+		GPULight light = LightsList[i];
 		
+		if (light.type == DEBUG_POINT_LIGHT)
+		{
+			const float3 lightPosition = float3(light.worldTransform._14, light.worldTransform._24, light.worldTransform._34);
+			const float radius = light.extends.x;
+			
+			if (IsInsideSphere(mouseWorldPosition, lightPosition, radius + radiusEpsilon))
+			{
+				PickedLights[i] = int(!bool(PickedLights[i]));
+			}
+		}
 	}
 }
 

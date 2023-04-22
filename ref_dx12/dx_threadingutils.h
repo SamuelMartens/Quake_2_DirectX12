@@ -102,6 +102,7 @@ public:
 	Frame& frame;
 	CommandList* commandList = nullptr;
 
+	//#DEBUG rename this to just resource proxies
 	std::vector<ResourceProxy> internalResourceProxies;
 
 private:

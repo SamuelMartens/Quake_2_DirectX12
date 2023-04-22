@@ -455,6 +455,7 @@ public:
 	static void BackBufferToPresentStateCallback(GPUJobContext& context, const Pass_t* pass);
 
 	static void CreateReabackResourceAndFillItUp(ResourceReadBackRequest request, GPUJobContext& context, const Pass_t* pass);
+	static void CreateTargetResourceForReadbackIfNeeded(ResourceReadBackRequest request, GPUJobContext& context, const Pass_t* pass);
 
 private:
 

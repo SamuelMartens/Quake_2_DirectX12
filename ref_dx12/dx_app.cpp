@@ -1288,7 +1288,7 @@ void Renderer::CreateClusteredLightingResources(GPUJobContext& context)
 	resMan.CreateStructuredBuffer(args);
 }
 
-void Renderer::CreateLightResources(const std::vector<GPULight>& gpuLights, const std::vector<GPULightBoundingVolume>& gpuBoundingVolumes, GPUJobContext& context) const
+void Renderer::CreateLightResources(const std::vector<GPULight>& gpuLights, const std::vector<GPULightBoundingVolume>& gpuBoundingVolumes, const std::vector<uint32_t>& pickedLightList, GPUJobContext& context) const
 {
 	CommandListRAIIGuard_t commandListGuard(*context.commandList);
 
@@ -1299,7 +1299,7 @@ void Renderer::CreateLightResources(const std::vector<GPULight>& gpuLights, cons
 	DX_ASSERT(gpuBoundingVolumes.empty() == false && "Trying to create resource with empty gpu bounding volumes lights list");
 
 	ResourceDesc volumesBufferDesc;
-	volumesBufferDesc.width = gpuBoundingVolumes.size() * sizeof(GPULightBoundingVolume);
+	volumesBufferDesc.width = gpuBoundingVolumes.size() * sizeof(std::decay_t<decltype(gpuBoundingVolumes)>::value_type);
 	volumesBufferDesc.height = 1;
 	volumesBufferDesc.format = DXGI_FORMAT_UNKNOWN;
 	volumesBufferDesc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
@@ -1320,7 +1320,7 @@ void Renderer::CreateLightResources(const std::vector<GPULight>& gpuLights, cons
 	DX_ASSERT(gpuLights.empty() == false && "Trying to create resource with empty gpu lights list");
 
 	ResourceDesc lightBufferDesc;
-	lightBufferDesc.width = gpuLights.size() * sizeof(GPULight);
+	lightBufferDesc.width = gpuLights.size() * sizeof(std::decay_t<decltype(gpuLights)>::value_type);
 	lightBufferDesc.height = 1;
 	lightBufferDesc.format = DXGI_FORMAT_UNKNOWN;
 	lightBufferDesc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
@@ -1333,6 +1333,23 @@ void Renderer::CreateLightResources(const std::vector<GPULight>& gpuLights, cons
 	lightBufferArgs.name = Resource::LIGHT_LIST_NAME;
 
 	ResourceManager::Inst().CreateStructuredBuffer(lightBufferArgs);
+
+	DX_ASSERT(pickedLightList.empty() == false && "Forgot to init light picked data");
+
+	ResourceDesc debugPickedLightsListDesc;
+	debugPickedLightsListDesc.width = pickedLightList.size() * sizeof(std::decay_t<decltype(pickedLightList)>::value_type);
+	debugPickedLightsListDesc.height = 1;
+	debugPickedLightsListDesc.format = DXGI_FORMAT_UNKNOWN;
+	debugPickedLightsListDesc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	debugPickedLightsListDesc.flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+	FArg::CreateStructuredBuffer debugPickedLightsListArgs;
+	debugPickedLightsListArgs.context = &context;
+	debugPickedLightsListArgs.desc = &debugPickedLightsListDesc;
+	debugPickedLightsListArgs.data = reinterpret_cast<const std::byte*>(pickedLightList.data());
+	debugPickedLightsListArgs.name = Resource::DEBUG_PICKED_LIGHTS_LIST_NAME;
+
+	ResourceManager::Inst().CreateStructuredBuffer(debugPickedLightsListArgs);
 }
 
 void Renderer::CopyFromReadBackResourcesToCPUMemory(Frame& frame)
@@ -1372,10 +1389,10 @@ void Renderer::GenerateStaticLightBoundingVolumes(const std::vector<GPULight>& g
 		staticPointLights.empty() == false &&
 		"Can't generate light bounding volumes, lights list is empty");
 
-	DX_ASSERT(staticLightBoundingVolumes.empty() == true && 
+	DX_ASSERT(staticLightsBoundingVolumes.empty() == true && 
 		"Static light bounding volumes list was never cleaned up");
 
-	staticLightBoundingVolumes.reserve(staticAreaLights.size() + staticPointLights.size());
+	staticLightsBoundingVolumes.reserve(staticAreaLights.size() + staticPointLights.size());
 
 	// NOTE: Lights must be the same order as in GenerateGPULightList()
 	for (int i = 0; i < staticPointLights.size(); ++i)
@@ -1385,7 +1402,7 @@ void Renderer::GenerateStaticLightBoundingVolumes(const std::vector<GPULight>& g
 		volume.shape = PointLight::GetBoundingSphere(staticPointLights[i]);
 		volume.sourceIndex = i;
 
-		staticLightBoundingVolumes.push_back(volume);
+		staticLightsBoundingVolumes.push_back(volume);
 	}
 
 	ResourceManager& resMan = ResourceManager::Inst();
@@ -1407,8 +1424,13 @@ void Renderer::GenerateStaticLightBoundingVolumes(const std::vector<GPULight>& g
 			origin);
 		volume.sourceIndex = i;
 
-		staticLightBoundingVolumes.push_back(volume);
+		staticLightsBoundingVolumes.push_back(volume);
 	}
+}
+
+void Renderer::CreateStaticLightDebugData(const std::vector<GPULight>& gpuLights)
+{
+	debugPickedStaticLights = std::vector<uint32_t>(gpuLights.size(), 0);
 }
 
 std::vector<GPULight> Renderer::GenerateGPULightList() const
@@ -1439,14 +1461,14 @@ std::vector<GPULight> Renderer::GenerateGPULightList() const
 
 std::vector<GPULightBoundingVolume> Renderer::GenerateGPULightBoundingVolumesList() const
 {
-	DX_ASSERT(staticLightBoundingVolumes.empty() == false &&
+	DX_ASSERT(staticLightsBoundingVolumes.empty() == false &&
 		"Can't create light resources ");
 
 	// Generate GPU light bounding volumes
 	std::vector<GPULightBoundingVolume> gpuBoundingVolumes;
-	gpuBoundingVolumes.reserve(staticLightBoundingVolumes.size());
+	gpuBoundingVolumes.reserve(staticLightsBoundingVolumes.size());
 
-	for (const LightBoundingVolume& volume : staticLightBoundingVolumes)
+	for (const LightBoundingVolume& volume : staticLightsBoundingVolumes)
 	{
 		GPULightBoundingVolume gpuVolume;
 
@@ -1475,6 +1497,21 @@ void Renderer::InitStaticLighting()
 	}), staticAreaLights.end());
 }
 
+
+Utils::MouseInput Renderer::GetMouseInput() const
+{
+	std::scoped_lock<std::mutex> lock(drawDebugGuiMutex);
+
+	const ImGuiIO& io = ImGui::GetIO();
+
+	Utils::MouseInput mouseInput;
+	mouseInput.position.x = io.MousePos.x;
+	mouseInput.position.y = io.MousePos.y;
+
+	mouseInput.leftButtonDown = io.MouseDown[0];
+
+	return mouseInput;
+}
 
 // Forward declare message handler from imgui_impl_win32.cpp
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -1544,6 +1581,23 @@ void Renderer::SetUpFrameDebugData(Frame& frame)
 	}
 
 	frame.debugFrustumClusterInverseViewMat = debugSettings.frustumClustersInverseViewTransform;
+	frame.debugEnableLightSourcePicker = debugSettings.enableLightSourcePicker;
+
+	frame.mouseInput = GetMouseInput();
+
+
+	if (debugSettings.enableLightSourcePicker == true)
+	{
+		if (frame.mouseInput.leftButtonDown == true)
+		{
+			ResourceReadBackRequest readBackRequest;
+			readBackRequest.readBackCPUMemory = reinterpret_cast<std::byte*>(debugPickedStaticLights.data());
+			readBackRequest.targetPassName = "Debug_LightSourcePicker";
+			readBackRequest.targetResourceName = Resource::DEBUG_PICKED_LIGHTS_LIST_NAME;
+
+			frame.resourceReadBackRequests.push_back(readBackRequest);
+		}
+	}
 }
 
 std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& camera)
@@ -1640,26 +1694,50 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 
 	if (debugSettings.drawPointLightBoundingVolume)
 	{
-		for (int i = 0; i < staticLightBoundingVolumes.size(); ++i)
+		if (debugSettings.enableLightSourcePicker)
 		{
-			const LightBoundingVolume& volume = staticLightBoundingVolumes[i];
-
-			if (volume.type == Light::Type::Point)
+			for (int i = 0; i < debugPickedStaticLights.size(); ++i)
 			{
-				DebugObject_LightBoundingVolume object;
-				object.sourceIndex = i;
-				object.type = volume.type;
+				if (debugPickedStaticLights[i] == 0)
+				{
+					continue;
+				}
 
-				debugObjects.push_back(object);
+				const LightBoundingVolume& volume = staticLightsBoundingVolumes[i];
+
+				if (volume.type == Light::Type::Point)
+				{
+					DebugObject_LightBoundingVolume object;
+					object.sourceIndex = i;
+					object.type = volume.type;
+
+					debugObjects.push_back(object);
+				}
+			}
+		}
+		else
+		{
+			for (int i = 0; i < staticLightsBoundingVolumes.size(); ++i)
+			{
+				const LightBoundingVolume& volume = staticLightsBoundingVolumes[i];
+
+				if (volume.type == Light::Type::Point)
+				{
+					DebugObject_LightBoundingVolume object;
+					object.sourceIndex = i;
+					object.type = volume.type;
+
+					debugObjects.push_back(object);
+				}
 			}
 		}
 	}
 
 	if (debugSettings.drawAreaLightBoundingVolume)
 	{
-		for (int i = 0; i < staticLightBoundingVolumes.size(); ++i)
+		for (int i = 0; i < staticLightsBoundingVolumes.size(); ++i)
 		{
-			const LightBoundingVolume& volume = staticLightBoundingVolumes[i];
+			const LightBoundingVolume& volume = staticLightsBoundingVolumes[i];
 
 			if (volume.type == Light::Type::Area)
 			{
@@ -1863,7 +1941,7 @@ const std::vector<PointLight>& Renderer::GetStaticPointLights() const
 
 const std::vector<LightBoundingVolume>& Renderer::GetLightBoundingVolumes() const
 {
-	return staticLightBoundingVolumes;
+	return staticLightsBoundingVolumes;
 }
 
 void Renderer::RequestStateChange(State state)
@@ -1958,6 +2036,8 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 						ImGui::NewLine();
 						ImGui::Checkbox("Point light bounding volumes", &debugSettings.drawPointLightBoundingVolume);
 						ImGui::Checkbox("Area light bounding volumes", &debugSettings.drawAreaLightBoundingVolume);
+						ImGui::NewLine();
+						ImGui::Checkbox("Enable light source picker", &debugSettings.enableLightSourcePicker);
 						ImGui::Unindent();
 					}
 
@@ -3266,7 +3346,7 @@ void Renderer::EndFrame()
 		CreateClusteredLightingResources(clusteredLightingResourcesContext);
 	}
 
-	if (staticLightBoundingVolumes.empty() == true &&
+	if (staticLightsBoundingVolumes.empty() == true &&
 		staticAreaLights.empty() == false &&
 		staticPointLights.empty() == false)
 	{
@@ -3278,7 +3358,12 @@ void Renderer::EndFrame()
 		GenerateStaticLightBoundingVolumes(gpuLights);
 		const std::vector<GPULightBoundingVolume> gpuBoundingVolumes = GenerateGPULightBoundingVolumesList();
 
-		CreateLightResources(gpuLights, gpuBoundingVolumes, createLightingResourcesContext);
+		CreateStaticLightDebugData(gpuLights);
+
+		CreateLightResources(gpuLights, 
+			gpuBoundingVolumes,
+			debugPickedStaticLights,
+			createLightingResourcesContext);
 	}
 
 	// Proceed to next frame

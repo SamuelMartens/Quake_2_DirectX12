@@ -2055,7 +2055,7 @@ void PassUtils::CopyResourceCallback(const std::string sourceName, const std::st
 	{
 		return proxy.hashedName == sourceHashedName;
 	});
-
+	//#DEBUG to resolve this problem add proxies based on readback resources!
 	DX_ASSERT(sourceProxyIt != proxies.end() && "CopyTextureCallback failed. Can't find source proxy");
 	sourceProxyIt->TransitionTo(D3D12_RESOURCE_STATE_COPY_SOURCE, context.commandList->GetGPUList());
 
@@ -2084,6 +2084,10 @@ void PassUtils::BackBufferToPresentStateCallback(GPUJobContext& context, const P
 		context.commandList->GetGPUList()
 	);
 }
+
+//#DEBUG
+#pragma optimize("", off)
+//END
 
 void PassUtils::CreateReabackResourceAndFillItUp(ResourceReadBackRequest request, GPUJobContext& context, const Pass_t* pass)
 {
@@ -2123,6 +2127,43 @@ void PassUtils::CreateReabackResourceAndFillItUp(ResourceReadBackRequest request
 
 	PassUtils::CopyResourceCallback(request.targetResourceName, readBackResourceName, context, pass);
 }
+
+void PassUtils::CreateTargetResourceForReadbackIfNeeded(ResourceReadBackRequest request, GPUJobContext& context, const Pass_t* pass)
+{
+	const unsigned int hashedTargetResourceName = HASH(request.targetResourceName.c_str());
+
+	// Check if such required proxy already exists. If we want to perform readback on internal resource
+	// then it will, otherwise it will need to be added.
+
+	const bool isTargetResourceProxyExists = std::find_if(context.internalResourceProxies.cbegin(),
+		context.internalResourceProxies.cend(),
+		[hashedTargetResourceName](const ResourceProxy& proxy)
+		{
+			return hashedTargetResourceName == proxy.hashedName;
+		}) != context.internalResourceProxies.cend();
+
+	if (isTargetResourceProxyExists == true)
+	{
+		return;
+	}
+
+	ResourceManager& resMan = ResourceManager::Inst();
+	const Resource* targetResource = resMan.FindResource(request.targetResourceName);
+
+	DX_ASSERT(targetResource != nullptr && "Can't create target resource proxy. Invalid resource name");
+	
+	ResourceProxy& targetResourceProxy = context.internalResourceProxies.emplace_back(ResourceProxy
+		{
+			*targetResource->gpuBuffer.Get()
+		});
+
+	targetResourceProxy.hashedName = hashedTargetResourceName;
+}
+
+//#DEBUG
+#pragma optimize("", on)
+//END
+
 
 const PassParameters& PassUtils::GetPassParameters(const Pass_t& pass)
 {

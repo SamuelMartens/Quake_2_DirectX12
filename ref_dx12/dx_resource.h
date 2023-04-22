@@ -55,6 +55,8 @@ public:
 	constexpr static char	LIGHT_LIST_NAME[] = "__LIGHT_LIST__";
 	constexpr static char	LIGHT_BOUNDING_VOLUME_LIST_NAME[] = "__LIGHT_BOUNDING_VOLUME_LIST__";
 
+	constexpr static char	DEBUG_PICKED_LIGHTS_LIST_NAME[] = "__DEBUG_PICKED_LIGHTS_LIST_NAME__";
+
 public:
 
 	// When a job is started it expects resource to be in this state.

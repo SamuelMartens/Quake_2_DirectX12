@@ -286,6 +286,13 @@ namespace Utils
 		std::bitset<underlying(EnumT::Count)> bits_;
 	};
 
+	struct MouseInput
+	{
+		XMFLOAT2 position = { 0.0f, 0.0f };
+		bool leftButtonDown = false;
+	};
+
+
 	/* FUNCTIONS */
 	void VSCon_Print(const std::string& msg);
 	std::string StrToLower(const std::string& str);

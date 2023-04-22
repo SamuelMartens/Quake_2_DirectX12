@@ -307,7 +307,7 @@ namespace RenderCallbacks
 			if (res->desc.dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
 			{
 				D3D12_UNORDERED_ACCESS_VIEW_DESC desc = 
-					DescriptorHeapUtils::GenerateDefaultStructuredBufferUAV(res, *rootArg.strideInBytes);
+					DescriptorHeapUtils::GenerateDefaultStructuredBufferUAVDesc(res, *rootArg.strideInBytes);
 
  				descriptorDesc = ViewDescription_t{ std::optional(desc) };
 			}
@@ -479,7 +479,7 @@ namespace RenderCallbacks
 			else
 			{
 				ViewDescription_t defaultSrvDesc{ 
-					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(probeGpuBuffer, sizeof(DiffuseProbe::DiffuseSH_t)) };
+					DescriptorHeapUtils::GenerateDefaultStructuredBufferSRVDesc(probeGpuBuffer, sizeof(DiffuseProbe::DiffuseSH_t)) };
 
 				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, probeGpuBuffer->gpuBuffer.Get(), &defaultSrvDesc));
 			}
@@ -496,9 +496,26 @@ namespace RenderCallbacks
 			else
 			{
 				ViewDescription_t defaultSrvDesc{
-					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(boundingVolumeGpuBuffer, sizeof(GPULightBoundingVolume)) };
+					DescriptorHeapUtils::GenerateDefaultStructuredBufferSRVDesc(boundingVolumeGpuBuffer, sizeof(GPULightBoundingVolume)) };
 
 				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, boundingVolumeGpuBuffer->gpuBuffer.Get(), &defaultSrvDesc));
+			}
+		}
+		break;
+		case HASH("LightsList"):
+		{
+			Resource* ligtsListGpuBuffer = ResourceManager::Inst().FindResource(Resource::LIGHT_LIST_NAME);
+			if (ligtsListGpuBuffer == nullptr)
+			{
+				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
+			}
+			else
+			{
+				ViewDescription_t defaultSrvDesc{
+					DescriptorHeapUtils::GenerateDefaultStructuredBufferSRVDesc(ligtsListGpuBuffer, sizeof(GPULight)) };
+
+				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, ligtsListGpuBuffer->gpuBuffer.Get(), &defaultSrvDesc));
 			}
 		}
 		break;
@@ -546,7 +563,7 @@ namespace RenderCallbacks
 			if (Resource* clusterAABBBuffer = resMan.FindResource(clusterAABBResourceName))
 			{
 				ViewDescription_t defaultSrvDesc{
-					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(clusterAABBBuffer, sizeof(Utils::AABB)) };
+					DescriptorHeapUtils::GenerateDefaultStructuredBufferSRVDesc(clusterAABBBuffer, sizeof(Utils::AABB)) };
 
 				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, clusterAABBBuffer->gpuBuffer.Get(), &defaultSrvDesc));
 			}
@@ -573,7 +590,7 @@ namespace RenderCallbacks
 			if (Resource* clusterProbeGridInfoBuffer = ResourceManager::Inst().FindResource(Resource::CLUSTER_GRID_PROBE_STRUCTURED_BUFFER_NAME))
 			{
 				ViewDescription_t defaultSrvDesc{
-					DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(clusterProbeGridInfoBuffer, sizeof(ClusterProbeGridInfo)) };
+					DescriptorHeapUtils::GenerateDefaultStructuredBufferSRVDesc(clusterProbeGridInfoBuffer, sizeof(ClusterProbeGridInfo)) };
 
 				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, clusterProbeGridInfoBuffer->gpuBuffer.Get(), &defaultSrvDesc));
 			}
@@ -603,6 +620,11 @@ namespace RenderCallbacks
 			Renderer::Inst().GetDrawAreaSize(&screenWidth, &screenHeight);
 
 			reinterpret_cast<int&>(bindPoint) = screenHeight;
+		}
+		break;
+		case HASH("ClusterListSize"):
+		{
+			reinterpret_cast<int&>(bindPoint) = ctx.jobContext.frame.camera.GetFrustumClustersNum();
 		}
 		break;
 		case HASH("InvertedViewProj"):
@@ -644,9 +666,22 @@ namespace RenderCallbacks
 			reinterpret_cast<int&>(bindPoint) = Camera::FRUSTUM_CLUSTER_SLICES;
 		}
 		break;
-		case HASH("ClusterListSize"):
+		case HASH("LightListSize"):
 		{
-			reinterpret_cast<int&>(bindPoint) = ctx.jobContext.frame.camera.GetFrustumClustersNum();
+			int lightListSize = 0;
+
+			// Make sure light list resource exists
+			const bool isLightListResourceExists = ResourceManager::Inst().FindResource(Resource::LIGHT_LIST_NAME) != nullptr;
+
+			if (isLightListResourceExists == true)
+			{
+				const int staticAreaLights = Renderer::Inst().GetStaticAreaLights().size();
+				const int staticPointLights = Renderer::Inst().GetStaticPointLights().size();
+				
+				lightListSize = staticAreaLights + staticPointLights;
+			}
+
+			reinterpret_cast<int&>(bindPoint) = lightListSize;
 		}
 		break;
 		case HASH("DepthBuffer"):
@@ -671,6 +706,26 @@ namespace RenderCallbacks
 			DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint,
 				ctx.jobContext.frame.depthStencilBuffer.Get(), &genericDesc));
 		}
+		case HASH("LightSourcePickerEnabled"):
+		{
+			reinterpret_cast<int&>(bindPoint) = ctx.jobContext.frame.debugEnableLightSourcePicker;
+		}
+		break;
+		case HASH("MousePosX"):
+		{
+			reinterpret_cast<int&>(bindPoint) = ctx.jobContext.frame.mouseInput.position.x;
+		}
+		break;
+		case HASH("MousePosY"):
+		{
+			reinterpret_cast<int&>(bindPoint) = ctx.jobContext.frame.mouseInput.position.y;
+		}
+		break;
+		case HASH("LeftMouseButtonDown"):
+		{
+			reinterpret_cast<int&>(bindPoint) = ctx.jobContext.frame.mouseInput.leftButtonDown;
+		}
+		break;
 		default:
 			break;
 		}
@@ -758,6 +813,58 @@ namespace RenderCallbacks
 			case HASH("FrustumClusterInvertedView"):
 			{
 				reinterpret_cast<XMFLOAT4X4&>(bindPoint) = ctx.jobContext.frame.debugFrustumClusterInverseViewMat;
+			}
+			break;
+			default:
+				break;
+			}
+		}
+		break;
+		case HASH("Debug_LightSourcePicker"):
+		{
+			switch (paramName)
+			{
+			case HASH("PickedLights"):
+			{
+				Resource* pickedLigtsGpuBuffer = ResourceManager::Inst().FindResource(Resource::DEBUG_PICKED_LIGHTS_LIST_NAME);
+				if (pickedLigtsGpuBuffer == nullptr)
+				{
+					ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetUAVBufferNullDescription();
+					DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
+				}
+				else
+				{
+					ViewDescription_t defaultSrvDesc{
+						DescriptorHeapUtils::GenerateDefaultStructuredBufferUAVDesc(pickedLigtsGpuBuffer, sizeof(uint32_t)) };
+
+					DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, pickedLigtsGpuBuffer->gpuBuffer.Get(), &defaultSrvDesc));
+				}
+			}
+			break;
+			default:
+				break;
+			}
+		}
+		break;
+		case HASH("Debug_LightSources"):
+		{
+			switch (paramName)
+			{
+			case HASH("PickedLights"):
+			{
+				Resource* pickedLigtsGpuBuffer = ResourceManager::Inst().FindResource(Resource::DEBUG_PICKED_LIGHTS_LIST_NAME);
+				if (pickedLigtsGpuBuffer == nullptr)
+				{
+					ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
+					DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
+				}
+				else
+				{
+					ViewDescription_t defaultSrvDesc{
+						DescriptorHeapUtils::GenerateDefaultStructuredBufferSRVDesc(pickedLigtsGpuBuffer, sizeof(uint32_t)) };
+
+					DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, pickedLigtsGpuBuffer->gpuBuffer.Get(), &defaultSrvDesc));
+				}
 			}
 			break;
 			default:
@@ -956,6 +1063,35 @@ namespace RenderCallbacks
 					}, obj);
 				}
 				break;
+				case HASH("LightSourceIndex"):
+				{
+					std::visit([&bindPoint](auto&& object)
+					{
+						using T = std::decay_t<decltype(object)>;
+
+						if constexpr (std::is_same_v<T, DebugObject_LightSource>)
+						{
+							//#DEBUG make func for this. Think how to generalize this logic in other ocasions too
+							int globalSourceIndex = -1;
+							if (object.type == Light::Type::Point)
+							{
+								globalSourceIndex = object.sourceIndex;
+							}
+							else
+							{
+								globalSourceIndex = object.sourceIndex + Renderer::Inst().GetStaticPointLights().size();
+							}
+
+							reinterpret_cast<int&>(bindPoint) = static_cast<int>(globalSourceIndex);
+						}
+						else
+						{
+							reinterpret_cast<int&>(bindPoint) = Const::INVALID_INDEX;
+						}
+					}, obj);
+				}
+				break;
+
 				default:
 					break;
 				}

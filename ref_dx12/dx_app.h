@@ -207,6 +207,8 @@ public:
 		bool drawPointLightBoundingVolume = false;
 		bool drawAreaLightBoundingVolume = false;
 
+		bool enableLightSourcePicker = false;
+
 		DrawRayPathMode drawBakeRayPathsMode = DrawRayPathMode::SingleProbe;
 		int drawBakeRayPathsProbeIndex = 0;
 
@@ -326,14 +328,21 @@ private:
 	static LONG WINAPI MainWndProcWrapper(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	void CreateIndirectLightResources(GPUJobContext& context);
 	void CreateClusteredLightingResources(GPUJobContext& context);
-	void CreateLightResources(const std::vector<GPULight>& gpuLights, const std::vector<GPULightBoundingVolume>& gpuBoundingVolumes, GPUJobContext& context) const;
+	void CreateLightResources(
+		const std::vector<GPULight>& gpuLights, 
+		const std::vector<GPULightBoundingVolume>& gpuBoundingVolumes,
+		const std::vector<uint32_t>& pickedLightList,
+		GPUJobContext& context) const;
 	void CopyFromReadBackResourcesToCPUMemory(Frame& frame);
 
 	void GenerateStaticLightBoundingVolumes(const std::vector<GPULight>& gpuLights);
+	void CreateStaticLightDebugData(const std::vector<GPULight>& gpuLights);
 	std::vector<GPULight> GenerateGPULightList() const;
 	std::vector<GPULightBoundingVolume> GenerateGPULightBoundingVolumesList() const;
 
 	void InitStaticLighting();
+
+	Utils::MouseInput GetMouseInput() const;
 
 	/* Frames */
 	void SubmitFrame(Frame& frame);
@@ -409,7 +418,8 @@ private:
 	std::vector<PointLight> staticPointLights;
 	std::vector<AreaLight> staticAreaLights;
 
-	std::vector<LightBoundingVolume> staticLightBoundingVolumes;
+	std::vector<LightBoundingVolume> staticLightsBoundingVolumes;
+	std::vector<uint32_t> debugPickedStaticLights;
 
 	/* Frames  */
 	std::array<Frame, Settings::FRAMES_NUM> frames;

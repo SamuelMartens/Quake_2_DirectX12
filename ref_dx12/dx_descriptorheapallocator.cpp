@@ -107,7 +107,16 @@ D3D12_SHADER_RESOURCE_VIEW_DESC DescriptorHeapUtils::GetSRVBufferNullDescription
 	return srvDesc;
 }
 
-D3D12_SHADER_RESOURCE_VIEW_DESC DescriptorHeapUtils::GenerateDefaultStructuredBufferViewDesc(Resource* buffer, int stride)
+D3D12_UNORDERED_ACCESS_VIEW_DESC DescriptorHeapUtils::GetUAVBufferNullDescription()
+{
+	D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+	uavDesc.Format = DXGI_FORMAT_R8_UNORM;
+	uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+
+	return uavDesc;
+}
+
+D3D12_SHADER_RESOURCE_VIEW_DESC DescriptorHeapUtils::GenerateDefaultStructuredBufferSRVDesc(Resource* buffer, int stride)
 {
 	DX_ASSERT(buffer->desc.dimension == D3D12_RESOURCE_DIMENSION_BUFFER && 
 		"Structured buffer view can be created for structured buffer only");
@@ -115,6 +124,7 @@ D3D12_SHADER_RESOURCE_VIEW_DESC DescriptorHeapUtils::GenerateDefaultStructuredBu
 	DX_ASSERT(stride > 0 && "Invalid stride for structured buffer view creation");
 
 	DX_ASSERT(buffer->desc.width % stride == 0 &&
+
 		"Structured buffer view creation error. Size and stride do not fit");
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
@@ -130,7 +140,7 @@ D3D12_SHADER_RESOURCE_VIEW_DESC DescriptorHeapUtils::GenerateDefaultStructuredBu
 	return srvDesc;
 }
 
-D3D12_UNORDERED_ACCESS_VIEW_DESC DescriptorHeapUtils::GenerateDefaultStructuredBufferUAV(Resource* buffer, int stride)
+D3D12_UNORDERED_ACCESS_VIEW_DESC DescriptorHeapUtils::GenerateDefaultStructuredBufferUAVDesc(Resource* buffer, int stride)
 {
 	DX_ASSERT(buffer->desc.dimension == D3D12_RESOURCE_DIMENSION_BUFFER &&
 		"Structured buffer UAV can be created for structured buffer only");

@@ -21,7 +21,8 @@ RootSignature
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0, space = 0),
 CBV(b0, space = 1),
-CBV(b0, space = 3)
+CBV(b0, space = 3),
+DescriptorTable(SRV(t0, numDescriptors = 1, space = 2))
 }
 
 // -== Register space convention ==-
@@ -71,7 +72,11 @@ cbuffer cbPerObject_Global : register(b0, space1)
 cbuffer cbPerObject_Local : register(b0, space3)
 {
 	int LightSourceType;
+	int LightSourceIndex;
 }
+
+[Local, PerPass]
+StructuredBuffer<int> PickedLights : register(t0, space2)
 
 // Shaders
 
@@ -91,7 +96,7 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : PS 
-External : VertexOut, cbPerObject_Global, cbPerObject_Local
+External : VertexOut, cbPerObject_Global, cbPerObject_Local, PickedLights
 <[
 
 #include "Debug.passh"
@@ -115,6 +120,11 @@ float4 main(VertexOut vOut) : SV_Target
 	if (LightSourceType == DEBUG_POINT_LIGHT)
 	{
 		color = float4(0.0, 1.0, 0.0, 1.0);
+	}
+	
+	if (PickedLights[LightSourceIndex] == 1)
+	{
+		color = float4(1.0, 1.0, 1.0, 1.0);
 	}
 
     return color;

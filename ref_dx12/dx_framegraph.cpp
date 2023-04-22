@@ -586,6 +586,9 @@ void FrameGraph::AddResourceReadbackCallbacks(const Frame& frame)
 
 		DX_ASSERT(targetPassIt != passTasks.end() && "Readback request failed, can't find target pass");
 
+		targetPassIt->postPassRunTimeCallbacks.push_back(std::bind(PassUtils::CreateTargetResourceForReadbackIfNeeded, request,
+			std::placeholders::_1, std::placeholders::_2));
+
 		targetPassIt->postPassRunTimeCallbacks.push_back(std::bind(PassUtils::CreateReabackResourceAndFillItUp, request,
 			std::placeholders::_1, std::placeholders::_2));
 	}

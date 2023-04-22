@@ -86,6 +86,8 @@ public:
 
 	// Debug data
 	XMFLOAT4X4 debugFrustumClusterInverseViewMat;
+	bool debugEnableLightSourcePicker = false;
+	Utils::MouseInput mouseInput;
 
 	// Synchronization 
 	
