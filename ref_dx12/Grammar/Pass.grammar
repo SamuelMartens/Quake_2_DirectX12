@@ -1,7 +1,7 @@
 Pass <- PassProps State RSig PrePostPass ShaderDefs ShaderList
 
 ShaderDefs	<- T( < ( Resource / VertAttr / Function / MiscDef )* > )
-State       <- T( 'State' _ '{' _ < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendSt / DestBlendSt / DepthBiasSt / DepthBiasSlopeSt / DepthBiasClampSt / FillModeSt )* > '}' )
+State       <- T( 'State' _ '{' _ < ( ColorTargetSt / DepthTargetSt / ViewportSt / BlendEnabledSt / TopologySt / DepthWriteMaskSt / SrcBlendSt / DestBlendSt / DepthBiasSt / DepthBiasSlopeSt / DepthBiasClampSt / FillModeSt / CullModeSt )* > '}' )
 ShaderList  <- T( < Shader* > )
 
 # --- Pass properties
@@ -32,10 +32,12 @@ DepthBiasSt         <- T( 'DepthBias' _ ':' < Int > )
 DepthBiasSlopeSt    <- T( 'DepthBiasSlope' _ ':' < Float > )
 DepthBiasClampSt    <- T( 'DepthBiasClamp' _ ':' < Float > )
 FillModeSt			<- T( 'FillMode' _ ':' < FillModeValues > )
+CullModeSt			<- T( 'CullMode' _ ':' < CullModeValues > )
 
 BlendStValues		<- _ 'SrcAlpha' _ / _ 'InvSrcAlpha' _
 TopologyStValues    <- _ 'Triangle' _ / _ 'Point' _ / _ 'Line' _
 FillModeValues		<- _ 'Solid' _ / _ 'Wireframe'
+CullModeValues		<- _ 'None' _ / _ 'Front' _ / _ 'Back' _
 
 # --- Root Signature ---
 RSig                <- T( 'RootSignature' _ '{' < RSigFlagsDecl ( Comma RSigEntity )+ > '}' )

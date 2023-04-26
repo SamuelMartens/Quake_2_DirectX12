@@ -109,6 +109,8 @@ class Renderer
 	const BSPTree& GetBSPTree() const;
 	int GetCurrentFrameCounter() const;
 
+	int GetLightIndexInStaticLightList(int lightTypeArrayIndex, Light::Type type) const;
+
 	struct DebugSettings;
 	const DebugSettings& GetDebugSettings() const;
 

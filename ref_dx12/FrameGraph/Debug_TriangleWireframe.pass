@@ -12,6 +12,7 @@ Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
 Topology	 : Triangle
 FillMode	 : Wireframe
+CullMode	 : None
 }
 
 RootSignature

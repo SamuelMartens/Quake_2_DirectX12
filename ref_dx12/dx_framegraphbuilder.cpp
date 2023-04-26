@@ -357,6 +357,14 @@ namespace
 			currentPass.rasterPsoDesc.RasterizerState.FillMode = std::any_cast<D3D12_FILL_MODE>(sv[0]);
 		};
 
+		parser["CullModeSt"] = [](const peg::SemanticValues& sv, std::any& ctx)
+		{
+			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
+			PassParametersSource& currentPass = parseCtx.passSources.back();
+
+			currentPass.rasterPsoDesc.RasterizerState.CullMode = std::any_cast<D3D12_CULL_MODE>(sv[0]);
+		};
+
 		parser["DepthWriteMaskSt"] = [](const peg::SemanticValues& sv, std::any& ctx)
 		{
 			Parsing::PassParametersContext& parseCtx = *std::any_cast<std::shared_ptr<Parsing::PassParametersContext>&>(ctx);
@@ -442,6 +450,27 @@ namespace
 			}
 
 			return D3D12_FILL_MODE_SOLID;
+		};
+
+		parser["CullModeValues"] = [](const peg::SemanticValues& sv)
+		{
+			switch (sv.choice())
+			{
+			case 0:
+				return D3D12_CULL_MODE_NONE;
+				break;
+			case 1:
+				return D3D12_CULL_MODE_FRONT;
+				break;
+			case 2:
+				return D3D12_CULL_MODE_BACK;
+				break;
+			default:
+				DX_ASSERT(false && "Invalid cull mode state");
+				break;
+			}
+
+			return D3D12_CULL_MODE_BACK;
 		};
 
 		// --- Shader code

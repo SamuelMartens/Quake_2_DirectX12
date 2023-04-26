@@ -838,7 +838,7 @@ void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>&
 	// Attach internal texture proxies 
 	for (GPUJobContext& jobContext : jobContexts)
 	{
-		jobContext.internalResourceProxies = GetTextureProxy();
+		jobContext.resourceProxies = GetTextureProxy();
 	}
 
 	// Deal with depth back buffer
@@ -846,7 +846,7 @@ void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>&
 	{
 		GPUJobContext& context = jobContexts[i];
 
-		ResourceProxy& backBufferProxy = context.internalResourceProxies.emplace_back(ResourceProxy
+		ResourceProxy& backBufferProxy = context.resourceProxies.emplace_back(ResourceProxy
 			{
 				*context.frame.depthStencilBuffer.Get()
 			});
@@ -859,7 +859,7 @@ void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>&
 		// Note, that first job context is special because we start not from default state, but from D3D12_RESOURCE_STATE_PRESENT
 		GPUJobContext& firstContext = jobContexts.front();
 
-		ResourceProxy& backBufferProxy = firstContext.internalResourceProxies.emplace_back(ResourceProxy
+		ResourceProxy& backBufferProxy = firstContext.resourceProxies.emplace_back(ResourceProxy
 			{
 				*firstContext.frame.colorBufferAndView->buffer.Get(),
 				D3D12_RESOURCE_STATE_PRESENT
@@ -872,7 +872,7 @@ void FrameGraph::AddTexturesProxiesToPassJobContexts(std::vector<GPUJobContext>&
 	{
 		GPUJobContext& context = jobContexts[i];
 
-		ResourceProxy& backBufferProxy = context.internalResourceProxies.emplace_back(ResourceProxy
+		ResourceProxy& backBufferProxy = context.resourceProxies.emplace_back(ResourceProxy
 			{
 				*context.frame.colorBufferAndView->buffer.Get()
 			});

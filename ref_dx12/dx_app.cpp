@@ -1394,7 +1394,7 @@ void Renderer::GenerateStaticLightBoundingVolumes(const std::vector<GPULight>& g
 
 	staticLightsBoundingVolumes.reserve(staticAreaLights.size() + staticPointLights.size());
 
-	// NOTE: Lights must be the same order as in GenerateGPULightList()
+	// NOTE: Lights must be the same order as in GenerateGPULightList() and GetLightIndexInStaticLightList()
 	for (int i = 0; i < staticPointLights.size(); ++i)
 	{
 		LightBoundingVolume volume;
@@ -1409,7 +1409,7 @@ void Renderer::GenerateStaticLightBoundingVolumes(const std::vector<GPULight>& g
 
 	for (int i =0; i < staticAreaLights.size(); ++i)
 	{
-		const GPULight& gpuLight = gpuLights[staticPointLights.size() + i];
+		const GPULight& gpuLight = gpuLights[GetLightIndexInStaticLightList(i, Light::Type::Area)];
 
 		const XMFLOAT4 origin = XMFLOAT4(
 			gpuLight.worldTransform.m[3][0],
@@ -1443,7 +1443,7 @@ std::vector<GPULight> Renderer::GenerateGPULightList() const
 	std::vector<GPULight> gpuLights;
 	gpuLights.reserve(staticAreaLights.size() + staticPointLights.size());
 
-	// NOTE: Lights must be the same order as in GenerateGPULightList()
+	// NOTE: Lights must be the same order as in GenerateStaticLightBoundingVolumes() and GetLightIndexInStaticLightList()
 	for (int i = 0; i < staticPointLights.size(); ++i)
 	{
 		gpuLights.push_back(PointLight::ToGPULight(staticPointLights[i]));
@@ -2732,6 +2732,22 @@ const BSPTree& Renderer::GetBSPTree() const
 int Renderer::GetCurrentFrameCounter() const
 {
 	return frameCounter;
+}
+
+int Renderer::GetLightIndexInStaticLightList(int lightTypeArrayIndex, Light::Type type) const
+{
+	if (type == Light::Type::Point)
+	{
+		return lightTypeArrayIndex;
+	}
+
+	if (type == Light::Type::Area)
+	{
+		return staticPointLights.size() + lightTypeArrayIndex;
+	}
+
+	DX_ASSERT(false && "Invalid light type, so index in light list can't be derived");
+	return Const::INVALID_INDEX;
 }
 
 const Renderer::DebugSettings& Renderer::GetDebugSettings() const

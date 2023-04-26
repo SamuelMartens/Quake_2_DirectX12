@@ -1935,7 +1935,7 @@ void PassUtils::ClearColorCallback(XMFLOAT4 color, GPUJobContext& context, const
 	DX_ASSERT(pass != nullptr && "Pass value is nullptr");
 
 	const PassParameters& params = GetPassParameters(*pass);
-	std::vector<ResourceProxy>& proxies = context.internalResourceProxies;
+	std::vector<ResourceProxy>& proxies = context.resourceProxies;
 
 	for (const PassParameters::RenderTarget& renderTarget : params.colorRenderTargets)
 	{
@@ -1968,7 +1968,7 @@ void PassUtils::ClearDeptCallback(float value, GPUJobContext& context, const Pas
 	DX_ASSERT(pass != nullptr && "Pass value is nullptr");
 
 	const PassParameters& params = GetPassParameters(*pass);
-	std::vector<ResourceProxy>& proxies = context.internalResourceProxies;
+	std::vector<ResourceProxy>& proxies = context.resourceProxies;
 
 	// Transition to state
 	const unsigned int depthTargetHashedName = HASH(params.depthRenderTarget.name.c_str());
@@ -2005,7 +2005,7 @@ void PassUtils::InternalResourceProxiesToInterPassStateCallback(GPUJobContext& c
 	// Just batch barriers.
 	ID3D12GraphicsCommandList* commandList = context.commandList->GetGPUList();
 	
-	for (ResourceProxy& proxy : context.internalResourceProxies) 
+	for (ResourceProxy& proxy : context.resourceProxies) 
 	{
 		const D3D12_RESOURCE_STATES targetState = proxy.interPassState.has_value() ? proxy.interPassState.value() : Resource::DEFAULT_STATE;
 
@@ -2023,7 +2023,7 @@ void PassUtils::RenderTargetToRenderStateCallback(GPUJobContext& context, const 
 	{
 		ResourceProxy::FindAndTranslateTo(
 			renderTarget.name,
-			context.internalResourceProxies,
+			context.resourceProxies,
 			D3D12_RESOURCE_STATE_RENDER_TARGET,
 			context.commandList->GetGPUList()
 		);
@@ -2038,7 +2038,7 @@ void PassUtils::DepthTargetToRenderStateCallback(GPUJobContext& context, const P
 
 	ResourceProxy::FindAndTranslateTo(
 		params.depthRenderTarget.name,
-		context.internalResourceProxies,
+		context.resourceProxies,
 		D3D12_RESOURCE_STATE_DEPTH_WRITE,
 		context.commandList->GetGPUList()
 	);
@@ -2046,7 +2046,7 @@ void PassUtils::DepthTargetToRenderStateCallback(GPUJobContext& context, const P
 
 void PassUtils::CopyResourceCallback(const std::string sourceName, const std::string destinationName, GPUJobContext& context, const Pass_t* pass)
 {
-	std::vector<ResourceProxy>& proxies = context.internalResourceProxies;
+	std::vector<ResourceProxy>& proxies = context.resourceProxies;
 
 	const unsigned int sourceHashedName = HASH(sourceName.c_str());
 
@@ -2055,7 +2055,7 @@ void PassUtils::CopyResourceCallback(const std::string sourceName, const std::st
 	{
 		return proxy.hashedName == sourceHashedName;
 	});
-	//#DEBUG to resolve this problem add proxies based on readback resources!
+
 	DX_ASSERT(sourceProxyIt != proxies.end() && "CopyTextureCallback failed. Can't find source proxy");
 	sourceProxyIt->TransitionTo(D3D12_RESOURCE_STATE_COPY_SOURCE, context.commandList->GetGPUList());
 
@@ -2079,15 +2079,11 @@ void PassUtils::BackBufferToPresentStateCallback(GPUJobContext& context, const P
 {
 	ResourceProxy::FindAndTranslateTo(
 		PassParameters::COLOR_BACK_BUFFER_NAME,
-		context.internalResourceProxies,
+		context.resourceProxies,
 		D3D12_RESOURCE_STATE_PRESENT,
 		context.commandList->GetGPUList()
 	);
 }
-
-//#DEBUG
-#pragma optimize("", off)
-//END
 
 void PassUtils::CreateReabackResourceAndFillItUp(ResourceReadBackRequest request, GPUJobContext& context, const Pass_t* pass)
 {
@@ -2116,7 +2112,7 @@ void PassUtils::CreateReabackResourceAndFillItUp(ResourceReadBackRequest request
 	resMan.RegisterD3DResource(readBackResource, &readbackResourceDesc, readBackResourceName);
 
 	// Add proxy for the new resource
-	ResourceProxy& readBackProxy = context.internalResourceProxies.emplace_back(ResourceProxy
+	ResourceProxy& readBackProxy = context.resourceProxies.emplace_back(ResourceProxy
 		{
 			*readBackResource.Get(),
 			Resource::DEFAULT_READBACK_STATE,
@@ -2135,12 +2131,12 @@ void PassUtils::CreateTargetResourceForReadbackIfNeeded(ResourceReadBackRequest 
 	// Check if such required proxy already exists. If we want to perform readback on internal resource
 	// then it will, otherwise it will need to be added.
 
-	const bool isTargetResourceProxyExists = std::find_if(context.internalResourceProxies.cbegin(),
-		context.internalResourceProxies.cend(),
+	const bool isTargetResourceProxyExists = std::find_if(context.resourceProxies.cbegin(),
+		context.resourceProxies.cend(),
 		[hashedTargetResourceName](const ResourceProxy& proxy)
 		{
 			return hashedTargetResourceName == proxy.hashedName;
-		}) != context.internalResourceProxies.cend();
+		}) != context.resourceProxies.cend();
 
 	if (isTargetResourceProxyExists == true)
 	{
@@ -2152,17 +2148,13 @@ void PassUtils::CreateTargetResourceForReadbackIfNeeded(ResourceReadBackRequest 
 
 	DX_ASSERT(targetResource != nullptr && "Can't create target resource proxy. Invalid resource name");
 	
-	ResourceProxy& targetResourceProxy = context.internalResourceProxies.emplace_back(ResourceProxy
+	ResourceProxy& targetResourceProxy = context.resourceProxies.emplace_back(ResourceProxy
 		{
 			*targetResource->gpuBuffer.Get()
 		});
 
 	targetResourceProxy.hashedName = hashedTargetResourceName;
 }
-
-//#DEBUG
-#pragma optimize("", on)
-//END
 
 
 const PassParameters& PassUtils::GetPassParameters(const Pass_t& pass)

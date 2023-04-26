@@ -23,6 +23,45 @@ extern "C"
 
 namespace RenderCallbacks
 {
+	namespace Utils
+	{
+		template<typename bufferInstanceType, typename bindPointType, typename contextType>
+		void CreateAndBindIfResourceExists_SRV(const char* resourceName, bindPointType& bindPoint, contextType& ctx)
+		{
+			Resource* resource = ResourceManager::Inst().FindResource(resourceName);
+			if (resource == nullptr)
+			{
+				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
+				DO_IF_SAME_DECAYED_TYPE(bindPointType, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
+			}
+			else
+			{
+				ViewDescription_t defaultSrvDesc{
+					DescriptorHeapUtils::GenerateDefaultStructuredBufferSRVDesc(resource, sizeof(bufferInstanceType)) };
+
+				DO_IF_SAME_DECAYED_TYPE(bindPointType, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, resource->gpuBuffer.Get(), &defaultSrvDesc));
+			}
+		}
+
+		template<typename bufferInstanceType, typename bindPointType, typename contextType>
+		void CreateAndBindIfResourceExists_UAV(const char* resourceName, bindPointType& bindPoint, contextType& ctx)
+		{
+			Resource* resource = ResourceManager::Inst().FindResource(resourceName);
+			if (resource == nullptr)
+			{
+				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetUAVBufferNullDescription();
+				DO_IF_SAME_DECAYED_TYPE(bindPointType, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
+			}
+			else
+			{
+				ViewDescription_t defaultSrvDesc{
+					DescriptorHeapUtils::GenerateDefaultStructuredBufferUAVDesc(resource, sizeof(bufferInstanceType)) };
+
+				DO_IF_SAME_DECAYED_TYPE(bindPointType, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, resource->gpuBuffer.Get(), &defaultSrvDesc));
+			}
+		}
+	}
+
 	/*  Local, PerPass */
 
 	struct UpdateGlobalPassContext
@@ -470,53 +509,17 @@ namespace RenderCallbacks
 		break;
 		case HASH("DiffuseProbes"):
 		{
-			Resource* probeGpuBuffer = ResourceManager::Inst().FindResource(Resource::PROBE_STRUCTURED_BUFFER_NAME);
-			if (probeGpuBuffer == nullptr)
-			{
-				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
-			}
-			else
-			{
-				ViewDescription_t defaultSrvDesc{ 
-					DescriptorHeapUtils::GenerateDefaultStructuredBufferSRVDesc(probeGpuBuffer, sizeof(DiffuseProbe::DiffuseSH_t)) };
-
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, probeGpuBuffer->gpuBuffer.Get(), &defaultSrvDesc));
-			}
+			Utils::CreateAndBindIfResourceExists_SRV<DiffuseProbe::DiffuseSH_t>(Resource::PROBE_STRUCTURED_BUFFER_NAME, bindPoint, ctx);
 		}
 		break;
 		case HASH("LightBoundingVolumes"):
 		{
-			Resource* boundingVolumeGpuBuffer = ResourceManager::Inst().FindResource(Resource::LIGHT_BOUNDING_VOLUME_LIST_NAME);
-			if (boundingVolumeGpuBuffer == nullptr)
-			{
-				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
-			}
-			else
-			{
-				ViewDescription_t defaultSrvDesc{
-					DescriptorHeapUtils::GenerateDefaultStructuredBufferSRVDesc(boundingVolumeGpuBuffer, sizeof(GPULightBoundingVolume)) };
-
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, boundingVolumeGpuBuffer->gpuBuffer.Get(), &defaultSrvDesc));
-			}
+			Utils::CreateAndBindIfResourceExists_SRV<GPULightBoundingVolume>(Resource::LIGHT_BOUNDING_VOLUME_LIST_NAME, bindPoint, ctx);
 		}
 		break;
 		case HASH("LightsList"):
 		{
-			Resource* ligtsListGpuBuffer = ResourceManager::Inst().FindResource(Resource::LIGHT_LIST_NAME);
-			if (ligtsListGpuBuffer == nullptr)
-			{
-				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
-			}
-			else
-			{
-				ViewDescription_t defaultSrvDesc{
-					DescriptorHeapUtils::GenerateDefaultStructuredBufferSRVDesc(ligtsListGpuBuffer, sizeof(GPULight)) };
-
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, ligtsListGpuBuffer->gpuBuffer.Get(), &defaultSrvDesc));
-			}
+			Utils::CreateAndBindIfResourceExists_SRV<GPULight>(Resource::LIGHT_LIST_NAME, bindPoint, ctx);
 		}
 		break;
 		case HASH("ClusterAABBs"):
@@ -535,7 +538,7 @@ namespace RenderCallbacks
 				// Check if we already have BSP loaded
 				if (clusterSet.empty() == false)
 				{
-					std::vector<Utils::AABB> clusterAABB(clusterSet.size());
+					std::vector<::Utils::AABB> clusterAABB(clusterSet.size());
 
 					std::transform(clusterSet.cbegin(), clusterSet.cend(), clusterAABB.begin(),
 						[&bspTree](const int clusterIndex)
@@ -544,7 +547,7 @@ namespace RenderCallbacks
 					});
 
 					ResourceDesc desc;
-					desc.width = clusterAABB.size() * sizeof(Utils::AABB);
+					desc.width = clusterAABB.size() * sizeof(::Utils::AABB);
 					desc.height = 1;
 					desc.format = DXGI_FORMAT_UNKNOWN;
 					desc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
@@ -560,19 +563,7 @@ namespace RenderCallbacks
 				}
 			}
 
-			if (Resource* clusterAABBBuffer = resMan.FindResource(clusterAABBResourceName))
-			{
-				ViewDescription_t defaultSrvDesc{
-					DescriptorHeapUtils::GenerateDefaultStructuredBufferSRVDesc(clusterAABBBuffer, sizeof(Utils::AABB)) };
-
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, clusterAABBBuffer->gpuBuffer.Get(), &defaultSrvDesc));
-			}
-			else
-			{
-				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
-
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
-			}
+			Utils::CreateAndBindIfResourceExists_SRV<::Utils::AABB>(clusterAABBResourceName.c_str(), bindPoint, ctx);
 
 		}
 		break;
@@ -587,19 +578,7 @@ namespace RenderCallbacks
 		break;
 		case HASH("ClusterProbeGridInfoBuffer"):
 		{
-			if (Resource* clusterProbeGridInfoBuffer = ResourceManager::Inst().FindResource(Resource::CLUSTER_GRID_PROBE_STRUCTURED_BUFFER_NAME))
-			{
-				ViewDescription_t defaultSrvDesc{
-					DescriptorHeapUtils::GenerateDefaultStructuredBufferSRVDesc(clusterProbeGridInfoBuffer, sizeof(ClusterProbeGridInfo)) };
-
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, clusterProbeGridInfoBuffer->gpuBuffer.Get(), &defaultSrvDesc));
-			}
-			else
-			{
-				ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
-
-				DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
-			}
+			Utils::CreateAndBindIfResourceExists_SRV<ClusterProbeGridInfo>(Resource::CLUSTER_GRID_PROBE_STRUCTURED_BUFFER_NAME, bindPoint, ctx);
 		}
 		break;
 		case HASH("ScreenWidth"):
@@ -826,19 +805,7 @@ namespace RenderCallbacks
 			{
 			case HASH("PickedLights"):
 			{
-				Resource* pickedLigtsGpuBuffer = ResourceManager::Inst().FindResource(Resource::DEBUG_PICKED_LIGHTS_LIST_NAME);
-				if (pickedLigtsGpuBuffer == nullptr)
-				{
-					ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetUAVBufferNullDescription();
-					DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
-				}
-				else
-				{
-					ViewDescription_t defaultSrvDesc{
-						DescriptorHeapUtils::GenerateDefaultStructuredBufferUAVDesc(pickedLigtsGpuBuffer, sizeof(uint32_t)) };
-
-					DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, pickedLigtsGpuBuffer->gpuBuffer.Get(), &defaultSrvDesc));
-				}
+				Utils::CreateAndBindIfResourceExists_UAV<uint32_t>(Resource::DEBUG_PICKED_LIGHTS_LIST_NAME, bindPoint, ctx);
 			}
 			break;
 			default:
@@ -852,19 +819,7 @@ namespace RenderCallbacks
 			{
 			case HASH("PickedLights"):
 			{
-				Resource* pickedLigtsGpuBuffer = ResourceManager::Inst().FindResource(Resource::DEBUG_PICKED_LIGHTS_LIST_NAME);
-				if (pickedLigtsGpuBuffer == nullptr)
-				{
-					ViewDescription_t nullViewDescription = DescriptorHeapUtils::GetSRVBufferNullDescription();
-					DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, nullptr, &nullViewDescription));
-				}
-				else
-				{
-					ViewDescription_t defaultSrvDesc{
-						DescriptorHeapUtils::GenerateDefaultStructuredBufferSRVDesc(pickedLigtsGpuBuffer, sizeof(uint32_t)) };
-
-					DO_IF_SAME_DECAYED_TYPE(bT, int, ctx.jobContext.frame.streamingCbvSrvAllocator->AllocateDescriptor(bindPoint, pickedLigtsGpuBuffer->gpuBuffer.Get(), &defaultSrvDesc));
-				}
+				Utils::CreateAndBindIfResourceExists_SRV<uint32_t>(Resource::DEBUG_PICKED_LIGHTS_LIST_NAME, bindPoint, ctx);
 			}
 			break;
 			default:
@@ -1071,17 +1026,7 @@ namespace RenderCallbacks
 
 						if constexpr (std::is_same_v<T, DebugObject_LightSource>)
 						{
-							//#DEBUG make func for this. Think how to generalize this logic in other ocasions too
-							int globalSourceIndex = -1;
-							if (object.type == Light::Type::Point)
-							{
-								globalSourceIndex = object.sourceIndex;
-							}
-							else
-							{
-								globalSourceIndex = object.sourceIndex + Renderer::Inst().GetStaticPointLights().size();
-							}
-
+							const int globalSourceIndex = Renderer::Inst().GetLightIndexInStaticLightList(object.sourceIndex, object.type);
 							reinterpret_cast<int&>(bindPoint) = static_cast<int>(globalSourceIndex);
 						}
 						else
