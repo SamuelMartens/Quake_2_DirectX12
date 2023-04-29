@@ -12,8 +12,10 @@ State
 RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
-DescriptorTable(UAV(u0, numDescriptors = 2, space = 2)),
-CBV(b1, space = 0)
+CBV(b0, space = 0),
+CBV(b1, space = 0),
+DescriptorTable(UAV(u2, numDescriptors = 2, space = 0)),
+DescriptorTable(UAV(u0, numDescriptors = 2, space = 2))
 }
 
 // -== Register space convention ==-
@@ -22,7 +24,33 @@ CBV(b1, space = 0)
 //	2 - Local, PerPass
 //	3 - Local, PerObject
 
+// Structs
+struct PerClusterLightIndexData
+{
+	int offset;
+	int count;
+}
+
 // -- Global CBVs
+
+[Global, PerPass]
+cbuffer cbFrameData : register(b0, space0)
+{
+	float4x4 InvertedViewProj;
+	float4x4 InvertedProj;
+    float4x4 ViewProj;
+	float4x4 View;
+    float4 CameraYaw;
+    float4 CameraPitch;
+    float4 CameraRoll;
+    float4 CameraOrigin;
+	float CameraNear;
+	float CameraFar;
+	int ScreenWidth;
+	int ScreenHeight;
+	int LightListSize;
+}
+
 
 [Global, PerPass]
 cbuffer cbTileData : register(b1, space0)
@@ -33,6 +61,12 @@ cbuffer cbTileData : register(b1, space0)
 	int ClusterListSize;
 }
 
+[Global, PerPass]
+RWStructuredBuffer<int> ClusteredLightingIndexList : register(u2, space0)
+
+[Global, PerPass]
+RWStructuredBuffer<PerClusterLightIndexData> PerClusterLightIndexDataList : register(u3, space0)
+
 // --- Local tex
 
 [Local, PerPass, Bind: ClusteredLight_ActiveClusters]
@@ -42,8 +76,10 @@ RWStructuredBuffer<int> ActiveClustersList : register(u0, space2)
 RWStructuredBuffer<int> UniqueActiveClustersList : register(u1, space2)
 
 Type : CS
-External : cbTileData, ActiveClustersList, UniqueActiveClustersList
+External : cbTileData, ActiveClustersList, UniqueActiveClustersList, cbFrameData, PerClusterLightIndexData, ClusteredLightingIndexList, PerClusterLightIndexDataList
 <[
+
+#include "ClusteredLighting.passh"
 
 #define DISPATCH_SIZE int3(32, 24, 1)
 
@@ -65,7 +101,24 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	for (int i = flatDispatchThreadID * CLEAN_CLUSTER_LIGHTS_PER_THREAD; i < min(ClusterListSize, (flatDispatchThreadID + 1) * CLEAN_CLUSTER_LIGHTS_PER_THREAD); i++)
 	{
 		ActiveClustersList[i] = 0;
-		UniqueActiveClustersList[i] = 0;
+		UniqueActiveClustersList[i] = -1;
+	}
+	
+	// Clean cluster light list data
+	const int cleanLightsPerThread = ceil((float)LightListSize / dispatchThreadsNum);
+	
+	PerClusterLightIndexData zeroPerClusterIndexData;
+	zeroPerClusterIndexData.offset = 0;
+	zeroPerClusterIndexData.count = 0;
+	
+	for (int i = flatDispatchThreadID * cleanLightsPerThread; i < min(LightListSize, (flatDispatchThreadID + 1) * cleanLightsPerThread); i++)
+	{
+		PerClusterLightIndexDataList[i] = zeroPerClusterIndexData;
+		
+		for (int k = i * MAX_LIGHTS_PER_CLUSTER; k < (i + 1) * MAX_LIGHTS_PER_CLUSTER; ++k)
+		{
+			ClusteredLightingIndexList[k] = 0;
+		}
 	}
 }
 
