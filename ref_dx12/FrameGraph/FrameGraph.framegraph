@@ -104,6 +104,7 @@ Steps
 	Dynamic
 	ClusteredLighting_MarkActiveClusters
 	ClusteredLighting_CompactActiveClusters
+	ClusteredLighting_CreateClusterLightList
 	BSPClusterClassification
 	SampleIndirect
 	DeferredCompose

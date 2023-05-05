@@ -2,6 +2,7 @@
 
 #include <numeric>
 
+#include "Lib/crc32.h"
 #include "dx_app.h"
 #include "dx_framegraphbuilder.h"
 
@@ -523,6 +524,22 @@ namespace Parsing
 				}
 				else if constexpr (std::is_same_v<T, std::string>)
 				{
+					switch (HASH(dataType.c_str()))
+					{
+					case HASH("PerClusterLightIndexData"):
+					{
+						return sizeof(Light::ClusterLightData);
+					}
+					break;
+					case HASH("LightCullingDataStruct"):
+					{
+						return sizeof(Light::ClusteredLighting_LightCullingData);
+					}
+					break;
+					default:
+						break;
+					}
+
 					// Write custom sizes here if there is one
 					DX_ASSERT(false && "No type specified");
 					return Const::INVALID_SIZE;

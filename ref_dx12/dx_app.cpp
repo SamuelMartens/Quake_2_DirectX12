@@ -1350,6 +1350,57 @@ void Renderer::CreateLightResources(const std::vector<GPULight>& gpuLights, cons
 	debugPickedLightsListArgs.name = Resource::DEBUG_PICKED_LIGHTS_LIST_NAME;
 
 	ResourceManager::Inst().CreateStructuredBuffer(debugPickedLightsListArgs);
+
+	DX_ASSERT(clusteredLighting_globalLightIndices.empty() == false &&
+		"Forgot to init global light indices list");
+
+	ResourceDesc clusteredLighting_globalLightIndicesDesc;
+	clusteredLighting_globalLightIndicesDesc.width = clusteredLighting_globalLightIndices.size() * sizeof(std::decay_t<decltype(clusteredLighting_globalLightIndices)>::value_type);
+	clusteredLighting_globalLightIndicesDesc.height = 1;
+	clusteredLighting_globalLightIndicesDesc.format = DXGI_FORMAT_UNKNOWN;
+	clusteredLighting_globalLightIndicesDesc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	clusteredLighting_globalLightIndicesDesc.flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+	FArg::CreateStructuredBuffer clusteredLighting_globalLightIndicesArgs;
+	clusteredLighting_globalLightIndicesArgs.context = &context;
+	clusteredLighting_globalLightIndicesArgs.desc = &clusteredLighting_globalLightIndicesDesc;
+	clusteredLighting_globalLightIndicesArgs.data = reinterpret_cast<const std::byte*>(clusteredLighting_globalLightIndices.data());
+	clusteredLighting_globalLightIndicesArgs.name = Resource::CLUSTERED_LIGHTING_LIGHT_INDEX_GLOBAL_LIST_NAME;
+
+	ResourceManager::Inst().CreateStructuredBuffer(clusteredLighting_globalLightIndicesArgs);
+
+	DX_ASSERT(clusteredLighting_perClusterLightData.empty() == false &&
+		"Forgot to init per cluster light data list");
+
+	ResourceDesc clusteredLighting_perClusterLightDataDesc;
+	clusteredLighting_perClusterLightDataDesc.width = clusteredLighting_perClusterLightData.size() * sizeof(std::decay_t<decltype(clusteredLighting_perClusterLightData)>::value_type);
+	clusteredLighting_perClusterLightDataDesc.height = 1;
+	clusteredLighting_perClusterLightDataDesc.format = DXGI_FORMAT_UNKNOWN;
+	clusteredLighting_perClusterLightDataDesc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	clusteredLighting_perClusterLightDataDesc.flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+	FArg::CreateStructuredBuffer clusteredLighting_perClusterLightDataArgs;
+	clusteredLighting_perClusterLightDataArgs.context = &context;
+	clusteredLighting_perClusterLightDataArgs.desc = &clusteredLighting_perClusterLightDataDesc;
+	clusteredLighting_perClusterLightDataArgs.data = reinterpret_cast<const std::byte*>(clusteredLighting_perClusterLightData.data());
+	clusteredLighting_perClusterLightDataArgs.name = Resource::CLUSTERED_LIGHTING_PER_CLUSTER_LIGH_DATA_NAME;
+
+	ResourceManager::Inst().CreateStructuredBuffer(clusteredLighting_perClusterLightDataArgs);
+
+	ResourceDesc clusteredLighting_lightCullingDataDesc;
+	clusteredLighting_lightCullingDataDesc.width = sizeof(std::decay_t<decltype(clusteredLighting_lightCullingData)>);
+	clusteredLighting_lightCullingDataDesc.height = 1;
+	clusteredLighting_lightCullingDataDesc.format = DXGI_FORMAT_UNKNOWN;
+	clusteredLighting_lightCullingDataDesc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	clusteredLighting_lightCullingDataDesc.flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+	FArg::CreateStructuredBuffer clusteredLighting_lightCullingDataArgs;
+	clusteredLighting_lightCullingDataArgs.context = &context;
+	clusteredLighting_lightCullingDataArgs.desc = &clusteredLighting_lightCullingDataDesc;
+	clusteredLighting_lightCullingDataArgs.data = reinterpret_cast<const std::byte*>(&clusteredLighting_lightCullingData);
+	clusteredLighting_lightCullingDataArgs.name = Resource::CLUSTERED_LIGHTING_LIGHT_CULLING_DATA_NAME;
+
+	ResourceManager::Inst().CreateStructuredBuffer(clusteredLighting_lightCullingDataArgs);
 }
 
 void Renderer::CopyFromReadBackResourcesToCPUMemory(Frame& frame)
@@ -1431,6 +1482,17 @@ void Renderer::GenerateStaticLightBoundingVolumes(const std::vector<GPULight>& g
 void Renderer::CreateStaticLightDebugData(const std::vector<GPULight>& gpuLights)
 {
 	debugPickedStaticLights = std::vector<uint32_t>(gpuLights.size(), 0);
+}
+
+void Renderer::CreateClusteredLightData(const std::vector<GPULight>& gpuLights)
+{
+	clusteredLighting_globalLightIndices = 
+		std::vector<uint32_t>(gpuLights.size() * Settings::CLUSTERED_LIGHTING_MAX_LIGHTS_PER_CLUSTER);
+
+	clusteredLighting_perClusterLightData =
+		std::vector<Light::ClusterLightData>(gpuLights.size());
+
+	clusteredLighting_lightCullingData = Light::ClusteredLighting_LightCullingData{};
 }
 
 std::vector<GPULight> Renderer::GenerateGPULightList() const
@@ -3375,6 +3437,8 @@ void Renderer::EndFrame()
 		const std::vector<GPULightBoundingVolume> gpuBoundingVolumes = GenerateGPULightBoundingVolumesList();
 
 		CreateStaticLightDebugData(gpuLights);
+
+		CreateClusteredLightData(gpuLights);
 
 		CreateLightResources(gpuLights, 
 			gpuBoundingVolumes,

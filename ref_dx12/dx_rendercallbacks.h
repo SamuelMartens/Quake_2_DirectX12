@@ -581,6 +581,16 @@ namespace RenderCallbacks
 			Utils::CreateAndBindIfResourceExists_SRV<ClusterProbeGridInfo>(Resource::CLUSTER_GRID_PROBE_STRUCTURED_BUFFER_NAME, bindPoint, ctx);
 		}
 		break;
+		case HASH("ClusteredLightingIndexList"):
+		{
+			Utils::CreateAndBindIfResourceExists_UAV<uint32_t>(Resource::CLUSTERED_LIGHTING_LIGHT_INDEX_GLOBAL_LIST_NAME, bindPoint, ctx);
+		}
+		break;
+		case HASH("PerClusterLightIndexDataList"):
+		{
+			Utils::CreateAndBindIfResourceExists_UAV<Light::ClusterLightData>(Resource::CLUSTERED_LIGHTING_PER_CLUSTER_LIGH_DATA_NAME, bindPoint, ctx);
+		}
+		break;
 		case HASH("ScreenWidth"):
 		{
 			int screenWidth = 0;
@@ -820,6 +830,39 @@ namespace RenderCallbacks
 			case HASH("PickedLights"):
 			{
 				Utils::CreateAndBindIfResourceExists_SRV<uint32_t>(Resource::DEBUG_PICKED_LIGHTS_LIST_NAME, bindPoint, ctx);
+			}
+			break;
+			default:
+				break;
+			}
+		}
+		break;
+		case HASH("ClusteredLighting_CreateClusterLightList"):
+		{
+			switch (paramName)
+			{
+			case HASH("FrustumClusters"):
+			{
+				Utils::CreateAndBindIfResourceExists_SRV<::Utils::AABB>(Resource::FRUSTUM_CLUSTERS_AABB_NAME, bindPoint, ctx);
+			}
+			break;
+			case HASH("LightCullingData"):
+			{
+				Utils::CreateAndBindIfResourceExists_UAV<Light::ClusteredLighting_LightCullingData>(Resource::CLUSTERED_LIGHTING_LIGHT_CULLING_DATA_NAME, bindPoint, ctx);
+			}
+			break;
+			default:
+				break;
+			}
+		}
+		break;
+		case HASH("FrameSetup"):
+		{
+			switch (paramName)
+			{
+			case HASH("LightCullingData"):
+			{
+				Utils::CreateAndBindIfResourceExists_UAV<Light::ClusteredLighting_LightCullingData>(Resource::CLUSTERED_LIGHTING_LIGHT_CULLING_DATA_NAME, bindPoint, ctx);
 			}
 			break;
 			default:

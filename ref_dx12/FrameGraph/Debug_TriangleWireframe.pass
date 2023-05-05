@@ -20,8 +20,8 @@ RootSignature
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0, space = 0),
 CBV(b0, space = 1),
-CBV(b0, space = 3),
-DescriptorTable(SRV(t4, numDescriptors = 1, space = 0))
+DescriptorTable(SRV(t4, numDescriptors = 1, space = 0)),
+CBV(b0, space = 3)
 }
 
 // -== Register space convention ==-

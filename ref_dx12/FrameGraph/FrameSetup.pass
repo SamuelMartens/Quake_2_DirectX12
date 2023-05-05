@@ -15,7 +15,7 @@ RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0, space = 0),
 CBV(b1, space = 0),
 DescriptorTable(UAV(u2, numDescriptors = 2, space = 0)),
-DescriptorTable(UAV(u0, numDescriptors = 2, space = 2))
+DescriptorTable(UAV(u0, numDescriptors = 3, space = 2))
 }
 
 // -== Register space convention ==-
@@ -29,6 +29,11 @@ struct PerClusterLightIndexData
 {
 	int offset;
 	int count;
+}
+
+struct LightCullingDataStruct
+{
+	int globalIndexCount;
 }
 
 // -- Global CBVs
@@ -75,8 +80,11 @@ RWStructuredBuffer<int> ActiveClustersList : register(u0, space2)
 [Local, PerPass, Bind: ClusteredLight_UniqueActiveClusters]
 RWStructuredBuffer<int> UniqueActiveClustersList : register(u1, space2)
 
+[Local, PerPass]
+RWStructuredBuffer<LightCullingDataStruct> LightCullingData : register(u2, space2)
+
 Type : CS
-External : cbTileData, ActiveClustersList, UniqueActiveClustersList, cbFrameData, PerClusterLightIndexData, ClusteredLightingIndexList, PerClusterLightIndexDataList
+External : cbTileData, ActiveClustersList, UniqueActiveClustersList, cbFrameData, PerClusterLightIndexData, ClusteredLightingIndexList, PerClusterLightIndexDataList, LightCullingDataStruct, LightCullingData
 <[
 
 #include "ClusteredLighting.passh"
@@ -94,7 +102,13 @@ External : cbTileData, ActiveClustersList, UniqueActiveClustersList, cbFrameData
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
 void main(int3 dispatchThreadID : SV_DispatchThreadID)
 {
+	if (dispatchThreadID.x == 1 && dispatchThreadID.y == 1 && dispatchThreadID.z)
+	{
+		LightCullingData[0].globalIndexCount = 0;
+	}
+
 	const int3 dispatchThreadsNum = DISPATCH_SIZE * THREAD_GROUP_SIZE;
+	const int totalThreadsNum = dispatchThreadsNum.x * dispatchThreadsNum.y * dispatchThreadsNum.z;
 	const int flatDispatchThreadID = dispatchThreadID.y * dispatchThreadsNum.x + dispatchThreadID.x;
 	
 	// Clean active cluster values in range of that thread
@@ -105,7 +119,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	}
 	
 	// Clean cluster light list data
-	const int cleanLightsPerThread = ceil((float)LightListSize / dispatchThreadsNum);
+	const int cleanLightsPerThread = ceil((float)LightListSize / totalThreadsNum);
 	
 	PerClusterLightIndexData zeroPerClusterIndexData;
 	zeroPerClusterIndexData.offset = 0;

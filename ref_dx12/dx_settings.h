@@ -92,4 +92,8 @@ namespace Settings
 
 	/* Start up options */
 	constexpr bool LOAD_LIGHT_BAKING_DATA_ON_START_UP = true;
+
+	/* Clustered Lighting */
+	// Should match MAX_LIGHTS_PER_CLUSTER in ClusteredLighting.passh
+	constexpr int CLUSTERED_LIGHTING_MAX_LIGHTS_PER_CLUSTER = 100;
 }

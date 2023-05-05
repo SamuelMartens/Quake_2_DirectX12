@@ -13,8 +13,10 @@ RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0, space = 0),
-DescriptorTable(SRV(t4, numDescriptors = 2, space = 0)),
-DescriptorTable(SRV(t1, numDescriptors = 1, space = 2))
+DescriptorTable(UAV(u2, numDescriptors = 2, space = 0)),
+DescriptorTable(SRV(t4, numDescriptors = 1, space = 0)),
+DescriptorTable(SRV(t1, numDescriptors = 2, space = 2)),
+DescriptorTable(UAV(u0, numDescriptors = 1, space = 2))
 }
 
 
@@ -37,6 +39,23 @@ struct GPULightBoundingVolume
 {
 	float4 origin;
 	float radius;
+}
+
+struct AABB
+{
+	float4 Min;
+	float4 Max;
+}
+
+struct LightCullingDataStruct
+{
+	int globalIndexCount;
+}
+
+struct PerClusterLightIndexData
+{
+	int offset;
+	int count;
 }
 
 // Resources
@@ -62,14 +81,23 @@ cbuffer cbFrameData : register(b0, space0)
 StructuredBuffer<GPULightBoundingVolume> LightBoundingVolumes : register(t4, space0)
 
 [Global, PerPass]
-StructuredBuffer<GPULight> LightsList : register(t5, space0)
+RWStructuredBuffer<int> ClusteredLightingIndexList : register(u2, space0)
+
+[Global, PerPass]
+RWStructuredBuffer<PerClusterLightIndexData> PerClusterLightIndexDataList : register(u3, space0)
 
 // --- Local res
 [Local, PerPass, Bind: ClusteredLight_UniqueActiveClusters]
 StructuredBuffer<int> UniqueActiveClustersList : register(t1, space2)
 
+[Local, PerPass]
+StructuredBuffer<AABB> FrustumClusters : register(t2, space2)
+
+[Local, PerPass]
+RWStructuredBuffer<LightCullingDataStruct> LightCullingData : register(u0, space2)
+
 Type : CS
-External : GPULight, GPULightBoundingVolume, cbFrameData, LightBoundingVolumes, LightsList, UniqueActiveClustersList
+External : GPULightBoundingVolume, cbFrameData, LightBoundingVolumes, UniqueActiveClustersList, AABB, FrustumClusters, LightCullingDataStruct, LightCullingData, ClusteredLightingIndexList, PerClusterLightIndexData, PerClusterLightIndexDataList 
 <[
 
 #include "ClusteredLighting.passh"
@@ -82,20 +110,21 @@ External : GPULight, GPULightBoundingVolume, cbFrameData, LightBoundingVolumes, 
 
 #define DISPATCH_SIZE int3(2, 1, 1)
 
-// Carefull, when changing this, read next comment for more info
-struct LightTestData
-{
-	float4 origin;
-	float4 normal;
-	float radius;
-	int type;
-}
-
 // This should match maximum size of the available groupshared memory,
-// so if LightTestData is changed in size, think about changing this
+// so if GPULightBoundingVolume is changed in size, think about changing this
 #define SHARED_TEST_DATA_ARRAY_SIZE 320
 
-groupshared LightTestData sharedTestData[SHARED_TEST_DATA_ARRAY_SIZE]
+groupshared GPULightBoundingVolume sharedTestData[SHARED_TEST_DATA_ARRAY_SIZE];
+
+bool IsSphereAABBIntersect(float3 sphereOrigin, float sphereRadius, AABB aabb)
+{
+	const float3 aabbCenter = (aabb.Min + aabb.Max).xyz / 2.0f;
+	const float3 aabbExtends = (aabb.Max - aabb.Min).xyz / 2.0f;
+	
+	const float3 aabbToSphere = sphereOrigin - aabbCenter - aabbExtends; 
+	
+	return dot(aabbToSphere, aabbToSphere) < sphereRadius * sphereRadius;
+}
 
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
 void main(int3 dispatchThreadID : SV_DispatchThreadID, uint linearGroupIndex : SV_GroupIndex)
@@ -108,6 +137,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID, uint linearGroupIndex : S
 	
 	// -1 check if we have active cluster for this thread
 	const bool isThreadActive = UniqueActiveClustersList[globalThreadIndex] != -1;
+	const int threadClusterIndex = UniqueActiveClustersList[globalThreadIndex];
 	
 	int visibleLightCount = 0;
 	int visibleLightIndices[MAX_LIGHTS_PER_CLUSTER];
@@ -116,33 +146,44 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID, uint linearGroupIndex : S
 	{
 		const int lightIndex = min(LightListSize - 1, batchIndex * threadsGroupSize + linearGroupIndex);
 		
-		GPULight light = LightsList[lightIndex];
 		GPULightBoundingVolume boundingVolume = LightBoundingVolumes[lightIndex];
+		// Transfer light bounding volume to the view space
+		boundingVolume.origin = mul(View, boundingVolume.origin);
 		
-		LightTestData lightTestData;
-		lightTestData.origin = boundingVolume.origin;
-		lightTestData.radius = boundingVolume.radius;
-		lightTestData.type = light.type;
-		
-		if (lightTestData.type == DEBUG_POINT_LIGHT)
-		{
-			lightTestData.normal = float4(0.0f, 0.0f, 0.0f , 0.0f);
-		}
-		else
-		{
-			lightTestData.normal =  mul(light.worldTransform, float4(0.0f, 0.0f, 1.0f, 0.0f));
-		}
-		
-		sharedTestData[linearGroupIndex] = lightTestData;
-		
+		sharedTestData[linearGroupIndex] = boundingVolume;
+
 		GroupMemoryBarrierWithGroupSync();
 		
-		for (int lightIndex = 0; lightIndex < threadsGroupSize; ++lightIndex)
-		{
-			
-		}
+		if (isThreadActive == true)
+		{	
+			AABB clusterAABB = FrustumClusters[threadClusterIndex];
 		
+			for (int lightIndex = 0; lightIndex < threadsGroupSize; ++lightIndex)
+			{
+				if (IsSphereAABBIntersect(
+					sharedTestData[lightIndex].origin.xyz,
+					sharedTestData[lightIndex].radius,
+					clusterAABB))
+				{
+					visibleLightIndices[visibleLightCount] = batchIndex * threadsGroupSize + lightIndex;
+					visibleLightCount += 1;
+				}
+			}
+		}
 	}
+	
+	GroupMemoryBarrierWithGroupSync();
+	
+	int offset = 0;
+	InterlockedAdd(LightCullingData[0].globalIndexCount, visibleLightCount, offset); 
+	
+	for (int i = 0; i < visibleLightCount; ++i)
+	{
+		ClusteredLightingIndexList[offset + i] = visibleLightIndices[i];
+	}
+	
+	PerClusterLightIndexDataList[threadClusterIndex].offset = offset;
+	PerClusterLightIndexDataList[threadClusterIndex].count = visibleLightCount;
 }
 
 ]>

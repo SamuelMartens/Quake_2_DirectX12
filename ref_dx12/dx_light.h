@@ -18,6 +18,17 @@ namespace Light
 
 		None
 	};
+
+	struct ClusterLightData
+	{
+		uint32_t offset = 0;
+		uint32_t count = 0;
+	};
+
+	struct ClusteredLighting_LightCullingData
+	{
+		uint32_t globalIndexCount = 0;
+	};
 };
 
 struct GPULight

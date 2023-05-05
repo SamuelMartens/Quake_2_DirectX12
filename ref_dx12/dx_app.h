@@ -339,6 +339,7 @@ private:
 
 	void GenerateStaticLightBoundingVolumes(const std::vector<GPULight>& gpuLights);
 	void CreateStaticLightDebugData(const std::vector<GPULight>& gpuLights);
+	void CreateClusteredLightData(const std::vector<GPULight>& gpuLights);
 	std::vector<GPULight> GenerateGPULightList() const;
 	std::vector<GPULightBoundingVolume> GenerateGPULightBoundingVolumesList() const;
 
@@ -422,6 +423,13 @@ private:
 
 	std::vector<LightBoundingVolume> staticLightsBoundingVolumes;
 	std::vector<uint32_t> debugPickedStaticLights;
+	
+	// Both of these arrays used for initialization, and contain
+	// data after GPU readback
+	std::vector<uint32_t> clusteredLighting_globalLightIndices;
+	std::vector<Light::ClusterLightData> clusteredLighting_perClusterLightData;
+
+	Light::ClusteredLighting_LightCullingData clusteredLighting_lightCullingData;
 
 	/* Frames  */
 	std::array<Frame, Settings::FRAMES_NUM> frames;
