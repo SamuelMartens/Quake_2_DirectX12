@@ -158,7 +158,7 @@ private:
 	/* Root arguments */
 	void CreateResourceArguments(const PassParametersSource& passSource, FrameGraph& frameGraph, PassParameters& pass) const;
 	static void AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
-		Parsing::ResourceBindFrequency updateFrequency, Parsing::ResourceScope scope, RootArg::Arg_t&& arg);
+		Parsing::ResourceBindFrequency updateFrequency, Parsing::ResourceScope scope, int bindIndex, RootArg::Arg_t&& arg);
 
 	/* Utils */
 	void ValidatePassResources(const std::vector<PassParametersSource>& passesParametersSources) const;

@@ -12,51 +12,64 @@ namespace RootArg
 	{
 		for (RootArg::Arg_t& rootArg : rootArgs)
 		{
-			std::visit([gpuHandler, &offset]
-			(auto&& rootArg)
-			{
-				using T = std::decay_t<decltype(rootArg)>;
-
-				if constexpr (std::is_same_v<T, RootArg::RootConstant>)
-				{
-					DX_ASSERT(false && "Root constant is not implemented");
-				}
-
-				if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
-				{
-					rootArg.gpuMem.handler = gpuHandler;
-					rootArg.gpuMem.offset = offset;
-
-					offset += RootArg::GetConstBufftSize(rootArg);
-				}
-
-				if constexpr (std::is_same_v<T, RootArg::DescTable>)
-				{
-					for (int i = 0; i < rootArg.content.size(); ++i)
-					{
-						RootArg::DescTableEntity_t& descTableEntitiy = rootArg.content[i];
-
-						std::visit([gpuHandler, &offset]
-						(auto&& descTableEntitiy)
-						{
-							using T = std::decay_t<decltype(descTableEntitiy)>;
-
-							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
-							{
-								DX_ASSERT(false && "Desc table view is probably not implemented! Make sure it is");
-								//#TODO make view allocation
-								descTableEntitiy.gpuMem.handler = gpuHandler;
-								descTableEntitiy.gpuMem.offset = offset;
-
-								offset += RootArg::GetConstBufftSize(descTableEntitiy);
-							}
-
-						}, descTableEntitiy);
-					}
-				}
-
-			}, rootArg);
+			AttachConstBufferToArg(rootArg, offset, gpuHandler);
 		}
+	}
+
+	void AttachConstBufferToLocalArgs(std::vector<LocalArg>& rootLocalArgs, int offset, BufferHandler gpuHandler)
+	{
+		for (RootArg::LocalArg& rootLocalArg : rootLocalArgs)
+		{
+			AttachConstBufferToArg(rootLocalArg.arg, offset, gpuHandler);
+		}
+	}
+
+	void AttachConstBufferToArg(Arg_t& rootArg, int& offset, BufferHandler gpuHandler)
+	{
+		std::visit([gpuHandler, &offset]
+		(auto&& rootArg)
+		{
+			using T = std::decay_t<decltype(rootArg)>;
+
+			if constexpr (std::is_same_v<T, RootArg::RootConstant>)
+			{
+				DX_ASSERT(false && "Root constant is not implemented");
+			}
+
+			if constexpr (std::is_same_v<T, RootArg::ConstBuffView>)
+			{
+				rootArg.gpuMem.handler = gpuHandler;
+				rootArg.gpuMem.offset = offset;
+
+				offset += RootArg::GetConstBufftSize(rootArg);
+			}
+
+			if constexpr (std::is_same_v<T, RootArg::DescTable>)
+			{
+				for (int i = 0; i < rootArg.content.size(); ++i)
+				{
+					RootArg::DescTableEntity_t& descTableEntitiy = rootArg.content[i];
+
+					std::visit([gpuHandler, &offset]
+					(auto&& descTableEntitiy)
+					{
+						using T = std::decay_t<decltype(descTableEntitiy)>;
+
+						if constexpr (std::is_same_v<T, RootArg::DescTableEntity_ConstBufferView>)
+						{
+							DX_ASSERT(false && "Desc table view is probably not implemented! Make sure it is");
+							//#TODO make view allocation
+							descTableEntitiy.gpuMem.handler = gpuHandler;
+							descTableEntitiy.gpuMem.offset = offset;
+
+							offset += RootArg::GetConstBufftSize(descTableEntitiy);
+						}
+
+					}, descTableEntitiy);
+				}
+			}
+
+		}, rootArg);
 	}
 
 	int GetDescTableSize(const DescTable& descTable)
@@ -84,7 +97,7 @@ namespace RootArg
 		return size;
 	}
 
-	int GetSize(const Arg_t& arg)
+	int GetArgSize(const Arg_t& arg)
 	{
 		return std::visit([](auto&& arg)
 		{
@@ -112,21 +125,22 @@ namespace RootArg
 		}, arg);
 	}
 
-	int GetBindIndex(const Arg_t& arg)
-	{
-		return std::visit([](auto&& arg) 
-		{
-			return arg.bindIndex;
-		}, arg);
-	}
-
-	int GetSize(const std::vector<Arg_t>& args)
+	int GetLocalArgsSize(const std::vector<LocalArg>& args)
 	{
 		return std::accumulate(args.cbegin(), args.cend(), 0, 
-			[](int sum, const Arg_t& arg)
+			[](int sum, const LocalArg& localArg)
 		{
-			return sum + GetSize(arg);
+			return sum + GetArgSize(localArg.arg);
 		});
+	}
+
+	int GetArgsSize(const std::vector<Arg_t>& args)
+	{
+		return std::accumulate(args.cbegin(), args.cend(), 0,
+			[](int sum, const Arg_t& arg)
+			{
+				return sum + GetArgSize(arg);
+			});
 	}
 
 	int FindArg(const std::vector<Arg_t>& args, const Arg_t& arg)
@@ -190,18 +204,18 @@ namespace RootArg
 		return res;
 	}
 
-	void Bind(const Arg_t& rootArg, CommandList& commandList)
+	void Bind(const Arg_t& rootArg, const int bindIndex, CommandList& commandList)
 	{
 		Renderer& renderer = Renderer::Inst();
 
-		std::visit([&commandList, &renderer](auto&& rootArg)
+		std::visit([&commandList, &renderer, bindIndex](auto&& rootArg)
 		{
 			using T = std::decay_t<decltype(rootArg)>;
 
 			auto& uploadMemory =
 				MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
-			DX_ASSERT(rootArg.bindIndex != Const::INVALID_INDEX && "Can't bind RootArg, invalid index");
+			DX_ASSERT(bindIndex != Const::INVALID_INDEX && "Can't bind RootArg, invalid index");
 
 			if constexpr (std::is_same_v<T, RootConstant>)
 			{
@@ -213,13 +227,13 @@ namespace RootArg
 
 				cbAddress += uploadMemory.GetOffset(rootArg.gpuMem.handler) + static_cast<D3D12_GPU_VIRTUAL_ADDRESS>(rootArg.gpuMem.offset);
 
-				commandList.GetGPUList()->SetGraphicsRootConstantBufferView(rootArg.bindIndex, cbAddress);
+				commandList.GetGPUList()->SetGraphicsRootConstantBufferView(bindIndex, cbAddress);
 			}
 			else if constexpr (std::is_same_v<T, StructuredBufferView>)
 			{
 				DX_ASSERT(rootArg.buffer != nullptr && "Invalid buffer. Can't bind root arg");
 
-				commandList.GetGPUList()->SetGraphicsRootShaderResourceView(rootArg.bindIndex,
+				commandList.GetGPUList()->SetGraphicsRootShaderResourceView(bindIndex,
 					rootArg.buffer->gpuBuffer->GetGPUVirtualAddress());
 			}
 			else if constexpr (std::is_same_v<T, DescTable>)
@@ -227,18 +241,18 @@ namespace RootArg
 				DX_ASSERT(rootArg.content.empty() == false && "Trying to bind empty desc table");
 				DX_ASSERT(rootArg.viewIndex != Const::INVALID_INDEX && "Invalid view index. Can't bind root arg");
 
-				std::visit([&commandList, &renderer, &rootArg](auto&& descTableEntity)
+				std::visit([&commandList, &renderer, &rootArg, bindIndex](auto&& descTableEntity)
 				{
 					using T = std::decay_t<decltype(descTableEntity)>;
 
 					if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Sampler>)
 					{
-						commandList.GetGPUList()->SetGraphicsRootDescriptorTable(rootArg.bindIndex,
+						commandList.GetGPUList()->SetGraphicsRootDescriptorTable(bindIndex,
 							renderer.GetSamplerHandleGPU(rootArg.viewIndex));
 					}
 					else
 					{
-						commandList.GetGPUList()->SetGraphicsRootDescriptorTable(rootArg.bindIndex,
+						commandList.GetGPUList()->SetGraphicsRootDescriptorTable(bindIndex,
 							renderer.GetCbvSrvHandleGPU(rootArg.viewIndex));
 					}
 
@@ -246,20 +260,21 @@ namespace RootArg
 			}
 
 		}, rootArg);
+
 	}
 
-	void BindCompute(const Arg_t& rootArg, CommandList& commandList)
+	void BindCompute(const Arg_t& rootArg, const int bindIndex, CommandList& commandList)
 	{
 		Renderer& renderer = Renderer::Inst();
 
-		std::visit([&commandList, &renderer](auto&& rootArg)
+		std::visit([&commandList, &renderer, bindIndex](auto&& rootArg)
 		{
 			using T = std::decay_t<decltype(rootArg)>;
 
 			auto& uploadMemory =
 				MemoryManager::Inst().GetBuff<UploadBuffer_t>();
 
-			DX_ASSERT(rootArg.bindIndex != Const::INVALID_INDEX && "Can't bind RootArg, invalid index");
+			DX_ASSERT(bindIndex != Const::INVALID_INDEX && "Can't bind RootArg, invalid index");
 
 			if constexpr (std::is_same_v<T, RootConstant>)
 			{
@@ -270,20 +285,20 @@ namespace RootArg
 				D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
 
 				cbAddress += uploadMemory.GetOffset(rootArg.gpuMem.handler) + rootArg.gpuMem.offset;
-				commandList.GetGPUList()->SetComputeRootConstantBufferView(rootArg.bindIndex, cbAddress);
+				commandList.GetGPUList()->SetComputeRootConstantBufferView(bindIndex, cbAddress);
 			}
 			else if constexpr (std::is_same_v<T, UAView>)
 			{
 				D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadMemory.GetGpuBuffer()->GetGPUVirtualAddress();
 
 				cbAddress += uploadMemory.GetOffset(rootArg.gpuMem.handler) + rootArg.gpuMem.offset;
-				commandList.GetGPUList()->SetComputeRootUnorderedAccessView(rootArg.bindIndex, cbAddress);
+				commandList.GetGPUList()->SetComputeRootUnorderedAccessView(bindIndex, cbAddress);
 			}
 			else if constexpr (std::is_same_v<T, StructuredBufferView>)
 			{
 				DX_ASSERT(rootArg.buffer != nullptr && "Invalid buffer. Can't bind root arg");
 
-				commandList.GetGPUList()->SetComputeRootShaderResourceView(rootArg.bindIndex, 
+				commandList.GetGPUList()->SetComputeRootShaderResourceView(bindIndex,
 					rootArg.buffer->gpuBuffer->GetGPUVirtualAddress());
 			}
 			else if constexpr (std::is_same_v<T, DescTable>)
@@ -291,18 +306,18 @@ namespace RootArg
 				DX_ASSERT(rootArg.content.empty() == false && "Trying to bind empty desc table");
 				DX_ASSERT(rootArg.viewIndex != Const::INVALID_INDEX && "Invalid view index. Can't bind root arg");
 
-				std::visit([&commandList, &renderer, &rootArg](auto&& descTableEntity)
+				std::visit([&commandList, &renderer, &rootArg, bindIndex](auto&& descTableEntity)
 				{
 					using T = std::decay_t<decltype(descTableEntity)>;
 
 					if constexpr (std::is_same_v<T, RootArg::DescTableEntity_Sampler>)
 					{
-						commandList.GetGPUList()->SetComputeRootDescriptorTable(rootArg.bindIndex,
+						commandList.GetGPUList()->SetComputeRootDescriptorTable(bindIndex,
 							renderer.GetSamplerHandleGPU(rootArg.viewIndex));
 					}
 					else
 					{
-						commandList.GetGPUList()->SetComputeRootDescriptorTable(rootArg.bindIndex,
+						commandList.GetGPUList()->SetComputeRootDescriptorTable(bindIndex,
 							renderer.GetCbvSrvHandleGPU(rootArg.viewIndex));
 					}
 
@@ -310,6 +325,7 @@ namespace RootArg
 			}
 
 		}, rootArg);
+
 	}
 
 	DescTable::DescTable(DescTable&& other)
@@ -326,7 +342,6 @@ namespace RootArg
 	{
 		DX_ASSERT(viewIndex == Const::INVALID_INDEX && "Trying to copy non empty root arg. Is this intended?");
 
-		bindIndex = other.bindIndex;
 		content = other.content;
 		viewIndex = other.viewIndex;
 
@@ -336,9 +351,6 @@ namespace RootArg
 	DescTable& DescTable::operator=(DescTable&& other)
 	{
 		PREVENT_SELF_MOVE_ASSIGN;
-
-		bindIndex = other.bindIndex;
-		other.bindIndex = Const::INVALID_INDEX;
 
 		content = std::move(other.content);
 
@@ -596,22 +608,27 @@ std::string PassParametersSource::ShaderTypeToStr(ShaderType type)
 	return "Undefined";
 }
 
-void PassParameters::AddGlobalPerObjectRootArgIndex(std::vector<int>& perObjGlobalRootArgsIndicesTemplate, std::vector<RootArg::Arg_t>& perObjGlobalResTemplate, RootArg::Arg_t&& arg)
+void PassParameters::AddGlobalPerObjectRootArgRef(std::vector<RootArg::GlobalArgRef>& perObjGlobalRootArgsRefsTemplate, std::vector<RootArg::Arg_t>& perObjGlobalResTemplate, int bindIndex, RootArg::Arg_t&& arg)
 {
 	const int resTemplateIndex = RootArg::FindArg(perObjGlobalResTemplate, arg);
 	if (resTemplateIndex == Const::INVALID_INDEX)
 	{
+		// Add proper ref
+		RootArg::GlobalArgRef ref;
+		ref.bindIndex = bindIndex;
+		ref.globalListIndex = perObjGlobalResTemplate.size();
+
+		perObjGlobalRootArgsRefsTemplate.push_back(ref);
+
 		// Res is not found create new
 		perObjGlobalResTemplate.push_back(std::move(arg));
-
-		// Add proper index
-		perObjGlobalRootArgsIndicesTemplate.push_back(perObjGlobalResTemplate.size() - 1);
 	}
 	else
 	{
-		DX_ASSERT(RootArg::GetBindIndex(arg) == RootArg::GetBindIndex(perObjGlobalResTemplate[resTemplateIndex]) &&
-			"Global per object resources must have same bind indexes. Seems like different passes, place them differently.");
+		RootArg::GlobalArgRef ref;
+		ref.bindIndex = bindIndex;
+		ref.globalListIndex = resTemplateIndex;
 
-		perObjGlobalRootArgsIndicesTemplate.push_back(resTemplateIndex);
+		perObjGlobalRootArgsRefsTemplate.push_back(ref);
 	}
 }

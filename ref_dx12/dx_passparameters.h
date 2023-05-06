@@ -52,7 +52,6 @@ namespace RootArg
 {
 	struct RootConstant
 	{
-		int bindIndex = Const::INVALID_INDEX;
 		unsigned int size = Const::INVALID_SIZE;
 		unsigned int hashedName = 0;
 	};
@@ -67,7 +66,6 @@ namespace RootArg
 
 	struct ConstBuffView
 	{
-		int bindIndex = Const::INVALID_INDEX;
 		unsigned int hashedName = 0;
 		std::vector<RootArg::ConstBuffField> content;
 		// Doesn't own memory in this buffer, so no need to dealloc in destructor
@@ -76,7 +74,6 @@ namespace RootArg
 	
 	struct UAView
 	{
-		int bindIndex = Const::INVALID_INDEX;
 		unsigned int hashedName = 0;
 
 		std::optional<std::string> internalBindName;
@@ -87,7 +84,6 @@ namespace RootArg
 
 	struct StructuredBufferView
 	{
-		int bindIndex = Const::INVALID_INDEX;
 		unsigned int hashedName = 0;
 
 		std::optional<std::string> internalBindName;
@@ -148,18 +144,28 @@ namespace RootArg
 
 		~DescTable() = default;
 
-		int bindIndex = Const::INVALID_INDEX;
 		std::vector<DescTableEntity_t> content;
 		int viewIndex = Const::INVALID_INDEX;
 	};
 
 	using Arg_t = std::variant<RootConstant, ConstBuffView, UAView, StructuredBufferView, DescTable>;
 
+	struct GlobalArgRef
+	{
+		int globalListIndex = Const::INVALID_INDEX;
+		int bindIndex = Const::INVALID_INDEX;
+	};
+
+	struct LocalArg
+	{
+		Arg_t arg;
+		int bindIndex = Const::INVALID_INDEX;
+	};
+
 	int FindArg(const std::vector<Arg_t>& args, const Arg_t& arg);
 
-	void Bind(const Arg_t& rootArg, CommandList& commandList);
-
-	void BindCompute(const Arg_t& rootArg, CommandList& commandList);
+	void Bind(const Arg_t& rootArg, const int bindIndex, CommandList& commandList);
+	void BindCompute(const Arg_t& rootArg, const int bindIndex, CommandList& commandList);
 
 	template<typename T>
 	int AllocateDescTableView(const DescTable& descTable, T& allocator)
@@ -233,6 +239,8 @@ namespace RootArg
 	}
 
 	void AttachConstBufferToArgs(std::vector<RootArg::Arg_t>& rootArgs, int offset, BufferHandler gpuHandler);
+	void AttachConstBufferToLocalArgs(std::vector<RootArg::LocalArg>& rootLocalArgs, int offset, BufferHandler gpuHandler);
+	void AttachConstBufferToArg(RootArg::Arg_t& rootArg, int& offset, BufferHandler gpuHandler);
 
 	template<typename T>
 	int GetConstBufftSize(const T& cb)
@@ -249,18 +257,17 @@ namespace RootArg
 	}
 
 	int GetDescTableSize(const DescTable& descTable);
-	int GetSize(const Arg_t& arg);
-	int GetBindIndex(const Arg_t& arg);
+	int GetArgSize(const Arg_t& arg);
 
-
-	int GetSize(const std::vector<RootArg::Arg_t>& args);
+	int GetLocalArgsSize(const std::vector<RootArg::LocalArg>& args);
+	int GetArgsSize(const std::vector<RootArg::Arg_t>& args);
 
 	template<typename... Ts>
-	int GetSize(const std::tuple<Ts...>& args) 
+	int GetArgsSize(const std::tuple<Ts...>& args) 
 	{
 		return std::apply([](Ts... args) 
 		{
-			return (GetSize(args) + ...);
+			return (GetArgsSize(args) + ...);
 		}, args);
 	}
 };
@@ -522,9 +529,10 @@ public:
 
 	~PassParameters() = default;
 
-	static void AddGlobalPerObjectRootArgIndex(
-		std::vector<int>& perObjGlobalRootArgsIndicesTemplate,
+	static void AddGlobalPerObjectRootArgRef(
+		std::vector<RootArg::GlobalArgRef>& perObjGlobalRootArgsRefsTemplate,
 		std::vector<RootArg::Arg_t>& perObjGlobalResTemplate,
+		int bindIndex,
 		RootArg::Arg_t&& arg);
 
 public:
@@ -539,9 +547,9 @@ public:
 
 	D3D12_VIEWPORT viewport = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
 
-	std::vector<RootArg::Arg_t> perObjectLocalRootArgsTemplate;
+	std::vector<RootArg::LocalArg> perObjectLocalRootArgsTemplate;
 	// Indices of global RootArgs in objects global RootArg storage that are needed for this pass
-	std::vector<int> perObjGlobalRootArgsIndicesTemplate;
+	std::vector<RootArg::GlobalArgRef> perObjGlobalRootArgsRefsTemplate;
 
 	std::optional<Parsing::VertAttr> vertAttr;
 
@@ -555,7 +563,7 @@ public:
 
 	/*  Owned by pass */
 
-	std::vector<RootArg::Arg_t> passLocalRootArgs;
-	std::vector<int> passGlobalRootArgsIndices;
+	std::vector<RootArg::LocalArg> passLocalRootArgs;
+	std::vector<RootArg::GlobalArgRef> passGlobalRootArgsRefs;
 
 };

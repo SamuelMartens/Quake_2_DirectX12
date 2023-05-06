@@ -22,7 +22,7 @@ namespace
 	{
 		RenderCallbacks::RegisterLocalPassContext localPassContext = { context };
 
-		for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+		for (RootArg::LocalArg& localArg : passParameters.passLocalRootArgs)
 		{
 			std::visit([&pass, &localPassContext, &passParameters, &allocator]
 			(auto&& arg)
@@ -128,7 +128,7 @@ namespace
 					}
 				}
 
-			}, arg);
+			}, localArg.arg);
 		}
 	}
 
@@ -139,7 +139,7 @@ namespace
 
 		std::vector<std::byte> cpuMem(constBuffMemorySize, static_cast<std::byte>(0));
 
-		for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+		for (RootArg::LocalArg& localArg : passParameters.passLocalRootArgs)
 		{
 			std::visit([&pass, &localPassContext, &cpuMem, &passParameters](auto&& arg)
 			{
@@ -215,7 +215,7 @@ namespace
 					}
 				}
 
-			}, arg);
+			}, localArg.arg);
 		}
 
 		if (constBuffMemorySize != 0)
@@ -443,7 +443,7 @@ void Pass_UI::Init()
 	// Pass memory exists have the same lifetime as pass itself. So unlike objects memory
 	// I can allocate it only one time
 	DX_ASSERT(passMemorySize == Const::INVALID_SIZE && "Pass_UI memory size should be uninitialized");
-	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
+	passMemorySize = RootArg::GetLocalArgsSize(passParameters.passLocalRootArgs);
 
 	if (passMemorySize > 0)
 	{
@@ -456,7 +456,7 @@ void Pass_UI::Init()
 
 	// Calculate amount of memory for const buffers per objects
 	DX_ASSERT(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Per object const memory should be uninitialized");
-	perObjectConstBuffMemorySize =  RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
+	perObjectConstBuffMemorySize =  RootArg::GetLocalArgsSize(passParameters.perObjectLocalRootArgsTemplate);
 
 
 	// Calculate amount of memory for vertex buffers per objects
@@ -488,12 +488,21 @@ void Pass_UI::RegisterObjects(GPUJobContext& context)
 	RenderCallbacks::RegisterLocalObjectContext regContext = { context };
 	const unsigned passHashedName = HASH(passParameters.name.c_str());
 
+	std::vector<RootArg::Arg_t> objectArgs;
+	objectArgs.reserve(passParameters.perObjectLocalRootArgsTemplate.size());
+
+	std::transform(passParameters.perObjectLocalRootArgsTemplate.cbegin(), passParameters.perObjectLocalRootArgsTemplate.cend(), std::back_inserter(objectArgs),
+		[](const RootArg::LocalArg& localArg)
+		{
+			return localArg.arg;
+		});
+
 	for (int i = 0; i < objects.size(); ++i)
 	{
 		// Special copy routine is required here.
 		PassObj& obj = drawObjects.emplace_back(PassObj{
-			passParameters.perObjectLocalRootArgsTemplate,
-			&objects[i] });
+			objectArgs,
+			&objects[i]});
 
 		// Init object root args
 
@@ -574,7 +583,7 @@ void Pass_UI::RegisterObjects(GPUJobContext& context)
 void Pass_UI::RegisterPassResources(GPUJobContext& context)
 {
 	_RegisterPassResources(*this, passParameters, *Renderer::Inst().cbvSrvHeapAllocator, context);
-	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
+	RootArg::AttachConstBufferToLocalArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
 }
 
 void Pass_UI::UpdatePassResources(GPUJobContext& context)
@@ -622,12 +631,12 @@ void Pass_UI::Draw(GPUJobContext& context)
 	const FrameGraph& frameGraph = *context.frame.frameGraph;
 
 	// Bind pass global argument
-	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsIndices, commandList);
+	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsRefs, commandList);
 
 	// Bind pass local arguments
-	for (const RootArg::Arg_t& arg :  passParameters.passLocalRootArgs)
+	for (const RootArg::LocalArg& localArg :  passParameters.passLocalRootArgs)
 	{
-		RootArg::Bind(arg, commandList);
+		RootArg::Bind(localArg.arg, localArg.bindIndex, commandList);
 	}
 
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
@@ -647,14 +656,16 @@ void Pass_UI::Draw(GPUJobContext& context)
 		commandList.GetGPUList()->IASetVertexBuffers(0, 1, &vertexBufferView);
 		
 		// Bind global args
-		frameGraph.BindObjGlobalRes<Parsing::PassInputType::UI>(passParameters.perObjGlobalRootArgsIndicesTemplate, i,
+		frameGraph.BindObjGlobalRes<Parsing::PassInputType::UI>(passParameters.perObjGlobalRootArgsRefsTemplate, i,
 			commandList);
 
-
 		// Bind local args
-		for (const RootArg::Arg_t& rootArg : obj.rootArgs)
+		DX_ASSERT(obj.rootArgs.size() == passParameters.perObjectLocalRootArgsTemplate.size() && 
+			"Pass template object args and obj root args must have the same size");
+
+		for (int i = 0; i < obj.rootArgs.size(); ++i)
 		{
-			RootArg::Bind(rootArg, *context.commandList);
+			RootArg::Bind(obj.rootArgs[i], passParameters.perObjectLocalRootArgsTemplate[i].bindIndex, *context.commandList);
 		}
 
 		commandList.GetGPUList()->DrawInstanced(perObjectVertexMemorySize / perVertexMemorySize, 1, 0, 0);
@@ -721,9 +732,9 @@ void Pass_UI::ReleasePersistentResources()
 		passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
 	}
 
-	for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	for (RootArg::LocalArg& localArg : passParameters.passLocalRootArgs)
 	{
-		Release(arg, *Renderer::Inst().cbvSrvHeapAllocator);
+		Release(localArg.arg, *Renderer::Inst().cbvSrvHeapAllocator);
 	}
 
 	PassUtils::ReleaseColorDepthRenderTargetViews(passParameters);
@@ -752,7 +763,7 @@ void Pass_Static::Execute(GPUJobContext& context)
 void Pass_Static::Init()
 {
 	DX_ASSERT(passMemorySize == Const::INVALID_SIZE && "Pass_Static memory size should be unitialized");
-	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
+	passMemorySize = RootArg::GetLocalArgsSize(passParameters.passLocalRootArgs);
 
 	if (passMemorySize > 0)
 	{
@@ -761,7 +772,7 @@ void Pass_Static::Init()
 	}
 
 	DX_ASSERT(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Static perObject memory size should be unitialized");
-	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
+	perObjectConstBuffMemorySize = RootArg::GetLocalArgsSize(passParameters.perObjectLocalRootArgsTemplate);
 
 	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
 }
@@ -769,7 +780,7 @@ void Pass_Static::Init()
 void Pass_Static::RegisterPassResources(GPUJobContext& context)
 {
 	_RegisterPassResources(*this, passParameters, *Renderer::Inst().cbvSrvHeapAllocator, context);
-	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
+	RootArg::AttachConstBufferToLocalArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
 }
 
 void Pass_Static::UpdatePassResources(GPUJobContext& context)
@@ -798,9 +809,9 @@ void Pass_Static::ReleasePersistentResources()
 		obj.ReleaseResources();
 	}
 
-	for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	for (RootArg::LocalArg& localArg : passParameters.passLocalRootArgs)
 	{
-		RootArg::Release(arg, *Renderer::Inst().cbvSrvHeapAllocator);
+		RootArg::Release(localArg.arg, *Renderer::Inst().cbvSrvHeapAllocator);
 	}
 
 	PassUtils::ReleaseColorDepthRenderTargetViews(passParameters);
@@ -812,10 +823,19 @@ void Pass_Static::RegisterObjects(const std::vector<StaticObject>& objects, GPUJ
 
 	const unsigned passHashedName = HASH(passParameters.name.c_str());
 
+	std::vector<RootArg::Arg_t> objectArgs;
+	objectArgs.reserve(passParameters.perObjectLocalRootArgsTemplate.size());
+
+	std::transform(passParameters.perObjectLocalRootArgsTemplate.cbegin(), passParameters.perObjectLocalRootArgsTemplate.cend(), std::back_inserter(objectArgs),
+		[](const RootArg::LocalArg& localArg)
+		{
+			return localArg.arg;
+		});
+
 	for (const StaticObject& object : objects)
 	{
 		PassObj& obj = drawObjects.emplace_back(PassObj{
-		passParameters.perObjectLocalRootArgsTemplate,
+		objectArgs,
 		Const::INVALID_BUFFER_HANDLER,
 		 &object });
 
@@ -874,12 +894,12 @@ void Pass_Static::Draw(GPUJobContext& context)
 	const FrameGraph& frameGraph = *context.frame.frameGraph;
 
 	// Bind pass global argument
-	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsIndices, commandList);
+	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsRefs, commandList);
 
 	// Bind pass local arguments
-	for (const RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	for (const RootArg::LocalArg& localArg : passParameters.passLocalRootArgs)
 	{
-		RootArg::Bind(arg, commandList);
+		RootArg::Bind(localArg.arg, localArg.bindIndex, commandList);
 	}
 
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
@@ -898,14 +918,16 @@ void Pass_Static::Draw(GPUJobContext& context)
 		const PassObj& obj = drawObjects[objectIndex];
 
 		// Bind global args
-		frameGraph.BindObjGlobalRes<Parsing::PassInputType::Static>(passParameters.perObjGlobalRootArgsIndicesTemplate, objectIndex,
+		frameGraph.BindObjGlobalRes<Parsing::PassInputType::Static>(passParameters.perObjGlobalRootArgsRefsTemplate, objectIndex,
 			commandList);
 
-
 		// Bind local args
-		for (const RootArg::Arg_t& rootArg : obj.rootArgs)
+		DX_ASSERT(obj.rootArgs.size() == passParameters.perObjectLocalRootArgsTemplate.size() &&
+			"Pass template object args and obj root args must have the same size");
+
+		for (int i = 0; i < obj.rootArgs.size(); ++i)
 		{
-			RootArg::Bind(rootArg, *context.commandList);
+			RootArg::Bind(obj.rootArgs[i], passParameters.perObjectLocalRootArgsTemplate[i].bindIndex, *context.commandList);
 		}
 
 		// Vertices
@@ -971,7 +993,7 @@ void Pass_Dynamic::Execute(GPUJobContext& context)
 void Pass_Dynamic::Init()
 {
 	DX_ASSERT(passMemorySize == Const::INVALID_SIZE && "Pass_Dynamic memory size should be unitialized");
-	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
+	passMemorySize = RootArg::GetLocalArgsSize(passParameters.passLocalRootArgs);
 
 	if (passMemorySize > 0)
 	{
@@ -980,7 +1002,7 @@ void Pass_Dynamic::Init()
 	}
 
 	DX_ASSERT(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Dynamic perObject memory size should be unitialized");
-	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
+	perObjectConstBuffMemorySize = RootArg::GetLocalArgsSize(passParameters.perObjectLocalRootArgsTemplate);
 
 	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
 }
@@ -988,7 +1010,7 @@ void Pass_Dynamic::Init()
 void Pass_Dynamic::RegisterPassResources(GPUJobContext& context)
 {
 	_RegisterPassResources(*this, passParameters, *Renderer::Inst().cbvSrvHeapAllocator, context);
-	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
+	RootArg::AttachConstBufferToLocalArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
 }
 
 void Pass_Dynamic::UpdatePassResources(GPUJobContext& context)
@@ -1023,9 +1045,9 @@ void Pass_Dynamic::ReleasePersistentResources()
 		passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
 	}
 
-	for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	for (RootArg::LocalArg& localArg : passParameters.passLocalRootArgs)
 	{
-		Release(arg, *Renderer::Inst().cbvSrvHeapAllocator);
+		Release(localArg.arg, *Renderer::Inst().cbvSrvHeapAllocator);
 	}
 
 	PassUtils::ReleaseColorDepthRenderTargetViews(passParameters);
@@ -1045,7 +1067,14 @@ void Pass_Dynamic::RegisterEntities(GPUJobContext& context)
 		objectsConstBufferMemory = uploadMemory.Allocate(perObjectConstBuffMemorySize * visibleEntitiesIndices.size());
 	}
 
-	const std::vector<RootArg::Arg_t>& perEntityArgTemplate = passParameters.perObjectLocalRootArgsTemplate;
+	std::vector<RootArg::Arg_t> perEntityArgTemplate;
+	perEntityArgTemplate.reserve(passParameters.perObjectLocalRootArgsTemplate.size());
+
+	std::transform(passParameters.perObjectLocalRootArgsTemplate.cbegin(), passParameters.perObjectLocalRootArgsTemplate.cend(), std::back_inserter(perEntityArgTemplate),
+		[](const RootArg::LocalArg& localArg)
+		{
+			return localArg.arg;
+		});
 
 	RenderCallbacks::RegisterLocalObjectContext regContext = { context };
 	const unsigned passHashedName = HASH(passParameters.name.c_str());
@@ -1105,12 +1134,12 @@ void Pass_Dynamic::Draw(GPUJobContext& context)
 	const FrameGraph& frameGraph = *context.frame.frameGraph;
 
 	// Bind pass global argument
-	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsIndices, commandList);
+	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsRefs, commandList);
 
 	// Bind pass local arguments
-	for (const RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	for (const RootArg::LocalArg& localArg : passParameters.passLocalRootArgs)
 	{
-		RootArg::Bind(arg, commandList);
+		RootArg::Bind(localArg.arg, localArg.bindIndex, commandList);
 	}
 
 	// Position0, Position1, TexCoord 
@@ -1144,13 +1173,16 @@ void Pass_Dynamic::Draw(GPUJobContext& context)
 		PassObj& drawEntitiy = drawObjects[i];
 		
 		// Bind global 
-		frameGraph.BindObjGlobalRes<Parsing::PassInputType::Dynamic>(passParameters.perObjGlobalRootArgsIndicesTemplate, 
+		frameGraph.BindObjGlobalRes<Parsing::PassInputType::Dynamic>(passParameters.perObjGlobalRootArgsRefsTemplate, 
 				i, commandList);
 
 		// Bind local 
-		for (const RootArg::Arg_t& rootArg : drawEntitiy.rootArgs)
+		DX_ASSERT(drawEntitiy.rootArgs.size() == passParameters.perObjectLocalRootArgsTemplate.size() &&
+			"Pass template object args and obj root args must have the same size");
+
+		for (int i = 0; i < drawEntitiy.rootArgs.size(); ++i)
 		{
-			RootArg::Bind(rootArg, *context.commandList);
+			RootArg::Bind(drawEntitiy.rootArgs[i], passParameters.perObjectLocalRootArgsTemplate[i].bindIndex, *context.commandList);
 		}
 
 		// Set up vertex data
@@ -1225,7 +1257,7 @@ void Pass_Particles::Execute(GPUJobContext& context)
 void Pass_Particles::Init()
 {
 	DX_ASSERT(passMemorySize == Const::INVALID_SIZE && "Pass_Particles memory size should be uninitialized");
-	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
+	passMemorySize = RootArg::GetLocalArgsSize(passParameters.passLocalRootArgs);
 
 	if (passMemorySize > 0)
 	{
@@ -1234,7 +1266,7 @@ void Pass_Particles::Init()
 	}
 
 	DX_ASSERT(passParameters.perObjectLocalRootArgsTemplate.empty() == true && "Particle pass is not suited to have local per object resources");
-	DX_ASSERT(passParameters.perObjGlobalRootArgsIndicesTemplate.empty() == true && "Particle pass is not suited to have global per object resources");
+	DX_ASSERT(passParameters.perObjGlobalRootArgsRefsTemplate.empty() == true && "Particle pass is not suited to have global per object resources");
 
 	PassUtils::AllocateColorDepthRenderTargetViews(passParameters);
 }
@@ -1242,7 +1274,7 @@ void Pass_Particles::Init()
 void Pass_Particles::RegisterPassResources(GPUJobContext& context)
 {
 	_RegisterPassResources(*this, passParameters, *Renderer::Inst().cbvSrvHeapAllocator, context);
-	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
+	RootArg::AttachConstBufferToLocalArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
 }
 
 void Pass_Particles::ReleasePerFrameResources(Frame& frame)
@@ -1258,9 +1290,9 @@ void Pass_Particles::ReleasePersistentResources()
 		passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
 	}
 
-	for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	for (RootArg::LocalArg& localArg : passParameters.passLocalRootArgs)
 	{
-		Release(arg, *Renderer::Inst().cbvSrvHeapAllocator);
+		Release(localArg.arg, *Renderer::Inst().cbvSrvHeapAllocator);
 	}
 
 	PassUtils::ReleaseColorDepthRenderTargetViews(passParameters);
@@ -1277,12 +1309,12 @@ void Pass_Particles::Draw(GPUJobContext& context)
 	const FrameGraph& frameGraph = *context.frame.frameGraph;
 
 	// Bind pass global argument
-	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsIndices, commandList);
+	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsRefs, commandList);
 
 	// Bind pass local arguments
-	for (const RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	for (const RootArg::LocalArg& localArg : passParameters.passLocalRootArgs)
 	{
-		RootArg::Bind(arg, commandList);
+		RootArg::Bind(localArg.arg, localArg.bindIndex, commandList);
 	}
 
 	auto& uploadMemory = MemoryManager::Inst().GetBuff<UploadBuffer_t>();
@@ -1319,7 +1351,7 @@ void Pass_PostProcess::Execute(GPUJobContext& context)
 void Pass_PostProcess::Init()
 {
 	DX_ASSERT(passMemorySize == Const::INVALID_SIZE && "Pass_PostProcess memory size should be uninitialized");
-	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
+	passMemorySize = RootArg::GetLocalArgsSize(passParameters.passLocalRootArgs);
 
 	if (passMemorySize > 0)
 	{
@@ -1328,14 +1360,14 @@ void Pass_PostProcess::Init()
 	}
 
 	DX_ASSERT(passParameters.perObjectLocalRootArgsTemplate.empty() == true && "PostProcess pass is not suited to have local per object resources");
-	DX_ASSERT(passParameters.perObjGlobalRootArgsIndicesTemplate.empty() == true && "PostProcess pass is not suited to have global per object resources");
+	DX_ASSERT(passParameters.perObjGlobalRootArgsRefsTemplate.empty() == true && "PostProcess pass is not suited to have global per object resources");
 
 }
 
 void Pass_PostProcess::RegisterPassResources(GPUJobContext& context)
 {
 	_RegisterPassResources(*this, passParameters, *Renderer::Inst().cbvSrvHeapAllocator, context);
-	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
+	RootArg::AttachConstBufferToLocalArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
 }
 
 void Pass_PostProcess::ReleasePerFrameResources(Frame& frame)
@@ -1351,9 +1383,9 @@ void Pass_PostProcess::ReleasePersistentResources()
 		passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
 	}
 
-	for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	for (RootArg::LocalArg& localArg : passParameters.passLocalRootArgs)
 	{
-		Release(arg, *Renderer::Inst().cbvSrvHeapAllocator);
+		Release(localArg.arg, *Renderer::Inst().cbvSrvHeapAllocator);
 	}
 }
 
@@ -1368,12 +1400,12 @@ void Pass_PostProcess::Dispatch(GPUJobContext& context)
 	const FrameGraph& frameGraph = *context.frame.frameGraph;
 	
 	// Bind pass global argument
-	frameGraph.BindComputePassGlobalRes(passParameters.passGlobalRootArgsIndices, commandList);
+	frameGraph.BindComputePassGlobalRes(passParameters.passGlobalRootArgsRefs, commandList);
 
 	// Bind pass local arguments
-	for (const RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	for (const RootArg::LocalArg& localArg : passParameters.passLocalRootArgs)
 	{
-		RootArg::BindCompute(arg, commandList);
+		RootArg::BindCompute(localArg.arg, localArg.bindIndex, commandList);
 	}
 
 	DX_ASSERT(passParameters.threadGroups.has_value() == true && "PostProcess pass has not threadGroups specified");
@@ -1426,7 +1458,7 @@ void Pass_Debug::Init()
 
 	// Resources
 	DX_ASSERT(passMemorySize == Const::INVALID_SIZE && "Pass_Debug memory size should be unitialized");
-	passMemorySize = RootArg::GetSize(passParameters.passLocalRootArgs);
+	passMemorySize = RootArg::GetLocalArgsSize(passParameters.passLocalRootArgs);
 
 	if (passMemorySize > 0)
 	{
@@ -1435,7 +1467,7 @@ void Pass_Debug::Init()
 	}
 
 	DX_ASSERT(perObjectConstBuffMemorySize == Const::INVALID_SIZE && "Pass_Debug perObject memory size should be unitialized");
-	perObjectConstBuffMemorySize = RootArg::GetSize(passParameters.perObjectLocalRootArgsTemplate);
+	perObjectConstBuffMemorySize = RootArg::GetLocalArgsSize(passParameters.perObjectLocalRootArgsTemplate);
 
 	perVertexMemorySize = Parsing::GetVertAttrSize(*passParameters.vertAttr);
 
@@ -1448,7 +1480,7 @@ void Pass_Debug::Init()
 void Pass_Debug::RegisterPassResources(GPUJobContext& context)
 {
 	_RegisterPassResources(*this, passParameters, *Renderer::Inst().cbvSrvHeapAllocator, context);
-	RootArg::AttachConstBufferToArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
+	RootArg::AttachConstBufferToLocalArgs(passParameters.passLocalRootArgs, 0, passConstBuffMemory);
 }
 
 void Pass_Debug::UpdatePassResources(GPUJobContext& context)
@@ -1489,9 +1521,9 @@ void Pass_Debug::ReleasePersistentResources()
 		passConstBuffMemory = Const::INVALID_BUFFER_HANDLER;
 	}
 
-	for (RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	for (RootArg::LocalArg& localArg : passParameters.passLocalRootArgs)
 	{
-		Release(arg, *Renderer::Inst().cbvSrvHeapAllocator);
+		Release(localArg.arg, *Renderer::Inst().cbvSrvHeapAllocator);
 	}
 
 	PassUtils::ReleaseColorDepthRenderTargetViews(passParameters);
@@ -1777,10 +1809,19 @@ void Pass_Debug::RegisterObjects(GPUJobContext& context)
 	RenderCallbacks::RegisterLocalObjectContext regContext = { context };
 	const unsigned passHashedName = HASH(passParameters.name.c_str());
 
+	std::vector<RootArg::Arg_t> objectArgs;
+	objectArgs.reserve(passParameters.perObjectLocalRootArgsTemplate.size());
+
+	std::transform(passParameters.perObjectLocalRootArgsTemplate.cbegin(), passParameters.perObjectLocalRootArgsTemplate.cend(), std::back_inserter(objectArgs),
+		[](const RootArg::LocalArg& localArg)
+		{
+			return localArg.arg;
+		});
+
 	for (int i = 0; i < debugObjects.size(); ++i)
 	{
 		PassObj& obj = drawObjects.emplace_back(PassObj{
-			passParameters.perObjectLocalRootArgsTemplate,
+			objectArgs,
 			&debugObjects[i],
 			debugObjectsVertexSizes[i]
 		});
@@ -1828,12 +1869,12 @@ void Pass_Debug::Draw(GPUJobContext& context)
 	const FrameGraph& frameGraph = *context.frame.frameGraph;
 
 	// Bind pass global argument
-	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsIndices, commandList);
+	frameGraph.BindPassGlobalRes(passParameters.passGlobalRootArgsRefs, commandList);
 
 	// Bind pass local arguments
-	for (const RootArg::Arg_t& arg : passParameters.passLocalRootArgs)
+	for (const RootArg::LocalArg& localArg : passParameters.passLocalRootArgs)
 	{
-		RootArg::Bind(arg, commandList);
+		RootArg::Bind(localArg.arg, localArg.bindIndex, commandList);
 	}
 
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
@@ -1854,13 +1895,16 @@ void Pass_Debug::Draw(GPUJobContext& context)
 		commandList.GetGPUList()->IASetVertexBuffers(0, 1, &vertexBufferView);
 
 		// Bind global args
-		frameGraph.BindObjGlobalRes<Parsing::PassInputType::Debug>(passParameters.perObjGlobalRootArgsIndicesTemplate, i,
+		frameGraph.BindObjGlobalRes<Parsing::PassInputType::Debug>(passParameters.perObjGlobalRootArgsRefsTemplate, i,
 			commandList);
 
 		// Bind local args
-		for (const RootArg::Arg_t& rootArg : obj.rootArgs)
+		DX_ASSERT(obj.rootArgs.size() == passParameters.perObjectLocalRootArgsTemplate.size() &&
+			"Pass template object args and obj root args must have the same size");
+
+		for (int i = 0; i < obj.rootArgs.size(); ++i)
 		{
-			RootArg::Bind(rootArg, *context.commandList);
+			RootArg::Bind(obj.rootArgs[i], passParameters.perObjectLocalRootArgsTemplate[i].bindIndex, *context.commandList);
 		}
 
 		commandList.GetGPUList()->DrawInstanced(vertexBufferView.SizeInBytes / vertexBufferView.StrideInBytes, 1, 0, 0);

@@ -560,12 +560,12 @@ void FrameGraph::Execute(Frame& frame)
 void FrameGraph::Init(GPUJobContext& context)
 {
 	// Init utility data
-	passGlobalMemorySize = RootArg::GetSize(passesGlobalRes);
+	passGlobalMemorySize = RootArg::GetArgsSize(passesGlobalRes);
 
 	int index = 0;
 	std::apply([&index, this](auto&... objResTemplate) 
 	{
-		((perObjectGlobalMemorySize[index++] = RootArg::GetSize(objResTemplate)), ...);
+		((perObjectGlobalMemorySize[index++] = RootArg::GetArgsSize(objResTemplate)), ...);
 	}, objGlobalResTemplate);
 
 	RegisterPassResources(context);
@@ -594,19 +594,19 @@ void FrameGraph::AddResourceReadbackCallbacks(const Frame& frame)
 	}
 }
 
-void FrameGraph::BindPassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const
+void FrameGraph::BindPassGlobalRes(const std::vector<RootArg::GlobalArgRef>& resRefs, CommandList& commandList) const
 {
-	for (const int index : resIndices)
+	for (const RootArg::GlobalArgRef& ref : resRefs)
 	{
-		RootArg::Bind(passesGlobalRes[index], commandList);
+		RootArg::Bind(passesGlobalRes[ref.globalListIndex], ref.bindIndex, commandList);
 	}
 }
 
-void FrameGraph::BindComputePassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const
+void FrameGraph::BindComputePassGlobalRes(const std::vector<RootArg::GlobalArgRef>& resRefs, CommandList& commandList) const
 {
-	for (const int index : resIndices)
+	for (const RootArg::GlobalArgRef& ref : resRefs)
 	{
-		RootArg::BindCompute(passesGlobalRes[index], commandList);
+		RootArg::BindCompute(passesGlobalRes[ref.globalListIndex], ref.bindIndex, commandList);
 	}
 }
 

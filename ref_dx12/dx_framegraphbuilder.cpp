@@ -1356,7 +1356,7 @@ namespace
 
 	template<Parsing::PassInputType INPUT_TYPE>
 	void _AddRootArg(PassParameters& pass, std::vector<RootArg::Arg_t>& passesGlobalRes, FrameGraph::PerObjectGlobalTemplate_t& objGlobalResTemplate,
-		Parsing::ResourceBindFrequency updateFrequency, Parsing::ResourceScope scope, RootArg::Arg_t&& arg)
+		Parsing::ResourceBindFrequency updateFrequency, Parsing::ResourceScope scope, int bindIndex, RootArg::Arg_t&& arg)
 	{
 		switch (scope)
 		{
@@ -1365,11 +1365,23 @@ namespace
 			switch (updateFrequency)
 			{
 			case Parsing::ResourceBindFrequency::PerObject:
-				pass.perObjectLocalRootArgsTemplate.push_back(std::move(arg));
-				break;
+			{
+				RootArg::LocalArg localArg;
+				localArg.bindIndex = bindIndex;
+				localArg.arg = std::move(arg);
+
+				pass.perObjectLocalRootArgsTemplate.push_back(std::move(localArg));
+			}
+			break;
 			case Parsing::ResourceBindFrequency::PerPass:
-				pass.passLocalRootArgs.push_back(std::move(arg));
-				break;
+			{
+				RootArg::LocalArg localArg;
+				localArg.bindIndex = bindIndex;
+				localArg.arg = std::move(arg);
+
+				pass.passLocalRootArgs.push_back(std::move(localArg));
+			}
+			break;
 			default:
 				DX_ASSERT(false && "Undefined bind frequency handling in add root arg pass. Local");
 				break;
@@ -1386,9 +1398,11 @@ namespace
 				auto& perObjGlobalResTemplate =
 					std::get<static_cast<int>(INPUT_TYPE)>(objGlobalResTemplate);
 
-				PassParameters::AddGlobalPerObjectRootArgIndex(
-					pass.perObjGlobalRootArgsIndicesTemplate,
-					perObjGlobalResTemplate, std::move(arg));
+				PassParameters::AddGlobalPerObjectRootArgRef(
+					pass.perObjGlobalRootArgsRefsTemplate,
+					perObjGlobalResTemplate, 
+					bindIndex,
+					std::move(arg));
 
 			}
 			break;
@@ -1398,18 +1412,24 @@ namespace
 
 				if (resIndex == Const::INVALID_INDEX)
 				{
+					// Add global ref
+					RootArg::GlobalArgRef argRef;
+					argRef.globalListIndex = passesGlobalRes.size();
+					argRef.bindIndex = bindIndex;
+
+					pass.passGlobalRootArgsRefs.push_back(argRef);
+
 					// Res is not found create new
 					passesGlobalRes.push_back(std::move(arg));
-
-					// Add proper index
-					pass.passGlobalRootArgsIndices.push_back(passesGlobalRes.size() - 1);
 				}
 				else
 				{
-					DX_ASSERT(RootArg::GetBindIndex(arg) == RootArg::GetBindIndex(passesGlobalRes[resIndex]) &&
-					"Global pass resources must have same bind indexes. Seems like different passes, place them differently.");
+					// Add global ref
+					RootArg::GlobalArgRef argRef;
+					argRef.globalListIndex = resIndex;
+					argRef.bindIndex = bindIndex;
 
-					pass.passGlobalRootArgsIndices.push_back(resIndex);
+					pass.passGlobalRootArgsRefs.push_back(argRef);
 				}
 			}
 			break;
@@ -1427,7 +1447,7 @@ namespace
 }
 
 void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
-	Parsing::ResourceBindFrequency updateFrequency, Parsing::ResourceScope scope, RootArg::Arg_t&& arg)
+	Parsing::ResourceBindFrequency updateFrequency, Parsing::ResourceScope scope, int bindIndex, RootArg::Arg_t&& arg)
 {
 	// This switch case is required because compiler needs to know which version of _AddRootArg template to
 	// generate during compile time.
@@ -1435,27 +1455,27 @@ void FrameGraphBuilder::AddRootArg(PassParameters& pass, FrameGraph& frameGraph,
 	{
 	case Parsing::PassInputType::UI:
 		_AddRootArg<Parsing::PassInputType::UI>(pass, frameGraph.passesGlobalRes, frameGraph.objGlobalResTemplate,
-			updateFrequency, scope, std::move(arg));
+			updateFrequency, scope, bindIndex, std::move(arg));
 		break;
 	case Parsing::PassInputType::Static:
 		_AddRootArg<Parsing::PassInputType::Static>(pass, frameGraph.passesGlobalRes, frameGraph.objGlobalResTemplate,
-			updateFrequency, scope, std::move(arg));
+			updateFrequency, scope, bindIndex, std::move(arg));
 		break;
 	case Parsing::PassInputType::Dynamic:
 		_AddRootArg<Parsing::PassInputType::Dynamic>(pass, frameGraph.passesGlobalRes, frameGraph.objGlobalResTemplate,
-			updateFrequency, scope, std::move(arg));
+			updateFrequency, scope, bindIndex, std::move(arg));
 		break;
 	case Parsing::PassInputType::Particles:
 		_AddRootArg<Parsing::PassInputType::Particles>(pass, frameGraph.passesGlobalRes, frameGraph.objGlobalResTemplate,
-			updateFrequency, scope, std::move(arg));
+			updateFrequency, scope, bindIndex, std::move(arg));
 		break;
 	case Parsing::PassInputType::PostProcess:
 		_AddRootArg<Parsing::PassInputType::PostProcess>(pass, frameGraph.passesGlobalRes, frameGraph.objGlobalResTemplate,
-			updateFrequency, scope, std::move(arg));
+			updateFrequency, scope, bindIndex, std::move(arg));
 		break;
 	case Parsing::PassInputType::Debug:
 		_AddRootArg<Parsing::PassInputType::Debug>(pass, frameGraph.passesGlobalRes, frameGraph.objGlobalResTemplate,
-			updateFrequency, scope, std::move(arg));
+			updateFrequency, scope, bindIndex, std::move(arg));
 		break;
 	default:
 		DX_ASSERT(false && "Unknown pass input for adding root argument");
@@ -2372,8 +2392,8 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 					frameGraph,
 					*res->bindFrequency,
 					*res->scope ,
+					paramIndex,
 					RootArg::ConstBuffView{
-						paramIndex,
 						HASH(res->name.c_str()),
 						res->content,
 						Const::INVALID_BUFFER_HANDLER
@@ -2391,8 +2411,8 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 					frameGraph,
 					*res->bindFrequency,
 					*res->scope,
+					paramIndex,
 					RootArg::UAView{
-						paramIndex,
 						HASH(res->name.c_str()),
 						res->bind,
 						Const::INVALID_BUFFER_HANDLER
@@ -2401,8 +2421,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 			else if constexpr (std::is_same_v<T, Parsing::RootParam_DescTable>)
 			{
 				RootArg::DescTable descTableArgument;
-				descTableArgument.bindIndex = paramIndex;
-				
+		
 				std::optional<Parsing::ResourceBindFrequency> bindFrequency;
 				std::optional<Parsing::ResourceScope> scope;
 				//#TODO RootArg here are created when for all global objects they might already exist
@@ -2525,7 +2544,7 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 					}, descTableEntity);
 				}
 
-				AddRootArg(pass, frameGraph, *bindFrequency, *scope, descTableArgument);
+				AddRootArg(pass, frameGraph, *bindFrequency, *scope, paramIndex, descTableArgument);
 			}
 			else if constexpr (std::is_same_v<T, Parsing::RootParam_ShaderResourceView>)
 			{
@@ -2542,8 +2561,8 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 					frameGraph,
 					*res->bindFrequency,
 					*res->scope,
+					paramIndex,
 					RootArg::StructuredBufferView{
-						paramIndex,
 						HASH(res->name.c_str())
 					});
 

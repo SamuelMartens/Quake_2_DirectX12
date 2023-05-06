@@ -100,17 +100,17 @@ public:
 	void AddResourceReadbackCallbacks(const Frame& frame);
 
 	/* Inner resource management  */
-	void BindPassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const;
-	void BindComputePassGlobalRes(const std::vector<int>& resIndices, CommandList& commandList) const;
+	void BindPassGlobalRes(const std::vector<RootArg::GlobalArgRef>& resRefs, CommandList& commandList) const;
+	void BindComputePassGlobalRes(const std::vector<RootArg::GlobalArgRef>& resRefs, CommandList& commandList) const;
 
 	template<Parsing::PassInputType INPUT_TYPE>
-	void BindObjGlobalRes(const std::vector<int>& resIndices, int objIndex, CommandList& commandList) const
+	void BindObjGlobalRes(const std::vector<RootArg::GlobalArgRef>& resRefs, int objIndex, CommandList& commandList) const
 	{
 		const std::vector<RootArg::Arg_t>& objRes = std::get<static_cast<int>(INPUT_TYPE)>(objGlobalRes)[objIndex];
 
-		for (const int index : resIndices)
+		for (const RootArg::GlobalArgRef& ref : resRefs)
 		{
-			RootArg::Bind(objRes[index], commandList);
+			RootArg::Bind(objRes[ref.globalListIndex], ref.bindIndex, commandList);
 		}
 	};
 
@@ -157,7 +157,7 @@ private:
 
 	std::vector<RootArg::Arg_t> passesGlobalRes;
 
-	// Template of all global resources for object. Combined when global resources from different pases are mixed 
+	// Template of all global resources for object. Combined when global resources from different passes are mixed 
 	PerObjectGlobalTemplate_t objGlobalResTemplate;
 
 	std::tuple<
