@@ -355,6 +355,20 @@ namespace RenderCallbacks
 				descriptorDesc = ViewDescription_t{ std::optional<D3D12_UNORDERED_ACCESS_VIEW_DESC>(std::nullopt) };
 			} 
 		}
+		else if constexpr (std::is_same_v<ResT, RootArg::DescTableEntity_StructuredBufferView>)
+		{
+			if (res->desc.dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
+			{
+				D3D12_SHADER_RESOURCE_VIEW_DESC desc =
+					DescriptorHeapUtils::GenerateDefaultStructuredBufferSRVDesc(res, *rootArg.strideInBytes);
+
+				descriptorDesc = ViewDescription_t{ std::optional(desc) };
+			}
+			else
+			{
+				descriptorDesc = ViewDescription_t{ std::optional<D3D12_SHADER_RESOURCE_VIEW_DESC>(std::nullopt) };
+			}
+		}
 		else
 		{
 			DX_ASSERT(false && "Not implemented");
@@ -712,7 +726,7 @@ namespace RenderCallbacks
 		break;
 		case HASH("LeftMouseButtonDown"):
 		{
-			reinterpret_cast<int&>(bindPoint) = ctx.jobContext.frame.mouseInput.leftButtonDown;
+			reinterpret_cast<int&>(bindPoint) = ctx.jobContext.frame.mouseInput.leftButtonClicked;
 		}
 		break;
 		default:
@@ -1149,6 +1163,23 @@ namespace RenderCallbacks
 						if constexpr (std::is_same_v<T, DebugObject_FrustumCluster>)
 						{
 							reinterpret_cast<int&>(bindPoint) = static_cast<int>(object.isActive);
+						}
+						else
+						{
+							reinterpret_cast<int&>(bindPoint) = static_cast<int>(false);
+						}
+					}, obj);
+				}
+				break;
+				case HASH("IsLightAffectedFrustumCluster"):
+				{
+					std::visit([&bindPoint, &ctx](auto&& object)
+					{
+						using T = std::decay_t<decltype(object)>;
+
+						if constexpr (std::is_same_v<T, DebugObject_FrustumCluster>)
+						{
+							reinterpret_cast<int&>(bindPoint) = static_cast<int>(object.isAffectedByLight);
 						}
 						else
 						{

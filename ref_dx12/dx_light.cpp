@@ -29,12 +29,10 @@ namespace
 
 	float CalculateLightFarDistance(float intensity, float minDistance, float maxDistance)
 	{
-		constexpr float intensityCutoff = 0.01f;
-
 		DX_ASSERT(intensity > 0.0f && "Can't calculate light far distance, invalid intensity");
 		DX_ASSERT(minDistance < maxDistance && "Can't calculate light far distance, invalid min/max");
 
-		const float farDistance = minDistance / std::sqrt(intensityCutoff / intensity);
+		const float farDistance = minDistance / std::sqrt(Settings::DIRECT_LIGHT_INTENSITY_THRESHOLD / intensity);
 
 		return std::clamp(farDistance, minDistance, maxDistance);
 	}
@@ -291,4 +289,9 @@ GPULight PointLight::ToGPULight(const PointLight& light)
 	XMStoreFloat4x4(&gpuLight.worldTransform, XMMatrixTranslation(light.origin.x, light.origin.y, light.origin.z));
 
 	return gpuLight;
+}
+
+int Light::ClusteredLighting_GetGlobalLightIndicesElementsNum(int gpuLightsListSize)
+{
+	return gpuLightsListSize * Settings::CLUSTERED_LIGHTING_MAX_LIGHTS_PER_CLUSTER;
 }

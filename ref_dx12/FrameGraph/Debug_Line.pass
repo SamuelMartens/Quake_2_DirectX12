@@ -79,6 +79,7 @@ cbuffer cbPerObject_Local : register(b0, space3)
 	int BounceNum;
 	int FrustumClusterIndex;
 	int IsActiveFrustumCluster;
+	int IsLightAffectedFrustumCluster;
 }
 
 // Shaders
@@ -137,6 +138,12 @@ float4 main(VertexOut vOut) : SV_Target
 	{
 		// Orange
 		color = float4(1.0f, 0.71f, 0.0f, 1.0f);
+	}
+	
+	if (DebugObjectType == DEBUG_OBJECT_FRUSTUM_CLUSTER && IsLightAffectedFrustumCluster > 0)
+	{
+		// Green
+		color = float4(0.0f, 1.0f, 0.0f, 1.0f);
 	}
 
     return color;

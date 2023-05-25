@@ -114,14 +114,22 @@ namespace
 
 							if constexpr (std::is_same_v<T, RootArg::DescTableEntity_StructuredBufferView>)
 							{
-								DX_ASSERT(descTableEntitiy.internalBindName.has_value() == false && "Internal resource for Structured buffer is not implemented");
-
-								RenderCallbacks::RegisterLocalPass(
-									HASH(passParameters.name.c_str()),
-									descTableEntitiy.hashedName,
-									pass,
-									currentViewIndex,
-									localPassContext);
+								if (descTableEntitiy.internalBindName.has_value())
+								{
+									// This is internal resource
+									RenderCallbacks::RegisterInternalResourceDescriptor(
+										currentViewIndex,
+										descTableEntitiy);
+								}
+								else
+								{
+									RenderCallbacks::RegisterLocalPass(
+										HASH(passParameters.name.c_str()),
+										descTableEntitiy.hashedName,
+										pass,
+										currentViewIndex,
+										localPassContext);
+								}
 							}
 
 						}, descTableEntitiy);

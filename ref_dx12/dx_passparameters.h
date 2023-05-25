@@ -87,6 +87,7 @@ namespace RootArg
 		unsigned int hashedName = 0;
 
 		std::optional<std::string> internalBindName;
+		std::optional<int> strideInBytes;
 
 		Resource* buffer = nullptr;
 	};
@@ -123,6 +124,7 @@ namespace RootArg
 		unsigned int hashedName = 0;
 
 		std::optional<std::string> internalBindName;
+		std::optional<int> strideInBytes;
 	};
 
 	using DescTableEntity_t = std::variant<

@@ -2477,8 +2477,13 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 
 									SetScopeAndBindFrequency(bindFrequency, scope, resStructuredBuffer);
 
+									// Only resources with internal binding need to have stride value
+									const int strideInBytes = resStructuredBuffer->bind.has_value() ? GetStructBufferDataTypeSize(resStructuredBuffer->dataType) : 0;
+
 									descTableArgument.content.emplace_back(RootArg::DescTableEntity_StructuredBufferView{
-										HASH(resStructuredBuffer->name.c_str())
+										HASH(resStructuredBuffer->name.c_str()),
+										resStructuredBuffer->bind,
+										strideInBytes
 										});
 								}
 							}
@@ -2557,13 +2562,18 @@ void FrameGraphBuilder::CreateResourceArguments(const PassParametersSource& pass
 				DX_ASSERT(rootParam.num == 1 && "Inline SRV should always have numDescriptors 1");
 				DX_ASSERT(res->bind.has_value() == false && "Internal bind for inline SRV is not implemented");
 
+				// Only resources with internal bind need to have stride value
+				const int strideInBytes = res->bind.has_value() ? GetStructBufferDataTypeSize(res->dataType) : 0;
+
 				AddRootArg(pass,
 					frameGraph,
 					*res->bindFrequency,
 					*res->scope,
 					paramIndex,
 					RootArg::StructuredBufferView{
-						HASH(res->name.c_str())
+						HASH(res->name.c_str()),
+						res->bind,
+						strideInBytes
 					});
 
 			}

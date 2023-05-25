@@ -13,6 +13,7 @@ RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0, space = 0),
+CBV(b1, space = 0),
 DescriptorTable(UAV(u2, numDescriptors = 2, space = 0)),
 DescriptorTable(SRV(t4, numDescriptors = 1, space = 0)),
 DescriptorTable(SRV(t1, numDescriptors = 2, space = 2)),
@@ -78,6 +79,15 @@ cbuffer cbFrameData : register(b0, space0)
 }
 
 [Global, PerPass]
+cbuffer cbTileData : register(b1, space0)
+{
+	int TileWidth;
+	int TileHeight;
+	int NumFrustumSlices;
+	int ClusterListSize;
+}
+
+[Global, PerPass]
 StructuredBuffer<GPULightBoundingVolume> LightBoundingVolumes : register(t4, space0)
 
 [Global, PerPass]
@@ -97,13 +107,12 @@ StructuredBuffer<AABB> FrustumClusters : register(t2, space2)
 RWStructuredBuffer<LightCullingDataStruct> LightCullingData : register(u0, space2)
 
 Type : CS
-External : GPULightBoundingVolume, cbFrameData, LightBoundingVolumes, UniqueActiveClustersList, AABB, FrustumClusters, LightCullingDataStruct, LightCullingData, ClusteredLightingIndexList, PerClusterLightIndexData, PerClusterLightIndexDataList 
+External : GPULightBoundingVolume, cbTileData, cbFrameData, LightBoundingVolumes, UniqueActiveClustersList, AABB, FrustumClusters, LightCullingDataStruct, LightCullingData, ClusteredLightingIndexList, PerClusterLightIndexData, PerClusterLightIndexDataList 
 <[
 
 #include "ClusteredLighting.passh"
 #include "Debug.passh"
 
-// Total thread group size should match SHARED_TEST_DATA_ARRAY_SIZE
 #define THREAD_GROUP_SIZE_X 32
 #define THREAD_GROUP_SIZE_Y 10
 #define THREAD_GROUP_SIZE_Z 1
@@ -112,23 +121,24 @@ External : GPULightBoundingVolume, cbFrameData, LightBoundingVolumes, UniqueActi
 
 // This should match maximum size of the available groupshared memory,
 // so if GPULightBoundingVolume is changed in size, think about changing this
-#define SHARED_TEST_DATA_ARRAY_SIZE 320
+#define SHARED_TEST_DATA_ARRAY_SIZE THREAD_GROUP_SIZE_X * THREAD_GROUP_SIZE_Y * THREAD_GROUP_SIZE_Z
 
 groupshared GPULightBoundingVolume sharedTestData[SHARED_TEST_DATA_ARRAY_SIZE];
 
 bool IsSphereAABBIntersect(float3 sphereOrigin, float sphereRadius, AABB aabb)
 {
-	const float3 aabbCenter = (aabb.Min + aabb.Max).xyz / 2.0f;
-	const float3 aabbExtends = (aabb.Max - aabb.Min).xyz / 2.0f;
+	float3 e = max(aabb.Min - sphereOrigin, 0);
+	e = e + max(sphereOrigin - aabb.Max, 0);
 	
-	const float3 aabbToSphere = sphereOrigin - aabbCenter - aabbExtends; 
+	e = e * e;
 	
-	return dot(aabbToSphere, aabbToSphere) < sphereRadius * sphereRadius;
+	return all(e < (sphereRadius * sphereRadius).xxx);
 }
 
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
 void main(int3 dispatchThreadID : SV_DispatchThreadID, uint linearGroupIndex : SV_GroupIndex)
 {
+	const int lightGroupIndex = min(linearGroupIndex, SHARED_TEST_DATA_ARRAY_SIZE - 1);
 	const int threadsGroupSize = THREAD_GROUP_SIZE_X * THREAD_GROUP_SIZE_Y * THREAD_GROUP_SIZE_Z;
 	const int numBatches = ceil(float(LightListSize) / threadsGroupSize);
 	
@@ -136,7 +146,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID, uint linearGroupIndex : S
 	const int globalThreadIndex = dispatchThreadID.z * globalThreasNums.x * globalThreasNums.y + dispatchThreadID.y * globalThreasNums.x  + dispatchThreadID.x;
 	
 	// -1 check if we have active cluster for this thread
-	const bool isThreadActive = UniqueActiveClustersList[globalThreadIndex] != -1;
+	const bool isClusterActive = globalThreadIndex < ClusterListSize && UniqueActiveClustersList[globalThreadIndex] != -1;
 	const int threadClusterIndex = UniqueActiveClustersList[globalThreadIndex];
 	
 	int visibleLightCount = 0;
@@ -144,23 +154,26 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID, uint linearGroupIndex : S
 	
 	for (int batchIndex = 0; batchIndex < numBatches; ++batchIndex)
 	{
-		const int lightIndex = min(LightListSize - 1, batchIndex * threadsGroupSize + linearGroupIndex);
+		const int lightBatchIndex = min(LightListSize - 1, batchIndex * threadsGroupSize + linearGroupIndex);
 		
-		GPULightBoundingVolume boundingVolume = LightBoundingVolumes[lightIndex];
+		GPULightBoundingVolume boundingVolume = LightBoundingVolumes[lightBatchIndex];
 		// Transfer light bounding volume to the view space
 		boundingVolume.origin = mul(View, boundingVolume.origin);
 		
-		sharedTestData[linearGroupIndex] = boundingVolume;
+		sharedTestData[lightGroupIndex] = boundingVolume;
 
 		GroupMemoryBarrierWithGroupSync();
 		
-		if (isThreadActive == true)
+		if (isClusterActive == true)
 		{	
 			AABB clusterAABB = FrustumClusters[threadClusterIndex];
 		
 			for (int lightIndex = 0; lightIndex < threadsGroupSize; ++lightIndex)
 			{
-				if (IsSphereAABBIntersect(
+				if (
+					lightIndex < LightListSize &&
+					visibleLightCount < MAX_LIGHTS_PER_CLUSTER &&
+					IsSphereAABBIntersect(
 					sharedTestData[lightIndex].origin.xyz,
 					sharedTestData[lightIndex].radius,
 					clusterAABB))
@@ -174,16 +187,19 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID, uint linearGroupIndex : S
 	
 	GroupMemoryBarrierWithGroupSync();
 	
-	int offset = 0;
-	InterlockedAdd(LightCullingData[0].globalIndexCount, visibleLightCount, offset); 
-	
-	for (int i = 0; i < visibleLightCount; ++i)
+	if (isClusterActive == true && visibleLightCount > 0)
 	{
-		ClusteredLightingIndexList[offset + i] = visibleLightIndices[i];
+		int offset = 0;
+		InterlockedAdd(LightCullingData[0].globalIndexCount, visibleLightCount, offset); 
+		
+		for (int i = 0; i < visibleLightCount; ++i)
+		{
+			ClusteredLightingIndexList[offset + i] = visibleLightIndices[i];
+		}
+
+		PerClusterLightIndexDataList[threadClusterIndex].offset = offset;
+		PerClusterLightIndexDataList[threadClusterIndex].count = visibleLightCount;
 	}
-	
-	PerClusterLightIndexDataList[threadClusterIndex].offset = offset;
-	PerClusterLightIndexDataList[threadClusterIndex].count = visibleLightCount;
 }
 
 ]>

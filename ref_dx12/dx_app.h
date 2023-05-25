@@ -228,7 +228,10 @@ public:
 		bool drawFrustumClusters = false;
 		bool fixFrustumClustersInPlace = false;
 		bool showActiveFrustumClusters = false;
+		bool showFrustumClustersAffectedByPickedLights = false;
 		std::vector<int> activeFrustumClusters;
+		std::vector<Light::ClusterLightData> clusteredLighting_perClusterLightData;
+		std::vector<uint32_t> clusteredLighting_globalLightIndices;
 
 		XMFLOAT4X4 frustumClustersInverseViewTransform;
 	};
@@ -334,12 +337,14 @@ private:
 		const std::vector<GPULight>& gpuLights, 
 		const std::vector<GPULightBoundingVolume>& gpuBoundingVolumes,
 		const std::vector<uint32_t>& pickedLightList,
+		int frustumClustersNum,
 		GPUJobContext& context) const;
 	void CopyFromReadBackResourcesToCPUMemory(Frame& frame);
 
 	void GenerateStaticLightBoundingVolumes(const std::vector<GPULight>& gpuLights);
 	void CreateStaticLightDebugData(const std::vector<GPULight>& gpuLights);
-	void CreateClusteredLightData(const std::vector<GPULight>& gpuLights);
+	void CreateClusteredLightData();
+	int GetGpuLightsNum() const;
 	std::vector<GPULight> GenerateGPULightList() const;
 	std::vector<GPULightBoundingVolume> GenerateGPULightBoundingVolumesList() const;
 
@@ -424,11 +429,6 @@ private:
 	std::vector<LightBoundingVolume> staticLightsBoundingVolumes;
 	std::vector<uint32_t> debugPickedStaticLights;
 	
-	// Both of these arrays used for initialization, and contain
-	// data after GPU readback
-	std::vector<uint32_t> clusteredLighting_globalLightIndices;
-	std::vector<Light::ClusterLightData> clusteredLighting_perClusterLightData;
-
 	Light::ClusteredLighting_LightCullingData clusteredLighting_lightCullingData;
 
 	/* Frames  */

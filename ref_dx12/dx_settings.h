@@ -96,4 +96,7 @@ namespace Settings
 	/* Clustered Lighting */
 	// Should match MAX_LIGHTS_PER_CLUSTER in ClusteredLighting.passh
 	constexpr int CLUSTERED_LIGHTING_MAX_LIGHTS_PER_CLUSTER = 100;
+
+	/* Direct Lighting */
+	constexpr float DIRECT_LIGHT_INTENSITY_THRESHOLD = 0.4f;
 }

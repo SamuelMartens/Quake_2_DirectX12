@@ -29,6 +29,8 @@ namespace Light
 	{
 		uint32_t globalIndexCount = 0;
 	};
+
+	int ClusteredLighting_GetGlobalLightIndicesElementsNum(int gpuLightsListSize);
 };
 
 struct GPULight

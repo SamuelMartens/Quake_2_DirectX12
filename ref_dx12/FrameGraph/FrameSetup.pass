@@ -102,7 +102,7 @@ External : cbTileData, ActiveClustersList, UniqueActiveClustersList, cbFrameData
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
 void main(int3 dispatchThreadID : SV_DispatchThreadID)
 {
-	if (dispatchThreadID.x == 1 && dispatchThreadID.y == 1 && dispatchThreadID.z)
+	if (dispatchThreadID.x == 0 && dispatchThreadID.y == 0 && dispatchThreadID.z == 0)
 	{
 		LightCullingData[0].globalIndexCount = 0;
 	}

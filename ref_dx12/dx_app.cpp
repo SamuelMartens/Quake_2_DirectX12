@@ -1288,7 +1288,7 @@ void Renderer::CreateClusteredLightingResources(GPUJobContext& context)
 	resMan.CreateStructuredBuffer(args);
 }
 
-void Renderer::CreateLightResources(const std::vector<GPULight>& gpuLights, const std::vector<GPULightBoundingVolume>& gpuBoundingVolumes, const std::vector<uint32_t>& pickedLightList, GPUJobContext& context) const
+void Renderer::CreateLightResources(const std::vector<GPULight>& gpuLights, const std::vector<GPULightBoundingVolume>& gpuBoundingVolumes, const std::vector<uint32_t>& pickedLightList, int frustumClustersNum, GPUJobContext& context) const
 {
 	CommandListRAIIGuard_t commandListGuard(*context.commandList);
 
@@ -1351,11 +1351,8 @@ void Renderer::CreateLightResources(const std::vector<GPULight>& gpuLights, cons
 
 	ResourceManager::Inst().CreateStructuredBuffer(debugPickedLightsListArgs);
 
-	DX_ASSERT(clusteredLighting_globalLightIndices.empty() == false &&
-		"Forgot to init global light indices list");
-
 	ResourceDesc clusteredLighting_globalLightIndicesDesc;
-	clusteredLighting_globalLightIndicesDesc.width = clusteredLighting_globalLightIndices.size() * sizeof(std::decay_t<decltype(clusteredLighting_globalLightIndices)>::value_type);
+	clusteredLighting_globalLightIndicesDesc.width = Light::ClusteredLighting_GetGlobalLightIndicesElementsNum(gpuLights.size()) * sizeof(uint32_t);
 	clusteredLighting_globalLightIndicesDesc.height = 1;
 	clusteredLighting_globalLightIndicesDesc.format = DXGI_FORMAT_UNKNOWN;
 	clusteredLighting_globalLightIndicesDesc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
@@ -1364,16 +1361,13 @@ void Renderer::CreateLightResources(const std::vector<GPULight>& gpuLights, cons
 	FArg::CreateStructuredBuffer clusteredLighting_globalLightIndicesArgs;
 	clusteredLighting_globalLightIndicesArgs.context = &context;
 	clusteredLighting_globalLightIndicesArgs.desc = &clusteredLighting_globalLightIndicesDesc;
-	clusteredLighting_globalLightIndicesArgs.data = reinterpret_cast<const std::byte*>(clusteredLighting_globalLightIndices.data());
+	clusteredLighting_globalLightIndicesArgs.data = nullptr;
 	clusteredLighting_globalLightIndicesArgs.name = Resource::CLUSTERED_LIGHTING_LIGHT_INDEX_GLOBAL_LIST_NAME;
 
 	ResourceManager::Inst().CreateStructuredBuffer(clusteredLighting_globalLightIndicesArgs);
 
-	DX_ASSERT(clusteredLighting_perClusterLightData.empty() == false &&
-		"Forgot to init per cluster light data list");
-
 	ResourceDesc clusteredLighting_perClusterLightDataDesc;
-	clusteredLighting_perClusterLightDataDesc.width = clusteredLighting_perClusterLightData.size() * sizeof(std::decay_t<decltype(clusteredLighting_perClusterLightData)>::value_type);
+	clusteredLighting_perClusterLightDataDesc.width = frustumClustersNum * sizeof(Light::ClusterLightData);
 	clusteredLighting_perClusterLightDataDesc.height = 1;
 	clusteredLighting_perClusterLightDataDesc.format = DXGI_FORMAT_UNKNOWN;
 	clusteredLighting_perClusterLightDataDesc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
@@ -1382,7 +1376,7 @@ void Renderer::CreateLightResources(const std::vector<GPULight>& gpuLights, cons
 	FArg::CreateStructuredBuffer clusteredLighting_perClusterLightDataArgs;
 	clusteredLighting_perClusterLightDataArgs.context = &context;
 	clusteredLighting_perClusterLightDataArgs.desc = &clusteredLighting_perClusterLightDataDesc;
-	clusteredLighting_perClusterLightDataArgs.data = reinterpret_cast<const std::byte*>(clusteredLighting_perClusterLightData.data());
+	clusteredLighting_perClusterLightDataArgs.data = nullptr;
 	clusteredLighting_perClusterLightDataArgs.name = Resource::CLUSTERED_LIGHTING_PER_CLUSTER_LIGH_DATA_NAME;
 
 	ResourceManager::Inst().CreateStructuredBuffer(clusteredLighting_perClusterLightDataArgs);
@@ -1484,15 +1478,14 @@ void Renderer::CreateStaticLightDebugData(const std::vector<GPULight>& gpuLights
 	debugPickedStaticLights = std::vector<uint32_t>(gpuLights.size(), 0);
 }
 
-void Renderer::CreateClusteredLightData(const std::vector<GPULight>& gpuLights)
+void Renderer::CreateClusteredLightData()
 {
-	clusteredLighting_globalLightIndices = 
-		std::vector<uint32_t>(gpuLights.size() * Settings::CLUSTERED_LIGHTING_MAX_LIGHTS_PER_CLUSTER);
-
-	clusteredLighting_perClusterLightData =
-		std::vector<Light::ClusterLightData>(gpuLights.size());
-
 	clusteredLighting_lightCullingData = Light::ClusteredLighting_LightCullingData{};
+}
+
+int Renderer::GetGpuLightsNum() const
+{
+	return staticPointLights.size() + staticAreaLights.size();
 }
 
 std::vector<GPULight> Renderer::GenerateGPULightList() const
@@ -1517,6 +1510,8 @@ std::vector<GPULight> Renderer::GenerateGPULightList() const
 	{
 		gpuLights.push_back(AreaLight::ToGPULight(staticAreaLights[i]));
 	}
+
+	DX_ASSERT(gpuLights.size() == GetGpuLightsNum() && "Mismatch between gpu lights list generation function and size function");
 
 	return gpuLights;
 }
@@ -1570,7 +1565,7 @@ Utils::MouseInput Renderer::GetMouseInput() const
 	mouseInput.position.x = io.MousePos.x;
 	mouseInput.position.y = io.MousePos.y;
 
-	mouseInput.leftButtonDown = io.MouseDown[0];
+	mouseInput.leftButtonClicked = io.MouseClicked[0];
 
 	return mouseInput;
 }
@@ -1629,16 +1624,41 @@ void Renderer::SetUpFrameDebugData(Frame& frame)
 		// Active Clusters Readback 
 		const int frustumClustersNum = frame.camera.GetFrustumClustersNum();
 
-		if (frustumClustersNum > 0 && debugSettings.showActiveFrustumClusters == true)
+		if (frustumClustersNum > 0)
 		{
-			debugSettings.activeFrustumClusters.resize(frustumClustersNum);
+			if (debugSettings.showActiveFrustumClusters == true)
+			{
+				debugSettings.activeFrustumClusters.resize(frustumClustersNum);
 
-			ResourceReadBackRequest readBackRequest;
-			readBackRequest.readBackCPUMemory = reinterpret_cast<std::byte*>(debugSettings.activeFrustumClusters.data());
-			readBackRequest.targetPassName = "ClusteredLighting_MarkActiveClusters";
-			readBackRequest.targetResourceName = "ClusteredLight_ActiveClusters";
+				ResourceReadBackRequest readBackRequest;
+				readBackRequest.readBackCPUMemory = reinterpret_cast<std::byte*>(debugSettings.activeFrustumClusters.data());
+				readBackRequest.targetPassName = "ClusteredLighting_MarkActiveClusters";
+				readBackRequest.targetResourceName = "ClusteredLight_ActiveClusters";
 
-			frame.resourceReadBackRequests.push_back(readBackRequest);
+				frame.resourceReadBackRequests.push_back(readBackRequest);
+			}
+
+			if (debugSettings.showFrustumClustersAffectedByPickedLights == true)
+			{
+				const int gpuLightsNum = GetGpuLightsNum();
+
+				debugSettings.clusteredLighting_globalLightIndices.resize(Light::ClusteredLighting_GetGlobalLightIndicesElementsNum(gpuLightsNum));
+				debugSettings.clusteredLighting_perClusterLightData.resize(frustumClustersNum);
+
+				ResourceReadBackRequest globalLightIndicesRequest;
+				globalLightIndicesRequest.readBackCPUMemory = reinterpret_cast<std::byte*>(debugSettings.clusteredLighting_globalLightIndices.data());
+				globalLightIndicesRequest.targetPassName = "ClusteredLighting_CreateClusterLightList";
+				globalLightIndicesRequest.targetResourceName = Resource::CLUSTERED_LIGHTING_LIGHT_INDEX_GLOBAL_LIST_NAME;
+
+				frame.resourceReadBackRequests.push_back(globalLightIndicesRequest);
+
+				ResourceReadBackRequest perClusterLightRequest;
+				perClusterLightRequest.readBackCPUMemory = reinterpret_cast<std::byte*>(debugSettings.clusteredLighting_perClusterLightData.data());
+				perClusterLightRequest.targetPassName = "ClusteredLighting_CreateClusterLightList";
+				perClusterLightRequest.targetResourceName = Resource::CLUSTERED_LIGHTING_PER_CLUSTER_LIGH_DATA_NAME;
+
+				frame.resourceReadBackRequests.push_back(perClusterLightRequest);
+			}
 		}
 	}
 
@@ -1650,7 +1670,7 @@ void Renderer::SetUpFrameDebugData(Frame& frame)
 
 	if (debugSettings.enableLightSourcePicker == true)
 	{
-		if (frame.mouseInput.leftButtonDown == true)
+		if (frame.mouseInput.leftButtonClicked == true)
 		{
 			ResourceReadBackRequest readBackRequest;
 			readBackRequest.readBackCPUMemory = reinterpret_cast<std::byte*>(debugPickedStaticLights.data());
@@ -1964,6 +1984,35 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 		const int numCluster = numTilesX * numTilesY *
 			numTilesZ;
 
+		std::vector<uint32_t> frustumClustersAffectedByLightsIndices;
+
+		if (debugSettings.showFrustumClustersAffectedByPickedLights)
+		{
+			// Find clusters affected by picked light
+ 			for (int pickedLightIndex = 0; pickedLightIndex < debugPickedStaticLights.size(); ++pickedLightIndex)
+			{
+				if (debugPickedStaticLights[pickedLightIndex] == false)
+				{
+					continue;
+				}
+
+				for (int clusterIndex = 0; clusterIndex < debugSettings.clusteredLighting_perClusterLightData.size(); ++clusterIndex)
+				{
+					const Light::ClusterLightData& perClusterLightData = debugSettings.clusteredLighting_perClusterLightData[clusterIndex];
+
+					const auto beginSearchItr = debugSettings.clusteredLighting_globalLightIndices.cbegin() + perClusterLightData.offset;
+					const auto endSearchItr = beginSearchItr + perClusterLightData.count;
+
+					const auto lightIndexItr = std::find(beginSearchItr, endSearchItr, pickedLightIndex);
+
+					if (lightIndexItr != endSearchItr)
+					{
+						frustumClustersAffectedByLightsIndices.push_back(clusterIndex);
+					}
+				}
+			}
+		}
+
 		for (int i = 0; i < numCluster; ++i)
 		{
 			DebugObject_FrustumCluster object;
@@ -1977,6 +2026,16 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 			else
 			{
 				object.isActive = false;
+			}
+
+			if (frustumClustersAffectedByLightsIndices.empty() == false && debugSettings.showFrustumClustersAffectedByPickedLights == true)
+			{
+				const auto clusterIt = std::find(frustumClustersAffectedByLightsIndices.cbegin(), frustumClustersAffectedByLightsIndices.cend(), i);
+				object.isAffectedByLight = clusterIt != frustumClustersAffectedByLightsIndices.cend();
+			}
+			else
+			{
+				object.isAffectedByLight = false;
 			}
 
 			debugObjects.push_back(object);
@@ -2093,13 +2152,22 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 					if (debugSettings.drawLightSourcesDebugGeometry == true)
 					{
 						ImGui::Indent();
+						ImGui::Checkbox("Enable light source picker", &debugSettings.enableLightSourcePicker);
+						ImGui::NewLine();
+
 						ImGui::Checkbox("Point light object physical radius", &debugSettings.drawPointLightObjectRadius);
 						ImGui::Checkbox("Area light approximation", &debugSettings.drawAreaLightApproximation);
+
 						ImGui::NewLine();
-						ImGui::Checkbox("Point light bounding volumes", &debugSettings.drawPointLightBoundingVolume);
-						ImGui::Checkbox("Area light bounding volumes", &debugSettings.drawAreaLightBoundingVolume);
-						ImGui::NewLine();
-						ImGui::Checkbox("Enable light source picker", &debugSettings.enableLightSourcePicker);
+
+						{
+							std::string pointLightBoundingVolumeLabel = debugSettings.enableLightSourcePicker == true ?
+								"Point light bounding volumes (for selected light)" : "Point light bounding volumes";
+
+							ImGui::Checkbox(pointLightBoundingVolumeLabel.c_str(), &debugSettings.drawPointLightBoundingVolume);
+							ImGui::Checkbox("Area light bounding volumes", &debugSettings.drawAreaLightBoundingVolume);
+						}
+
 						ImGui::Unindent();
 					}
 
@@ -2110,6 +2178,16 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 						ImGui::Indent();
 						ImGui::Checkbox("Fix in place", &debugSettings.fixFrustumClustersInPlace);
 						ImGui::Checkbox("Show active clusters", &debugSettings.showActiveFrustumClusters);
+
+						if (debugSettings.enableLightSourcePicker == true)
+						{
+							ImGui::Indent();
+
+							ImGui::Checkbox("Show frustum clusters affected by picked light", &debugSettings.showFrustumClustersAffectedByPickedLights);
+
+							ImGui::Unindent();
+						}
+
 						ImGui::Unindent();
 					}
 
@@ -3438,11 +3516,12 @@ void Renderer::EndFrame()
 
 		CreateStaticLightDebugData(gpuLights);
 
-		CreateClusteredLightData(gpuLights);
+		CreateClusteredLightData();
 
 		CreateLightResources(gpuLights, 
 			gpuBoundingVolumes,
 			debugPickedStaticLights,
+			frame.camera.GetFrustumClustersNum(),
 			createLightingResourcesContext);
 	}
 

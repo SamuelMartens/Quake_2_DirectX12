@@ -289,7 +289,7 @@ namespace Utils
 	struct MouseInput
 	{
 		XMFLOAT2 position = { 0.0f, 0.0f };
-		bool leftButtonDown = false;
+		bool leftButtonClicked = false;
 	};
 
 
