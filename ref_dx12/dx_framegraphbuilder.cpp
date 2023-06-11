@@ -18,10 +18,6 @@
 #include <limits>
 #include <format>
 
-//#DEBUG
-#pragma optimize("", off)
-//END
-
 namespace
 {
 	constexpr int DEFAULT_ROOT_SIG_DESCRIPTORS_NUM = 1;

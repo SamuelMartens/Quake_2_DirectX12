@@ -73,7 +73,7 @@ namespace Settings
 
 
 	/* Light Baker */
-	constexpr float AREA_LIGHTS_MIN_DISTANCE = 5.0f;
+	constexpr float AREA_LIGHTS_MIN_DISTANCE = 2.0f;
 	constexpr float AREA_LIGHTS_MAX_DISTANCE = 500.0f;
 	constexpr float POINT_LIGHTS_MAX_DISTANCE = 500.0f;
 
@@ -98,6 +98,6 @@ namespace Settings
 	constexpr int CLUSTERED_LIGHTING_MAX_LIGHTS_PER_CLUSTER = 100;
 
 	/* Direct Lighting */
-	constexpr float DIRECT_POINT_LIGHT_INTENSITY_THRESHOLD = 0.075f;
-	constexpr float DIRECT_AREA_LIGHT_INTENSITY_THRESHOLD = 0.001f;
+	constexpr float DIRECT_POINT_LIGHT_INTENSITY_THRESHOLD = 0.05f;
+	constexpr float DIRECT_AREA_LIGHT_INTENSITY_THRESHOLD = 0.0025f;
 }

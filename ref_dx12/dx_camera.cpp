@@ -61,9 +61,6 @@ XMMATRIX XM_CALLCONV Camera::GetViewProjMatrix() const
 {
 	return XMLoadFloat4x4(&viewProjMat);
 }
-//#DEBUG
-#pragma optimize("", off)
-//END
 
 std::vector<Utils::AABB> Camera::GenerateFrustumClusterInViewSpace(int tileWidth, int tileHeight, int slicesNum) const
 {

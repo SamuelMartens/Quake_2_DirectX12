@@ -13,7 +13,7 @@ RootSignature
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0, space = 0),
 CBV(b1, space = 0),
-DescriptorTable(SRV(t5, numDescriptors = 1, space = 0)),
+DescriptorTable(SRV(t4, numDescriptors = 2, space = 0)),
 DescriptorTable(UAV(u2, numDescriptors = 2, space = 0)),
 DescriptorTable(SRV(t0, numDescriptors = 3, space = 2)),
 DescriptorTable(UAV(u0, numDescriptors = 1, space = 2))
@@ -32,6 +32,12 @@ struct GPULight
 	float4 colorAndIntensity;
 	float2 extends;
 	int type;
+}
+
+struct GPULightBoundingVolume
+{
+	float4 origin;
+	float radius;
 }
 
 struct PerClusterLightIndexData
@@ -68,6 +74,9 @@ cbuffer cbTileData : register(b1, space0)
 }
 
 [Global, PerPass]
+StructuredBuffer<GPULightBoundingVolume> LightBoundingVolumes : register(t4, space0)
+
+[Global, PerPass]
 StructuredBuffer<GPULight> LightsList : register(t5, space0)
 
 [Global, PerPass]
@@ -91,7 +100,7 @@ RWTexture2D<float4> DirectLightBuffer : register(u0, space2)
 
 Type : CS
 External : GPULight, LightsList, ClusteredLightingIndexList, PerClusterLightIndexData, PerClusterLightIndexDataList, GBuffer_Albedo, 
-	GBuffer_Normals, GBuffer_Position, DirectLightBuffer, cbTileData, cbFrameData
+	GBuffer_Normals, GBuffer_Position, DirectLightBuffer, cbTileData, cbFrameData, GPULightBoundingVolume, LightBoundingVolumes
 <[
 
 #include "Debug.passh"
@@ -100,6 +109,35 @@ External : GPULight, LightsList, ClusteredLightingIndexList, PerClusterLightInde
 
 #define ENABLE_POINT_LIGHTS 1
 #define ENABLE_AREA_LIGHTS 1
+
+float ComputAttenuationWindowedFunction(float dist, float distMax)
+{
+	return pow(max(0.0f, 1.0f - pow(dist / distMax, 4)), 2);
+}
+
+float ComputeDistanceAttenuation(float dist, float dist0, float distMax)
+{
+	float attenuation = 0.0f;
+
+	if (dist <= dist0)
+	{
+		// Treat dist0 as distance to surface. If we measure light closer than that distance
+		// we are basically inside light source, so just return 1.0
+		attenuation = 1.0f;
+	}
+	else if (dist < distMax)
+	{
+		// Real-Time Rendering (4th Edition), page 113
+		const float windowedFunctionValue = ComputAttenuationWindowedFunction(dist, distMax);
+
+		// Real-Time Rendering (4th Edition), page 111
+		const float distanceFalloff = pow(dist0 / dist, 2);
+
+		attenuation = windowedFunctionValue * distanceFalloff;
+	}
+	
+	return attenuation;
+}
 
 // Perfomed in world coordinate system
 float ComputeRectangleSolidAngle(float3 surfacePoint, float3 p0, float3 p1, float3 p2, float3 p3)
@@ -122,7 +160,7 @@ float ComputeRectangleSolidAngle(float3 surfacePoint, float3 p0, float3 p1, floa
 	return g0 + g1 + g2 + g3 - 2 * M_PI;
 } 
 
-void ComputeAreaLighting(GPULight light, float4 worldPosition, float4 normal, float4 albedo, out float3 diffuse)
+void ComputeAreaLighting(GPULight light, float4 worldPosition, float4 normal, float4 albedo, float maxDist, out float3 diffuse)
 {
 	const float4 lightNormal = mul(light.worldTransform, float4(0.0f, 0.0f, 1.0f, 0.0f));
 	const float4 lightPosition = float4(light.worldTransform[0][3], 
@@ -132,8 +170,13 @@ void ComputeAreaLighting(GPULight light, float4 worldPosition, float4 normal, fl
 	
 	diffuse = float3(0.0f, 0.0f, 0.0f);
 	
-	// Ignore points behind the light 	
-	if (dot(worldPosition - lightPosition, lightNormal) >= 0.0f )
+	// Ideally it should be 0, but because of problems with floating point math
+	// I need to bump it up a bit, to avoid artifacts
+	const float lightIsFacingSurfaceThreshold = 0.001f;
+	const float3 lightToSurface = worldPosition.xyz - lightPosition.xyz;
+	
+	// Ignore points behind the light
+	if (dot(lightToSurface, lightNormal.xyz) > lightIsFacingSurfaceThreshold )
 	{
 		// Find points describing light rectangle
 		const float4 p0 = mul(light.worldTransform, float4(-light.extends.x / 2.0f, -light.extends.y / 2.0f, 0.0f, 1.0f));
@@ -141,43 +184,23 @@ void ComputeAreaLighting(GPULight light, float4 worldPosition, float4 normal, fl
 		const float4 p2 = mul(light.worldTransform, float4(light.extends.x / 2.0f, light.extends.y / 2.0f, 0.0f, 1.0f));
 		const float4 p3 = mul(light.worldTransform, float4(light.extends.x / 2.0f, -light.extends.y / 2.0f, 0.0f, 1.0f));
 		
-		const float solidAngle = ComputeRectangleSolidAngle(worldPosition.xyz, p0.xyz, p1.xyz, p2.xyz, p3.xyz);
+		const float attenuationWindowedFunctionValue = ComputAttenuationWindowedFunction(length(lightToSurface), maxDist);
 		
+		const float solidAngle = ComputeRectangleSolidAngle(worldPosition.xyz, p0.xyz, p1.xyz, p2.xyz, p3.xyz);
+
 		diffuse = solidAngle * 0.2f * (
 			saturate(dot(normalize(p0.xyz - worldPosition.xyz), normal.xyz)) +
 			saturate(dot(normalize(p1.xyz - worldPosition.xyz), normal.xyz)) + 
 			saturate(dot(normalize(p2.xyz - worldPosition.xyz), normal.xyz)) + 
 			saturate(dot(normalize(p3.xyz - worldPosition.xyz), normal.xyz)) + 
-			saturate(dot(normalize(lightPosition.xyz - worldPosition.xyz), normal.xyz))) * albedo.xyz *
-			light.colorAndIntensity.xyz * light.colorAndIntensity.w;
+			saturate(dot(normalize(-lightToSurface), normal.xyz))) * albedo.xyz *
+			light.colorAndIntensity.xyz * light.colorAndIntensity.w * attenuationWindowedFunctionValue;
+
+		
 	}
 }
 
-float ComputeDistanceAttenuation(float dist, float dist0, float distMax)
-{
-	float attenuation = 0.0f;
-
-	if (dist <= dist0)
-	{
-		// Treat dist0 as distance to surface. If we measure light closer than that distance
-		// we are basically inside light source, so just return 1.0
-		attenuation = 1.0f;
-	}
-	else if (dist < distMax)
-	{
-		// Real-Time Rendering (4th Edition), page 113
-		const float windowedFunctionValue = pow(max(0.0f, 1.0f - pow(dist / distMax, 4)), 2);
-
-		// Real-Time Rendering (4th Edition), page 111
-		const float distanceFalloff = pow(dist0 / dist, 2);
-
-		attenuation = windowedFunctionValue * distanceFalloff;
-	}
-	
-	return attenuation;
-}
-
-void ComputePointLighting(GPULight light, float4 worldPosition, float4 normal, float4 albedo, out float3 diffuse)
+void ComputePointLighting(GPULight light, float4 worldPosition, float4 normal, float4 albedo, float maxDist, out float3 diffuse)
 {
 	const float3 lightPosition = float3(light.worldTransform[0][3], 
 		light.worldTransform[1][3],
@@ -186,7 +209,7 @@ void ComputePointLighting(GPULight light, float4 worldPosition, float4 normal, f
 	float3 pointToLight = lightPosition - worldPosition.xyz;
 	
 	const float pointToLightDist = length(pointToLight);
-	const float attenuation = ComputeDistanceAttenuation(pointToLightDist, light.extends.x, POINT_LIGHTS_MAX_DISTANCE);
+	const float attenuation = ComputeDistanceAttenuation(pointToLightDist, light.extends.x, maxDist);
 	
 	pointToLight = normalize(pointToLight);
 	
@@ -219,19 +242,22 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	{
 		const int lightListIndex = ClusteredLightingIndexList[lightIndex + perClusterData.offset];
 		GPULight light = LightsList[lightListIndex];
+		GPULightBoundingVolume boundingVolume = LightBoundingVolumes[lightListIndex];
+		
+		const float maxDist = boundingVolume.radius;
 		
 		float3 lightDiffuse = float3(0.0f, 0.0f, 0.0f);
 
 		if (light.type == POINT_LIGHT)
 		{
 #if (ENABLE_POINT_LIGHTS)
-			ComputePointLighting(light, worldPosition, normal, albedo, lightDiffuse);
+			ComputePointLighting(light, worldPosition, normal, albedo, maxDist, lightDiffuse);
 #endif
 		}
 		else if (light.type == AREA_LIGHT)
 		{
 #if (ENABLE_AREA_LIGHTS)
-			ComputeAreaLighting(light, worldPosition, normal, albedo, lightDiffuse);		
+			ComputeAreaLighting(light, worldPosition, normal, albedo, maxDist, lightDiffuse);		
 #endif
 		}
 		
