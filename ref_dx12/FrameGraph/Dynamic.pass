@@ -101,7 +101,7 @@ VertexOut main(VertexIn vIn)
 Type : PS 
 External : DiffuseMap, gSamLinearWrap, VertexOut, PixelOut
 <[
-PixelOut main(VertexOut vOut) : SV_Target
+PixelOut main(VertexOut vOut)
 {
 	float4 color = DiffuseMap.Sample(gSamLinearWrap, vOut.Tex);
     
@@ -113,7 +113,7 @@ PixelOut main(VertexOut vOut) : SV_Target
 	PixelOut output;
 	
 	output.Albedo = color;
-	output.Normal = vOut.Normal;
+	output.Normal = normalize(vOut.Normal);
 	output.Position = vOut.WorldPos;
 	
     return output;

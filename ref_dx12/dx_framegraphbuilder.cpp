@@ -18,6 +18,10 @@
 #include <limits>
 #include <format>
 
+//#DEBUG
+#pragma optimize("", off)
+//END
+
 namespace
 {
 	constexpr int DEFAULT_ROOT_SIG_DESCRIPTORS_NUM = 1;
@@ -1734,6 +1738,8 @@ std::vector<FrameGraphBuilder::CompiledShaderData> FrameGraphBuilder::CompileSha
 		{
 			Logs::Logf(Logs::Category::Parser, "Shader compilation error: {}",
 				reinterpret_cast<char*>(errors->GetBufferPointer()));
+			
+			ThrowIfFalse(!Settings::SHADER_COMPILATION_BREAK_ON_PASSABLE_ERROR);
 		}
 
 		ThrowIfFailed(hr);

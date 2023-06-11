@@ -1,2 +1,40 @@
 // Should match Settings::CLUSTERED_LIGHTING_MAX_LIGHTS_PER_CLUSTER
 #define MAX_LIGHTS_PER_CLUSTER 100
+
+uint3 GetNumClusters3D()
+{
+	return uint3(uint2(ScreenWidth, ScreenHeight) / uint2(TileWidth, TileHeight), NumFrustumSlices);
+}
+
+uint GetLinearClusterIndex(uint3 cluster3DIndex, uint3 numClusters)
+{
+	return cluster3DIndex.z + 
+		numClusters.z * cluster3DIndex.y +
+		(numClusters.z * numClusters.y) * cluster3DIndex.x;
+}
+
+int GetFrustumSlice(float depth)
+{
+
+	const float farNearLog = log(CameraFar/CameraNear);
+	
+	const float equationPart1 = NumFrustumSlices / farNearLog;
+	const float equationPart2 = NumFrustumSlices * log(CameraNear) / farNearLog;
+	
+	return floor(log(depth) * equationPart1 - equationPart2);
+}
+
+uint GetClusterIndex(int2 screentCoord, float depth)
+{
+	// Need to negate depth, because I use right hand coordinate system
+	depth = -depth;
+
+	const int clusterZIndex = GetFrustumSlice(depth);
+	const uint2 clusterXYIndices = screentCoord / uint2(TileWidth, TileHeight);
+	
+	const uint3 numClusters = GetNumClusters3D();
+	
+	const uint clusterLinearIndex = GetLinearClusterIndex(uint3(clusterXYIndices, clusterZIndex), numClusters);
+	
+	return clusterLinearIndex;
+}

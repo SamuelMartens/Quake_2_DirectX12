@@ -30,6 +30,16 @@ Resources
 		InitValue : NONE
 	],
 	
+	DirectLightBuffer
+	[
+		Type : Texture2D
+		Dimensions : 1024, 768
+		Format : R8G8B8A8_UNORM
+		Flags : ALLOW_UNORDERED_ACCESS
+		ClearValue : NONE
+		InitValue : NONE
+	],
+	
 	ComposeBuffer
 	[
 		Type : Texture2D
@@ -99,6 +109,7 @@ Steps
 {
 	// Clear color buffer
 	Copy(ColorBackBufferClearBuffer, COLOR_BACK_BUFFER)
+	Copy(ColorBackBufferClearBuffer, DirectLightBuffer)
 	FrameSetup
     Static
 	Dynamic
@@ -107,6 +118,7 @@ Steps
 	ClusteredLighting_CreateClusterLightList
 	BSPClusterClassification
 	SampleIndirect
+	DirectLighting
 	DeferredCompose
 	Copy(ComposeBuffer, COLOR_BACK_BUFFER)
     Particles

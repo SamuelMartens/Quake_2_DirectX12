@@ -1,7 +1,7 @@
 PassProperties
 {
 PassInput : PostProcess
-PassThreadGroups: 32, 24, 1
+PassThreadGroups: 64, 48, 1
 }
 
 State
@@ -110,7 +110,6 @@ External: cbSampleIndirect, DiffuseProbes, AABB, ClusterProbeGridInfo, ClusterAA
 
 #define CUBE_VERTS_NUM 8
 #define SAMPLES_NUM 32
-#define M_PI		3.14159265358979323846
 #define EPSILON		0.00001f	
 
 uint NextRandomSample(uint seed)
@@ -137,26 +136,29 @@ float2 GenerateConcentricDiskSample(float normalizedSample1, float normalizedSam
 	const float sample1 = 2.0f * normalizedSample1 - 1.0f;
 	const float sample2 = 2.0f * normalizedSample2 - 1.0f;
 	
-	if (sample1 == 0.0f && sample2 == 0.0f)
+	float2 diskSample = float2(0.0f, 0.0f);
+	
+	if (sample1 != 0.0f || sample2 != 0.0f)
 	{
-		return float2(0.0f, 0.0f);
+		float theta = 0.0f;
+		float radius = 0.0f;
+		
+		if (abs(sample1) > abs(sample2))
+		{
+			radius = sample1;
+			theta = M_PI * sample2 / (sample1 * 4.0f);
+		}
+		else
+		{
+			radius = sample2;
+			theta = M_PI / 2.0f - M_PI * sample1 / ( sample2 * 4.0f );
+		}
+		
+		diskSample.x = radius * cos(theta);
+		diskSample.y = radius * sin(theta);
 	}
 	
-	float theta = 0.0f;
-	float radius = 0.0f;
-	
-	if (abs(sample1) > abs(sample2))
-	{
-		radius = sample1;
-		theta = M_PI * sample2 / (sample1 * 4.0f);
-	}
-	else
-	{
-		radius = sample2;
-		theta = M_PI / 2.0f - M_PI * sample1 / ( sample2 * 4.0f );
-	}
-	
-	return float2(radius * cos(theta), radius * sin(theta));
+	return diskSample;
 }
 
 float4x4 ConstructV1ToV2RotationMatrix(float4 v1, float4 v2)
@@ -260,7 +262,7 @@ float3 GetProbeCubeInterpolationValues(float4 position, int clusterIndex)
 	return frac((position.xyz - clusterAABB.Min.xyz) / ProbeGridInterval);
 }
 
-[numthreads(32, 32, 1)]
+[numthreads(16, 16, 1)]
 void main(int3 dispatchThreadID : SV_DispatchThreadID)
 {
 	if (ProbeDataExist == 0)

@@ -123,9 +123,6 @@ float4 main(VertexOut vOut) : SV_Target
 		discard;
 	}
 	
-	//#DEBUG so far, I don't have global light list, but that's where light type should be stored.
-	// so everything is just going to be a sphere for now. Later implemenent different coloring
-	// for different types. As well as different treatment for area lights hemisphere front and back
 	float4 color = float4(1.0f, 0.5f, 0.0f, 1.0f);
 	
 	return color;

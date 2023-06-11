@@ -812,7 +812,10 @@ XMFLOAT4 LightBaker::GatherDirectIrradianceFromPointLights(const XMFLOAT4& inter
 		{
 			continue;
 		}
-
+		
+		//#DEBUG my baked lighting is messed up with PI terms. I divide the wrong thing, and
+		// I do this way to many times (in c_diff too). Check your PI division stuff in indirect
+		// sampling shader too. Read this and compare https://seblagarde.wordpress.com/2012/01/08/pi-or-not-to-pi-in-game-lighting-equation/
 		const XMVECTOR sseLightBaseRadiance = (XMLoadFloat4(&light.color) / M_PI) *
 			light.intensity;
 

@@ -112,10 +112,10 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	const int flatDispatchThreadID = dispatchThreadID.y * dispatchThreadsNum.x + dispatchThreadID.x;
 	
 	// Clean active cluster values in range of that thread
-	for (int i = flatDispatchThreadID * CLEAN_CLUSTER_LIGHTS_PER_THREAD; i < min(ClusterListSize, (flatDispatchThreadID + 1) * CLEAN_CLUSTER_LIGHTS_PER_THREAD); i++)
+	for (int cleanClusterIndex = flatDispatchThreadID * CLEAN_CLUSTER_LIGHTS_PER_THREAD; cleanClusterIndex < min(ClusterListSize, (flatDispatchThreadID + 1) * CLEAN_CLUSTER_LIGHTS_PER_THREAD); cleanClusterIndex++)
 	{
-		ActiveClustersList[i] = 0;
-		UniqueActiveClustersList[i] = -1;
+		ActiveClustersList[cleanClusterIndex] = 0;
+		UniqueActiveClustersList[cleanClusterIndex] = -1;
 	}
 	
 	// Clean cluster light list data
@@ -125,11 +125,11 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	zeroPerClusterIndexData.offset = 0;
 	zeroPerClusterIndexData.count = 0;
 	
-	for (int i = flatDispatchThreadID * cleanLightsPerThread; i < min(LightListSize, (flatDispatchThreadID + 1) * cleanLightsPerThread); i++)
+	for (int perClusterIndex = flatDispatchThreadID * cleanLightsPerThread; perClusterIndex < min(LightListSize, (flatDispatchThreadID + 1) * cleanLightsPerThread); perClusterIndex++)
 	{
-		PerClusterLightIndexDataList[i] = zeroPerClusterIndexData;
+		PerClusterLightIndexDataList[perClusterIndex] = zeroPerClusterIndexData;
 		
-		for (int k = i * MAX_LIGHTS_PER_CLUSTER; k < (i + 1) * MAX_LIGHTS_PER_CLUSTER; ++k)
+		for (int k = perClusterIndex * MAX_LIGHTS_PER_CLUSTER; k < (perClusterIndex + 1) * MAX_LIGHTS_PER_CLUSTER; ++k)
 		{
 			ClusteredLightingIndexList[k] = 0;
 		}

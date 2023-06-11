@@ -63,8 +63,8 @@ namespace Settings
 	extern const std::string	DATA_DIR;
 	extern const std::string	LIGHT_BAKING_DATA_FILENAME;
 
-	//constexpr UINT		SHADER_COMPILATION_FLAGS = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-	constexpr UINT		SHADER_COMPILATION_FLAGS = 0;
+	constexpr UINT		SHADER_COMPILATION_FLAGS = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+	constexpr bool		SHADER_COMPILATION_BREAK_ON_PASSABLE_ERROR = true;
 
 	extern const std::string SHADER_FEATURE_LEVEL;
 
@@ -73,7 +73,7 @@ namespace Settings
 
 
 	/* Light Baker */
-	constexpr float AREA_LIGHTS_MIN_DISTANCE = 1.0f;
+	constexpr float AREA_LIGHTS_MIN_DISTANCE = 5.0f;
 	constexpr float AREA_LIGHTS_MAX_DISTANCE = 500.0f;
 	constexpr float POINT_LIGHTS_MAX_DISTANCE = 500.0f;
 
@@ -91,12 +91,13 @@ namespace Settings
 	constexpr float PATH_TRACING_EPSILON =  0.00015f;
 
 	/* Start up options */
-	constexpr bool LOAD_LIGHT_BAKING_DATA_ON_START_UP = true;
+	constexpr bool LOAD_LIGHT_BAKING_DATA_ON_START_UP = false;
 
 	/* Clustered Lighting */
 	// Should match MAX_LIGHTS_PER_CLUSTER in ClusteredLighting.passh
 	constexpr int CLUSTERED_LIGHTING_MAX_LIGHTS_PER_CLUSTER = 100;
 
 	/* Direct Lighting */
-	constexpr float DIRECT_LIGHT_INTENSITY_THRESHOLD = 0.4f;
+	constexpr float DIRECT_POINT_LIGHT_INTENSITY_THRESHOLD = 0.075f;
+	constexpr float DIRECT_AREA_LIGHT_INTENSITY_THRESHOLD = 0.001f;
 }

@@ -2,7 +2,7 @@ PassProperties
 {
 PassInput : PostProcess
 // Should match macros defined in shader
-PassThreadGroups: 2, 1, 1
+PassThreadGroups: 8, 1, 1
 }
 
 State
@@ -113,11 +113,12 @@ External : GPULightBoundingVolume, cbTileData, cbFrameData, LightBoundingVolumes
 #include "ClusteredLighting.passh"
 #include "Debug.passh"
 
-#define THREAD_GROUP_SIZE_X 32
+#define THREAD_GROUP_SIZE_X 8
 #define THREAD_GROUP_SIZE_Y 10
 #define THREAD_GROUP_SIZE_Z 1
 
-#define DISPATCH_SIZE int3(2, 1, 1)
+// Should match PassProperties
+#define DISPATCH_SIZE int3(8, 1, 1)
 
 // This should match maximum size of the available groupshared memory,
 // so if GPULightBoundingVolume is changed in size, think about changing this
@@ -127,12 +128,12 @@ groupshared GPULightBoundingVolume sharedTestData[SHARED_TEST_DATA_ARRAY_SIZE];
 
 bool IsSphereAABBIntersect(float3 sphereOrigin, float sphereRadius, AABB aabb)
 {
-	float3 e = max(aabb.Min - sphereOrigin, 0);
-	e = e + max(sphereOrigin - aabb.Max, 0);
+	float3 e = max(aabb.Min.xyz - sphereOrigin, 0);
+	e = e + max(sphereOrigin - aabb.Max.xyz, 0);
 	
-	e = e * e;
+	const float d = dot(e, e);
 	
-	return all(e < (sphereRadius * sphereRadius).xxx);
+	return d < (sphereRadius * sphereRadius);
 }
 
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
@@ -183,10 +184,13 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID, uint linearGroupIndex : S
 				}
 			}
 		}
+
+		GroupMemoryBarrierWithGroupSync();
+
 	}
 	
 	GroupMemoryBarrierWithGroupSync();
-	
+
 	if (isClusterActive == true && visibleLightCount > 0)
 	{
 		int offset = 0;

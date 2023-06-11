@@ -17,6 +17,7 @@ RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0, space = 0),
+CBV(b1, space = 0),
 CBV(b0, space = 1),
 CBV(b0, space = 2),
 CBV(b0, space = 3)
@@ -60,6 +61,15 @@ cbuffer cbFrameData : register(b0, space0)
 	int LightListSize;
 }
 
+[Global, PerPass]
+cbuffer cbTileData : register(b1, space0)
+{
+	int TileWidth;
+	int TileHeight;
+	int NumFrustumSlices;
+	int ClusterListSize;
+}
+
 [Global, PerObject]
 cbuffer cbPerObject_Global : register(b0, space1)
 {
@@ -80,6 +90,7 @@ cbuffer cbPerObject_Local : register(b0, space3)
 	int FrustumClusterIndex;
 	int IsActiveFrustumCluster;
 	int IsLightAffectedFrustumCluster;
+	int IsAnyLightAffectedFrustumCluster;
 }
 
 // Shaders
@@ -110,12 +121,18 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : PS 
-External : VertexOut, cbPerObject_Global, cbPerObject_Local
+External : VertexOut, cbPerObject_Global, cbPerObject_Local, cbFrameData, cbTileData
 <[
 
 #include "Debug.passh"
 #include "Constants.passh"
+#include "ClusteredLighting.passh"
 
+#define ENABLE_SHOW_ONLY_FRUSTUM_CLUSTER_WITH_LINEAR_INDEX 0
+#define SHOW_ONLY_FRUSTUM_CLUSTER_WITH_LINEAR_INDEX 0
+
+#define ENABLE_SHOW_ONLY_FRUSTUM_CLUSTER_WITH_3D_INDEX 0
+#define SHOW_ONLY_FRUSTUM_CLUSTER_WITH_3D_INDEX uint3(0, 0, 0)
 
 float4 main(VertexOut vOut) : SV_Target
 {
@@ -134,18 +151,48 @@ float4 main(VertexOut vOut) : SV_Target
 		color = float4(0.0, 1.0, 0.0, 1.0);
 	}
 	
-	if (DebugObjectType == DEBUG_OBJECT_FRUSTUM_CLUSTER && IsActiveFrustumCluster > 0)
+	
+	if (DebugObjectType == DEBUG_OBJECT_FRUSTUM_CLUSTER)
 	{
-		// Orange
-		color = float4(1.0f, 0.71f, 0.0f, 1.0f);
+	
+#if ENABLE_SHOW_ONLY_FRUSTUM_CLUSTER_WITH_LINEAR_INDEX
+		if (FrustumClusterIndex != SHOW_ONLY_FRUSTUM_CLUSTER_WITH_LINEAR_INDEX)
+		{
+			discard;
+		}
+#endif	
+
+#if ENABLE_SHOW_ONLY_FRUSTUM_CLUSTER_WITH_3D_INDEX
+		{
+			const uint3 numClusters = GetNumClusters3D();
+			const uint clusterLinearIndex = GetLinearClusterIndex(SHOW_ONLY_FRUSTUM_CLUSTER_WITH_3D_INDEX, numClusters);
+			
+			if (FrustumClusterIndex != int(clusterLinearIndex))
+			{
+				discard;
+			}
+		}
+#endif 
+	
+		if (IsActiveFrustumCluster > 0)
+		{
+			// Orange
+			color = float4(1.0f, 0.71f, 0.0f, 1.0f);
+		}
+		
+		if (IsLightAffectedFrustumCluster > 0)
+		{
+			// Green
+			color = float4(0.0f, 1.0f, 0.0f, 1.0f);
+		}
+		
+		if (IsAnyLightAffectedFrustumCluster > 0)
+		{
+			// Red
+			color = float4(1.0f, 0.0f, 0.0f, 1.0f);
+		}
 	}
 	
-	if (DebugObjectType == DEBUG_OBJECT_FRUSTUM_CLUSTER && IsLightAffectedFrustumCluster > 0)
-	{
-		// Green
-		color = float4(0.0f, 1.0f, 0.0f, 1.0f);
-	}
-
     return color;
 }
 ]>

@@ -1638,7 +1638,7 @@ void Renderer::SetUpFrameDebugData(Frame& frame)
 				frame.resourceReadBackRequests.push_back(readBackRequest);
 			}
 
-			if (debugSettings.showFrustumClustersAffectedByPickedLights == true)
+			if (debugSettings.showFrustumClustersAffectedByPickedLights == true || debugSettings.showClustersAffectedByAnyLight == true)
 			{
 				const int gpuLightsNum = GetGpuLightsNum();
 
@@ -1986,7 +1986,7 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 
 		std::vector<uint32_t> frustumClustersAffectedByLightsIndices;
 
-		if (debugSettings.showFrustumClustersAffectedByPickedLights)
+		if (debugSettings.showFrustumClustersAffectedByPickedLights == true)
 		{
 			// Find clusters affected by picked light
  			for (int pickedLightIndex = 0; pickedLightIndex < debugPickedStaticLights.size(); ++pickedLightIndex)
@@ -2009,6 +2009,21 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 					{
 						frustumClustersAffectedByLightsIndices.push_back(clusterIndex);
 					}
+				}
+			}
+		}
+
+		std::vector<uint32_t> frustumClustersAffectedByAnyLightsIndices;
+
+		if (debugSettings.showClustersAffectedByAnyLight)
+		{
+			for (int clusterIndex = 0; clusterIndex < debugSettings.clusteredLighting_perClusterLightData.size(); ++clusterIndex)
+			{
+				const Light::ClusterLightData& perClusterLightData = debugSettings.clusteredLighting_perClusterLightData[clusterIndex];
+
+				if (perClusterLightData.count > 0)
+				{
+					frustumClustersAffectedByAnyLightsIndices.push_back(clusterIndex);
 				}
 			}
 		}
@@ -2036,6 +2051,16 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 			else
 			{
 				object.isAffectedByLight = false;
+			}
+
+			if (frustumClustersAffectedByAnyLightsIndices.empty() == false && debugSettings.showClustersAffectedByAnyLight == true)
+			{
+				const auto clusterIt = std::find(frustumClustersAffectedByAnyLightsIndices.cbegin(), frustumClustersAffectedByAnyLightsIndices.cend(), i);
+				object.isAffectedByAnyLight = clusterIt != frustumClustersAffectedByAnyLightsIndices.cend();
+			}
+			else
+			{
+				object.isAffectedByAnyLight = false;
 			}
 
 			debugObjects.push_back(object);
@@ -2178,6 +2203,7 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 						ImGui::Indent();
 						ImGui::Checkbox("Fix in place", &debugSettings.fixFrustumClustersInPlace);
 						ImGui::Checkbox("Show active clusters", &debugSettings.showActiveFrustumClusters);
+						ImGui::Checkbox("Show clusters affected by any light", &debugSettings.showClustersAffectedByAnyLight);
 
 						if (debugSettings.enableLightSourcePicker == true)
 						{

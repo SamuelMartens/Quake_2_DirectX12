@@ -68,6 +68,8 @@ Type : CS
 External : cbFrameData, cbTileData, ActiveClustersList, DepthBuffer
 <[
 
+#include "ClusteredLighting.passh"
+
 float3 GetViewPosFromDepthAndScreenCoord(int2 screenCoord, float depth)
 {
 	// NOTE: This doesn't account for the screen offset
@@ -81,35 +83,6 @@ float3 GetViewPosFromDepthAndScreenCoord(int2 screenCoord, float depth)
 	worldCoord = worldCoord / worldCoord.w;
 
 	return worldCoord.xyz;
-}
-
-
-int GetFrustumSlice(float depth)
-{
-
-	const float farNearLog = log(CameraFar/CameraNear);
-	
-	const float equationPart1 = NumFrustumSlices / farNearLog;
-	const float equationPart2 = NumFrustumSlices * log(CameraNear) / farNearLog;
-	
-	return floor(log(depth) * equationPart1 - equationPart2);
-}
-
-int GetClusterIndex(int2 screentCoord, float depth)
-{
-	// Need to negate depth, because I use right hand coordinate system
-	depth = -depth;
-
-	const int clusterZIndex = GetFrustumSlice(depth);
-	const int2 clusterXYIndices = screentCoord / int2(TileWidth, TileHeight);
-	
-	const int3 numClusters = int3(int2(ScreenWidth, ScreenHeight) / int2(TileWidth, TileHeight), NumFrustumSlices);
-	
-	const int clusterLinearIndex = clusterZIndex + 
-		numClusters.z * clusterXYIndices.y +
-		(numClusters.z * numClusters.y) * clusterXYIndices.x;
-	
-	return clusterLinearIndex;
 }
 
 [numthreads(32, 32, 1)]

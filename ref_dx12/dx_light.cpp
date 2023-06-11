@@ -27,12 +27,12 @@ namespace
 		return max;
 	}
 
-	float CalculateLightFarDistance(float intensity, float minDistance, float maxDistance)
+	float CalculateLightFarDistance(float intensity, float minDistance, float maxDistance, float threshold)
 	{
 		DX_ASSERT(intensity > 0.0f && "Can't calculate light far distance, invalid intensity");
 		DX_ASSERT(minDistance < maxDistance && "Can't calculate light far distance, invalid min/max");
 
-		const float farDistance = minDistance / std::sqrt(Settings::DIRECT_LIGHT_INTENSITY_THRESHOLD / intensity);
+		const float farDistance = minDistance / std::sqrt(threshold / intensity);
 
 		return std::clamp(farDistance, minDistance, maxDistance);
 	}
@@ -112,7 +112,8 @@ Utils::Sphere AreaLight::GetBoundingSphere(const AreaLight& light, const XMFLOAT
 
 	const float falloffDist = CalculateLightFarDistance(light.radiance, 
 		Settings::AREA_LIGHTS_MIN_DISTANCE,
-		Settings::AREA_LIGHTS_MAX_DISTANCE);
+		Settings::AREA_LIGHTS_MAX_DISTANCE,
+		Settings::DIRECT_AREA_LIGHT_INTENSITY_THRESHOLD);
 
 	const float extendsLength = XMVectorGetX(XMVector2Length(XMLoadFloat2(&extends)));
 
@@ -274,7 +275,10 @@ Utils::Sphere PointLight::GetBoundingSphere(const PointLight& light)
 	Utils::Sphere sphere;
 
 	sphere.origin = light.origin;
-	sphere.radius = CalculateLightFarDistance(light.intensity, light.objectPhysicalRadius, Settings::POINT_LIGHTS_MAX_DISTANCE);
+	sphere.radius = CalculateLightFarDistance(light.intensity, 
+		light.objectPhysicalRadius,
+		Settings::POINT_LIGHTS_MAX_DISTANCE,
+		Settings::DIRECT_POINT_LIGHT_INTENSITY_THRESHOLD);
 
 	return sphere;
 }

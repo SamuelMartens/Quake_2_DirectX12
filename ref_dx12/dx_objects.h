@@ -173,6 +173,7 @@ struct DebugObject_FrustumCluster
 	int index = Const::INVALID_INDEX;
 	bool isActive = false;
 	bool isAffectedByLight = false;
+	bool isAffectedByAnyLight = false;
 };
 
 struct DebugObject_LightBoundingVolume

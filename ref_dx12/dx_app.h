@@ -229,6 +229,7 @@ public:
 		bool fixFrustumClustersInPlace = false;
 		bool showActiveFrustumClusters = false;
 		bool showFrustumClustersAffectedByPickedLights = false;
+		bool showClustersAffectedByAnyLight = false;
 		std::vector<int> activeFrustumClusters;
 		std::vector<Light::ClusterLightData> clusteredLighting_perClusterLightData;
 		std::vector<uint32_t> clusteredLighting_globalLightIndices;

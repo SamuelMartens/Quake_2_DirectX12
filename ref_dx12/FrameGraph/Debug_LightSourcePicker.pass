@@ -78,6 +78,7 @@ External : cbFrameData, cbFrameDebugData, PickedLights, DepthBuffer, GPULight, L
 <[
 
 #include "Debug.passh"
+#include "Constants.passh"
 
 float3 GetWorldPosFromDepthAndScreenCoord(int2 screenCoord, float depth)
 {
@@ -127,7 +128,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	{
 		GPULight light = LightsList[i];
 		
-		if (light.type == DEBUG_POINT_LIGHT)
+		if (light.type == POINT_LIGHT)
 		{
 			const float3 lightPosition = float3(light.worldTransform._14, light.worldTransform._24, light.worldTransform._34);
 			const float radius = light.extends.x;

@@ -112,12 +112,12 @@ float4 main(VertexOut vOut) : SV_Target
 
 	float4 color = float4(0.0, 0.0, 0.0, 1.0);
 
-	if (LightSourceType == DEBUG_AREA_LIGHT)
+	if (LightSourceType == AREA_LIGHT)
 	{
 		color = float4(1.0, 0.0, 0.0, 1.0);
 	}
 	
-	if (LightSourceType == DEBUG_POINT_LIGHT)
+	if (LightSourceType == POINT_LIGHT)
 	{
 		color = float4(0.0, 1.0, 0.0, 1.0);
 	}

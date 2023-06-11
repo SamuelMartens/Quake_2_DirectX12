@@ -107,7 +107,7 @@ VertexOut main(VertexIn vIn)
 Type : PS 
 External : DiffuseMap, gSamLinearWrap, VertexOut, PixelOut
 <[
-PixelOut main(VertexOut vOut) : SV_Target
+PixelOut main(VertexOut vOut)
 {
 	float4 color = DiffuseMap.Sample(gSamLinearWrap, vOut.Tex);
     
