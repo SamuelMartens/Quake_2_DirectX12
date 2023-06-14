@@ -89,6 +89,11 @@ public:
 	bool debugEnableLightSourcePicker = false;
 	Utils::MouseInput mouseInput;
 
+	// PBR
+	float roughnessOverride = 0.0f;
+	float metalinessOverride = 0.0f;
+	float reflectanceOverride = 0.0f;
+
 	// Synchronization 
 	
 	// These two values are used in the very end when we call ExecuteCommandList

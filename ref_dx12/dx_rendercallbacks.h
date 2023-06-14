@@ -884,6 +884,30 @@ namespace RenderCallbacks
 			}
 		}
 		break;
+		case HASH("DirectLighting"):
+		{
+			switch (paramName)
+			{
+			case HASH("RoughnessOverride"):
+			{
+				reinterpret_cast<float&>(bindPoint) = ctx.jobContext.frame.roughnessOverride;
+			}
+			break;
+			case HASH("MetalinessOverride"):
+			{
+				reinterpret_cast<float&>(bindPoint) = ctx.jobContext.frame.metalinessOverride;
+			}
+			break;
+			case HASH("ReflectanceOverride"):
+			{
+				reinterpret_cast<float&>(bindPoint) = ctx.jobContext.frame.reflectanceOverride;
+			}
+			break;
+			default:
+				break;
+			}
+		}
+		break;
 		default:
 			break;
 		}

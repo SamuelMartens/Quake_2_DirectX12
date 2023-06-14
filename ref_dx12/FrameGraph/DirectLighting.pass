@@ -13,6 +13,7 @@ RootSignature
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0, space = 0),
 CBV(b1, space = 0),
+CBV(b0, space = 2),
 DescriptorTable(SRV(t4, numDescriptors = 2, space = 0)),
 DescriptorTable(UAV(u2, numDescriptors = 2, space = 0)),
 DescriptorTable(SRV(t0, numDescriptors = 3, space = 2)),
@@ -73,6 +74,14 @@ cbuffer cbTileData : register(b1, space0)
 	int ClusterListSize;
 }
 
+[Local, PerPass]
+cbuffer cbPBROverrides : register(b0, space2)
+{
+	float RoughnessOverride;
+	float MetalinessOverride;
+	float ReflectanceOverride;
+}
+
 [Global, PerPass]
 StructuredBuffer<GPULightBoundingVolume> LightBoundingVolumes : register(t4, space0)
 
@@ -100,7 +109,7 @@ RWTexture2D<float4> DirectLightBuffer : register(u0, space2)
 
 Type : CS
 External : GPULight, LightsList, ClusteredLightingIndexList, PerClusterLightIndexData, PerClusterLightIndexDataList, GBuffer_Albedo, 
-	GBuffer_Normals, GBuffer_Position, DirectLightBuffer, cbTileData, cbFrameData, GPULightBoundingVolume, LightBoundingVolumes
+	GBuffer_Normals, GBuffer_Position, DirectLightBuffer, cbTileData, cbFrameData, GPULightBoundingVolume, LightBoundingVolumes, cbPBROverrides
 <[
 
 #include "Debug.passh"
@@ -109,6 +118,10 @@ External : GPULight, LightsList, ClusteredLightingIndexList, PerClusterLightInde
 
 #define ENABLE_POINT_LIGHTS 1
 #define ENABLE_AREA_LIGHTS 1
+
+#define ENABLE_SPECULAR 1
+#define ENABLE_DIFFUSE 1
+
 
 float ComputAttenuationWindowedFunction(float dist, float distMax)
 {
@@ -137,6 +150,74 @@ float ComputeDistanceAttenuation(float dist, float dist0, float distMax)
 	}
 	
 	return attenuation;
+}
+
+float ComputeNDF_GGX(float nDotH, float roughness)
+{
+	float result = 0.0f;
+	
+	if (nDotH > 0.0f)
+	{
+		const float roughnessSqr = roughness * roughness;
+		
+		const float d = 1.0f + nDotH * nDotH * (roughnessSqr - 1.0f);
+		
+		result = roughnessSqr / (M_PI * d * d);
+	}
+	
+	return result;
+}
+
+float ComputeG2_Smith_GGX(float nDotL, float nDotV, float roughness)
+{
+	// Actually represents
+	// G2 / (4 * nDotL * nDotV) 	
+	
+	float result = 0.0f;
+	
+	if (nDotL != 0.0f && nDotV != 0.0f)
+	{
+		nDotL = abs(nDotL);
+		nDotV = abs(nDotV);
+		
+		result = 0.5f / (lerp(2.0f * nDotL * nDotV, nDotL + nDotV, roughness));
+	}
+	
+	return result;
+}
+
+float3 ComputeFresnel_Schlick(float3 f0, float nDotL)
+{
+	nDotL = max(0.0f, nDotL);
+	
+	const float a = 1.0f - nDotL;
+	const float sqrA = a * a;
+
+	return f0 + (1.0f.xxx - f0) * sqrA * sqrA * a; 
+}
+
+float3 ComputeSpecularBRDF(float3 n, float3 l, float3 v, float3 albedo, float roughness, float metalness, float reflectance)
+{
+	const float3 h = (l + v) / length(l + v);
+	
+	const float nDotL = dot(n, l);
+	const float nDotV = dot(n, v);
+	const float nDotH = dot(n, h);
+	
+	const float D = ComputeNDF_GGX(nDotH, roughness);
+	// Also includes 4 * nDotL * nDotV denominator term
+	const float G2 = ComputeG2_Smith_GGX(nDotL, nDotV, roughness);
+	
+	// Metalness might be between 0 and 1 so we need to compute 2 Fresnels and interpolate
+	const float3 F_metal = ComputeFresnel_Schlick(albedo, nDotL);
+	
+	// https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/course-notes-moving-frostbite-to-pbr-v2.pdf#page=13
+	const float3 dielectricF0 = (0.16f * reflectance * reflectance).xxx;
+	const float3 F_dielectric = ComputeFresnel_Schlick(dielectricF0, nDotL);
+	
+	const float3 F = lerp(F_dielectric, F_metal, metalness);
+
+	return F * G2 * D; 
 }
 
 // Perfomed in world coordinate system
@@ -194,13 +275,26 @@ void ComputeAreaLighting(GPULight light, float4 worldPosition, float4 normal, fl
 			saturate(dot(normalize(p2.xyz - worldPosition.xyz), normal.xyz)) + 
 			saturate(dot(normalize(p3.xyz - worldPosition.xyz), normal.xyz)) + 
 			saturate(dot(normalize(-lightToSurface), normal.xyz))) * albedo.xyz *
-			light.colorAndIntensity.xyz * light.colorAndIntensity.w * attenuationWindowedFunctionValue;
+			light.colorAndIntensity.xyz * light.colorAndIntensity.w * attenuationWindowedFunctionValue / M_PI;
 
 		
 	}
 }
 
-void ComputePointLighting(GPULight light, float4 worldPosition, float4 normal, float4 albedo, float maxDist, out float3 diffuse)
+
+float3 ComputePointLighting_Diffuse(float3 l, float3 n, float3 albedo, float3 lightColor, float lightIntensity, float attenuation, float metalness)
+{
+	return (1.0f - metalness) * attenuation * max(dot(l, n), 0.0f) * lightIntensity * lightColor * albedo / M_PI;
+}
+
+float3 ComputePointLighting_Specular(float3 n, float3 l, float3 v, float3 albedo, float3 lightColor, float lightIntensity, float attenuation, float roughness, float metalness, float reflectance)
+{
+	const float3 specBRDF = ComputeSpecularBRDF(n, l, v, albedo, roughness, metalness, reflectance);
+	
+	return attenuation * specBRDF * lightColor * lightIntensity * max(dot(l, n), 0.0f);
+}
+
+void ComputePointLighting(GPULight light, float4 worldPosition, float4 normal, float4 cameraPos, float4 albedo, float roughness, float metalness, float reflectance, float maxDist, out float3 diffuse, out float3 specular)
 {
 	const float3 lightPosition = float3(light.worldTransform[0][3], 
 		light.worldTransform[1][3],
@@ -213,7 +307,26 @@ void ComputePointLighting(GPULight light, float4 worldPosition, float4 normal, f
 	
 	pointToLight = normalize(pointToLight);
 	
-	diffuse = attenuation * max(dot(pointToLight, normal.xyz), 0.0f) * light.colorAndIntensity.xyz * light.colorAndIntensity.w * albedo.xyz;
+	diffuse = ComputePointLighting_Diffuse(pointToLight, 
+		normal.xyz,
+		albedo.xyz,
+		light.colorAndIntensity.xyz,
+		light.colorAndIntensity.w,
+		attenuation,
+		metalness);
+	
+	const float3 viewVector = normalize(cameraPos.xyz - worldPosition.xyz);
+	
+	specular = ComputePointLighting_Specular(normal.xyz,
+		pointToLight,
+		viewVector,
+		albedo.xyz,
+		light.colorAndIntensity.xyz,
+		light.colorAndIntensity.w,
+		attenuation,
+		roughness, 
+		metalness,
+		reflectance);
 }
 
 [numthreads(16, 16, 1)]
@@ -223,6 +336,8 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	const float4 worldPosition = GBuffer_Position[dispatchThreadID.xy];
 	const float4 normal = GBuffer_Normals.Load(int3(dispatchThreadID.xy, 0));
 	const float4 albedo = GBuffer_Albedo.Load(int3(dispatchThreadID.xy, 0));
+	
+	const float roughness = RoughnessOverride * RoughnessOverride;
 	
 	// Find pixel cluster index
 	const float4 viewPositon = mul(View, worldPosition);
@@ -236,6 +351,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	}
 	
 	float3 diffuse = float3(0.0f, 0.0f, 0.0f);
+	float3 specular = float3(0.0f, 0.0f, 0.0f);
 	
 	// Iterate over lights and calculate contribution
 	for (int lightIndex = 0; lightIndex < perClusterData.count; ++lightIndex)
@@ -247,11 +363,12 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 		const float maxDist = boundingVolume.radius;
 		
 		float3 lightDiffuse = float3(0.0f, 0.0f, 0.0f);
+		float3 lightSpecular = float3(0.0f, 0.0f, 0.0f);
 
 		if (light.type == POINT_LIGHT)
 		{
 #if (ENABLE_POINT_LIGHTS)
-			ComputePointLighting(light, worldPosition, normal, albedo, maxDist, lightDiffuse);
+			ComputePointLighting(light, worldPosition, normal, CameraOrigin, albedo, roughness, MetalinessOverride, ReflectanceOverride, maxDist, lightDiffuse, lightSpecular);
 #endif
 		}
 		else if (light.type == AREA_LIGHT)
@@ -262,9 +379,20 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 		}
 		
 		diffuse += lightDiffuse;
+		specular += lightSpecular;
 	}
 	
-	DirectLightBuffer[dispatchThreadID.xy] =  float4(diffuse, 1.0f);
+	float3 directLight = float3(0.0f, 0.0f, 0.0f);
+	
+#if (ENABLE_DIFFUSE)
+	directLight += diffuse;
+#endif
+	
+#if (ENABLE_SPECULAR)
+	directLight += specular;
+#endif
+	
+	DirectLightBuffer[dispatchThreadID.xy] =  float4(directLight, 1.0f);
 }
 
 ]>

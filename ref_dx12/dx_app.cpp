@@ -1667,6 +1667,9 @@ void Renderer::SetUpFrameDebugData(Frame& frame)
 
 	frame.mouseInput = GetMouseInput();
 
+	frame.roughnessOverride = debugSettings.roughness;
+	frame.metalinessOverride = debugSettings.metalness;
+	frame.reflectanceOverride = debugSettings.reflectance;
 
 	if (debugSettings.enableLightSourcePicker == true)
 	{
@@ -2407,6 +2410,19 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 							RequestStateChange(State::LoadLightBakingFromFile);
 						}
 					}
+
+					ImGui::Unindent();
+				}
+
+				ImGui::Separator();
+
+				if (ImGui::CollapsingHeader("PBR"))
+				{
+					ImGui::Indent();
+
+					ImGui::SliderFloat("Roughness", &debugSettings.roughness, 0.0f, 1.0f);
+					ImGui::SliderFloat("Metaliness", &debugSettings.metalness, 0.0f, 1.0f);
+					ImGui::SliderFloat("Reflectance", &debugSettings.reflectance, 0.0f, 1.0f);
 
 					ImGui::Unindent();
 				}

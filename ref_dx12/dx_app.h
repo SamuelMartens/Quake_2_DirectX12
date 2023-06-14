@@ -235,6 +235,11 @@ public:
 		std::vector<uint32_t> clusteredLighting_globalLightIndices;
 
 		XMFLOAT4X4 frustumClustersInverseViewTransform;
+
+		// PBG tunning
+		float roughness = 0.2f;
+		float metalness = 85.0f;
+		float reflectance = 1.0f;
 	};
 
 	// Public because it is already wrapped up in class
