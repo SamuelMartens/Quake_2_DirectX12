@@ -122,6 +122,16 @@ External : GPULight, LightsList, ClusteredLightingIndexList, PerClusterLightInde
 #define ENABLE_SPECULAR 1
 #define ENABLE_DIFFUSE 1
 
+float3 GetF0FromRelfectance(float reflectance)
+{
+	// From Frostbite PBR course whitepaper
+	return (0.16f * reflectance * reflectance).xxx;
+}
+
+float3 ComputePlaneIntersectionPoint(float3 fromPoint, float3 direction, float3 planeNormal, float3 planePoint)
+{
+	return fromPoint + direction * (dot(planeNormal, planePoint - fromPoint) / dot(planeNormal, direction));
+}
 
 float ComputAttenuationWindowedFunction(float dist, float distMax)
 {
@@ -212,7 +222,7 @@ float3 ComputeSpecularBRDF(float3 n, float3 l, float3 v, float3 albedo, float ro
 	const float3 F_metal = ComputeFresnel_Schlick(albedo, nDotL);
 	
 	// https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/course-notes-moving-frostbite-to-pbr-v2.pdf#page=13
-	const float3 dielectricF0 = (0.16f * reflectance * reflectance).xxx;
+	const float3 dielectricF0 = GetF0FromRelfectance(reflectance);
 	const float3 F_dielectric = ComputeFresnel_Schlick(dielectricF0, nDotL);
 	
 	const float3 F = lerp(F_dielectric, F_metal, metalness);
@@ -241,7 +251,65 @@ float ComputeRectangleSolidAngle(float3 surfacePoint, float3 p0, float3 p1, floa
 	return g0 + g1 + g2 + g3 - 2 * M_PI;
 } 
 
-void ComputeAreaLighting(GPULight light, float4 worldPosition, float4 normal, float4 albedo, float maxDist, out float3 diffuse)
+
+float3 ComputeAreaLighting_Specular(float nDotL,
+	float3 n,
+	float3 l,
+	float3 v,
+	float3 surfacePoint,
+	float3 albedo,
+	float3 lightNormal,
+	float3 lightPosition,
+	float3 lightRight,
+	float3 lightUp,
+	float2 lightSize, 
+	float4 lightColorAndIntensity,
+	float maxDist,
+	float metalness,
+	float reflectance,
+	float roughness)
+{
+	// Note that nDotL for area light is calculated in a specific way
+
+	// https://alextardif.com/arealights.html
+
+	const float3 reflectionVec = reflect(v, n);
+	const float3 lightPlaneIntersectPoint = ComputePlaneIntersectionPoint(surfacePoint, 
+		reflectionVec, lightNormal, lightPosition);
+		
+	const float3 intersectionVector = lightPlaneIntersectPoint - lightPosition;
+	const float2 intersectPlanePoint = float2(dot(intersectionVector, lightRight), dot(intersectionVector, lightUp));
+	// Nearest point on a light plane
+	const float2 nearest2DPoint = float2(clamp(intersectPlanePoint.x, -lightSize.x, lightSize.x), clamp(intersectPlanePoint.y, -lightSize.y, lightSize.y));	
+	
+	// Approximation of specular BRDF 
+	float3 specularFactor = float3(0.0f , 0.0f, 0.0f);
+	const float specularAmount = dot(reflectionVec, lightNormal);
+	// From Fresnel
+	const float3 F0 = lerp(GetF0FromRelfectance(reflectance), albedo, metalness);
+	
+	if (specularAmount > 0.0f)
+	{
+		const float specLobeSharpness = 0.5f;
+		 float specFactor = 1.0f - clamp(length(nearest2DPoint - intersectPlanePoint) * pow((1.0 - sqrt(roughness)), 2.0f) * specLobeSharpness, 0.0f, 1.0f);
+		 specularFactor += F0 * specFactor * specularAmount * nDotL;
+	}
+
+	const float3 nearestPoint = lightPosition + (lightRight * nearest2DPoint.x + lightUp * nearest2DPoint.y);
+	const float dist = distance(surfacePoint, nearestPoint);
+	// Use linear cause it looks best for this type of light
+	const float attenuation = 1.0f - saturate(dist / maxDist);
+	
+	return specularFactor * attenuation * lightColorAndIntensity.xyz * lightColorAndIntensity.w * 1.0f; 
+}
+
+float3 ComputeAreaLighting_Diffuse(float nDotL, float4 lightColorAndIntensity, float3 albedo, float attenuationWindowedFunctionValue, float metalness)
+{
+	return nDotL * albedo.xyz *
+			lightColorAndIntensity.xyz * lightColorAndIntensity.w * attenuationWindowedFunctionValue * (1.0f - metalness) / M_PI;
+}
+
+void ComputeAreaLighting(GPULight light, float4 worldPosition, float4 normal, float4 albedo, float maxDist, float3 cameraPos, float metalness, float roughness, float reflectance, out float3 diffuse, out float3 specular)
 {
 	const float4 lightNormal = mul(light.worldTransform, float4(0.0f, 0.0f, 1.0f, 0.0f));
 	const float4 lightPosition = float4(light.worldTransform[0][3], 
@@ -250,6 +318,7 @@ void ComputeAreaLighting(GPULight light, float4 worldPosition, float4 normal, fl
 		1.0f);
 	
 	diffuse = float3(0.0f, 0.0f, 0.0f);
+	specular = float3(0.0f, 0.0f, 0.0f);
 	
 	// Ideally it should be 0, but because of problems with floating point math
 	// I need to bump it up a bit, to avoid artifacts
@@ -268,15 +337,36 @@ void ComputeAreaLighting(GPULight light, float4 worldPosition, float4 normal, fl
 		const float attenuationWindowedFunctionValue = ComputAttenuationWindowedFunction(length(lightToSurface), maxDist);
 		
 		const float solidAngle = ComputeRectangleSolidAngle(worldPosition.xyz, p0.xyz, p1.xyz, p2.xyz, p3.xyz);
-
-		diffuse = solidAngle * 0.2f * (
+		const float nDotL = solidAngle * 0.2f * (
 			saturate(dot(normalize(p0.xyz - worldPosition.xyz), normal.xyz)) +
 			saturate(dot(normalize(p1.xyz - worldPosition.xyz), normal.xyz)) + 
 			saturate(dot(normalize(p2.xyz - worldPosition.xyz), normal.xyz)) + 
 			saturate(dot(normalize(p3.xyz - worldPosition.xyz), normal.xyz)) + 
-			saturate(dot(normalize(-lightToSurface), normal.xyz))) * albedo.xyz *
-			light.colorAndIntensity.xyz * light.colorAndIntensity.w * attenuationWindowedFunctionValue / M_PI;
+			saturate(dot(normalize(-lightToSurface), normal.xyz)));
 
+		diffuse = ComputeAreaLighting_Diffuse(nDotL, light.colorAndIntensity, albedo.xyz, attenuationWindowedFunctionValue, metalness);
+		
+		const float4 lightRight = mul(light.worldTransform, float4(1.0f, 0.0f, 0.0f, 0.0f));
+		const float4 lightUp = mul(light.worldTransform, float4(0.0f, 1.0f, 0.0f, 0.0f));
+		const float3 l = -normalize(worldPosition.xyz - lightPosition.xyz);
+		const float3 v = normalize(cameraPos.xyz - worldPosition.xyz);
+		
+		specular = ComputeAreaLighting_Specular(nDotL,
+			normal.xyz,
+			l,
+			v,
+			worldPosition.xyz,
+			albedo.xyz,
+			lightNormal.xyz,
+			lightPosition.xyz,
+			lightRight.xyz,
+			lightUp.xyz,
+			light.extends,
+			light.colorAndIntensity,
+			maxDist,
+			metalness,
+			reflectance,
+			roughness);
 		
 	}
 }
@@ -374,7 +464,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 		else if (light.type == AREA_LIGHT)
 		{
 #if (ENABLE_AREA_LIGHTS)
-			ComputeAreaLighting(light, worldPosition, normal, albedo, maxDist, lightDiffuse);		
+			ComputeAreaLighting(light, worldPosition, normal, albedo, maxDist, CameraOrigin.xyz, MetalinessOverride, roughness, ReflectanceOverride, lightDiffuse, lightSpecular);		
 #endif
 		}
 		

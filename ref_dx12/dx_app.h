@@ -238,7 +238,7 @@ public:
 
 		// PBG tunning
 		float roughness = 0.2f;
-		float metalness = 85.0f;
+		float metalness = 0.85f;
 		float reflectance = 1.0f;
 	};
 
