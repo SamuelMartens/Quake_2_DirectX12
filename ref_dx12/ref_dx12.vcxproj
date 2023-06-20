@@ -41,6 +41,7 @@
     <ClInclude Include="dx_framegraphbuilder.h" />
     <ClInclude Include="dx_light.h" />
     <ClInclude Include="dx_lightbaker.h" />
+    <ClInclude Include="dx_material.h" />
     <ClInclude Include="dx_memorymanager.h" />
     <ClInclude Include="dx_objects.h" />
     <ClInclude Include="dx_local.h" />
@@ -90,6 +91,7 @@
     <ClCompile Include="dx_framegraphbuilder.cpp" />
     <ClCompile Include="dx_light.cpp" />
     <ClCompile Include="dx_lightbaker.cpp" />
+    <ClCompile Include="dx_material.cpp" />
     <ClCompile Include="dx_memorymanager.cpp" />
     <ClCompile Include="dx_objects.cpp" />
     <ClCompile Include="dx_passparameters.cpp" />

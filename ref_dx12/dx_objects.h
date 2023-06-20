@@ -12,6 +12,7 @@
 #include "dx_buffer.h"
 #include "dx_settings.h"
 #include "dx_light.h"
+#include "dx_material.h"
 
 extern "C" 
 {
@@ -25,6 +26,7 @@ class SourceStaticObject
 public:
 
 	std::string textureKey;
+	Material::ID materialID = Material::ID::Default;
 
 	Utils::AABB aabb;
 
@@ -54,6 +56,7 @@ public:
 	~StaticObject();
 	
 	std::string textureKey;
+	Material::ID materialID = Material::ID::Default;
 	
 	BufferHandler vertices = Const::INVALID_BUFFER_HANDLER;
 	BufferHandler indices = Const::INVALID_BUFFER_HANDLER;

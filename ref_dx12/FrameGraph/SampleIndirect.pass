@@ -87,8 +87,8 @@ StructuredBuffer<ClusterProbeGridInfo> ClusterProbeGridInfoBuffer : register(t2,
 [Local, PerPass, Bind: ClusterClassification]
 Texture2D<int> ClusterClassification : register(t0, space2)
 
-[Local, PerPass, Bind: GBuffer_Normals]
-Texture2D GBuffer_Normals : register(t1, space2)
+[Local, PerPass, Bind: GBuffer_NormalsMaterial]
+Texture2D GBuffer_NormalsMaterial : register(t1, space2)
 
 [Local, PerPass, Bind: GBuffer_Albedo]
 Texture2D GBuffer_Albedo : register (t2, space2)
@@ -101,7 +101,7 @@ RWTexture2D<float4> IndirectLightBuffer : register(u0, space2)
 
 Type : CS
 External: cbSampleIndirect, DiffuseProbes, AABB, ClusterProbeGridInfo, ClusterAABBs,
-	ClusterProbeGridInfoBuffer,  ClusterClassification, GBuffer_Normals, GBuffer_Albedo, IndirectLightBuffer, GBuffer_Position,
+	ClusterProbeGridInfoBuffer,  ClusterClassification, GBuffer_NormalsMaterial, GBuffer_Albedo, IndirectLightBuffer, GBuffer_Position,
 	cbFrameData
 <[
 
@@ -281,7 +281,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	ClusterProbeGridInfo gridInfo = ClusterProbeGridInfoBuffer.Load(clusterIndex);
 	
 	const float4 position = GBuffer_Position[dispatchThreadID.xy];
-	const float4 normal = GBuffer_Normals.Load(int3(dispatchThreadID.xy, 0));
+	const float4 normal = float4(GBuffer_NormalsMaterial.Load(int3(dispatchThreadID.xy, 0)).xyz, 0.0f);
 	
 	float4x4 tangentTransform = ConstructV1ToV2RotationMatrix(float4(0.0f, 0.0f, 1.0f, 0.0f), normal);
 	

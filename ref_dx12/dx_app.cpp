@@ -1397,6 +1397,29 @@ void Renderer::CreateLightResources(const std::vector<GPULight>& gpuLights, cons
 	ResourceManager::Inst().CreateStructuredBuffer(clusteredLighting_lightCullingDataArgs);
 }
 
+void Renderer::CreatePBRResources(GPUJobContext& context) const
+{
+	CommandListRAIIGuard_t commandListGuard(*context.commandList);
+
+	DX_ASSERT(ResourceManager::Inst().FindResource(Resource::MATERIAL_LIST_NAME) == nullptr &&
+		"Material list resource already exist");
+
+	ResourceDesc resourceDesc;
+	resourceDesc.width = Material::IDMaterials.size() * sizeof(Material);
+	resourceDesc.height = 1;
+	resourceDesc.format = DXGI_FORMAT_UNKNOWN;
+	resourceDesc.dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	resourceDesc.flags = D3D12_RESOURCE_FLAG_NONE;
+
+	FArg::CreateStructuredBuffer bufferArgs;
+	bufferArgs.context = &context;
+	bufferArgs.desc = &resourceDesc;
+	bufferArgs.data = reinterpret_cast<const std::byte*>(Material::IDMaterials.data());
+	bufferArgs.name = Resource::MATERIAL_LIST_NAME;
+
+	ResourceManager::Inst().CreateStructuredBuffer(bufferArgs);
+}
+
 void Renderer::CopyFromReadBackResourcesToCPUMemory(Frame& frame)
 {
 	ResourceManager& resMan = ResourceManager::Inst();
@@ -1670,6 +1693,8 @@ void Renderer::SetUpFrameDebugData(Frame& frame)
 	frame.roughnessOverride = debugSettings.roughness;
 	frame.metalinessOverride = debugSettings.metalness;
 	frame.reflectanceOverride = debugSettings.reflectance;
+
+	frame.useMaterialOverride = debugSettings.useMaterialOverrides;
 
 	if (debugSettings.enableLightSourcePicker == true)
 	{
@@ -2420,7 +2445,10 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 				{
 					ImGui::Indent();
 
-					ImGui::SliderFloat("Roughness", &debugSettings.roughness, 0.0f, 1.0f);
+					ImGui::Checkbox("Override Materials", &debugSettings.useMaterialOverrides);
+					ImGui::NewLine();
+
+					ImGui::SliderFloat("Roughness", &debugSettings.roughness, 0.0001f, 1.0f);
 					ImGui::SliderFloat("Metaliness", &debugSettings.metalness, 0.0f, 1.0f);
 					ImGui::SliderFloat("Reflectance", &debugSettings.reflectance, 0.0f, 1.0f);
 
@@ -2800,6 +2828,9 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 
 	// Set the texture name
 	obj.textureKey = surf.texinfo->image->name;
+	
+	// Assign material ID
+	obj.materialID = Material::FindMaterialMatchFromTextureName(obj.textureKey);
 
 	// Fill up vertex buffer
 	obj.verticesSizeInBytes = sizeof(ShDef::Vert::StaticObjVert_t) * vertices.size();
@@ -2832,6 +2863,7 @@ void Renderer::CreateGraphicalObjectFromGLSurface(const msurface_t& surf, GPUJob
 	SourceStaticObject sourceObject;
 
 	sourceObject.textureKey = obj.textureKey;
+	sourceObject.materialID = obj.materialID;
 	sourceObject.verticesPos = std::move(vertPos);
 	sourceObject.normals = std::move(normals);
 	sourceObject.textureCoords = std::move(textureCoords);
@@ -3356,6 +3388,9 @@ void Renderer::EndLevelLoading()
 
 	dynamicModelRegContext->commandList->Close();
 	
+	GPUJobContext postLoadingResourcesCreationContext = CreateContext(frame);
+	CreatePBRResources(postLoadingResourcesCreationContext);
+
 	GPUJobContext createDeferredTextureContext = CreateContext(frame);
 	ResourceManager::Inst().CreateDeferredResource(createDeferredTextureContext);
 	

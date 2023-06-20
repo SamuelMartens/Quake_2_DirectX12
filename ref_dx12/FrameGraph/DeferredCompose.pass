@@ -25,8 +25,8 @@ DescriptorTable(SRV(t0, numDescriptors = 5, space = 2))
 [Local, PerPass, Bind: GBuffer_Albedo]
 Texture2D GBuffer_Albedo : register(t0, space2)
 
-[Local, PerPass, Bind: GBuffer_Normals]
-Texture2D GBuffer_Normals : register(t1, space2)
+[Local, PerPass, Bind: GBuffer_NormalsMaterial]
+Texture2D GBuffer_NormalsMaterial : register(t1, space2)
 
 [Local, PerPass, Bind: ClusterClassification]
 Texture2D<int> ClusterClassification : register(t2, space2)
@@ -41,7 +41,7 @@ Texture2D<float4> DirectLightBuffer : register(t4, space2)
 RWTexture2D<float4> ComposeBuffer : register(u0, space0)
 
 Type : CS
-External : GBuffer_Albedo, ComposeBuffer, GBuffer_Normals, ClusterClassification, IndirectLightBuffer, DirectLightBuffer
+External : GBuffer_Albedo, ComposeBuffer, GBuffer_NormalsMaterial, ClusterClassification, IndirectLightBuffer, DirectLightBuffer
 <[
 
 float4 VisualizeClusterId(int id)
@@ -61,7 +61,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 {
 	//ComposeBuffer[dispatchThreadID.xy] = float4(GBuffer_Albedo[dispatchThreadID.xy].xyz, 1.0f);
 	
-	//float4 normal = float4(GBuffer_Normals[dispatchThreadID.xy].xy, 0.0f, 0.0f);
+	//float4 normal = float4(GBuffer_NormalsMaterial[dispatchThreadID.xy].xy, 0.0f, 0.0f);
 	//normal.z = sqrt(1.0 - normal.x * normal.x - normal.y * normal.y);
 	//ComposeBuffer[dispatchThreadID.xy] = normal * 0.5 + 0.5;
 
@@ -80,6 +80,14 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	// }
 	
 	//ComposeBuffer[dispatchThreadID.xy] = IndirectLightBuffer[dispatchThreadID.xy];
+	
+	// Visualize material
+	// const int materialId = asint(GBuffer_NormalsMaterial[dispatchThreadID.xy].w);
+	
+	// float color = 1.0f / 7.0f * materialId;
+	
+	// ComposeBuffer[dispatchThreadID.xy] = float4(color.xxx, 1.0f);
+	
 	
 	ComposeBuffer[dispatchThreadID.xy] = DirectLightBuffer[dispatchThreadID.xy];
 }

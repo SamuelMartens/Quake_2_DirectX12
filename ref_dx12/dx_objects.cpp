@@ -22,7 +22,9 @@ StaticObject& StaticObject::StaticObject::operator=(StaticObject&& other)
 	PREVENT_SELF_MOVE_ASSIGN;
 
 	textureKey = std::move(other.textureKey);
-	
+
+	materialID = other.materialID;
+
 	verticesSizeInBytes = other.verticesSizeInBytes;
 	other.verticesSizeInBytes = Const::INVALID_SIZE;
 
@@ -61,6 +63,7 @@ DynamicObjectModel& DynamicObjectModel::operator=(DynamicObjectModel&& other)
 	PREVENT_SELF_MOVE_ASSIGN;
 
 	name = std::move(other.name);
+
 	textures = std::move(other.textures);
 
 	headerData = other.headerData;

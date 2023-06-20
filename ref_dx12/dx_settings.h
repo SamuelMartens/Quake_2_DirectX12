@@ -98,6 +98,6 @@ namespace Settings
 	constexpr int CLUSTERED_LIGHTING_MAX_LIGHTS_PER_CLUSTER = 100;
 
 	/* Direct Lighting */
-	constexpr float DIRECT_POINT_LIGHT_INTENSITY_THRESHOLD = 0.05f;
+	constexpr float DIRECT_POINT_LIGHT_INTENSITY_THRESHOLD = 0.025f;
 	constexpr float DIRECT_AREA_LIGHT_INTENSITY_THRESHOLD = 0.001f;
 }

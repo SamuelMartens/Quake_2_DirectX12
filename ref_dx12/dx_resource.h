@@ -62,6 +62,8 @@ public:
 
 	constexpr static char	CLUSTERED_LIGHTING_LIGHT_CULLING_DATA_NAME[] = "__CLUSTERED_LIGHTING_LIGHT_CULLING_DATA__";
 
+	constexpr static char	MATERIAL_LIST_NAME[] = "__MATERIAL_LIST__";
+
 public:
 
 	// When a job is started it expects resource to be in this state.

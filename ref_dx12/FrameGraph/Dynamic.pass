@@ -7,7 +7,7 @@ PassSlotLayout: [Pos0 : 0, Pos1 : 1, Normal0 : 2, Normal1 : 3, Tex : 4]
 
 State
 {
-ColorTarget  : GBuffer_Position, GBuffer_Albedo, GBuffer_Normals
+ColorTarget  : GBuffer_Position, GBuffer_Albedo, GBuffer_NormalsMaterial
 DepthTarget  : DEPTH_BACK_BUFFER
 Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
@@ -66,6 +66,7 @@ cbuffer cbPerObject : register(b0, space3)
     float4 AnimMove;
     float4 FrontLerp;
     float4 BackLerp;
+	int MaterialId;
 }
 
 [Global, PerObject]
@@ -99,7 +100,7 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : PS 
-External : DiffuseMap, gSamLinearWrap, VertexOut, PixelOut
+External : DiffuseMap, gSamLinearWrap, VertexOut, PixelOut, cbPerObject
 <[
 PixelOut main(VertexOut vOut)
 {
@@ -113,7 +114,7 @@ PixelOut main(VertexOut vOut)
 	PixelOut output;
 	
 	output.Albedo = color;
-	output.Normal = normalize(vOut.Normal);
+	output.Normal = float4(normalize(vOut.Normal.xyz), asfloat(MaterialId));
 	output.Position = vOut.WorldPos;
 	
     return output;

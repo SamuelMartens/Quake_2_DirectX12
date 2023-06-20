@@ -94,6 +94,8 @@ public:
 	float metalinessOverride = 0.0f;
 	float reflectanceOverride = 0.0f;
 
+	bool useMaterialOverride = false;
+
 	// Synchronization 
 	
 	// These two values are used in the very end when we call ExecuteCommandList

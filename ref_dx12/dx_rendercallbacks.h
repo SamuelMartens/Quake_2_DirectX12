@@ -536,6 +536,11 @@ namespace RenderCallbacks
 			Utils::CreateAndBindIfResourceExists_SRV<GPULight>(Resource::LIGHT_LIST_NAME, bindPoint, ctx);
 		}
 		break;
+		case HASH("MaterialList"):
+		{
+			Utils::CreateAndBindIfResourceExists_SRV<Material>(Resource::MATERIAL_LIST_NAME, bindPoint, ctx);
+		}
+		break;
 		case HASH("ClusterAABBs"):
 		{
 			// Should be the same as case above
@@ -893,7 +898,7 @@ namespace RenderCallbacks
 				reinterpret_cast<float&>(bindPoint) = ctx.jobContext.frame.roughnessOverride;
 			}
 			break;
-			case HASH("MetalinessOverride"):
+			case HASH("MetalnessOverride"):
 			{
 				reinterpret_cast<float&>(bindPoint) = ctx.jobContext.frame.metalinessOverride;
 			}
@@ -901,6 +906,11 @@ namespace RenderCallbacks
 			case HASH("ReflectanceOverride"):
 			{
 				reinterpret_cast<float&>(bindPoint) = ctx.jobContext.frame.reflectanceOverride;
+			}
+			break;
+			case HASH("IsUseMaterialOverrides"):
+			{
+				reinterpret_cast<int&>(bindPoint) = ctx.jobContext.frame.useMaterialOverride;
 			}
 			break;
 			default:
@@ -997,7 +1007,16 @@ namespace RenderCallbacks
 			{
 			case HASH("Static"):
 			{
-
+				switch (paramName)
+				{
+				case HASH("MaterialId"):
+				{
+					reinterpret_cast<int&>(bindPoint) = static_cast<int>(obj.materialID);
+				}
+				break;
+				default:
+					break;
+				}
 			}
 			break;
 			default:
@@ -1280,6 +1299,11 @@ namespace RenderCallbacks
 					auto [animMove, frontLerp, backLerp] = model.GenerateAnimInterpolationData(obj);
 
 					reinterpret_cast<XMFLOAT4&>(bindPoint) = backLerp;
+				}
+				break;
+				case HASH("MaterialId"):
+				{
+					reinterpret_cast<int&>(bindPoint) = static_cast<int>(Material::ID::Default);
 				}
 				break;
 				default:

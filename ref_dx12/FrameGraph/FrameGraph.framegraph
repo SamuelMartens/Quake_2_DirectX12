@@ -1,6 +1,6 @@
 Resources
 {
-	GBuffer_Normals
+	GBuffer_NormalsMaterial
 	[
 		Type : Texture2D
 		Dimensions : 1024, 768

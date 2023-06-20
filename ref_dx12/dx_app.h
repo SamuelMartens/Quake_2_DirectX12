@@ -33,6 +33,7 @@
 #include "dx_bsp.h"
 #include "dx_light.h"
 #include "dx_lightbaker.h"
+#include "dx_material.h"
 
 extern "C"
 {
@@ -237,9 +238,11 @@ public:
 		XMFLOAT4X4 frustumClustersInverseViewTransform;
 
 		// PBG tunning
-		float roughness = 0.2f;
-		float metalness = 0.85f;
-		float reflectance = 1.0f;
+		float roughness = Material::DEFAULT_ROUGHNESS;
+		float metalness = Material::DEFAULT_METALNESS;
+		float reflectance = Material::DEFAULT_METALNESS;
+
+		bool useMaterialOverrides = false;
 	};
 
 	// Public because it is already wrapped up in class
@@ -345,6 +348,7 @@ private:
 		const std::vector<uint32_t>& pickedLightList,
 		int frustumClustersNum,
 		GPUJobContext& context) const;
+	void CreatePBRResources(GPUJobContext& context) const;
 	void CopyFromReadBackResourcesToCPUMemory(Frame& frame);
 
 	void GenerateStaticLightBoundingVolumes(const std::vector<GPULight>& gpuLights);

@@ -6,7 +6,7 @@ PassVertAttr: VertexIn
 
 State
 {
-ColorTarget  : GBuffer_Position, GBuffer_Albedo, GBuffer_Normals
+ColorTarget  : GBuffer_Position, GBuffer_Albedo, GBuffer_NormalsMaterial
 DepthTarget  : DEPTH_BACK_BUFFER
 Viewport	 : 0.0, 0.0, 1.0, 1.0
 BlendEnabled : false
@@ -17,6 +17,8 @@ RootSignature
 {
 RootFlags (ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT),
 CBV(b0, space = 0),
+CBV(b0, space = 3),
+
 DescriptorTable(SRV(t0, numDescriptors = 1, space = 1)),
 DescriptorTable(Sampler(s0, numDescriptors = 1, space = 0))
 }
@@ -83,7 +85,11 @@ Texture2D DiffuseMap : register(t0, space1)
 [Global, PerPass]
 SamplerState gSamLinearWrap : register(s0, space0)
 
-
+[Local, PerObject]
+cbuffer cbLocalPerObject : register(b0, space3)
+{
+	int MaterialId;
+}
 
 // Shaders
 
@@ -105,7 +111,7 @@ VertexOut main(VertexIn vIn)
 ]>
 
 Type : PS 
-External : DiffuseMap, gSamLinearWrap, VertexOut, PixelOut
+External : DiffuseMap, gSamLinearWrap, VertexOut, PixelOut, cbLocalPerObject
 <[
 PixelOut main(VertexOut vOut)
 {
@@ -119,7 +125,8 @@ PixelOut main(VertexOut vOut)
 	PixelOut output;
 	
 	output.Albedo = color;
-	output.Normal = float4(vOut.Normal.xyz, 0.0f);
+
+	output.Normal = float4(vOut.Normal.xyz, asfloat(MaterialId));
 	output.Position = vOut.WorldPos;
 	
     return output;
