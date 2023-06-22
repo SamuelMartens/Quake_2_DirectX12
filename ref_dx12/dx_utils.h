@@ -341,6 +341,8 @@ namespace Utils
 	bool IsRayIntersectsTriangle(const Utils::Ray& ray, const XMFLOAT4& v0, const XMFLOAT4& v1, const XMFLOAT4& v2, RayTriangleIntersectionResult& result);
 	bool FindClosestIntersectionInNode(const Utils::Ray& ray, const BSPNode& node, Utils::BSPNodeRayIntersectionResult& result);
 
+	float FindDistanceBetweenAABBs(const Utils::AABB& aabb1, const Utils::AABB& aabb2);
+
 	int Find1DIndexFrom2D(XMINT2 sizeIn2D, XMINT2 coordsIn2D);
 
 	[[nodiscard]]

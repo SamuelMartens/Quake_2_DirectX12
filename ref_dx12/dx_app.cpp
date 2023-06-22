@@ -2364,12 +2364,22 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 							lightBaker.SetBakeFlag(BakeFlags::SaveLightSampling, saveLightSamples);
 						}
 
+						bool ignoreDirectLighting = lightBaker.GetBakeFlag(BakeFlags::IgnoreDirectLighting);
+
+						if (ImGui::Checkbox("Ignore Direct Lighting", &ignoreDirectLighting))
+						{
+							lightBaker.SetBakeFlag(BakeFlags::IgnoreDirectLighting, ignoreDirectLighting);
+						}
+
 						{
 							int bakeMode = static_cast<int>(lightBaker.GetBakingMode());
 
 							ImGui::RadioButton("Camera cluster", &bakeMode, static_cast<int>(LightBakingMode::CurrentPositionCluster));
 							ImGui::SameLine();
 							ImGui::RadioButton("All clusters", &bakeMode, static_cast<int>(LightBakingMode::AllClusters));
+							ImGui::SameLine();
+							ImGui::RadioButton("Current and Neighbouring clusters", &bakeMode, static_cast<int>(LightBakingMode::CurrentAndNeighbouringClusters));
+
 							lightBaker.SetBakingMode(static_cast<LightBakingMode>(bakeMode));
 						}
 					}
@@ -2412,7 +2422,8 @@ void Renderer::DrawDebugGuiJob(GPUJobContext& context)
 					{
 						if (ImGui::Button("Start bake"))
 						{
-							if (lightBaker.GetBakingMode() == LightBakingMode::CurrentPositionCluster)
+							if (lightBaker.GetBakingMode() == LightBakingMode::CurrentPositionCluster || 
+								lightBaker.GetBakingMode() == LightBakingMode::CurrentAndNeighbouringClusters)
 							{
 								lightBaker.SetBakePosition(context.frame.camera.position);
 							}
@@ -3084,6 +3095,27 @@ std::vector<ClusterProbeGridInfo> Renderer::GenBakeClusterProbeGridInfo() const
 			probeGridInfo.StartIndex = bakeData.clusterFirstProbeIndices[i];
 
 			probeGridInfoArray.push_back(probeGridInfo);
+		}
+	}
+	break;
+	case LightBakingMode::CurrentAndNeighbouringClusters:
+	{
+		// Get clusters num
+		const int clustersNum = Renderer::Inst().GetBSPTree().GetClustersSet().size();
+
+		// We have data for a few clusters. So fill out everything as empty.
+		probeGridInfoArray.resize(clustersNum);
+
+		for (int i = 0; i < bakeData.clusterFirstProbeIndices.size(); ++i)
+		{
+			ClusterProbeGridInfo probeGridInfo;
+			probeGridInfo.SizeX = bakeData.clusterProbeGridSizes[i].x;
+			probeGridInfo.SizeY = bakeData.clusterProbeGridSizes[i].y;
+			probeGridInfo.SizeZ = bakeData.clusterProbeGridSizes[i].z;
+
+			probeGridInfo.StartIndex = bakeData.clusterFirstProbeIndices[i];
+
+			probeGridInfoArray[i] = probeGridInfo;
 		}
 	}
 	break;

@@ -63,6 +63,7 @@ enum class LightBakingMode
 {
 	AllClusters,
 	CurrentPositionCluster,
+	CurrentAndNeighbouringClusters,
 
 	Count
 };
@@ -79,6 +80,8 @@ struct ProbePathTraceResult
 
 enum class BakeFlags
 {
+	IgnoreDirectLighting,
+
 	SaveRayPath,
 	SaveLightSampling,
 

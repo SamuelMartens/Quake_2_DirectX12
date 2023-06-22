@@ -19,7 +19,8 @@
 const std::array<std::string,static_cast<int>(LightBakingMode::Count)> LightBakingMode_Str = 
 {
 	"AllCluster",
-	"CurrentPositionCluster"
+	"CurrentPositionCluster",
+	"CurrentAndNeighbouringClusters"
 };
 
 namespace
@@ -445,9 +446,8 @@ std::vector<std::vector<XMFLOAT4>> LightBaker::GenerateClustersBakePoints()
 			bakePoints[cluster] = GenerateClusterBakePoints(cluster);
 		}
 
-		return bakePoints;
-	}
 		break;
+	}
 	case LightBakingMode::CurrentPositionCluster:
 	{
 		DX_ASSERT(bakePosition.has_value() == true && "Bake position is not set");
@@ -461,8 +461,52 @@ std::vector<std::vector<XMFLOAT4>> LightBaker::GenerateClustersBakePoints()
 
 		bakePoints.resize(cameraNode.cluster + 1);
 		bakePoints[cameraNode.cluster] = GenerateClusterBakePoints(cameraNode.cluster);
-	}
+
 		break;
+	}
+	case LightBakingMode::CurrentAndNeighbouringClusters:
+	{
+		const BSPTree& bspTree = Renderer::Inst().GetBSPTree();
+
+		DX_ASSERT(bakePosition.has_value() == true && "Bake position is not set");
+		const BSPNode& cameraNode = bspTree.GetNodeWithPoint(*bakePosition);
+
+		bakePosition.reset();
+
+		DX_ASSERT(cameraNode.cluster != Const::INVALID_INDEX && "Camera node invalid index");
+
+		transferableData.bakingCluster = cameraNode.cluster;
+
+		const std::set<int> allClustersSet = bspTree.GetClustersSet();
+		
+		std::set<int> clustersToBake;
+
+		const Utils::AABB targetClusterAABB = bspTree.GetClusterAABB(cameraNode.cluster);
+
+		for (const int cluster : allClustersSet)
+		{
+			const Utils::AABB clusterAABB = bspTree.GetClusterAABB(cluster);
+
+			constexpr float minClusterDistance = 1.0f;
+			const float distanceBetweenClusters = Utils::FindDistanceBetweenAABBs(targetClusterAABB, clusterAABB);
+			
+			if (distanceBetweenClusters < minClusterDistance)
+			{
+				clustersToBake.emplace(cluster);
+			}
+		}
+		
+		// Set is sorted. Here I am taking the last element which is MAX element,
+		// and use it as a new size for bake point array
+		bakePoints.resize(*clustersToBake.rbegin() + 1);
+
+		for (const int cluster : clustersToBake)
+		{
+			bakePoints[cluster] = GenerateClusterBakePoints(cluster);
+		}
+
+		break;
+	}
 	default:
 		DX_ASSERT(false && "Invalid generation mode");
 		break;
@@ -813,10 +857,7 @@ XMFLOAT4 LightBaker::GatherDirectIrradianceFromPointLights(const XMFLOAT4& inter
 			continue;
 		}
 		
-		//#DEBUG my baked lighting is messed up with PI terms. I divide the wrong thing, and
-		// I do this way to many times (in c_diff too). Check your PI division stuff in indirect
-		// sampling shader too. Read this and compare https://seblagarde.wordpress.com/2012/01/08/pi-or-not-to-pi-in-game-lighting-equation/
-		const XMVECTOR sseLightBaseRadiance = (XMLoadFloat4(&light.color) / M_PI) *
+		const XMVECTOR sseLightBaseRadiance = XMLoadFloat4(&light.color) *
 			light.intensity;
 
 		XMVECTOR sseLightRadiance =
@@ -1028,7 +1069,7 @@ XMFLOAT4 LightBaker::GatherDirectIradianceFromAreaLight(const XMFLOAT4& intersec
 
 		const XMFLOAT4 albedo = Utils::TextureBilinearSample(*objTexture->cpuBuffer, objTexture->desc.format, objTexture->desc.width, objTexture->desc.height, interpolatedTexCoords);
 		
-		const XMVECTOR sseSampleRadiance = (XMLoadFloat4(&albedo) / M_PI) *
+		const XMVECTOR sseSampleRadiance = XMLoadFloat4(&albedo) *
 			lightRadiance *
 			distanceFalloff * intersectionToSampleAndNormalDot;
 
@@ -1176,7 +1217,13 @@ ProbePathTraceResult LightBaker::PathTraceFromProbe(const XMFLOAT4& probeCoord, 
 			lightGatherInfo = &result.lightSamples->emplace_back(LightSamplePoint{});
 		}
 
-		XMFLOAT4 directIrradiance = GatherDirectIradianceAtInersectionPoint(ray, intersectionResult, lightGatherInfo);
+		XMFLOAT4 directIrradiance = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+
+		if (!(GetBakeFlag(BakeFlags::IgnoreDirectLighting) && rayBounce == 0))
+		{
+			directIrradiance = GatherDirectIradianceAtInersectionPoint(ray, intersectionResult, lightGatherInfo);
+		}
+		
 
 		sseRadiance = sseRadiance + XMLoadFloat4(&directIrradiance) * sseThoroughput;
 
@@ -1249,6 +1296,8 @@ void LightBaker::SaveBakingResultsToFile(const BakingData& bakingResult) const
 
 	// Baking mode
 	DX_ASSERT(transferableData.bakingMode.has_value() == true && "Baking mode is not set");
+	DX_ASSERT(*transferableData.bakingMode != LightBakingMode::CurrentAndNeighbouringClusters &&
+		"Saving for neigtbouring clusters baking mode is not implemented");
 	bakingResultStream << "BakingMode " << LightBaker::BakingModeToStr(*bakingResult.bakingMode);
 
 	// Baking cluster

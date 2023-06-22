@@ -79,7 +79,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 		// ComposeBuffer[dispatchThreadID.xy] = color; 
 	// }
 	
-	//ComposeBuffer[dispatchThreadID.xy] = IndirectLightBuffer[dispatchThreadID.xy];
+	ComposeBuffer[dispatchThreadID.xy] = IndirectLightBuffer[dispatchThreadID.xy];
 	
 	// Visualize material
 	// const int materialId = asint(GBuffer_NormalsMaterial[dispatchThreadID.xy].w);
@@ -89,7 +89,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	// ComposeBuffer[dispatchThreadID.xy] = float4(color.xxx, 1.0f);
 	
 	
-	ComposeBuffer[dispatchThreadID.xy] = DirectLightBuffer[dispatchThreadID.xy];
+	//ComposeBuffer[dispatchThreadID.xy] = DirectLightBuffer[dispatchThreadID.xy];
 }
 
 

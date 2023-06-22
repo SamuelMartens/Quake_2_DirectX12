@@ -1044,6 +1044,25 @@ bool Utils::FindClosestIntersectionInNode(const Utils::Ray& ray, const BSPNode& 
 	return false;
 }
 
+float Utils::FindDistanceBetweenAABBs(const Utils::AABB& aabb1, const Utils::AABB& aabb2)
+{
+	const XMVECTOR sseAABB1Min = XMLoadFloat4(&aabb1.minVert);
+	const XMVECTOR sseAABB1Max = XMLoadFloat4(&aabb1.maxVert);
+	
+	const XMVECTOR sseAABB2Min = XMLoadFloat4(&aabb2.minVert);
+	const XMVECTOR sseAABB2Max = XMLoadFloat4(&aabb2.maxVert);
+
+	const XMVECTOR sseAABB1Center = (sseAABB1Max + sseAABB1Min) / 2.0f;
+	const XMVECTOR sseAABB1Extends = (sseAABB1Max - sseAABB1Min) / 2.0f;
+
+	const XMVECTOR sseAABB2Center = (sseAABB2Max + sseAABB2Min) / 2.0f;
+	const XMVECTOR sseAABB2Extends = (sseAABB2Max - sseAABB2Min) / 2.0f;
+
+	const XMVECTOR closestPointsDist = XMVectorMax(XMVectorAbs(sseAABB2Center - sseAABB1Center) - (sseAABB1Extends + sseAABB2Extends), XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f));
+
+	return XMVectorGetX(XMVector3Length(closestPointsDist));
+}
+
 int Utils::Find1DIndexFrom2D(XMINT2 sizeIn2D, XMINT2 coordsIn2D)
 {
 	//NOTE: the resource must be row major!
