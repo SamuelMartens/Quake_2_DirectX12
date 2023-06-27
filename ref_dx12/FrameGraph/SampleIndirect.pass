@@ -112,6 +112,8 @@ External: cbSampleIndirect, DiffuseProbes, AABB, ClusterProbeGridInfo, ClusterAA
 #define SAMPLES_NUM 32
 #define EPSILON		0.00001f	
 
+#define USE_POINT_PROBE_FILTERING 0
+
 uint NextRandomSample(uint seed)
 {
 	// Linear congruential generator
@@ -280,6 +282,12 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	
 	ClusterProbeGridInfo gridInfo = ClusterProbeGridInfoBuffer.Load(clusterIndex);
 	
+	if (gridInfo.StartIndex == INVALID_INDEX)
+	{
+		IndirectLightBuffer[dispatchThreadID.xy] = float4(0.125f, 0.0f, 0.0f, 0.0f);
+		return;
+	}
+	
 	const float4 position = GBuffer_Position[dispatchThreadID.xy];
 	const float4 normal = float4(GBuffer_NormalsMaterial.Load(int3(dispatchThreadID.xy, 0)).xyz, 0.0f);
 	
@@ -341,6 +349,10 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	// Do trilinear interpolation
 	float3 interpolationWages = GetProbeCubeInterpolationValues(position, clusterIndex);
 	
+#if(USE_POINT_PROBE_FILTERING)
+	interpolationWages = round(interpolationWages);
+#endif
+	
 	// 1) Interpolate along X
 	float4 interpolationAlongX[4];
 	
@@ -369,7 +381,7 @@ void main(int3 dispatchThreadID : SV_DispatchThreadID)
 	float4 interpolationAlongZ = lerp(interpolationAlongY[0], interpolationAlongY[1], interpolationWages.z);
 	
 	// Monte Carlo factor
-	float4 finalResult = interpolationAlongZ / SAMPLES_NUM * GBuffer_Albedo.Load(int3(dispatchThreadID.xy, 0));
+	const float4 finalResult = interpolationAlongZ / SAMPLES_NUM * GBuffer_Albedo.Load(int3(dispatchThreadID.xy, 0));
 	
 	IndirectLightBuffer[dispatchThreadID.xy] = finalResult;
 }

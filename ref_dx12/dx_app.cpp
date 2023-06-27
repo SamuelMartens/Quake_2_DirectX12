@@ -1761,10 +1761,20 @@ std::vector<DebugObject_t> Renderer::GenerateFrameDebugObjects(const Camera& cam
 				}
 				break;
 				case LightBakingMode::AllClusters:
+				case LightBakingMode::CurrentAndNeighbouringClusters:
 				{
 					DX_ASSERT(bakeResult.clusterFirstProbeIndices.empty() == false && "Cluster sizes should have value");
 
-					object.probeIndex = i + bakeResult.clusterFirstProbeIndices[debugSettings.lightProbesDebugGeometryDisplayCluster];
+					const int clusterFirstProbeIndex = bakeResult.clusterFirstProbeIndices[debugSettings.lightProbesDebugGeometryDisplayCluster];
+
+					if (clusterFirstProbeIndex == Const::INVALID_INDEX)
+					{
+						object.probeIndex = Const::INVALID_INDEX;
+					}
+					else
+					{
+						object.probeIndex = i + clusterFirstProbeIndex;
+					}
 				}
 				break;
 				default:
@@ -3144,58 +3154,6 @@ std::vector<ClusterProbeGridInfo> Renderer::GenBakeClusterProbeGridInfo() const
 	}
 
 	return probeGridInfoArray;
-}
-
-std::vector<XMFLOAT4> Renderer::GenBakeProbePositions() const
-{
-	// This entire function should follow the same logic as packing probe SH data. i.e. order should be the same
-	
-	std::scoped_lock<std::mutex> lock(lightBakingResult.mutex);
-
-	const BakingData& bakeData = lightBakingResult.obj;
-
-	if (bakeData.probes.empty() == true)
-	{
-		return {};
-	}
-
-	std::vector<XMFLOAT4> probePositions;
-
-	DX_ASSERT(bakeData.bakingMode.has_value() == true);
-
-	switch (*bakeData.bakingMode)
-	{
-	case LightBakingMode::AllClusters:
-	{
-		std::vector<std::vector<XMFLOAT4>> bakePointPosition = LightBaker::Inst().GenerateClustersBakePoints();
-
-		const int totalBakePointsNum = std::accumulate(bakePointPosition.cbegin(), bakePointPosition.cend(), 0, 
-			[](int sum, const std::vector<XMFLOAT4>& clusterBakePoints) 
-		{
-			return sum + clusterBakePoints.size();
-		});
-
-		probePositions.reserve(totalBakePointsNum);
-
-		for (const std::vector<XMFLOAT4>& clusterBakePoint : bakePointPosition)
-		{
-			std::copy(clusterBakePoint.cbegin(), clusterBakePoint.cend(), std::back_inserter(probePositions));
-		}
-	}
-	break;
-	case LightBakingMode::CurrentPositionCluster:
-	{
-		DX_ASSERT(bakeData.bakingCluster.has_value() == true);
-
-		probePositions = LightBaker::Inst().GenerateClusterBakePoints(*bakeData.bakingCluster);
-	}
-	break;
-	default:
-		DX_ASSERT(false);
-		break;
-	}
-
-	return probePositions;
 }
 
 const std::array<unsigned int, 256>& Renderer::GetRawPalette() const

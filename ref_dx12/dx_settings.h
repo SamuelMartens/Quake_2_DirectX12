@@ -79,9 +79,7 @@ namespace Settings
 
 	constexpr float RUSSIAN_ROULETTE_ABSORBTION_PROBABILITY = 0.5f;
 	
-	//#DEBUG switch
-	//constexpr int PROBE_SAMPLES_NUM = 1024;
-	constexpr int PROBE_SAMPLES_NUM = 32;
+	constexpr int PROBE_SAMPLES_NUM = 1024;
 
 	constexpr int GUARANTEED_BOUNCES_NUM = 3;
 	constexpr int AREA_LIGHTS_SAMPLES_NUM = 4;

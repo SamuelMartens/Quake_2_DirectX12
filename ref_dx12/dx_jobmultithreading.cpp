@@ -43,9 +43,6 @@ WorkerThread::WorkerThread(std::function<void()> callback)
 	thread.detach();
 }
 
-
-
-
 void JobSystem::Init()
 {
 	// Minus one, because we also have main thread

@@ -392,6 +392,10 @@ void LightBaker::PreBake()
 			// Fill up cluster grid data
 			transferableData.clusterProbeGridSizes[i] = GenerateClusterGridSize(i);
 		}
+		else
+		{
+			transferableData.clusterFirstProbeIndices[i] = Const::INVALID_INDEX;
+		}
 	}
 
 	transferableData.probes.resize(totalProbes);
@@ -603,66 +607,67 @@ void LightBaker::BakeJob()
 		const std::vector<XMFLOAT4>& bakePoints = clusterBakePoints[currentCluster];
 		const int clusterProbeStartIndex = transferableData.clusterFirstProbeIndices[currentCluster];
 
-		DX_ASSERT(clusterProbeStartIndex != Const::INVALID_INDEX && "Invalid cluster probe start index");
-
-		for (int bakePointIndex = 0; bakePointIndex < bakePoints.size(); ++bakePointIndex)
+		if (clusterProbeStartIndex != Const::INVALID_INDEX)
 		{
-			const XMFLOAT4& bakePoint = bakePoints[bakePointIndex];
-			
-			DiffuseProbe& probe = transferableData.probes[clusterProbeStartIndex + bakePointIndex];
-
-			SphericalHarmonic9_t<XMFLOAT4>& totalShProjection = probe.radianceSh;
-			ZeroMemory(totalShProjection.data(), sizeof(XMFLOAT4) * totalShProjection.size());	
-			
-			if (bakeFlags[BakeFlags::SaveRayPath] == true)
+			for (int bakePointIndex = 0; bakePointIndex < bakePoints.size(); ++bakePointIndex)
 			{
-				probe.pathTracingSegments = std::vector<PathSegment>();
-			}
+				const XMFLOAT4& bakePoint = bakePoints[bakePointIndex];
 
-			if (bakeFlags[BakeFlags::SaveLightSampling] == true)
-			{
-				probe.lightSamples = std::vector<PathLightSampleInfo_t>();
-			}
+				DiffuseProbe& probe = transferableData.probes[clusterProbeStartIndex + bakePointIndex];
 
-			for (int i = 0; i < Settings::PROBE_SAMPLES_NUM; ++i)
-			{
-				XMFLOAT4 direction = { 0.0f, 0.0f, 0.0f, 1.0f };
-				// Result of one sample
-				const ProbePathTraceResult sampleRes = PathTraceFromProbe(bakePoint, direction);
+				SphericalHarmonic9_t<XMFLOAT4>& totalShProjection = probe.radianceSh;
+				ZeroMemory(totalShProjection.data(), sizeof(XMFLOAT4) * totalShProjection.size());
 
 				if (bakeFlags[BakeFlags::SaveRayPath] == true)
 				{
-					DX_ASSERT(sampleRes.pathSegments.has_value() == true && 
-						"If SaveRayPath flag is on there should be segments");
-
-					probe.pathTracingSegments->insert(probe.pathTracingSegments->end(),
-						sampleRes.pathSegments->cbegin(), sampleRes.pathSegments->cend());
+					probe.pathTracingSegments = std::vector<PathSegment>();
 				}
 
 				if (bakeFlags[BakeFlags::SaveLightSampling] == true)
 				{
-					probe.lightSamples->push_back(*sampleRes.lightSamples);
+					probe.lightSamples = std::vector<PathLightSampleInfo_t>();
 				}
 
-				// Project single sample on SH
-				SphericalHarmonic9_t<XMFLOAT4> sampleShProjection = ProjectOntoSphericalHarmonic(direction, sampleRes.radiance);
-
-				for (int coeffIndex = 0; coeffIndex < totalShProjection.size(); ++coeffIndex)
+				for (int i = 0; i < Settings::PROBE_SAMPLES_NUM; ++i)
 				{
-					// Accumulate from that value
-					XMStoreFloat4(&totalShProjection[coeffIndex], 
-						XMLoadFloat4(&totalShProjection[coeffIndex]) + XMLoadFloat4(&sampleShProjection[coeffIndex]));
+					XMFLOAT4 direction = { 0.0f, 0.0f, 0.0f, 1.0f };
+					// Result of one sample
+					const ProbePathTraceResult sampleRes = PathTraceFromProbe(bakePoint, direction);
+
+					if (bakeFlags[BakeFlags::SaveRayPath] == true)
+					{
+						DX_ASSERT(sampleRes.pathSegments.has_value() == true &&
+							"If SaveRayPath flag is on there should be segments");
+
+						probe.pathTracingSegments->insert(probe.pathTracingSegments->end(),
+							sampleRes.pathSegments->cbegin(), sampleRes.pathSegments->cend());
+					}
+
+					if (bakeFlags[BakeFlags::SaveLightSampling] == true)
+					{
+						probe.lightSamples->push_back(*sampleRes.lightSamples);
+					}
+
+					// Project single sample on SH
+					SphericalHarmonic9_t<XMFLOAT4> sampleShProjection = ProjectOntoSphericalHarmonic(direction, sampleRes.radiance);
+
+					for (int coeffIndex = 0; coeffIndex < totalShProjection.size(); ++coeffIndex)
+					{
+						// Accumulate from that value
+						XMStoreFloat4(&totalShProjection[coeffIndex],
+							XMLoadFloat4(&totalShProjection[coeffIndex]) + XMLoadFloat4(&sampleShProjection[coeffIndex]));
+					}
 				}
+
+				constexpr float monteCarloFactor = (1.0f / GetUniformSphereSamplePDF()) / Settings::PROBE_SAMPLES_NUM;
+
+				for (XMFLOAT4& coeff : totalShProjection)
+				{
+					XMStoreFloat4(&coeff, XMLoadFloat4(&coeff) * monteCarloFactor);
+				}
+
+				probesBaked.fetch_add(1);
 			}
-
-			constexpr float monteCarloFactor = (1.0f / GetUniformSphereSamplePDF()) / Settings::PROBE_SAMPLES_NUM;
-
-			for (XMFLOAT4& coeff : totalShProjection)
-			{
-				XMStoreFloat4(&coeff, XMLoadFloat4(&coeff) * monteCarloFactor);
-			}
-
-			probesBaked.fetch_add(1);
 		}
 	}
 
@@ -872,7 +877,7 @@ XMFLOAT4 LightBaker::GatherDirectIrradianceFromPointLights(const XMFLOAT4& inter
 
 			XMFLOAT4 sampledLightRadiance;
 			XMStoreFloat4(&sampledLightRadiance, sseLightRadiance);
-
+			 
 			// We can't receive more energy than light produces.
 			DX_ASSERT(sampledLightRadiance.x >= 0.0f && sampledLightRadiance.x <= baseLightRadiance.x);
 			DX_ASSERT(sampledLightRadiance.y >= 0.0f && sampledLightRadiance.y <= baseLightRadiance.y);
@@ -1298,6 +1303,7 @@ void LightBaker::SaveBakingResultsToFile(const BakingData& bakingResult) const
 	DX_ASSERT(transferableData.bakingMode.has_value() == true && "Baking mode is not set");
 	DX_ASSERT(*transferableData.bakingMode != LightBakingMode::CurrentAndNeighbouringClusters &&
 		"Saving for neigtbouring clusters baking mode is not implemented");
+
 	bakingResultStream << "BakingMode " << LightBaker::BakingModeToStr(*bakingResult.bakingMode);
 
 	// Baking cluster

@@ -127,9 +127,6 @@ class Renderer
 	[[nodiscard]]
 	std::vector<ClusterProbeGridInfo> GenBakeClusterProbeGridInfo() const;
 
-	[[nodiscard]]
-	std::vector<XMFLOAT4> GenBakeProbePositions() const;
-
 	/* Objects data */
 	const std::vector<StaticObject>& GetStaticObjects() const;
 	const std::unordered_map<model_t*, DynamicObjectModel>& GetDynamicModels() const;

@@ -231,32 +231,40 @@ std::tuple<bool, Utils::BSPNodeRayIntersectionResult> BSPTree::FindClosestRayInt
 	// Find node where ray is originated
 	const BSPNode& node = GetNodeWithPoint(ray.origin);
 
-	// Ignore rays originated from empty nodes
 	if (node.cluster == Const::INVALID_INDEX)
 	{
-		return { false, nodeIntersectionResult };
-	}
-
-	// Try out this node first
-	if (Utils::FindClosestIntersectionInNode(ray, node, nodeIntersectionResult) == false)
-	{
-		// Time to check PVS
-		std::vector<bool> currentPVS = DecompressClusterVisibility(node.cluster);
-		const std::vector<BSPNode>& bspNodes = nodes;
-
-		for (const int leafIndex : leavesIndices)
+		for (const BSPNode& node : nodes)
 		{
-			const BSPNode& leaf = bspNodes[leafIndex];
-
-			if (leaf.cluster != Const::INVALID_INDEX &&
-				currentPVS[leaf.cluster] == true &&
-				// Ignore node that we just checked
-				&leaf != &node)
+			if (node.cluster != Const::INVALID_INDEX)
 			{
-				Utils::FindClosestIntersectionInNode(ray, leaf, nodeIntersectionResult);
+				Utils::FindClosestIntersectionInNode(ray, node, nodeIntersectionResult);
 			}
 		}
+	}
+	else
+	{
+		// Use PVS
 
+		// Try out this node first
+		if (Utils::FindClosestIntersectionInNode(ray, node, nodeIntersectionResult) == false)
+		{
+			// Time to check PVS
+			std::vector<bool> currentPVS = DecompressClusterVisibility(node.cluster);
+			const std::vector<BSPNode>& bspNodes = nodes;
+
+			for (const int leafIndex : leavesIndices)
+			{
+				const BSPNode& leaf = bspNodes[leafIndex];
+
+				if (leaf.cluster != Const::INVALID_INDEX &&
+					currentPVS[leaf.cluster] == true &&
+					// Ignore node that we just checked
+					&leaf != &node)
+				{
+					Utils::FindClosestIntersectionInNode(ray, leaf, nodeIntersectionResult);
+				}
+			}
+		}
 	}
 
 	const bool isIntersected = nodeIntersectionResult.rayTriangleIntersection.t != FLT_MAX;
